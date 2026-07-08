@@ -18,6 +18,7 @@ out/
 .env.*.local
 backend/.env.development
 frontend/.env.development
+frontend/.npm-cache
 
 # Editors
 .vscode/
