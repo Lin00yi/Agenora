@@ -18,6 +18,12 @@ out/
 .env.*.local
 backend/.env.development
 frontend/.env.development
+.env.staging
+.env.production
+backend/.env.staging
+backend/.env.production
+frontend/.env.staging
+frontend/.env.production
 frontend/.npm-cache
 
 # Editors

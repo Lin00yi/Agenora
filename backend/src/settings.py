@@ -1,21 +1,37 @@
 """Centralized settings via pydantic-settings.
 
-Env file resolution is decoupled from CWD: we always load `backend/.env` regardless
-of where the Python process is launched from (so `python data/ingest.py` from the
-project root and `uvicorn` from `backend/` both work).
+Env file resolution is decoupled from CWD and keyed by APP_ENV:
+  - development -> backend/.env.development
+  - staging     -> backend/.env.staging
+  - production  -> backend/.env.production
+
+If the mapped file is missing, we fall back to `backend/.env` for backward
+compatibility.
 
 Default DB / vector / upload paths are also anchored to `backend/`, so the app
 keeps finding its data files even when systemd / Docker launches it with an
 unrelated WorkingDirectory.
 """
+import os
 from functools import lru_cache
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# backend/src/settings.py → backend/.env
+# backend/src/settings.py → backend/.env.<env>
 _BACKEND_DIR = Path(__file__).resolve().parent.parent
-_ENV_FILE = _BACKEND_DIR / ".env"
+_ENV_NAME = os.getenv("APP_ENV", "development").strip().lower()
+_ENV_NAME_MAP = {
+    "dev": "development",
+    "development": "development",
+    "staging": "staging",
+    "prod": "production",
+    "production": "production",
+}
+_ENV_SUFFIX = _ENV_NAME_MAP.get(_ENV_NAME, "development")
+_ENV_FILE = _BACKEND_DIR / f".env.{_ENV_SUFFIX}"
+if not _ENV_FILE.exists():
+    _ENV_FILE = _BACKEND_DIR / ".env"
 _DATA_DIR = _BACKEND_DIR / "data"
 
 # SQLAlchemy URLs use POSIX-style slashes; absolute path renders as
