@@ -77,20 +77,20 @@ export default function WelcomePage() {
       <section className="relative overflow-hidden">
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-br from-accent/10 via-transparent to-info/10"
+          className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-br from-brand/10 via-transparent to-info/10"
         />
         <div
           aria-hidden
-          className="pointer-events-none absolute -top-32 left-1/2 -z-10 h-[600px] w-[600px] -translate-x-1/2 rounded-full bg-accent/15 blur-3xl"
+          className="pointer-events-none absolute -top-32 left-1/2 -z-10 h-[600px] w-[600px] -translate-x-1/2 rounded-full bg-brand/15 blur-3xl"
         />
         <div className="mx-auto max-w-7xl px-4 pb-20 pt-16 sm:px-6 sm:pt-24 lg:px-8 lg:pt-32">
           <div className="mx-auto max-w-3xl text-center">
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border bg-surface/60 px-3 py-1 text-xs text-muted backdrop-blur">
-              <Sparkles className="h-3.5 w-3.5 text-accent" />
+              <Sparkles className="h-3.5 w-3.5 text-brand" />
               <span>v3 · 混合检索 + 二阶段重排 + 按 KB 配置</span>
             </div>
             <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
-              <span className="bg-gradient-to-r from-accent via-info to-accent bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-brand via-info to-brand bg-clip-text text-transparent">
                 你的私有知识库
               </span>
               <br />
@@ -154,8 +154,8 @@ export default function WelcomePage() {
                     <span className="text-muted">你：</span>
                     Transformer 里 attention 的 Q/K/V 是什么含义？
                   </div>
-                  <div className="rounded-lg border bg-accent/5 px-4 py-3 text-sm">
-                    <div className="mb-2 flex items-center gap-2 text-xs text-accent">
+                  <div className="rounded-lg border bg-brand/5 px-4 py-3 text-sm">
+                    <div className="mb-2 flex items-center gap-2 text-xs text-brand">
                       <Sparkles className="h-3.5 w-3.5" />
                       AnyKB · 命中 3 篇论文
                     </div>
@@ -361,8 +361,8 @@ function FeatureCard({
   desc: string;
 }) {
   return (
-    <div className="group rounded-2xl border bg-bg p-6 transition hover:border-accent/50 hover:shadow-lift">
-      <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 text-accent transition group-hover:bg-accent/20">
+    <div className="group rounded-2xl border bg-bg p-6 transition hover:border-brand/50 hover:shadow-lift">
+      <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-brand/10 text-brand transition group-hover:bg-brand/20">
         {icon}
       </div>
       <h3 className="font-semibold">{title}</h3>
@@ -384,10 +384,10 @@ function StepCard({
 }) {
   return (
     <div className="relative rounded-2xl border bg-surface p-6">
-      <div className="absolute -top-3 -left-3 flex h-10 w-10 items-center justify-center rounded-full bg-accent text-sm font-bold text-white shadow-lift">
+      <div className="absolute -top-3 -left-3 flex h-10 w-10 items-center justify-center rounded-full bg-brand text-sm font-bold text-white shadow-lift">
         {n}
       </div>
-      <div className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-accent/10 text-accent">
+      <div className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-brand/10 text-brand">
         {icon}
       </div>
       <h3 className="font-semibold">{title}</h3>
@@ -406,7 +406,7 @@ function ScenarioCard({
   desc: string;
 }) {
   return (
-    <div className="rounded-2xl border bg-bg p-6 transition hover:border-accent/40">
+    <div className="rounded-2xl border bg-bg p-6 transition hover:border-brand/40">
       <div className="text-3xl">{emoji}</div>
       <h3 className="mt-3 font-semibold">{title}</h3>
       <p className="mt-2 text-sm leading-relaxed text-muted">{desc}</p>
@@ -426,7 +426,7 @@ function DemoKbItem({
   return (
     <div
       className={`flex items-center justify-between rounded-lg border px-3 py-2 text-xs ${
-        active ? "border-accent/50 bg-accent/5" : "border-border bg-bg"
+        active ? "border-brand/50 bg-brand/5" : "border-border bg-bg"
       }`}
     >
       <span>{name}</span>

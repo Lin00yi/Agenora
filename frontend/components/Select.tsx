@@ -1,64 +1,105 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
 import {
   forwardRef,
-  type SelectHTMLAttributes,
+  type ChangeEvent,
 } from "react";
-import { cn } from "@/lib/cn";
+import {
+  Select as ShadcnSelect,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+
+const EMPTY_VALUE = "__empty__";
+
+function toRadixValue(value: string) {
+  return value === "" ? EMPTY_VALUE : value;
+}
+
+function fromRadixValue(value: string) {
+  return value === EMPTY_VALUE ? "" : value;
+}
 
 export type SelectOption = {
   value: string;
   label: string;
-  prefix?: string; // e.g. emoji "🔒" / "📚"
+  prefix?: string;
 };
 
-type SelectProps = Omit<SelectHTMLAttributes<HTMLSelectElement>, "size"> & {
+type SelectProps = {
   options: SelectOption[];
   size?: "sm" | "md";
-  /** Optional first option (placeholder), e.g. `{ value: "", label: "不绑定" }` */
   placeholderOption?: SelectOption;
+  value?: string;
+  defaultValue?: string;
+  disabled?: boolean;
+  name?: string;
+  className?: string;
+  id?: string;
+  title?: string;
+  "aria-label"?: string;
+  onChange?: (event: ChangeEvent<HTMLSelectElement>) => void;
 };
 
-/**
- * Styled native <select> — appearance-none + custom chevron, dark-mode safe.
- *
- * Keeps a11y / mobile native picker. For richer dropdowns (search, multi-select,
- * keyboard nav beyond native) consider Headless UI later.
- */
-const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
-  { options, size = "md", placeholderOption, className, ...rest },
+/** Radix Select wrapper — keeps the legacy options/value/onChange API. */
+const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(
+  {
+    options,
+    size = "md",
+    placeholderOption,
+    className,
+    value,
+    defaultValue,
+    disabled,
+    name,
+    onChange,
+    id,
+    title,
+    "aria-label": ariaLabel,
+  },
   ref
 ) {
   const allOptions = placeholderOption ? [placeholderOption, ...options] : options;
+  const currentValue = toRadixValue(
+    value !== undefined && value !== null
+      ? String(value)
+      : defaultValue !== undefined && defaultValue !== null
+        ? String(defaultValue)
+        : placeholderOption?.value ?? allOptions[0]?.value ?? ""
+  );
+
   return (
-    <div className="relative inline-flex items-center">
-      <select
+    <ShadcnSelect
+      value={currentValue}
+      disabled={disabled}
+      name={name}
+      onValueChange={(next) => {
+        onChange?.({
+          target: { value: fromRadixValue(next), name: name ?? "" },
+        } as ChangeEvent<HTMLSelectElement>);
+      }}
+    >
+      <SelectTrigger
         ref={ref}
-        {...rest}
-        className={cn(
-          "appearance-none rounded-md border bg-bg text-fg",
-          "outline-none transition",
-          "focus:border-accent focus:ring-2 focus:ring-accent/20",
-          "disabled:opacity-50 disabled:cursor-not-allowed",
-          size === "sm" ? "h-7 pl-2 pr-7 text-xs" : "h-9 pl-3 pr-8 text-sm",
-          className
-        )}
+        id={id}
+        title={title}
+        aria-label={ariaLabel}
+        size={size === "sm" ? "sm" : "default"}
+        className={cn("w-full min-w-[8rem]", className)}
       >
+        <SelectValue placeholder={placeholderOption?.label ?? "请选择"} />
+      </SelectTrigger>
+      <SelectContent>
         {allOptions.map((opt) => (
-          <option key={opt.value} value={opt.value}>
+          <SelectItem key={toRadixValue(opt.value)} value={toRadixValue(opt.value)}>
             {opt.prefix ? `${opt.prefix} ${opt.label}` : opt.label}
-          </option>
+          </SelectItem>
         ))}
-      </select>
-      <ChevronDown
-        className={cn(
-          "pointer-events-none absolute text-muted",
-          size === "sm" ? "right-1.5 h-3.5 w-3.5" : "right-2 h-4 w-4"
-        )}
-        aria-hidden
-      />
-    </div>
+      </SelectContent>
+    </ShadcnSelect>
   );
 });
 

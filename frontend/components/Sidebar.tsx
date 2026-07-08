@@ -73,12 +73,12 @@ export default function Sidebar({
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r bg-surface backdrop-blur transition-transform md:relative md:translate-x-0",
+          "fixed inset-y-0 left-0 z-40 flex w-[17rem] flex-col border-r border-surface-border/60 bg-surface/95 backdrop-blur-xl transition-transform md:relative md:translate-x-0",
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >
         {/* Header */}
-        <div className="flex h-14 items-center justify-between border-b px-3">
+        <div className="flex h-14 items-center justify-between border-b border-surface-border/60 px-3">
           <Brand size="sm" />
           <button
             onClick={onToggle}
@@ -92,7 +92,7 @@ export default function Sidebar({
         {/* New chat */}
         <button
           onClick={onNew}
-          className="m-3 inline-flex items-center justify-center gap-2 rounded-lg border bg-bg px-3 py-2 text-sm font-medium transition hover:bg-surface-2"
+          className="m-3 inline-flex items-center justify-center gap-2 rounded-xl border border-brand/25 bg-brand/8 px-3 py-2.5 text-sm font-medium text-brand transition-all hover:border-brand/40 hover:bg-brand/12 active:scale-[0.98]"
           type="button"
         >
           <Plus className="h-4 w-4" />
@@ -103,11 +103,11 @@ export default function Sidebar({
         <nav className="flex-1 overflow-y-auto px-2 pb-3">
           {conversations.length === 0 ? (
             <div className="mt-4 flex flex-col items-center gap-2 rounded-xl border border-dashed px-3 py-6 text-center text-xs text-muted">
-              <Sparkles className="h-4 w-4 text-accent/70" />
+              <Sparkles className="h-4 w-4 text-brand/70" />
               <div>还没有对话</div>
               <button
                 onClick={onNew}
-                className="text-accent hover:underline"
+                className="text-brand hover:underline"
                 type="button"
               >
                 开始第一次对话 →
@@ -121,9 +121,9 @@ export default function Sidebar({
                 <div
                   key={c.id}
                   className={cn(
-                    "group flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm transition",
+                    "group flex cursor-pointer items-center gap-2 rounded-xl px-2.5 py-2 text-sm transition-all",
                     active
-                      ? "bg-accent/15 text-fg"
+                      ? "bg-brand/12 font-medium text-brand shadow-sm ring-1 ring-brand/15"
                       : "text-fg/80 hover:bg-surface-2"
                   )}
                   onClick={() => !isEditing && onSelect(c.id)}
@@ -142,7 +142,7 @@ export default function Sidebar({
                         }
                       }}
                       onBlur={(e) => commitRename(c.id, c.title, e.target.value)}
-                      className="flex-1 min-w-0 bg-transparent outline-none border-b border-accent/50 text-sm"
+                      className="flex-1 min-w-0 bg-transparent outline-none border-b border-brand/50 text-sm"
                       maxLength={128}
                     />
                   ) : (
@@ -156,7 +156,7 @@ export default function Sidebar({
                         e.stopPropagation();
                         setEditingId(c.id);
                       }}
-                      className="rounded p-1 opacity-0 transition hover:bg-accent/15 hover:text-accent group-hover:opacity-100"
+                      className="rounded p-1 opacity-0 transition hover:bg-brand/15 hover:text-brand group-hover:opacity-100"
                       aria-label="rename conversation"
                       title="重命名"
                       type="button"
@@ -317,7 +317,7 @@ function UserMenu({
         aria-expanded={open}
         aria-label="user menu"
       >
-        <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-accent/15 text-xs font-semibold text-accent">
+        <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-brand/15 text-xs font-semibold text-brand">
           {initial}
         </span>
         <span className="min-w-0 flex-1 truncate text-sm" title={user.email}>

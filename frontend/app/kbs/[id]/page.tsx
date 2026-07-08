@@ -219,7 +219,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
   if (loading) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-sm text-muted">
-        <Sparkles className="h-6 w-6 animate-pulse text-accent" />
+        <Sparkles className="h-6 w-6 animate-pulse text-brand" />
         加载中...
       </div>
     );
@@ -229,7 +229,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-sm text-muted">
         <div>找不到这个知识库</div>
-        <Link href="/kbs" className="text-accent hover:underline">
+        <Link href="/kbs" className="text-brand hover:underline">
           返回列表
         </Link>
       </div>
@@ -335,7 +335,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                 accept=".md,.markdown,.txt,.pdf,.docx"
                 onChange={onFileChange}
                 disabled={uploadingFiles.length > 0}
-                className="block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-accent file:px-3 file:py-2 file:text-sm file:text-white hover:file:bg-accent/90 disabled:opacity-50"
+                className="block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-brand file:px-3 file:py-2 file:text-sm file:text-white hover:file:bg-brand/90 disabled:opacity-50"
               />
               <div className="mt-2 text-xs text-muted">
                 支持 .md / .txt / .pdf / .docx（单文件 ≤ 50 MB）
@@ -355,7 +355,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://example.com/article"
-                className="block w-full rounded-md border bg-bg px-3 py-2 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
+                className="block w-full rounded-md border bg-bg px-3 py-2 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
               />
               <button
                 type="submit"
@@ -417,7 +417,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
         {isOwner && !kb.is_system && (
           <section className="card mt-6 p-4">
             <div className="flex items-center gap-2 text-sm font-medium">
-              <Sparkles className="h-4 w-4 text-accent" />
+              <Sparkles className="h-4 w-4 text-brand" />
               高级设置
             </div>
 
@@ -559,7 +559,7 @@ function DocRow({
               href={doc.source_url}
               target="_blank"
               rel="noreferrer"
-              className="max-w-[200px] truncate text-accent hover:underline"
+              className="max-w-[200px] truncate text-brand hover:underline"
             >
               来源
             </a>
@@ -684,14 +684,14 @@ function MembersSection({ kbId, isOwner }: { kbId: string; isOwner: boolean }) {
         <ul className="divide-y">
           {data?.owner && (
             <li className="flex items-center gap-3 px-4 py-3">
-              <BookOpen className="h-4 w-4 flex-none text-accent" />
+              <BookOpen className="h-4 w-4 flex-none text-brand" />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm">{data.owner.email}</div>
                 <div className="text-xs text-muted">
                   {data.owner.display_name || "—"}
                 </div>
               </div>
-              <span className="chip border-accent/30 bg-accent/10 text-accent">
+              <span className="chip border-brand/30 bg-brand/10 text-brand">
                 owner
               </span>
             </li>
@@ -921,7 +921,7 @@ function InviteDialog({
             className={cn(
               "flex-1 px-4 py-2 text-sm transition",
               tab === "email"
-                ? "border-b-2 border-accent text-fg"
+                ? "border-b-2 border-brand text-fg"
                 : "text-muted hover:text-fg"
             )}
           >
@@ -933,7 +933,7 @@ function InviteDialog({
             className={cn(
               "flex-1 px-4 py-2 text-sm transition",
               tab === "link"
-                ? "border-b-2 border-accent text-fg"
+                ? "border-b-2 border-brand text-fg"
                 : "text-muted hover:text-fg"
             )}
           >
@@ -953,7 +953,7 @@ function InviteDialog({
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="bob@example.com"
-                className="block w-full rounded-md border bg-bg px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                className="block w-full rounded-md border bg-bg px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
               />
               <div className="flex items-center gap-2">
                 <label className="text-xs text-muted">角色</label>
@@ -1000,7 +1000,7 @@ function InviteDialog({
                     value={linkExpiresHours}
                     onChange={(e) => setLinkExpiresHours(e.target.value)}
                     placeholder="留空 = 永不过期"
-                    className="flex-1 rounded-md border bg-bg px-3 py-1.5 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                    className="flex-1 rounded-md border bg-bg px-3 py-1.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
                   />
                   <span className="text-xs text-muted">小时</span>
                 </div>
@@ -1012,7 +1012,7 @@ function InviteDialog({
                     value={linkMaxUses}
                     onChange={(e) => setLinkMaxUses(e.target.value)}
                     placeholder="留空 = 不限"
-                    className="flex-1 rounded-md border bg-bg px-3 py-1.5 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                    className="flex-1 rounded-md border bg-bg px-3 py-1.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
                   />
                   <span className="text-xs text-muted">次</span>
                 </div>
@@ -1062,7 +1062,7 @@ function InviteDialog({
                             <>
                               <button
                                 onClick={() => copy(buildUrl(inv.id))}
-                                className="rounded p-1 hover:bg-accent/15 hover:text-accent"
+                                className="rounded p-1 hover:bg-brand/15 hover:text-brand"
                                 title="复制链接"
                                 type="button"
                               >

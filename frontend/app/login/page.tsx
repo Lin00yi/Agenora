@@ -8,6 +8,9 @@ import { toast } from "sonner";
 
 import Brand, { APP_NAME } from "@/components/Brand";
 import BrandPanel from "@/components/BrandPanel";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { login } from "@/lib/auth";
 
 export default function LoginPage() {
@@ -33,11 +36,9 @@ export default function LoginPage() {
 
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
-      {/* Left brand panel — hidden on mobile */}
       <BrandPanel />
 
-      {/* Right form panel */}
-      <div className="flex min-h-screen flex-col bg-bg px-6 py-8 sm:px-10">
+      <div className="app-gradient-bg flex min-h-screen flex-col px-6 py-8 sm:px-10">
         <div className="flex items-center justify-between">
           <Link
             href="/welcome"
@@ -51,70 +52,76 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <div className="flex flex-1 items-center justify-center">
+        <div className="flex flex-1 items-center justify-center py-8">
           <div className="w-full max-w-sm">
-            <h1 className="text-2xl font-bold">欢迎回到 {APP_NAME}</h1>
-            <p className="mt-2 text-sm text-muted">登录开始管理你的知识库</p>
+            <div className="card p-8 shadow-lift">
+              <h1 className="text-2xl font-bold tracking-tight">
+                欢迎回到 {APP_NAME}
+              </h1>
+              <p className="mt-2 text-sm text-muted">登录开始管理你的知识库</p>
 
-            <form onSubmit={onSubmit} className="mt-8 space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-fg">邮箱</label>
-                <div className="relative">
-                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-                  <input
-                    type="email"
-                    autoComplete="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="block w-full rounded-lg border bg-bg pl-9 pr-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
-                    placeholder="you@example.com"
-                  />
+              <form onSubmit={onSubmit} className="mt-8 space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor="email">邮箱</Label>
+                  <div className="relative">
+                    <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+                    <Input
+                      id="email"
+                      type="email"
+                      autoComplete="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="h-10 bg-bg pl-9"
+                      placeholder="you@example.com"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-fg">密码</label>
-                <div className="relative">
-                  <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-                  <input
-                    type="password"
-                    autoComplete="current-password"
-                    required
-                    minLength={8}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="block w-full rounded-lg border bg-bg pl-9 pr-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
-                    placeholder="至少 8 位"
-                  />
+                <div className="space-y-2">
+                  <Label htmlFor="password">密码</Label>
+                  <div className="relative">
+                    <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+                    <Input
+                      id="password"
+                      type="password"
+                      autoComplete="current-password"
+                      required
+                      minLength={8}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="h-10 bg-bg pl-9"
+                      placeholder="至少 8 位"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="btn btn-primary inline-flex w-full items-center justify-center py-2.5"
-              >
-                {loading ? (
-                  "登录中..."
-                ) : (
-                  <>
-                    <LogIn className="h-4 w-4" />
-                    登录
-                  </>
-                )}
-              </button>
-            </form>
+                <Button
+                  type="submit"
+                  disabled={loading}
+                  className="h-10 w-full bg-brand text-white hover:bg-brand-dark"
+                >
+                  {loading ? (
+                    "登录中..."
+                  ) : (
+                    <>
+                      <LogIn className="h-4 w-4" />
+                      登录
+                    </>
+                  )}
+                </Button>
+              </form>
 
-            <p className="mt-6 text-center text-sm text-muted">
-              还没有账号？{" "}
-              <Link
-                href="/register"
-                className="inline-flex items-center gap-0.5 font-medium text-accent hover:underline"
-              >
-                免费注册 <ArrowRight className="h-3 w-3" />
-              </Link>
-            </p>
+              <p className="mt-6 text-center text-sm text-muted">
+                还没有账号？{" "}
+                <Link
+                  href="/register"
+                  className="inline-flex items-center gap-0.5 font-medium text-brand hover:underline"
+                >
+                  免费注册 <ArrowRight className="h-3 w-3" />
+                </Link>
+              </p>
+            </div>
           </div>
         </div>
 

@@ -11,7 +11,7 @@ export default function ReportView({ markdown, streaming }: { markdown: string; 
     >
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown.replace(/\\n/g, "\n")}</ReactMarkdown>
       {streaming && (
-        <span className="ml-1 inline-block h-4 w-1.5 animate-pulse bg-accent align-middle" />
+        <span className="ml-1 inline-block h-4 w-1.5 animate-pulse bg-brand align-middle" />
       )}
     </article>
   );

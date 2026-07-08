@@ -714,14 +714,14 @@ export default function Page() {
   if (!authChecked) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-bg text-muted">
-        <Sparkles className="h-8 w-8 animate-pulse text-accent" />
+        <Sparkles className="h-8 w-8 animate-pulse text-brand" />
         <div className="text-sm">正在加载 {APP_NAME}…</div>
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-bg text-fg">
+    <div className="flex h-screen w-screen overflow-hidden app-gradient-bg text-fg">
       <Sidebar
         conversations={sidebarConversations}
         currentId={currentId}
@@ -738,7 +738,7 @@ export default function Page() {
 
       <main className="flex flex-1 flex-col min-w-0">
         {/* Top bar */}
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-bg/80 px-3 backdrop-blur md:gap-3 md:px-6">
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-surface-border/60 bg-bg/70 px-3 backdrop-blur-xl md:gap-3 md:px-6">
           <SidebarToggle onClick={() => setSidebarOpen(true)} />
 
           {/* Brand: icon-only on mobile, full on md+ */}
@@ -864,7 +864,7 @@ export default function Page() {
         </div>
 
         {/* Input area */}
-        <div className="shrink-0 border-t bg-bg/80 backdrop-blur">
+        <div className="shrink-0 border-t border-surface-border/60 bg-bg/70 backdrop-blur-xl">
           <div className="mx-auto w-full max-w-none px-6 py-3 sm:px-10 md:px-16 lg:px-24">
             <ChatBox onSend={handleSend} onStop={handleStop} busy={busy} />
             <p className="mt-2 text-center text-[11px] text-muted">
@@ -909,10 +909,10 @@ function Hero({
           <button
             key={text}
             onClick={() => onPick(text)}
-            className="card card-hover group flex items-start gap-3 px-4 py-3 text-left text-sm"
+            className="card card-hover group flex items-start gap-3 border-surface-border/60 px-4 py-3.5 text-left text-sm"
             type="button"
           >
-            <Icon className="mt-0.5 h-4 w-4 flex-none text-accent transition group-hover:scale-110" />
+            <Icon className="mt-0.5 h-4 w-4 flex-none text-brand transition group-hover:scale-110" />
             <span>{text}</span>
           </button>
         ))}

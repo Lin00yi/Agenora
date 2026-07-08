@@ -125,7 +125,7 @@ function UsersTable() {
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted">
-        <Sparkles className="h-4 w-4 animate-pulse text-accent" />
+        <Sparkles className="h-4 w-4 animate-pulse text-brand" />
         加载中…
       </div>
     );
@@ -160,7 +160,7 @@ function UsersTable() {
                         {u.display_name?.trim() || u.email}
                       </span>
                       {u.is_admin && (
-                        <span className="chip border-accent/30 bg-accent/10 text-accent">
+                        <span className="chip border-brand/30 bg-brand/10 text-brand">
                           管理员
                         </span>
                       )}
@@ -294,7 +294,7 @@ function UsersTable() {
               value={resetPwd}
               onChange={(e) => setResetPwd(e.target.value)}
               placeholder="新密码"
-              className="block w-full rounded-lg border bg-bg px-3 py-2 text-sm text-fg outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
+              className="block w-full rounded-lg border bg-bg px-3 py-2 text-sm text-fg outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
           </div>
         }
@@ -342,7 +342,7 @@ function IconBtn({
         "rounded-md p-1.5 text-muted/80 transition disabled:opacity-30 disabled:cursor-not-allowed",
         danger
           ? "hover:bg-danger/15 hover:text-danger"
-          : "hover:bg-accent/15 hover:text-accent"
+          : "hover:bg-brand/15 hover:text-brand"
       )}
     >
       {children}

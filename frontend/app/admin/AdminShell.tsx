@@ -98,7 +98,7 @@ export default function AdminShell({
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition",
                   active
-                    ? "bg-accent/15 text-fg"
+                    ? "bg-brand/15 text-fg"
                     : "text-muted hover:bg-surface hover:text-fg"
                 )}
               >

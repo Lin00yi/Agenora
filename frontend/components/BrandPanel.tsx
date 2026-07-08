@@ -10,7 +10,7 @@ import Brand, { APP_NAME } from "@/components/Brand";
  */
 export default function BrandPanel() {
   return (
-    <div className="relative hidden overflow-hidden bg-gradient-to-br from-accent via-info to-accent text-white lg:flex lg:flex-col">
+    <div className="relative hidden overflow-hidden bg-gradient-to-br from-brand via-emerald-600 to-info text-white lg:flex lg:flex-col">
       <div
         aria-hidden
         className="pointer-events-none absolute -top-32 -left-32 h-96 w-96 rounded-full bg-white/10 blur-3xl"

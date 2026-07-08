@@ -143,7 +143,7 @@ export default function ShareCardDialog({
       >
         <header className="flex h-12 shrink-0 items-center justify-between border-b px-5">
           <h2 className="flex items-center gap-2 text-base font-semibold">
-            <ImageIcon className="h-4 w-4 text-accent" />
+            <ImageIcon className="h-4 w-4 text-brand" />
             分享卡片
           </h2>
           <button
@@ -165,7 +165,7 @@ export default function ShareCardDialog({
             className="mx-auto w-full max-w-[560px] overflow-hidden rounded-2xl border border-border bg-bg shadow-lift"
           >
             {/* Top brand bar */}
-            <div className="flex items-center gap-2.5 bg-gradient-to-r from-accent via-info to-accent px-5 py-3.5 text-white">
+            <div className="flex items-center gap-2.5 bg-gradient-to-r from-brand via-info to-brand px-5 py-3.5 text-white">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 backdrop-blur">
                 <Sparkles className="h-4 w-4" />
               </div>

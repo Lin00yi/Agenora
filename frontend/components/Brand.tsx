@@ -44,7 +44,7 @@ export default function Brand({
       <div
         className={cn(
           "flex items-center justify-center text-white",
-          "bg-gradient-to-br from-accent to-accent/70 shadow-soft",
+          "bg-gradient-to-br from-brand to-brand/70 shadow-soft",
           s.box
         )}
         aria-hidden

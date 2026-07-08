@@ -28,8 +28,8 @@ const NAME_LABEL: Record<string, string> = {
 };
 
 const STATUS_ICON: Record<ToolEvent["status"], React.ReactNode> = {
-  running: <LoaderCircle className="h-3.5 w-3.5 animate-spin text-accent" />,
-  ok: <CircleCheck className="h-3.5 w-3.5 text-accent" />,
+  running: <LoaderCircle className="h-3.5 w-3.5 animate-spin text-brand" />,
+  ok: <CircleCheck className="h-3.5 w-3.5 text-brand" />,
   error: <CircleAlert className="h-3.5 w-3.5 text-red-500" />,
   blocked: <Ban className="h-3.5 w-3.5 text-amber-500" />,
 };
@@ -60,7 +60,7 @@ export default function ThinkingChain({ events }: { events: ToolEvent[] }) {
       >
         <span className="flex items-center gap-2 text-muted">
           {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-          {hasRunning && <LoaderCircle className="h-3.5 w-3.5 animate-spin text-accent" />}
+          {hasRunning && <LoaderCircle className="h-3.5 w-3.5 animate-spin text-brand" />}
           {summary}
         </span>
       </button>

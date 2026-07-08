@@ -23,7 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* eslint-disable-next-line react/no-danger */}
         <script dangerouslySetInnerHTML={{ __html: NO_FLASH }} />
       </head>
-      <body className="min-h-screen bg-bg text-fg antialiased">
+      <body className="min-h-screen bg-background text-foreground antialiased">
         <ThemeProvider>
           {children}
           <Toaster

@@ -116,12 +116,12 @@ export default function KbsPage() {
 
         {loading ? (
           <div className="flex items-center gap-2 text-sm text-muted">
-            <Sparkles className="h-4 w-4 animate-pulse text-accent" />
+            <Sparkles className="h-4 w-4 animate-pulse text-brand" />
             加载中...
           </div>
         ) : kbs.length === 0 ? (
           <div className="card flex flex-col items-center gap-3 border-dashed py-12 text-center">
-            <Sparkles className="h-6 w-6 text-accent" />
+            <Sparkles className="h-6 w-6 text-brand" />
             <div className="text-sm">还没有知识库</div>
             <div className="text-xs text-muted">点上面「新建知识库」开始</div>
           </div>
@@ -599,7 +599,7 @@ function CreateKbDialog({
                     setEmbedKeyEditing(true);
                     setEmbedVerified(false);
                   }}
-                  className="text-xs text-accent hover:underline"
+                  className="text-xs text-brand hover:underline"
                 >
                   修改
                 </button>
@@ -757,7 +757,7 @@ function CreateKbDialog({
                           setRerankerKeyEditing(true);
                           setRerankerVerified(false);
                         }}
-                        className="text-xs text-accent hover:underline"
+                        className="text-xs text-brand hover:underline"
                       >
                         修改
                       </button>
@@ -886,7 +886,7 @@ function CreateKbDialog({
 // Small UI helpers
 // ---------------------------------------------------------------------------
 const inputClass =
-  "block w-full rounded-lg border bg-bg px-3 py-2 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20";
+  "block w-full rounded-lg border bg-bg px-3 py-2 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20";
 
 function FormField({
   label,
@@ -973,7 +973,7 @@ function RadioRow({
     <label
       className={cn(
         "flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 transition",
-        checked ? "bg-accent/10" : "hover:bg-surface-2",
+        checked ? "bg-brand/10" : "hover:bg-surface-2",
         disabled && "cursor-not-allowed opacity-50"
       )}
     >

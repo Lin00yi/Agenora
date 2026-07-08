@@ -43,7 +43,10 @@ services:
       # The account must be registered first; then it gains /admin access.
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
 
-      # --- Optional fallback LLM/embedding keys (users override in /settings) ---
+      # --- LLM provider + fallback keys (users override in /settings) ---
+      LLM_PROVIDER: ${LLM_PROVIDER:-deepseek}
+      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-deepseek-chat}
+      LLM_COMPLEX_MODEL: ${LLM_COMPLEX_MODEL:-deepseek-chat}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}

@@ -81,7 +81,7 @@ export default function InvitePage({
         <div className="rounded-2xl border bg-surface p-6">
           {loading ? (
             <div className="flex flex-col items-center gap-2 py-8 text-sm text-muted">
-              <Sparkles className="h-5 w-5 animate-pulse text-accent" />
+              <Sparkles className="h-5 w-5 animate-pulse text-brand" />
               加载中…
             </div>
           ) : error ? (
@@ -98,7 +98,7 @@ export default function InvitePage({
             </div>
           ) : preview ? (
             <div className="flex flex-col items-center gap-3 py-2 text-center">
-              <BookOpen className="h-8 w-8 text-accent" />
+              <BookOpen className="h-8 w-8 text-brand" />
               <div className="text-base font-medium">
                 邀请你加入「{preview.kb_name}」
               </div>

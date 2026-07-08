@@ -206,7 +206,7 @@ function LLMCard({
       <header className="mb-4 flex items-start justify-between gap-2">
         <div>
           <h2 className="flex items-center gap-2 text-base font-semibold">
-            <Sparkles className="h-4 w-4 text-accent" />
+            <Sparkles className="h-4 w-4 text-brand" />
             LLM 提供商
           </h2>
           <p className="mt-1 text-xs text-muted">
@@ -248,7 +248,7 @@ function LLMCard({
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
             placeholder={placeholders.url}
-            className="block w-full rounded-lg border bg-bg px-3 py-2 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
+            className="block w-full rounded-lg border bg-bg px-3 py-2 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
           />
         </Field>
 
@@ -263,7 +263,7 @@ function LLMCard({
                 placeholder={
                   hasSavedKey ? "已保存（留空保持现有）" : placeholders.key
                 }
-                className="block w-full rounded-lg border bg-bg pl-8 pr-3 py-2 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
+                className="block w-full rounded-lg border bg-bg pl-8 pr-3 py-2 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
               />
             </div>
             <button
@@ -360,7 +360,7 @@ function KbOptionsCard({
   return (
     <section className="card p-5">
       <header className="mb-3 flex items-center gap-2">
-        <KeyRound className="h-4 w-4 text-accent" />
+        <KeyRound className="h-4 w-4 text-brand" />
         <h2 className="text-base font-semibold">KB 模式选项</h2>
       </header>
 

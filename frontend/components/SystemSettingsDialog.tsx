@@ -113,7 +113,7 @@ export default function SystemSettingsDialog({
                 className={cn(
                   "flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm transition",
                   active
-                    ? "bg-accent/15 text-fg"
+                    ? "bg-brand/15 text-fg"
                     : "text-fg/80 hover:bg-surface-2"
                 )}
                 type="button"
@@ -460,7 +460,7 @@ function AboutTab() {
         <dt className="text-muted">协议</dt>
         <dd>MIT</dd>
         <dt className="text-muted">仓库</dt>
-        <dd className="break-all text-accent">
+        <dd className="break-all text-brand">
           <a
             href="https://github.com/GU-Cryptography/anykb"
             target="_blank"
@@ -487,7 +487,7 @@ function AboutTab() {
 // Shared bits
 // ---------------------------------------------------------------------------
 const inputClass =
-  "block w-full rounded-lg border bg-bg px-3 py-2 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20";
+  "block w-full rounded-lg border bg-bg px-3 py-2 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20";
 
 function Field({
   label,

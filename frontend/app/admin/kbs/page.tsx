@@ -69,7 +69,7 @@ function KbsTable() {
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted">
-        <Sparkles className="h-4 w-4 animate-pulse text-accent" />
+        <Sparkles className="h-4 w-4 animate-pulse text-brand" />
         加载中…
       </div>
     );

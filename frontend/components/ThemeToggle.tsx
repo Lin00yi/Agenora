@@ -2,7 +2,8 @@
 
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "@/components/ThemeProvider";
-import { cn } from "@/lib/cn";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { cn } from "@/lib/utils";
 
 const OPTIONS = [
   { value: "light" as const, Icon: Sun, label: "亮色" },
@@ -13,35 +14,27 @@ const OPTIONS = [
 export default function ThemeToggle({ className }: { className?: string }) {
   const { theme, setTheme } = useTheme();
   return (
-    <div
-      className={cn(
-        "inline-flex items-center gap-0.5 rounded-lg border bg-surface p-0.5",
-        className
-      )}
-      role="group"
+    <ToggleGroup
+      type="single"
+      value={theme}
+      onValueChange={(value) => {
+        if (value) setTheme(value as typeof theme);
+      }}
+      className={cn("rounded-lg border bg-muted/40 p-0.5", className)}
       aria-label="主题切换"
     >
-      {OPTIONS.map(({ value, Icon, label }) => {
-        const active = theme === value;
-        return (
-          <button
-            key={value}
-            onClick={() => setTheme(value)}
-            className={cn(
-              "inline-flex h-6 w-6 items-center justify-center rounded-md transition",
-              active
-                ? "bg-bg text-fg shadow-soft"
-                : "text-muted hover:text-fg"
-            )}
-            title={label}
-            aria-label={label}
-            aria-pressed={active}
-            type="button"
-          >
-            <Icon className="h-3.5 w-3.5" />
-          </button>
-        );
-      })}
-    </div>
+      {OPTIONS.map(({ value, Icon, label }) => (
+        <ToggleGroupItem
+          key={value}
+          value={value}
+          size="sm"
+          className="h-7 w-7 p-0"
+          title={label}
+          aria-label={label}
+        >
+          <Icon className="h-3.5 w-3.5" />
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
   );
 }

@@ -32,7 +32,7 @@ function Dashboard() {
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted">
-        <Sparkles className="h-4 w-4 animate-pulse text-accent" />
+        <Sparkles className="h-4 w-4 animate-pulse text-brand" />
         加载中…
       </div>
     );
@@ -81,7 +81,7 @@ const toneClass: Record<string, string> = {
   default: "text-fg",
   success: "text-success",
   danger: "text-danger",
-  accent: "text-accent",
+  accent: "text-brand",
 };
 
 function StatCard({
