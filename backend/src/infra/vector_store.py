@@ -216,6 +216,56 @@ class QdrantStore:
             points_selector=qmodels.FilterSelector(filter=qmodels.Filter(must=conds)),
         )
 
+    async def delete_by_ids(
+        self, collection_name: str, point_ids: list[str]
+    ) -> None:
+        """Delete specific points by id."""
+        if not point_ids:
+            return
+        await self._client.delete(
+            collection_name=collection_name,
+            points_selector=qmodels.PointIdsList(points=point_ids),
+        )
+
+    async def list_by_filter(
+        self,
+        collection_name: str,
+        filters: dict[str, str],
+        *,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        """List points matching payload filters (for legacy chunk backfill)."""
+        if not filters:
+            raise ValueError("list_by_filter requires at least one filter")
+        conds = [
+            qmodels.FieldCondition(key=k, match=qmodels.MatchValue(value=v))
+            for k, v in filters.items()
+        ]
+        flt = qmodels.Filter(must=conds)
+        out: list[dict[str, Any]] = []
+        offset = None
+        while len(out) < limit:
+            batch_limit = min(256, limit - len(out))
+            points, next_offset = await self._client.scroll(
+                collection_name=collection_name,
+                scroll_filter=flt,
+                limit=batch_limit,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for p in points:
+                out.append(
+                    {
+                        "id": str(p.id),
+                        "payload": p.payload or {},
+                    }
+                )
+            if next_offset is None or not points:
+                break
+            offset = next_offset
+        return out
+
 
 # ---------------------------------------------------------------------------
 # Milvus adapter — Milvus Lite (embedded, local .db file) or Standalone server.
@@ -236,7 +286,7 @@ class QdrantStore:
 _KNOWN_PAYLOAD_KEYS = [
     # KB ingest (kb/ingest.py)
     "doc_id", "kb_id", "chunk_idx", "text", "filename",
-    "source_type", "source_url",
+    "source_type", "source_url", "enabled",
     # Restaurant demo KB (data/ingest.py)
     "city", "cuisine", "name", "address", "rating",
     "description", "reason", "tags",
@@ -327,6 +377,20 @@ class MilvusStore:
 
     def _has(self, name: str) -> bool:
         return bool(self._client.has_collection(collection_name=name))
+
+    def _ensure_loaded_sync(self, name: str) -> None:
+        """Milvus query/search require the collection loaded; Milvus Lite may
+        leave collections 'released' after restart until load() is called."""
+        if not self._has(name):
+            return
+        try:
+            self._client.load_collection(collection_name=name)
+        except Exception:  # noqa: BLE001
+            # Already loaded, or Lite auto-handles — ignore benign races.
+            pass
+
+    async def _ensure_loaded(self, name: str) -> None:
+        await asyncio.to_thread(self._ensure_loaded_sync, name)
 
     def _describe_dim(self, name: str) -> int:
         info = self._client.describe_collection(collection_name=name)
@@ -479,6 +543,7 @@ class MilvusStore:
         filters: dict[str, str] | None = None,
     ) -> list[dict[str, Any]]:
         target = collection_name or self._collection
+        await self._ensure_loaded(target)
 
         # Compose filters: legacy `city` arg + explicit `filters` dict (AND).
         composed: dict[str, str] = {}
@@ -533,6 +598,49 @@ class MilvusStore:
             self._client.delete, collection_name=collection_name, filter=expr
         )
 
+    async def delete_by_ids(
+        self, collection_name: str, point_ids: list[str]
+    ) -> None:
+        if not point_ids:
+            return
+        ids_escaped = ", ".join(
+            f'"{str(i).replace(chr(92), chr(92)*2).replace(chr(34), chr(92)+chr(34))}"'
+            for i in point_ids
+        )
+        expr = f"id in [{ids_escaped}]"
+        await asyncio.to_thread(
+            self._client.delete, collection_name=collection_name, filter=expr
+        )
+
+    async def list_by_filter(
+        self,
+        collection_name: str,
+        filters: dict[str, str],
+        *,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        """Query all points matching payload filters (legacy chunk backfill)."""
+        if not filters:
+            raise ValueError("list_by_filter requires at least one filter")
+        await self._ensure_loaded(collection_name)
+        expr = _build_milvus_filter_expr(filters)
+        output_fields = _KNOWN_PAYLOAD_KEYS
+        raw = await asyncio.to_thread(
+            self._client.query,
+            collection_name=collection_name,
+            filter=expr,
+            output_fields=output_fields,
+            limit=limit,
+        )
+        out: list[dict[str, Any]] = []
+        for row in raw or []:
+            payload = {
+                k: v for k, v in dict(row).items()
+                if k != "id" and v is not None and v != ""
+            }
+            out.append({"id": str(row.get("id", "")), "payload": payload})
+        return out
+
     # ---- v3-M3: hybrid search (dense + BM25) + grouping ----
 
     async def collection_supports_hybrid(self, collection_name: str) -> bool:
@@ -578,6 +686,7 @@ class MilvusStore:
         """
         from pymilvus import AnnSearchRequest, RRFRanker
 
+        await self._ensure_loaded(collection_name)
         expr = _build_milvus_filter_expr(filters) if filters else ""
 
         # Over-fetch each route so RRF has more candidates to fuse.

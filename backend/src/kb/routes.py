@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Annotated, Literal, Optional
 
 import httpx
@@ -31,9 +32,11 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Query,
     UploadFile,
     status,
 )
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, EmailStr, Field, HttpUrl
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,8 +52,9 @@ from src.kb.ingest import (
     delete_uploaded_file,
     ingest_document,
     save_uploaded_file,
+    upload_path,
 )
-from src.kb.models import KB, Document, KBInvitation, KBMember
+from src.kb.models import KB, Chunk, Document, KBInvitation, KBMember
 from src.kb.parsers import SUPPORTED_EXTS
 from src.settings_user import require_user_embedding, resolve_user_embedding
 from src.settings_user.kb_resolvers import resolve_kb_embedding
@@ -99,6 +103,29 @@ class PatchKBRequest(BaseModel):
     for now — name/description editing is intentionally not in this round."""
 
     grouping_enabled: Optional[bool] = None
+    chunk_target: Optional[int] = Field(default=None, ge=200, le=8000)
+    chunk_max_size: Optional[int] = Field(default=None, ge=200, le=10000)
+    chunk_overlap: Optional[int] = Field(default=None, ge=0, le=2000)
+
+
+class PatchDocumentRequest(BaseModel):
+    filename: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    chunk_target: Optional[int] = Field(default=None, ge=200, le=8000)
+    chunk_max_size: Optional[int] = Field(default=None, ge=200, le=10000)
+    chunk_overlap: Optional[int] = Field(default=None, ge=0, le=2000)
+
+
+class PatchChunkRequest(BaseModel):
+    text: Optional[str] = Field(default=None, min_length=1, max_length=65535)
+    enabled: Optional[bool] = None
+
+
+class SplitChunkRequest(BaseModel):
+    offset: int = Field(ge=1)
+
+
+class MergeChunksRequest(BaseModel):
+    chunk_ids: list[str] = Field(min_length=2, max_length=2)
 
 
 class CreateURLDocRequest(BaseModel):
@@ -166,6 +193,31 @@ async def _load_owner_kb(session: AsyncSession, kb_id: str, user_id: str) -> KB:
     if role != "owner":
         raise HTTPException(status_code=403, detail="owner role required")
     return kb
+
+
+async def _load_document(
+    session: AsyncSession, kb_id: str, doc_id: str
+) -> Document:
+    doc = await session.get(Document, doc_id)
+    if doc is None or doc.kb_id != kb_id:
+        raise HTTPException(status_code=404, detail="document not found")
+    return doc
+
+
+async def _resolve_doc_embedding_cfg(session: AsyncSession, kb: KB, user: User):
+    from src.settings_user.kb_resolvers import resolve_kb_embedding
+
+    ecfg = resolve_kb_embedding(kb, user)
+    if ecfg is None:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "embedding_not_configured",
+                "message": "知识库未配置 embedding",
+                "settings_url": "/settings",
+            },
+        )
+    return ecfg
 
 
 # Backwards-compat alias for any callers expecting the pre-v2-M9 name.
@@ -451,6 +503,12 @@ async def patch_kb(
         )
     if body.grouping_enabled is not None:
         kb.grouping_enabled = body.grouping_enabled
+    if body.chunk_target is not None:
+        kb.chunk_target = body.chunk_target
+    if body.chunk_max_size is not None:
+        kb.chunk_max_size = body.chunk_max_size
+    if body.chunk_overlap is not None:
+        kb.chunk_overlap = body.chunk_overlap
     await session.commit()
     await session.refresh(kb)
     return kb.to_public_dict(my_role="owner")
@@ -666,6 +724,238 @@ async def delete_document(
         kb.chunks_count = max(0, (kb.chunks_count or 0) - chunks_to_subtract)
     await session.commit()
     delete_uploaded_file(kb_id, doc_id_snap, filename_snap)
+
+
+@router.get("/{kb_id}/documents/{doc_id}")
+async def get_document(
+    kb_id: str,
+    doc_id: str,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+    include_parsed_text: bool = Query(default=False),
+) -> dict:
+    kb = await _load_readable_kb(session, kb_id, user.id)
+    doc = await _load_document(session, kb_id, doc_id)
+    return doc.to_public_dict(include_parsed_text=include_parsed_text)
+
+
+@router.patch("/{kb_id}/documents/{doc_id}")
+async def patch_document(
+    kb_id: str,
+    doc_id: str,
+    body: PatchDocumentRequest,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    kb = await _load_writable_kb(session, kb_id, user.id)
+    doc = await _load_document(session, kb_id, doc_id)
+    if body.filename is not None:
+        doc.filename = body.filename.strip()
+    if body.chunk_target is not None:
+        doc.chunk_target = body.chunk_target
+    if body.chunk_max_size is not None:
+        doc.chunk_max_size = body.chunk_max_size
+    if body.chunk_overlap is not None:
+        doc.chunk_overlap = body.chunk_overlap
+    await session.commit()
+    await session.refresh(doc)
+    return doc.to_public_dict()
+
+
+@router.get("/{kb_id}/documents/{doc_id}/download")
+async def download_document(
+    kb_id: str,
+    doc_id: str,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> FileResponse:
+    await _load_readable_kb(session, kb_id, user.id)
+    doc = await _load_document(session, kb_id, doc_id)
+    if doc.source_type != "file":
+        raise HTTPException(status_code=400, detail="only file uploads can be downloaded")
+    path = upload_path(kb_id, doc_id, doc.filename)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="original file not found on disk")
+    return FileResponse(
+        path=str(path),
+        filename=doc.filename,
+        media_type=doc.mime or "application/octet-stream",
+    )
+
+
+@router.post("/{kb_id}/documents/{doc_id}/reingest")
+async def reingest_document(
+    kb_id: str,
+    doc_id: str,
+    user: CurrentUser,
+    background: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    kb = await _load_writable_kb(session, kb_id, user.id)
+    doc = await _load_document(session, kb_id, doc_id)
+    prev_chunks = doc.chunks_count or 0
+    await delete_document_chunks(kb.collection_name, doc.id)
+    doc.status = "pending"
+    doc.chunks_count = 0
+    doc.error = ""
+    if prev_chunks:
+        kb.chunks_count = max(0, (kb.chunks_count or 0) - prev_chunks)
+    await session.commit()
+
+    ecfg = await _resolve_doc_embedding_cfg(session, kb, user)
+    background.add_task(ingest_document, doc.id, ecfg)
+    return doc.to_public_dict()
+
+
+@router.get("/{kb_id}/documents/{doc_id}/chunks")
+async def list_document_chunks(
+    kb_id: str,
+    doc_id: str,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+) -> dict:
+    kb = await _load_readable_kb(session, kb_id, user.id)
+    doc = await _load_document(session, kb_id, doc_id)
+    from src.kb.chunk_service import list_document_chunks_with_backfill
+
+    store = get_store()
+    rows, total = await list_document_chunks_with_backfill(
+        session, store, kb, doc, page=page, page_size=page_size
+    )
+    return {
+        "items": [c.to_public_dict() for c in rows],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+@router.get("/{kb_id}/documents/{doc_id}/chunks/{chunk_id}")
+async def get_chunk(
+    kb_id: str,
+    doc_id: str,
+    chunk_id: str,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    await _load_readable_kb(session, kb_id, user.id)
+    await _load_document(session, kb_id, doc_id)
+    chunk = await session.get(Chunk, chunk_id)
+    if chunk is None or chunk.doc_id != doc_id:
+        raise HTTPException(status_code=404, detail="chunk not found")
+    return chunk.to_public_dict()
+
+
+@router.patch("/{kb_id}/documents/{doc_id}/chunks/{chunk_id}")
+async def patch_chunk(
+    kb_id: str,
+    doc_id: str,
+    chunk_id: str,
+    body: PatchChunkRequest,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    from src.kb.chunk_service import upsert_single_chunk_vector
+
+    kb = await _load_writable_kb(session, kb_id, user.id)
+    doc = await _load_document(session, kb_id, doc_id)
+    chunk = await session.get(Chunk, chunk_id)
+    if chunk is None or chunk.doc_id != doc_id:
+        raise HTTPException(status_code=404, detail="chunk not found")
+
+    if body.text is not None:
+        chunk.text = body.text.strip()
+        chunk.char_count = len(chunk.text)
+    if body.enabled is not None:
+        chunk.enabled = body.enabled
+
+    ecfg = await _resolve_doc_embedding_cfg(session, kb, user)
+    store = get_store()
+    if not hasattr(store, "upsert"):
+        raise HTTPException(status_code=500, detail="vector store unavailable")
+    await upsert_single_chunk_vector(session, store, kb, doc, chunk, ecfg)
+    await session.commit()
+    await session.refresh(chunk)
+    return chunk.to_public_dict()
+
+
+@router.delete(
+    "/{kb_id}/documents/{doc_id}/chunks/{chunk_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_chunk(
+    kb_id: str,
+    doc_id: str,
+    chunk_id: str,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> None:
+    from src.kb.chunk_service import delete_single_chunk
+
+    kb = await _load_writable_kb(session, kb_id, user.id)
+    doc = await _load_document(session, kb_id, doc_id)
+    chunk = await session.get(Chunk, chunk_id)
+    if chunk is None or chunk.doc_id != doc_id:
+        raise HTTPException(status_code=404, detail="chunk not found")
+    store = get_store()
+    await delete_single_chunk(session, store, kb, doc, chunk)
+    await session.commit()
+
+
+@router.post("/{kb_id}/documents/{doc_id}/chunks/{chunk_id}/split")
+async def split_chunk_route(
+    kb_id: str,
+    doc_id: str,
+    chunk_id: str,
+    body: SplitChunkRequest,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    from src.kb.chunk_service import split_chunk
+
+    kb = await _load_writable_kb(session, kb_id, user.id)
+    doc = await _load_document(session, kb_id, doc_id)
+    chunk = await session.get(Chunk, chunk_id)
+    if chunk is None or chunk.doc_id != doc_id:
+        raise HTTPException(status_code=404, detail="chunk not found")
+    ecfg = await _resolve_doc_embedding_cfg(session, kb, user)
+    store = get_store()
+    try:
+        left, right = await split_chunk(
+            session, store, kb, doc, chunk, body.offset, ecfg
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await session.commit()
+    return {"chunks": [left.to_public_dict(), right.to_public_dict()]}
+
+
+@router.post("/{kb_id}/documents/{doc_id}/chunks/merge")
+async def merge_chunks_route(
+    kb_id: str,
+    doc_id: str,
+    body: MergeChunksRequest,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    from src.kb.chunk_service import merge_chunks
+
+    kb = await _load_writable_kb(session, kb_id, user.id)
+    doc = await _load_document(session, kb_id, doc_id)
+    a = await session.get(Chunk, body.chunk_ids[0])
+    b = await session.get(Chunk, body.chunk_ids[1])
+    if a is None or b is None:
+        raise HTTPException(status_code=404, detail="chunk not found")
+    ecfg = await _resolve_doc_embedding_cfg(session, kb, user)
+    store = get_store()
+    try:
+        merged = await merge_chunks(session, store, kb, doc, a, b, ecfg)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await session.commit()
+    return merged.to_public_dict()
 
 
 # ---------------------------------------------------------------------------

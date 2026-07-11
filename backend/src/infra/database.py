@@ -124,6 +124,45 @@ def _migrate_additive_columns(sync_conn) -> None:
                     "BOOLEAN NOT NULL DEFAULT 0"
                 )
             )
+        # v4: per-KB chunking defaults
+        if "chunk_target" not in cols:
+            sync_conn.execute(
+                text(
+                    "ALTER TABLE kbs ADD COLUMN chunk_target "
+                    "INTEGER NOT NULL DEFAULT 1500"
+                )
+            )
+        if "chunk_max_size" not in cols:
+            sync_conn.execute(
+                text(
+                    "ALTER TABLE kbs ADD COLUMN chunk_max_size "
+                    "INTEGER NOT NULL DEFAULT 1800"
+                )
+            )
+        if "chunk_overlap" not in cols:
+            sync_conn.execute(
+                text(
+                    "ALTER TABLE kbs ADD COLUMN chunk_overlap "
+                    "INTEGER NOT NULL DEFAULT 150"
+                )
+            )
+
+    # v4: documents parsed_text + chunk overrides
+    if "documents" in tables:
+        doc_cols = {c["name"] for c in insp.get_columns("documents")}
+        if "parsed_text" not in doc_cols:
+            sync_conn.execute(
+                text("ALTER TABLE documents ADD COLUMN parsed_text TEXT NOT NULL DEFAULT ''")
+            )
+        for col_name, col_type in [
+            ("chunk_target", "INTEGER"),
+            ("chunk_max_size", "INTEGER"),
+            ("chunk_overlap", "INTEGER"),
+        ]:
+            if col_name not in doc_cols:
+                sync_conn.execute(
+                    text(f"ALTER TABLE documents ADD COLUMN {col_name} {col_type}")
+                )
 
     # v2-M1: users.{llm,embedding}_* (10 nullable columns; NULL = use env fallback)
     if "users" in tables:

@@ -27,6 +27,7 @@ import {
   UserPlus,
   Copy,
   X,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -81,6 +82,10 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
   const [deletingKb, setDeletingKb] = useState(false);
   // v3-M3: advanced settings + index rebuild
   const [groupingBusy, setGroupingBusy] = useState(false);
+  const [chunkBusy, setChunkBusy] = useState(false);
+  const [chunkTarget, setChunkTarget] = useState("1500");
+  const [chunkMaxSize, setChunkMaxSize] = useState("1800");
+  const [chunkOverlap, setChunkOverlap] = useState("150");
   const [pendingRebuild, setPendingRebuild] = useState(false);
   const [rebuildingKb, setRebuildingKb] = useState(false);
 
@@ -101,6 +106,40 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
     }
     refresh().finally(() => setLoading(false));
   }, [refresh, router]);
+
+  useEffect(() => {
+    if (!kb) return;
+    setChunkTarget(String(kb.chunk_target ?? 1500));
+    setChunkMaxSize(String(kb.chunk_max_size ?? 1800));
+    setChunkOverlap(String(kb.chunk_overlap ?? 150));
+  }, [kb?.chunk_target, kb?.chunk_max_size, kb?.chunk_overlap, kb?.id]);
+
+  const onSaveChunkSettings = async (e: FormEvent) => {
+    e.preventDefault();
+    setChunkBusy(true);
+    try {
+      const updated = await patchKb(id, {
+        chunk_target: parseInt(chunkTarget, 10),
+        chunk_max_size: parseInt(chunkMaxSize, 10),
+        chunk_overlap: parseInt(chunkOverlap, 10),
+      });
+      setKb((cur) =>
+        cur
+          ? {
+              ...cur,
+              chunk_target: updated.chunk_target,
+              chunk_max_size: updated.chunk_max_size,
+              chunk_overlap: updated.chunk_overlap,
+            }
+          : cur
+      );
+      toast.success("分块参数已保存（对新 ingest / 重新 ingest 生效）");
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setChunkBusy(false);
+    }
+  };
 
   // Poll while any doc is pending/ingesting
   useEffect(() => {
@@ -372,6 +411,11 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
         <div className="card overflow-hidden">
           <div className="border-b px-4 py-2 text-sm font-medium">
             文档（{kb.documents.length}）
+            {!kb.is_system && kb.documents.length > 0 && (
+              <span className="ml-2 text-xs font-normal text-muted">
+                · 点击「分块管理」查看 / 编辑 chunks
+              </span>
+            )}
             {kb.is_system && (
               <span className="ml-2 text-xs text-muted">
                 · 示例库不在 Document 表里展示明细
@@ -400,6 +444,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                 <DocRow
                   key={d.id}
                   doc={d}
+                  kbId={id}
                   readOnly={!canWrite}
                   onDelete={() => setPendingDelete(d)}
                 />
@@ -436,6 +481,49 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                 </span>
               </span>
             </label>
+
+            <form onSubmit={onSaveChunkSettings} className="mt-4 border-t border-border pt-3">
+              <div className="text-sm font-medium">分块参数（KB 默认）</div>
+              <p className="mt-1 text-xs text-muted">
+                单位：字符。仅对新上传 / 重新 ingest 的文档生效；单篇文档可在详情页覆盖。
+              </p>
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                <label className="text-xs">
+                  <span className="text-muted">target</span>
+                  <input
+                    type="number"
+                    value={chunkTarget}
+                    onChange={(e) => setChunkTarget(e.target.value)}
+                    className="mt-1 block w-full rounded-md border bg-bg px-2 py-1.5 text-sm"
+                  />
+                </label>
+                <label className="text-xs">
+                  <span className="text-muted">max_size</span>
+                  <input
+                    type="number"
+                    value={chunkMaxSize}
+                    onChange={(e) => setChunkMaxSize(e.target.value)}
+                    className="mt-1 block w-full rounded-md border bg-bg px-2 py-1.5 text-sm"
+                  />
+                </label>
+                <label className="text-xs">
+                  <span className="text-muted">overlap</span>
+                  <input
+                    type="number"
+                    value={chunkOverlap}
+                    onChange={(e) => setChunkOverlap(e.target.value)}
+                    className="mt-1 block w-full rounded-md border bg-bg px-2 py-1.5 text-sm"
+                  />
+                </label>
+              </div>
+              <button
+                type="submit"
+                disabled={chunkBusy}
+                className="btn btn-secondary btn-sm mt-2"
+              >
+                保存分块参数
+              </button>
+            </form>
 
             <div className="mt-4 border-t border-border pt-3">
               <div className="text-sm font-medium">混合检索索引</div>
@@ -536,10 +624,12 @@ function Stat({
 
 function DocRow({
   doc,
+  kbId,
   readOnly,
   onDelete,
 }: {
   doc: Document;
+  kbId: string;
   readOnly?: boolean;
   onDelete: () => void;
 }) {
@@ -547,7 +637,12 @@ function DocRow({
     <li className="group flex items-center gap-3 px-4 py-3">
       <FileText className="h-4 w-4 flex-none opacity-60" />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm">{doc.filename}</div>
+        <Link
+          href={`/kbs/${kbId}/documents/${doc.id}`}
+          className="truncate text-sm text-brand hover:underline block"
+        >
+          {doc.filename}
+        </Link>
         <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted">
           <StatusBadge status={doc.status} />
           {doc.status === "done" && <span>{doc.chunks_count} chunks</span>}
@@ -572,6 +667,15 @@ function DocRow({
           </div>
         )}
       </div>
+      <Link
+        href={`/kbs/${kbId}/documents/${doc.id}`}
+        className="btn btn-secondary btn-sm shrink-0"
+        title="查看文档详情与分块管理"
+      >
+        <Layers className="h-3.5 w-3.5" />
+        分块管理
+        <ChevronRight className="h-3.5 w-3.5" />
+      </Link>
       {!readOnly && (
         <button
           onClick={onDelete}

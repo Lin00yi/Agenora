@@ -16,16 +16,14 @@ so it doesn't hold a SQLite write lock for minutes.
 """
 from __future__ import annotations
 
-import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import structlog
 
 from src.infra.database import get_session_factory
-from src.infra.embedding import embed_batch
-from src.infra.vector_store import QdrantStore, get_store
-from src.kb.chunker import chunk_text
+from src.infra.vector_store import get_store
+from src.kb.chunk_service import chunk_document_text, clear_document_chunks, persist_ingested_chunks
 from src.kb.models import KB, Document
 from src.kb.parsers import dispatch, parse_url
 
@@ -84,14 +82,6 @@ def delete_kb_uploads(kb_id: str) -> None:
         base.rmdir()
     except OSError:
         pass  # not empty / locked — leave it
-
-
-# ---------------------------------------------------------------------------
-# Chunk id helper — stable UUID per (doc_id, idx) so re-ingest upserts
-# instead of producing duplicates.
-# ---------------------------------------------------------------------------
-def chunk_uuid(doc_id: str, idx: int) -> str:
-    return str(uuid.uuid5(uuid.NAMESPACE_OID, f"{doc_id}/{idx}"))
 
 
 # ---------------------------------------------------------------------------
@@ -161,15 +151,20 @@ async def ingest_document(
         if not text.strip():
             raise ValueError("empty content after parsing")
 
-        chunks = chunk_text(text)
+        # Load KB for chunk params (session closed — re-open briefly or use snapshot).
+        async with factory() as session:
+            kb_row = await session.get(KB, kb_snapshot["id"])
+            doc_row = await session.get(Document, doc_id)
+            if kb_row is None or doc_row is None:
+                raise ValueError("document or kb disappeared during ingest")
+            doc_row.parsed_text = text
+            await session.commit()
+            target_kb = kb_row
+            target_doc = doc_row
+
+        chunks = chunk_document_text(target_kb, target_doc, text)
         if not chunks:
             raise ValueError("chunker produced 0 chunks")
-
-        embeddings = await embed_batch(chunks, cfg=embedding_cfg)
-        if len(embeddings) != len(chunks):
-            raise RuntimeError(
-                f"embedding count mismatch: {len(embeddings)} != {len(chunks)} chunks"
-            )
 
         store = get_store()
         if not hasattr(store, "create_collection"):
@@ -177,26 +172,23 @@ async def ingest_document(
                 "KB ingest requires a multi-collection backend (qdrant or milvus)"
             )
 
-        points = [
-            {
-                "id": chunk_uuid(doc_id, i),
-                "vector": vec,
-                "payload": {
-                    "doc_id": doc_id,
-                    "kb_id": kb_snapshot["id"],
-                    "chunk_idx": i,
-                    "text": chunk,
-                    "filename": doc_snapshot["filename"],
-                    "source_type": doc_snapshot["source_type"],
-                    "source_url": doc_snapshot["source_url"],
-                },
-            }
-            for i, (chunk, vec) in enumerate(zip(chunks, embeddings, strict=True))
-        ]
-        await store.upsert(points, collection_name=kb_snapshot["collection_name"])
+        async with factory() as session:
+            kb_row = await session.get(KB, kb_snapshot["id"])
+            doc_row = await session.get(Document, doc_id)
+            if kb_row is None or doc_row is None:
+                raise ValueError("document or kb disappeared during ingest")
+            new_chunks = await persist_ingested_chunks(
+                session,
+                store,
+                kb_row,
+                doc_row,
+                chunks,
+                embedding_cfg,
+            )
+            doc_row.chunks_count = new_chunks
+            await session.commit()
 
         new_status = "done"
-        new_chunks = len(chunks)
         log.info(
             "ingest_done",
             doc_id=doc_id,
@@ -224,13 +216,11 @@ async def ingest_document(
 
 
 async def delete_document_chunks(collection_name: str, doc_id: str) -> None:
-    """Drop a document's chunks from its KB collection. Idempotent."""
+    """Drop a document's chunks from vector store + SQL. Idempotent."""
+    from src.infra.database import get_session_factory
+
     store = get_store()
-    if not hasattr(store, "delete_by_filter"):
-        raise RuntimeError(
-            "KB delete requires a multi-collection backend (qdrant or milvus)"
-        )
-    try:
-        await store.delete_by_filter(collection_name, {"doc_id": doc_id})
-    except Exception:  # noqa: BLE001
-        log.exception("delete_chunks_failed", collection=collection_name, doc_id=doc_id)
+    factory = get_session_factory()
+    async with factory() as session:
+        await clear_document_chunks(session, store, collection_name, doc_id)
+        await session.commit()

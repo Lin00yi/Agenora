@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, useEffect } from "react";
 import { ArrowRight, LogIn, Mail, Lock, ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -18,6 +18,13 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const reason = new URLSearchParams(window.location.search).get("reason");
+    if (reason === "session_expired") {
+      toast.info("登录已失效，请重新登录");
+    }
+  }, []);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();

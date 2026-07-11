@@ -53,6 +53,27 @@ export function clearAuth(): void {
   window.localStorage.removeItem(USER_KEY);
 }
 
+/** Clear stale credentials and send the user back to login (once per page load). */
+export function handleSessionExpired(reason = "session_expired"): void {
+  if (typeof window === "undefined") return;
+  clearAuth();
+  const path = window.location.pathname;
+  if (
+    path.startsWith("/login") ||
+    path.startsWith("/register") ||
+    path.startsWith("/welcome")
+  ) {
+    return;
+  }
+  // Avoid redirect storms when many API calls fail at once.
+  if ((window as Window & { __anykbAuthRedirect?: boolean }).__anykbAuthRedirect) {
+    return;
+  }
+  (window as Window & { __anykbAuthRedirect?: boolean }).__anykbAuthRedirect = true;
+  const next = encodeURIComponent(`${path}${window.location.search}`);
+  window.location.href = `/login?next=${next}&reason=${encodeURIComponent(reason)}`;
+}
+
 export function isAuthenticated(): boolean {
   return !!getToken();
 }
@@ -64,7 +85,11 @@ export async function authFetch(input: RequestInfo, init: RequestInit = {}): Pro
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
   }
-  return fetch(input, { ...init, headers });
+  const response = await fetch(input, { ...init, headers });
+  if (response.status === 401) {
+    handleSessionExpired();
+  }
+  return response;
 }
 
 // ---------------------------------------------------------------------------

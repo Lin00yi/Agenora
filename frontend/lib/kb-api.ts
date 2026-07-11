@@ -28,6 +28,10 @@ export type KB = {
   /** v3-M3: owner toggle. When true, KB search returns at most 1 chunk per
    *  document via Milvus group_by_field. */
   grouping_enabled: boolean;
+  /** v4: KB-level chunking defaults (chars). Document can override. */
+  chunk_target: number;
+  chunk_max_size: number;
+  chunk_overlap: number;
   created_at: string | null;
   /** v2-M9: present when returned by list_kbs / get_kb. Absent on POST create. */
   my_role?: KbRole;
@@ -44,8 +48,35 @@ export type Document = {
   status: DocStatus;
   chunks_count: number;
   error: string | null;
+  chunk_target: number | null;
+  chunk_max_size: number | null;
+  chunk_overlap: number | null;
+  parsed_text_length: number;
   created_at: string | null;
   updated_at: string | null;
+};
+
+export type Chunk = {
+  id: string;
+  doc_id: string;
+  kb_id: string;
+  chunk_idx: number;
+  text: string;
+  char_count: number;
+  enabled: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type ChunkListResponse = {
+  items: Chunk[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+export type DocumentDetail = Document & {
+  parsed_text?: string;
 };
 
 export type KBDetail = KB & { documents: Document[] };
@@ -184,7 +215,12 @@ export async function deleteKb(id: string): Promise<void> {
  *  `grouping_enabled` toggle. Returns the updated KB. */
 export async function patchKb(
   id: string,
-  body: { grouping_enabled?: boolean }
+  body: {
+    grouping_enabled?: boolean;
+    chunk_target?: number;
+    chunk_max_size?: number;
+    chunk_overlap?: number;
+  }
 ): Promise<KB> {
   return unwrap(
     await authFetch(`/api/kbs/${id}`, {
@@ -239,6 +275,138 @@ export async function uploadUrl(kbId: string, url: string): Promise<Document> {
 export async function deleteDocument(kbId: string, docId: string): Promise<void> {
   await unwrap(
     await authFetch(`/api/kbs/${kbId}/documents/${docId}`, { method: "DELETE" })
+  );
+}
+
+export async function getDocument(
+  kbId: string,
+  docId: string,
+  opts?: { includeParsedText?: boolean }
+): Promise<DocumentDetail> {
+  const q = opts?.includeParsedText ? "?include_parsed_text=true" : "";
+  return unwrap(await authFetch(`/api/kbs/${kbId}/documents/${docId}${q}`));
+}
+
+export async function patchDocument(
+  kbId: string,
+  docId: string,
+  body: {
+    filename?: string;
+    chunk_target?: number | null;
+    chunk_max_size?: number | null;
+    chunk_overlap?: number | null;
+  }
+): Promise<Document> {
+  return unwrap(
+    await authFetch(`/api/kbs/${kbId}/documents/${docId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+  );
+}
+
+export async function reingestDocument(kbId: string, docId: string): Promise<Document> {
+  return unwrap(
+    await authFetch(`/api/kbs/${kbId}/documents/${docId}/reingest`, {
+      method: "POST",
+    })
+  );
+}
+
+export function documentDownloadUrl(kbId: string, docId: string): string {
+  return `/api/kbs/${kbId}/documents/${docId}/download`;
+}
+
+/** Authenticated file download (plain <a> won't send Bearer token). */
+export async function downloadDocumentFile(
+  kbId: string,
+  docId: string,
+  filename: string
+): Promise<void> {
+  const r = await authFetch(`/api/kbs/${kbId}/documents/${docId}/download`);
+  if (!r.ok) {
+    throw new KbApiError(r.status, null, `download failed: HTTP ${r.status}`);
+  }
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+export async function listDocumentChunks(
+  kbId: string,
+  docId: string,
+  page = 1,
+  pageSize = 20
+): Promise<ChunkListResponse> {
+  const q = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+  });
+  return unwrap(
+    await authFetch(`/api/kbs/${kbId}/documents/${docId}/chunks?${q}`)
+  );
+}
+
+export async function patchChunk(
+  kbId: string,
+  docId: string,
+  chunkId: string,
+  body: { text?: string; enabled?: boolean }
+): Promise<Chunk> {
+  return unwrap(
+    await authFetch(`/api/kbs/${kbId}/documents/${docId}/chunks/${chunkId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+  );
+}
+
+export async function deleteChunk(
+  kbId: string,
+  docId: string,
+  chunkId: string
+): Promise<void> {
+  await unwrap(
+    await authFetch(`/api/kbs/${kbId}/documents/${docId}/chunks/${chunkId}`, {
+      method: "DELETE",
+    })
+  );
+}
+
+export async function splitChunk(
+  kbId: string,
+  docId: string,
+  chunkId: string,
+  offset: number
+): Promise<{ chunks: Chunk[] }> {
+  return unwrap(
+    await authFetch(`/api/kbs/${kbId}/documents/${docId}/chunks/${chunkId}/split`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ offset }),
+    })
+  );
+}
+
+export async function mergeChunks(
+  kbId: string,
+  docId: string,
+  chunkIds: [string, string]
+): Promise<Chunk> {
+  return unwrap(
+    await authFetch(`/api/kbs/${kbId}/documents/${docId}/chunks/merge`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chunk_ids: chunkIds }),
+    })
   );
 }
 

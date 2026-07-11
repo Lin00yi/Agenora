@@ -28,7 +28,7 @@ export type ChatMessage = {
   content: string;
 };
 
-import { getToken } from "@/lib/auth";
+import { getToken, handleSessionExpired } from "@/lib/auth";
 
 /**
  * POST /api/chat with full message history and stream the SSE response.
@@ -78,6 +78,10 @@ export function connectChat(
     }
 
     if (!resp.ok || !resp.body) {
+      if (resp.status === 401) {
+        handleSessionExpired();
+        return;
+      }
       // Surface backend's structured 422 (BYOK gate) so the page can act on
       // `code` (llm_not_configured / embedding_not_configured) and redirect
       // the user to /settings.

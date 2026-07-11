@@ -39,6 +39,12 @@ _RERANK_OVERFETCH_MULTIPLIER = 4
 _RERANK_OVERFETCH_CAP = 30
 
 
+def _chunk_enabled(hit: dict) -> bool:
+    """Skip chunks explicitly disabled via chunk management UI."""
+    enabled = (hit.get("payload") or {}).get("enabled", True)
+    return enabled is not False and enabled != "false" and enabled != 0
+
+
 class KBSearchTool(Tool):
     name = "search_kb"
     input_schema: dict[str, Any] = {
@@ -167,6 +173,7 @@ class KBSearchTool(Tool):
 
         # Trim to caller's requested limit (defensive: the rerank path already
         # returns at most top_n, but over-fetched hits without rerank need it).
+        hits = [h for h in hits if _chunk_enabled(h)]
         hits = hits[:original_limit]
 
         if not hits:

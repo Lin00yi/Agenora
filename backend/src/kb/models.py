@@ -104,6 +104,11 @@ class KB(Base):
         Boolean, default=False, nullable=False, server_default="0"
     )
 
+    # v4: per-KB chunking defaults (chars). Document-level overrides win when set.
+    chunk_target: Mapped[int] = mapped_column(Integer, default=1500, nullable=False)
+    chunk_max_size: Mapped[int] = mapped_column(Integer, default=1800, nullable=False)
+    chunk_overlap: Mapped[int] = mapped_column(Integer, default=150, nullable=False)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     documents: Mapped[list["Document"]] = relationship(
@@ -171,6 +176,9 @@ class KB(Base):
             "documents_count": len(self.documents) if self.documents is not None else 0,
             "is_system": bool(self.is_system),
             "grouping_enabled": bool(self.grouping_enabled),
+            "chunk_target": self.chunk_target,
+            "chunk_max_size": self.chunk_max_size,
+            "chunk_overlap": self.chunk_overlap,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
         if my_role is not None:
@@ -201,15 +209,27 @@ class Document(Base):
     chunks_count: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str] = mapped_column(Text, default="")
 
+    # v4: parsed full text (post-extraction) + optional chunk-param overrides.
+    parsed_text: Mapped[str] = mapped_column(Text, default="")
+    chunk_target: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
+    chunk_max_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
+    chunk_overlap: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
     )
 
     kb: Mapped[KB] = relationship(back_populates="documents")
+    chunks: Mapped[list["Chunk"]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="Chunk.chunk_idx",
+    )
 
-    def to_public_dict(self) -> dict:
-        return {
+    def to_public_dict(self, *, include_parsed_text: bool = False) -> dict:
+        out = {
             "id": self.id,
             "kb_id": self.kb_id,
             "filename": self.filename,
@@ -220,6 +240,52 @@ class Document(Base):
             "status": self.status,
             "chunks_count": self.chunks_count,
             "error": self.error or None,
+            "chunk_target": self.chunk_target,
+            "chunk_max_size": self.chunk_max_size,
+            "chunk_overlap": self.chunk_overlap,
+            "parsed_text_length": len(self.parsed_text or ""),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+        if include_parsed_text:
+            out["parsed_text"] = self.parsed_text or ""
+        return out
+
+
+class Chunk(Base):
+    """One text chunk within a document — source of truth for chunk management.
+
+    Vectors in Qdrant/Milvus mirror this row; search reads payload.text but
+    management UI/API reads/writes here first, then re-syncs the vector store.
+    """
+
+    __tablename__ = "chunks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    doc_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("documents.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    kb_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    chunk_idx: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    text: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    char_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    document: Mapped[Document] = relationship(back_populates="chunks")
+
+    def to_public_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "doc_id": self.doc_id,
+            "kb_id": self.kb_id,
+            "chunk_idx": self.chunk_idx,
+            "text": self.text,
+            "char_count": self.char_count,
+            "enabled": bool(self.enabled),
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
