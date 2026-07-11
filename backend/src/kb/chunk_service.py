@@ -133,6 +133,63 @@ async def sync_vectors_for_chunks(
     await store.upsert(points, collection_name=kb.collection_name)
 
 
+async def sync_chunk_payloads_only(
+    session: AsyncSession | None,
+    store,
+    kb: KB,
+    doc: Document,
+    chunks: list[Chunk],
+    *,
+    embedding_cfg: "UserEmbeddingConfig | None" = None,
+) -> None:
+    """Update vector payloads without re-embedding (enable/disable toggles).
+
+    Reuses existing vectors from the store. Chunks missing in the store are
+    re-embedded only when ``embedding_cfg`` is provided.
+    """
+    if not chunks:
+        return
+    if not hasattr(store, "upsert"):
+        raise RuntimeError("vector store does not support upsert")
+
+    chunk_ids = [c.id for c in chunks]
+    existing: dict[str, dict] = {}
+    if hasattr(store, "get_points_by_ids"):
+        for pt in await store.get_points_by_ids(kb.collection_name, chunk_ids):
+            existing[str(pt["id"])] = pt
+
+    points: list[dict] = []
+    missing: list[Chunk] = []
+    for ch in chunks:
+        pt = existing.get(ch.id)
+        vec = (pt or {}).get("vector") or []
+        if vec:
+            points.append(
+                {
+                    "id": ch.id,
+                    "vector": vec,
+                    "payload": _chunk_payload(doc, ch),
+                }
+            )
+        else:
+            missing.append(ch)
+
+    if points:
+        await store.upsert(points, collection_name=kb.collection_name)
+
+    if missing:
+        if embedding_cfg is None:
+            log.warning(
+                "chunk_payload_sync_missing_vectors",
+                doc_id=doc.id,
+                chunk_ids=[c.id for c in missing],
+            )
+            return
+        await sync_vectors_for_chunks(
+            session, store, kb, doc, missing, embedding_cfg
+        )
+
+
 async def persist_ingested_chunks(
     session: AsyncSession,
     store,
@@ -343,7 +400,7 @@ async def batch_set_chunks_enabled(
     chunk_ids: list[str],
     *,
     enabled: bool,
-    embedding_cfg: "UserEmbeddingConfig | None",
+    embedding_cfg: "UserEmbeddingConfig | None" = None,
 ) -> list[Chunk]:
     """Enable or disable multiple chunks and sync vector payloads."""
     if not chunk_ids:
@@ -370,7 +427,9 @@ async def batch_set_chunks_enabled(
             changed.append(ch)
 
     if changed:
-        await sync_vectors_for_chunks(session, store, kb, doc, changed, embedding_cfg)
+        await sync_chunk_payloads_only(
+            session, store, kb, doc, changed, embedding_cfg=embedding_cfg
+        )
     return list(rows)
 
 
@@ -379,7 +438,7 @@ async def sync_document_vector_payloads(
     store,
     kb: KB,
     doc: Document,
-    embedding_cfg: "UserEmbeddingConfig | None",
+    embedding_cfg: "UserEmbeddingConfig | None" = None,
 ) -> int:
     """Re-upsert all chunk vectors after document-level fields change (e.g. enabled)."""
     rows = (
@@ -389,7 +448,9 @@ async def sync_document_vector_payloads(
     ).scalars().all()
     if not rows:
         return 0
-    await sync_vectors_for_chunks(session, store, kb, doc, list(rows), embedding_cfg)
+    await sync_chunk_payloads_only(
+        session, store, kb, doc, list(rows), embedding_cfg=embedding_cfg
+    )
     return len(rows)
 
 
@@ -400,7 +461,7 @@ async def batch_set_all_document_chunks_enabled(
     doc: Document,
     *,
     enabled: bool,
-    embedding_cfg: "UserEmbeddingConfig | None",
+    embedding_cfg: "UserEmbeddingConfig | None" = None,
 ) -> int:
     """Enable or disable every chunk in a document."""
     rows = (
@@ -414,8 +475,10 @@ async def batch_set_all_document_chunks_enabled(
             ch.enabled = enabled
             changed.append(ch)
     if changed:
-        await sync_vectors_for_chunks(session, store, kb, doc, changed, embedding_cfg)
-    return len(rows)
+        await sync_chunk_payloads_only(
+            session, store, kb, doc, changed, embedding_cfg=embedding_cfg
+        )
+    return len(changed)
 
 
 async def delete_single_chunk(

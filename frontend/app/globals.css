@@ -220,6 +220,39 @@ body {
            disabled:cursor-not-allowed disabled:opacity-50;
   }
 
+  .admin-toolbar-btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg
+           border border-surface-border/80 bg-surface px-3 py-1.5 text-xs font-medium text-fg
+           shadow-sm transition-all duration-150
+           hover:border-surface-border hover:bg-surface-2 hover:shadow
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .dark .admin-toolbar-btn {
+    @apply border-surface-border bg-surface-2/80 hover:bg-surface-2;
+  }
+
+  .admin-row-action {
+    @apply inline-flex items-center gap-1 rounded-lg border border-transparent
+           px-2 py-1.5 text-xs font-medium text-muted
+           transition-all duration-150
+           hover:border-surface-border/80 hover:bg-surface-2 hover:text-fg hover:shadow-sm
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .admin-row-action-brand {
+    @apply hover:border-brand/30 hover:bg-brand/10 hover:text-brand;
+  }
+  .admin-row-action-danger {
+    @apply hover:border-danger/30 hover:bg-danger/10 hover:text-danger;
+  }
+  .admin-row-action-loading {
+    @apply pointer-events-none opacity-70;
+  }
+
+  .admin-select-trigger {
+    @apply border-surface-border/80 bg-surface shadow-sm
+           hover:bg-surface-2 dark:bg-surface dark:hover:bg-surface-2;
+  }
+
   .status-tag {
     @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium;
   }

@@ -40,7 +40,7 @@ def test_resolve_chunk_params_document_override():
 def test_chunk_document_text_respects_target():
     kb = KB(id="kb1", user_id="u1", name="t", chunk_target=50, chunk_max_size=80, chunk_overlap=10)
     doc = Document(id="d1", kb_id="kb1", filename="a.md")
-    text = "段落一。\n\n段落二内容稍长一些。\n\n段落三。"
+    text = "段落一内容足够长以便触发分块。" * 3 + "\n\n" + "段落二内容也足够长以便触发分块。" * 3 + "\n\n" + "段落三。"
     chunks = chunk_document_text(kb, doc, text)
     assert len(chunks) >= 2
     assert all(len(c) <= 80 for c in chunks)
@@ -295,3 +295,41 @@ async def test_merge_chunks_requires_adjacency(client, create_user, create_kb):
         json={"chunk_ids": [c1, c2]},
     )
     assert r.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_patch_document_enabled_without_embedding(client, create_user, create_kb, db):
+    """Toggling doc.enabled should work in SQL even with 0 chunks / no embed cfg."""
+    owner = await create_user("docen@x.com")
+    kb = await create_kb(owner.id, name="DocEnable KB")
+
+    from src.infra.database import get_session_factory
+
+    doc_id = str(uuid.uuid4())
+    factory = get_session_factory()
+    async with factory() as session:
+        session.add(
+            Document(
+                id=doc_id,
+                kb_id=kb.id,
+                filename="empty.md",
+                status="done",
+                chunks_count=0,
+                enabled=True,
+            )
+        )
+        await session.commit()
+
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": "docen@x.com", "password": "password123"},
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    r = await client.patch(
+        f"/api/kbs/{kb.id}/documents/{doc_id}",
+        headers=headers,
+        json={"enabled": False},
+    )
+    assert r.status_code == 200
+    assert r.json()["enabled"] is False

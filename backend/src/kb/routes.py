@@ -230,6 +230,12 @@ async def _resolve_doc_embedding_cfg(session: AsyncSession, kb: KB, user: User):
     return ecfg
 
 
+async def _optional_doc_embedding_cfg(session: AsyncSession, kb: KB, user: User):
+    from src.settings_user.kb_resolvers import resolve_kb_embedding
+
+    return resolve_kb_embedding(kb, user)
+
+
 # Backwards-compat alias for any callers expecting the pre-v2-M9 name.
 _load_owned_kb = _load_writable_kb
 
@@ -774,9 +780,9 @@ async def patch_document(
     if enabled_changed:
         from src.kb.chunk_service import sync_document_vector_payloads
 
-        ecfg = await _resolve_doc_embedding_cfg(session, kb, user)
         store = get_store()
         if hasattr(store, "upsert"):
+            ecfg = await _optional_doc_embedding_cfg(session, kb, user)
             await sync_document_vector_payloads(session, store, kb, doc, ecfg)
     await session.commit()
     await session.refresh(doc)
@@ -890,7 +896,7 @@ async def batch_patch_all_chunks(
 
     kb = await _load_writable_kb(session, kb_id, user.id)
     doc = await _load_document(session, kb_id, doc_id)
-    ecfg = await _resolve_doc_embedding_cfg(session, kb, user)
+    ecfg = await _optional_doc_embedding_cfg(session, kb, user)
     store = get_store()
     if not hasattr(store, "upsert"):
         raise HTTPException(status_code=500, detail="vector store unavailable")
@@ -913,7 +919,7 @@ async def batch_patch_chunks(
 
     kb = await _load_writable_kb(session, kb_id, user.id)
     doc = await _load_document(session, kb_id, doc_id)
-    ecfg = await _resolve_doc_embedding_cfg(session, kb, user)
+    ecfg = await _optional_doc_embedding_cfg(session, kb, user)
     store = get_store()
     if not hasattr(store, "upsert"):
         raise HTTPException(status_code=500, detail="vector store unavailable")
@@ -942,7 +948,7 @@ async def patch_chunk(
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    from src.kb.chunk_service import upsert_single_chunk_vector
+    from src.kb.chunk_service import sync_chunk_payloads_only, upsert_single_chunk_vector
 
     kb = await _load_writable_kb(session, kb_id, user.id)
     doc = await _load_document(session, kb_id, doc_id)
@@ -950,17 +956,27 @@ async def patch_chunk(
     if chunk is None or chunk.doc_id != doc_id:
         raise HTTPException(status_code=404, detail="chunk not found")
 
+    text_changed = False
     if body.text is not None:
-        chunk.text = body.text.strip()
-        chunk.char_count = len(chunk.text)
+        new_text = body.text.strip()
+        if new_text != chunk.text:
+            chunk.text = new_text
+            chunk.char_count = len(chunk.text)
+            text_changed = True
     if body.enabled is not None:
         chunk.enabled = body.enabled
 
-    ecfg = await _resolve_doc_embedding_cfg(session, kb, user)
     store = get_store()
     if not hasattr(store, "upsert"):
         raise HTTPException(status_code=500, detail="vector store unavailable")
-    await upsert_single_chunk_vector(session, store, kb, doc, chunk, ecfg)
+    if text_changed:
+        ecfg = await _resolve_doc_embedding_cfg(session, kb, user)
+        await upsert_single_chunk_vector(session, store, kb, doc, chunk, ecfg)
+    elif body.enabled is not None:
+        ecfg = await _optional_doc_embedding_cfg(session, kb, user)
+        await sync_chunk_payloads_only(
+            session, store, kb, doc, [chunk], embedding_cfg=ecfg
+        )
     await session.commit()
     await session.refresh(chunk)
     return chunk.to_public_dict()

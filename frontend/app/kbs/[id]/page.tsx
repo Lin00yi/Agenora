@@ -69,6 +69,10 @@ import {
   AdminPanel,
 } from "@/components/kb/AdminPageShell";
 import {
+  AdminRowAction,
+  AdminToolbarButton,
+} from "@/components/kb/AdminTableActions";
+import {
   DOC_STATUS_UI,
   fileExtension,
   formatAdminDate,
@@ -108,6 +112,8 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
   >("all");
   const [docPage, setDocPage] = useState(1);
   const [docToggleBusy, setDocToggleBusy] = useState<string | null>(null);
+  const [listRefreshing, setListRefreshing] = useState(false);
+  const [reingestingDocId, setReingestingDocId] = useState<string | null>(null);
   const docPageSize = 10;
 
   const refresh = useCallback(async () => {
@@ -276,8 +282,28 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
     }
   };
 
+  const onRefreshList = async () => {
+    setListRefreshing(true);
+    try {
+      await refresh();
+    } finally {
+      setListRefreshing(false);
+    }
+  };
+
   const onToggleDocEnabled = async (doc: Document, enabled: boolean) => {
+    const prevEnabled = doc.enabled !== false;
     setDocToggleBusy(doc.id);
+    setKb((cur) =>
+      cur
+        ? {
+            ...cur,
+            documents: cur.documents.map((d) =>
+              d.id === doc.id ? { ...d, enabled } : d
+            ),
+          }
+        : cur
+    );
     try {
       const updated = await patchDocument(id, doc.id, { enabled });
       setKb((cur) =>
@@ -292,7 +318,17 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
       );
       toast.success(enabled ? "文档已启用，参与检索" : "文档已禁用，不再参与检索");
     } catch (err) {
-      toast.error((err as Error).message);
+      setKb((cur) =>
+        cur
+          ? {
+              ...cur,
+              documents: cur.documents.map((d) =>
+                d.id === doc.id ? { ...d, enabled: prevEnabled } : d
+              ),
+            }
+          : cur
+      );
+      toastApiError(err, (p) => router.push(p));
     } finally {
       setDocToggleBusy(null);
     }
@@ -484,7 +520,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
               </div>
               <Select
                 size="sm"
-                className="w-[110px]"
+                className="w-[110px] admin-select-trigger"
                 value={docStatusFilter}
                 onChange={(e) =>
                   setDocStatusFilter(e.target.value as typeof docStatusFilter)
@@ -497,14 +533,13 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                   { value: "failed", label: "失败" },
                 ]}
               />
-              <button
-                type="button"
-                onClick={refresh}
-                className="admin-btn-secondary btn-sm !px-3 !py-1.5 text-xs"
+              <AdminToolbarButton
+                icon={RefreshCw}
+                loading={listRefreshing}
+                onClick={() => void onRefreshList()}
               >
-                <RefreshCw className="h-3.5 w-3.5" />
                 刷新
-              </button>
+              </AdminToolbarButton>
             </>
           }
           footer={
@@ -561,8 +596,9 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                   <th className="w-16">分块数</th>
                   <th className="w-20">类型</th>
                   <th className="w-24">大小</th>
-                  <th className="w-40">更新时间</th>
-                  <th className="w-36">操作</th>
+                  <th className="w-36">创建时间</th>
+                  <th className="w-36">更新时间</th>
+                  <th className="w-32">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -593,20 +629,19 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                         <Switch
                           size="sm"
                           checked={d.enabled !== false}
-                          disabled={
-                            !canWrite ||
-                            d.status !== "done" ||
-                            docToggleBusy === d.id
-                          }
+                          loading={docToggleBusy === d.id}
+                          disabled={!canWrite || d.status !== "done"}
                           onCheckedChange={(checked) =>
                             onToggleDocEnabled(d, checked)
                           }
                           title={
-                            d.status !== "done"
-                              ? "ingest 完成后才可启用检索"
-                              : d.enabled !== false
-                                ? "禁用后整篇文档不参与检索"
-                                : "启用后文档 chunks 可参与检索"
+                            docToggleBusy === d.id
+                              ? "更新中…"
+                              : d.status !== "done"
+                                ? "ingest 完成后才可启用检索"
+                                : d.enabled !== false
+                                  ? "禁用后整篇文档不参与检索"
+                                  : "启用后文档 chunks 可参与检索"
                           }
                         />
                       </td>
@@ -618,44 +653,47 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                         {formatFileSize(d.size_bytes)}
                       </td>
                       <td className="text-xs text-muted">
+                        {formatAdminDate(d.created_at)}
+                      </td>
+                      <td className="text-xs text-muted">
                         {formatAdminDate(d.updated_at ?? d.created_at)}
                       </td>
                       <td>
-                        <div className="flex items-center gap-2 text-muted">
+                        <div className="flex items-center gap-0.5">
                           {canWrite && d.status === "done" && (
-                            <button
-                              type="button"
+                            <AdminRowAction
+                              icon={Play}
                               title="重新 ingest"
-                              className="rounded p-1 hover:bg-surface-2 hover:text-brand"
+                              variant="brand"
+                              loading={reingestingDocId === d.id}
+                              disabled={reingestingDocId != null}
                               onClick={async () => {
+                                setReingestingDocId(d.id);
                                 try {
                                   await reingestDocument(id, d.id);
                                   toast.success("已提交重新 ingest");
                                   await refresh();
                                 } catch (e) {
-                                  toast.error((e as Error).message);
+                                  toastApiError(e, (p) => router.push(p));
+                                } finally {
+                                  setReingestingDocId(null);
                                 }
                               }}
-                            >
-                              <Play className="h-4 w-4" />
-                            </button>
+                            />
                           )}
-                          <Link
-                            href={`/kbs/${id}/documents/${d.id}`}
+                          <AdminRowAction
+                            icon={Layers}
                             title="分块管理"
-                            className="rounded p-1 hover:bg-surface-2 hover:text-brand"
-                          >
-                            <Layers className="h-4 w-4" />
-                          </Link>
+                            variant="brand"
+                            href={`/kbs/${id}/documents/${d.id}`}
+                          />
                           {canWrite && (
-                            <button
-                              type="button"
+                            <AdminRowAction
+                              icon={Trash2}
                               title="删除"
-                              className="rounded p-1 hover:bg-danger/10 hover:text-danger"
+                              variant="danger"
                               onClick={() => setPendingDelete(d)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                            />
                           )}
                         </div>
                       </td>

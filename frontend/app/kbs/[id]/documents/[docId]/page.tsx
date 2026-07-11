@@ -22,7 +22,8 @@ import {
   Search,
   Plus,
   ChevronLeft,
-  ChevronRight,
+  Split,
+  Merge,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -36,11 +37,14 @@ import {
   batchPatchChunks,
   batchPatchAllChunks,
   reingestDocument,
+  splitChunk,
+  mergeChunks,
   type KBDetail,
   type DocumentDetail,
   type Chunk,
   type KbRole,
 } from "@/lib/kb-api";
+import { toastApiError } from "@/lib/byok-toast";
 import { cn } from "@/lib/cn";
 import Dialog from "@/components/Dialog";
 import Select from "@/components/Select";
@@ -48,6 +52,10 @@ import {
   AdminPageShell,
   AdminPanel,
 } from "@/components/kb/AdminPageShell";
+import {
+  AdminRowAction,
+  AdminToolbarButton,
+} from "@/components/kb/AdminTableActions";
 import {
   estimateTokens,
   formatAdminDate,
@@ -75,11 +83,26 @@ export default function DocumentDetailPage({
     "all"
   );
   const [editingChunk, setEditingChunk] = useState<Chunk | null>(null);
+  const [splittingChunk, setSplittingChunk] = useState<Chunk | null>(null);
+  const [splitOffset, setSplitOffset] = useState("");
   const [editText, setEditText] = useState("");
-  const [busy, setBusy] = useState(false);
+  /** Granular action key, e.g. `refresh`, `batch`, `toggle:uuid`, `merge:uuid`. */
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
   const chunksLoadedOnce = useRef(false);
 
   const pageSize = 20;
+  const isPending = (key: string) => pendingKey === key;
+  const anyPending = pendingKey != null;
+
+  useEffect(() => {
+    setPage(1);
+    setSelected([]);
+    setSearchInput("");
+    setDebouncedSearch("");
+    setEnabledFilter("all");
+    chunksLoadedOnce.current = false;
+    setLoading(true);
+  }, [docId]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchInput), 300);
@@ -178,7 +201,8 @@ export default function DocumentDetailPage({
   };
 
   const onBatchEnable = async (enabled: boolean, all = false) => {
-    setBusy(true);
+    const key = all ? (enabled ? "batch-all-on" : "batch-all-off") : "batch";
+    setPendingKey(key);
     try {
       if (all) {
         const res = await batchPatchAllChunks(kbId, docId, enabled);
@@ -193,27 +217,29 @@ export default function DocumentDetailPage({
       setSelected([]);
       await refreshChunks();
     } catch (e) {
-      toast.error((e as Error).message);
+      toastApiError(e, (p) => router.push(p));
     } finally {
-      setBusy(false);
+      setPendingKey(null);
     }
   };
 
   const onToggleChunk = async (chunk: Chunk) => {
-    setBusy(true);
+    const key = `toggle:${chunk.id}`;
+    setPendingKey(key);
     try {
       await patchChunk(kbId, docId, chunk.id, { enabled: !chunk.enabled });
       await refreshChunks();
     } catch (e) {
-      toast.error((e as Error).message);
+      toastApiError(e, (p) => router.push(p));
     } finally {
-      setBusy(false);
+      setPendingKey(null);
     }
   };
 
   const onDeleteChunk = async (chunk: Chunk) => {
     if (!confirm(`删除 chunk #${chunk.chunk_idx + 1}？`)) return;
-    setBusy(true);
+    const key = `delete:${chunk.id}`;
+    setPendingKey(key);
     try {
       await deleteChunk(kbId, docId, chunk.id);
       toast.success("已删除");
@@ -222,36 +248,92 @@ export default function DocumentDetailPage({
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
-      setBusy(false);
+      setPendingKey(null);
     }
   };
 
   const onSaveChunk = async (e: FormEvent) => {
     e.preventDefault();
     if (!editingChunk) return;
-    setBusy(true);
+    setPendingKey(`edit:${editingChunk.id}`);
     try {
       await patchChunk(kbId, docId, editingChunk.id, { text: editText });
       toast.success("已保存");
       setEditingChunk(null);
       await refreshChunks();
     } catch (err) {
-      toast.error((err as Error).message);
+      toastApiError(err, (p) => router.push(p));
     } finally {
-      setBusy(false);
+      setPendingKey(null);
     }
   };
 
   const onReingest = async () => {
-    setBusy(true);
+    setPendingKey("reingest");
     try {
       await reingestDocument(kbId, docId);
       toast.success("已提交重建向量");
       await refresh();
     } catch (e) {
+      toastApiError(e, (p) => router.push(p));
+    } finally {
+      setPendingKey(null);
+    }
+  };
+
+  const onRefreshAll = async () => {
+    setPendingKey("refresh");
+    try {
+      await refresh();
+    } catch (e) {
       toast.error((e as Error).message);
     } finally {
-      setBusy(false);
+      setPendingKey(null);
+    }
+  };
+
+  const onSplitChunk = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!splittingChunk) return;
+    const offset = parseInt(splitOffset, 10);
+    if (!Number.isFinite(offset) || offset <= 0 || offset >= splittingChunk.text.length) {
+      toast.error("切分位置无效");
+      return;
+    }
+    setPendingKey(`split:${splittingChunk.id}`);
+    try {
+      await splitChunk(kbId, docId, splittingChunk.id, offset);
+      toast.success("已切分为两个 chunk");
+      setSplittingChunk(null);
+      setSplitOffset("");
+      await refresh();
+    } catch (err) {
+      toastApiError(err, (p) => router.push(p));
+    } finally {
+      setPendingKey(null);
+    }
+  };
+
+  const onMergeWithNext = async (chunk: Chunk) => {
+    setPendingKey(`merge:${chunk.id}`);
+    try {
+      let next = chunks.find((c) => c.chunk_idx === chunk.chunk_idx + 1);
+      if (!next) {
+        const data = await listDocumentChunks(kbId, docId, 1, 500);
+        next = data.items.find((c) => c.chunk_idx === chunk.chunk_idx + 1);
+      }
+      if (!next) {
+        toast.error("只能与相邻的下一个 chunk 合并");
+        return;
+      }
+      if (!confirm(`合并 chunk #${chunk.chunk_idx} 与 #${next.chunk_idx}？`)) return;
+      await mergeChunks(kbId, docId, [chunk.id, next.id]);
+      toast.success("已合并");
+      await refresh();
+    } catch (err) {
+      toastApiError(err, (p) => router.push(p));
+    } finally {
+      setPendingKey(null);
     }
   };
 
@@ -289,11 +371,16 @@ export default function DocumentDetailPage({
               <button
                 type="button"
                 className="admin-btn-secondary"
-                disabled={busy}
-                onClick={onReingest}
+                disabled={anyPending}
+                onClick={() => void onReingest()}
               >
-                <RotateCcw className="h-4 w-4" />
-                重建向量
+                <RotateCcw
+                  className={cn(
+                    "h-4 w-4",
+                    isPending("reingest") && "animate-spin"
+                  )}
+                />
+                {isPending("reingest") ? "重建中…" : "重建向量"}
               </button>
               <button
                 type="button"
@@ -316,7 +403,7 @@ export default function DocumentDetailPage({
           <>
             <Select
               size="sm"
-              className="w-[120px]"
+              className="w-[120px] admin-select-trigger"
               value={enabledFilter}
               onChange={(e) =>
                 setEnabledFilter(e.target.value as typeof enabledFilter)
@@ -327,54 +414,54 @@ export default function DocumentDetailPage({
                 { value: "disabled", label: "已禁用" },
               ]}
             />
-            <button
-              type="button"
-              className="admin-btn-secondary btn-sm !px-3 !py-1.5 text-xs"
-              onClick={() =>
-                refresh().catch((e) => toast.error((e as Error).message))
-              }
+            <AdminToolbarButton
+              icon={RefreshCw}
+              loading={isPending("refresh") || tableLoading}
+              disabled={anyPending && !isPending("refresh")}
+              onClick={() => void onRefreshAll()}
             >
-              <RefreshCw
-                className={cn("h-3.5 w-3.5", tableLoading && "animate-spin")}
-              />
               刷新
-            </button>
+            </AdminToolbarButton>
             {canWrite && (
               <>
-                <button
-                  type="button"
-                  className="admin-btn-secondary btn-sm !px-3 !py-1.5 text-xs"
-                  disabled={busy || selected.length === 0}
-                  onClick={() => onBatchEnable(true)}
+                <AdminToolbarButton
+                  icon={Eye}
+                  loading={isPending("batch")}
+                  disabled={
+                    anyPending ||
+                    selected.length === 0 ||
+                    (pendingKey != null && pendingKey !== "batch")
+                  }
+                  onClick={() => void onBatchEnable(true)}
                 >
-                  <Eye className="h-3.5 w-3.5" />
                   批量启用
-                </button>
-                <button
-                  type="button"
-                  className="admin-btn-secondary btn-sm !px-3 !py-1.5 text-xs"
-                  disabled={busy || selected.length === 0}
-                  onClick={() => onBatchEnable(false)}
+                </AdminToolbarButton>
+                <AdminToolbarButton
+                  icon={EyeOff}
+                  loading={isPending("batch")}
+                  disabled={
+                    anyPending ||
+                    selected.length === 0 ||
+                    (pendingKey != null && pendingKey !== "batch")
+                  }
+                  onClick={() => void onBatchEnable(false)}
                 >
-                  <EyeOff className="h-3.5 w-3.5" />
                   批量禁用
-                </button>
-                <button
-                  type="button"
-                  className="admin-btn-secondary btn-sm !px-3 !py-1.5 text-xs"
-                  disabled={busy}
-                  onClick={() => onBatchEnable(true, true)}
+                </AdminToolbarButton>
+                <AdminToolbarButton
+                  loading={isPending("batch-all-on")}
+                  disabled={anyPending && !isPending("batch-all-on")}
+                  onClick={() => void onBatchEnable(true, true)}
                 >
                   全量启用
-                </button>
-                <button
-                  type="button"
-                  className="admin-btn-secondary btn-sm !px-3 !py-1.5 text-xs"
-                  disabled={busy}
-                  onClick={() => onBatchEnable(false, true)}
+                </AdminToolbarButton>
+                <AdminToolbarButton
+                  loading={isPending("batch-all-off")}
+                  disabled={anyPending && !isPending("batch-all-off")}
+                  onClick={() => void onBatchEnable(false, true)}
                 >
                   全量禁用
-                </button>
+                </AdminToolbarButton>
               </>
             )}
           </>
@@ -446,8 +533,9 @@ export default function DocumentDetailPage({
                 <th className="w-20">状态</th>
                 <th className="w-24">字符数</th>
                 <th className="w-24">Token数</th>
-                <th className="w-40">更新时间</th>
-                {canWrite && <th className="w-44">操作</th>}
+                <th className="w-36">创建时间</th>
+                <th className="w-36">更新时间</th>
+                {canWrite && <th className="w-56">操作</th>}
               </tr>
             </thead>
             <tbody className={cn(tableLoading && "opacity-60")}>
@@ -484,50 +572,66 @@ export default function DocumentDetailPage({
                     {estimateTokens(c.char_count).toLocaleString()}
                   </td>
                   <td className="text-xs text-muted">
+                    {formatAdminDate(c.created_at)}
+                  </td>
+                  <td className="text-xs text-muted">
                     {formatAdminDate(c.updated_at ?? c.created_at)}
                   </td>
                   {canWrite && (
                     <td>
-                      <div className="flex flex-wrap items-center gap-2 text-xs">
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-0.5 text-brand hover:underline"
-                          disabled={busy}
+                      <div className="flex flex-wrap items-center gap-0.5">
+                        <AdminRowAction
+                          icon={Pencil}
+                          label="编辑"
+                          title="编辑内容"
+                          variant="brand"
+                          loading={isPending(`edit:${c.id}`)}
+                          disabled={anyPending && !isPending(`edit:${c.id}`)}
                           onClick={() => {
                             setEditingChunk(c);
                             setEditText(c.text);
                           }}
-                        >
-                          <Pencil className="h-3 w-3" />
-                          编辑
-                        </button>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-0.5 text-muted hover:text-fg"
-                          disabled={busy}
-                          onClick={() => onToggleChunk(c)}
-                        >
-                          {c.enabled ? (
-                            <>
-                              <EyeOff className="h-3 w-3" />
-                              禁用
-                            </>
-                          ) : (
-                            <>
-                              <Eye className="h-3 w-3" />
-                              启用
-                            </>
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-0.5 text-danger hover:underline"
-                          disabled={busy}
-                          onClick={() => onDeleteChunk(c)}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                          删除
-                        </button>
+                        />
+                        <AdminRowAction
+                          icon={c.enabled ? EyeOff : Eye}
+                          label={c.enabled ? "禁用" : "启用"}
+                          title={c.enabled ? "禁用此 chunk" : "启用此 chunk"}
+                          loading={isPending(`toggle:${c.id}`)}
+                          disabled={anyPending && !isPending(`toggle:${c.id}`)}
+                          onClick={() => void onToggleChunk(c)}
+                        />
+                        <AdminRowAction
+                          icon={Split}
+                          label="切分"
+                          title="按字符位置切分"
+                          loading={isPending(`split:${c.id}`)}
+                          disabled={
+                            anyPending ||
+                            c.text.length < 2 ||
+                            (pendingKey != null && !isPending(`split:${c.id}`))
+                          }
+                          onClick={() => {
+                            setSplittingChunk(c);
+                            setSplitOffset(String(Math.floor(c.text.length / 2)));
+                          }}
+                        />
+                        <AdminRowAction
+                          icon={Merge}
+                          label="合并"
+                          title="与下一个相邻 chunk 合并"
+                          loading={isPending(`merge:${c.id}`)}
+                          disabled={anyPending && !isPending(`merge:${c.id}`)}
+                          onClick={() => void onMergeWithNext(c)}
+                        />
+                        <AdminRowAction
+                          icon={Trash2}
+                          label="删除"
+                          title="删除此 chunk"
+                          variant="danger"
+                          loading={isPending(`delete:${c.id}`)}
+                          disabled={anyPending && !isPending(`delete:${c.id}`)}
+                          onClick={() => void onDeleteChunk(c)}
+                        />
                       </div>
                     </td>
                   )}
@@ -565,8 +669,56 @@ export default function DocumentDetailPage({
             >
               取消
             </button>
-            <button type="submit" className="admin-btn-primary btn-sm" disabled={busy}>
-              保存
+            <button type="submit" className="admin-btn-primary btn-sm" disabled={anyPending}>
+              {isPending(`edit:${editingChunk?.id ?? ""}`) ? "保存中…" : "保存"}
+            </button>
+          </div>
+        </form>
+      </Dialog>
+
+      <Dialog
+        open={splittingChunk != null}
+        onOpenChange={(o) => {
+          if (!o) {
+            setSplittingChunk(null);
+            setSplitOffset("");
+          }
+        }}
+        title={`切分 chunk #${(splittingChunk?.chunk_idx ?? 0) + 1}`}
+        description="在指定字符位置切分为两个 chunk（会重新 embedding）。"
+        confirmLabel="切分"
+        onConfirm={() => {}}
+      >
+        <form onSubmit={onSplitChunk} className="space-y-4">
+          <p className="max-h-32 overflow-y-auto rounded-lg border border-surface-border/60 bg-surface-2 p-3 text-xs leading-relaxed text-muted">
+            {splittingChunk?.text}
+          </p>
+          <label className="block text-xs text-muted">
+            切分位置（字符偏移，1 ~ {Math.max(0, (splittingChunk?.text.length ?? 1) - 1)}）
+            <input
+              type="number"
+              min={1}
+              max={Math.max(1, (splittingChunk?.text.length ?? 2) - 1)}
+              value={splitOffset}
+              onChange={(e) => setSplitOffset(e.target.value)}
+              className="mt-1 block w-full rounded-md border bg-bg px-3 py-2 text-sm"
+            />
+          </label>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              className="admin-btn-secondary btn-sm"
+              onClick={() => {
+                setSplittingChunk(null);
+                setSplitOffset("");
+              }}
+            >
+              取消
+            </button>
+            <button type="submit" className="admin-btn-primary btn-sm" disabled={anyPending}>
+              {splittingChunk && isPending(`split:${splittingChunk.id}`)
+                ? "切分中…"
+                : "切分"}
             </button>
           </div>
         </form>

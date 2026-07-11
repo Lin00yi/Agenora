@@ -266,6 +266,34 @@ class QdrantStore:
             offset = next_offset
         return out
 
+    async def get_points_by_ids(
+        self,
+        collection_name: str,
+        point_ids: list[str],
+    ) -> list[dict[str, Any]]:
+        """Fetch points with vectors by id (for payload-only upserts)."""
+        if not point_ids:
+            return []
+        out: list[dict[str, Any]] = []
+        batch_size = 256
+        for i in range(0, len(point_ids), batch_size):
+            batch = point_ids[i : i + batch_size]
+            points = await self._client.retrieve(
+                collection_name=collection_name,
+                ids=batch,
+                with_payload=True,
+                with_vectors=True,
+            )
+            for p in points:
+                out.append(
+                    {
+                        "id": str(p.id),
+                        "vector": list(p.vector) if p.vector is not None else [],
+                        "payload": p.payload or {},
+                    }
+                )
+        return out
+
 
 # ---------------------------------------------------------------------------
 # Milvus adapter — Milvus Lite (embedded, local .db file) or Standalone server.
@@ -286,7 +314,7 @@ class QdrantStore:
 _KNOWN_PAYLOAD_KEYS = [
     # KB ingest (kb/ingest.py)
     "doc_id", "kb_id", "chunk_idx", "text", "filename",
-    "source_type", "source_url", "enabled",
+    "source_type", "source_url", "enabled", "doc_enabled",
     # Restaurant demo KB (data/ingest.py)
     "city", "cuisine", "name", "address", "rating",
     "description", "reason", "tags",
@@ -639,6 +667,45 @@ class MilvusStore:
                 if k != "id" and v is not None and v != ""
             }
             out.append({"id": str(row.get("id", "")), "payload": payload})
+        return out
+
+    async def get_points_by_ids(
+        self,
+        collection_name: str,
+        point_ids: list[str],
+    ) -> list[dict[str, Any]]:
+        """Fetch points with vectors by id (for payload-only upserts)."""
+        if not point_ids:
+            return []
+        await self._ensure_loaded(collection_name)
+        ids_escaped = ", ".join(
+            f'"{str(i).replace(chr(92), chr(92)*2).replace(chr(34), chr(92)+chr(34))}"'
+            for i in point_ids
+        )
+        expr = f"id in [{ids_escaped}]"
+        output_fields = ["vector"] + _KNOWN_PAYLOAD_KEYS
+        raw = await asyncio.to_thread(
+            self._client.query,
+            collection_name=collection_name,
+            filter=expr,
+            output_fields=output_fields,
+            limit=len(point_ids),
+        )
+        out: list[dict[str, Any]] = []
+        for row in raw or []:
+            entity = dict(row)
+            vec = entity.pop("vector", None) or []
+            payload = {
+                k: v for k, v in entity.items()
+                if k != "id" and v is not None and v != ""
+            }
+            out.append(
+                {
+                    "id": str(row.get("id", "")),
+                    "vector": list(vec),
+                    "payload": payload,
+                }
+            )
         return out
 
     # ---- v3-M3: hybrid search (dense + BM25) + grouping ----
