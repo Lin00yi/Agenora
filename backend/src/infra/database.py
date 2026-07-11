@@ -163,6 +163,13 @@ def _migrate_additive_columns(sync_conn) -> None:
                 sync_conn.execute(
                     text(f"ALTER TABLE documents ADD COLUMN {col_name} {col_type}")
                 )
+        if "enabled" not in doc_cols:
+            sync_conn.execute(
+                text(
+                    "ALTER TABLE documents ADD COLUMN enabled "
+                    "BOOLEAN NOT NULL DEFAULT TRUE"
+                )
+            )
 
     # v2-M1: users.{llm,embedding}_* (10 nullable columns; NULL = use env fallback)
     if "users" in tables:

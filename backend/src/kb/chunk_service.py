@@ -66,6 +66,7 @@ def _chunk_payload(doc: Document, chunk: Chunk) -> dict:
         "source_type": doc.source_type,
         "source_url": doc.source_url or "",
         "enabled": chunk.enabled,
+        "doc_enabled": bool(getattr(doc, "enabled", True)),
     }
 
 
@@ -183,25 +184,40 @@ async def upsert_single_chunk_vector(
     )
 
 
+def _chunk_list_filters(
+    doc_id: str,
+    *,
+    q: str | None = None,
+    enabled: bool | None = None,
+):
+    stmt = select(Chunk).where(Chunk.doc_id == doc_id)
+    if q and q.strip():
+        stmt = stmt.where(Chunk.text.ilike(f"%{q.strip()}%"))
+    if enabled is not None:
+        stmt = stmt.where(Chunk.enabled == enabled)
+    return stmt
+
+
 async def list_document_chunks(
     session: AsyncSession,
     doc_id: str,
     *,
     page: int = 1,
     page_size: int = 20,
+    q: str | None = None,
+    enabled: bool | None = None,
 ) -> tuple[list[Chunk], int]:
     page = max(1, page)
     page_size = max(1, min(page_size, 100))
+    base = _chunk_list_filters(doc_id, q=q, enabled=enabled)
     total = (
         await session.execute(
-            select(func.count()).select_from(Chunk).where(Chunk.doc_id == doc_id)
+            select(func.count()).select_from(base.subquery())
         )
     ).scalar_one()
     rows = (
         await session.execute(
-            select(Chunk)
-            .where(Chunk.doc_id == doc_id)
-            .order_by(Chunk.chunk_idx)
+            base.order_by(Chunk.chunk_idx)
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
@@ -297,16 +313,109 @@ async def list_document_chunks_with_backfill(
     *,
     page: int = 1,
     page_size: int = 20,
+    q: str | None = None,
+    enabled: bool | None = None,
 ) -> tuple[list[Chunk], int]:
     """List chunks; auto-backfill from vector store when SQL table is empty."""
-    rows, total = await list_document_chunks(session, doc.id, page=page, page_size=page_size)
-    if total == 0 and (doc.chunks_count or 0) > 0 and doc.status == "done":
+    rows, total = await list_document_chunks(
+        session, doc.id, page=page, page_size=page_size, q=q, enabled=enabled
+    )
+    unfiltered = not (q and q.strip()) and enabled is None
+    if unfiltered and total == 0 and (doc.chunks_count or 0) > 0 and doc.status == "done":
         backfilled = await backfill_chunks_from_vector_store(session, store, kb, doc)
         if backfilled:
             rows, total = await list_document_chunks(
-                session, doc.id, page=page, page_size=page_size
+                session,
+                doc.id,
+                page=page,
+                page_size=page_size,
+                q=q,
+                enabled=enabled,
             )
     return rows, total
+
+
+async def batch_set_chunks_enabled(
+    session: AsyncSession,
+    store,
+    kb: KB,
+    doc: Document,
+    chunk_ids: list[str],
+    *,
+    enabled: bool,
+    embedding_cfg: "UserEmbeddingConfig | None",
+) -> list[Chunk]:
+    """Enable or disable multiple chunks and sync vector payloads."""
+    if not chunk_ids:
+        return []
+    if not hasattr(store, "upsert"):
+        raise RuntimeError("vector store does not support upsert")
+
+    unique_ids = list(dict.fromkeys(chunk_ids))
+    rows = (
+        await session.execute(
+            select(Chunk).where(
+                Chunk.doc_id == doc.id,
+                Chunk.id.in_(unique_ids),
+            )
+        )
+    ).scalars().all()
+    if not rows:
+        return []
+
+    changed: list[Chunk] = []
+    for ch in rows:
+        if ch.enabled != enabled:
+            ch.enabled = enabled
+            changed.append(ch)
+
+    if changed:
+        await sync_vectors_for_chunks(session, store, kb, doc, changed, embedding_cfg)
+    return list(rows)
+
+
+async def sync_document_vector_payloads(
+    session: AsyncSession,
+    store,
+    kb: KB,
+    doc: Document,
+    embedding_cfg: "UserEmbeddingConfig | None",
+) -> int:
+    """Re-upsert all chunk vectors after document-level fields change (e.g. enabled)."""
+    rows = (
+        await session.execute(
+            select(Chunk).where(Chunk.doc_id == doc.id).order_by(Chunk.chunk_idx)
+        )
+    ).scalars().all()
+    if not rows:
+        return 0
+    await sync_vectors_for_chunks(session, store, kb, doc, list(rows), embedding_cfg)
+    return len(rows)
+
+
+async def batch_set_all_document_chunks_enabled(
+    session: AsyncSession,
+    store,
+    kb: KB,
+    doc: Document,
+    *,
+    enabled: bool,
+    embedding_cfg: "UserEmbeddingConfig | None",
+) -> int:
+    """Enable or disable every chunk in a document."""
+    rows = (
+        await session.execute(select(Chunk).where(Chunk.doc_id == doc.id))
+    ).scalars().all()
+    if not rows:
+        return 0
+    changed: list[Chunk] = []
+    for ch in rows:
+        if ch.enabled != enabled:
+            ch.enabled = enabled
+            changed.append(ch)
+    if changed:
+        await sync_vectors_for_chunks(session, store, kb, doc, changed, embedding_cfg)
+    return len(rows)
 
 
 async def delete_single_chunk(

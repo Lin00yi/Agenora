@@ -40,9 +40,13 @@ _RERANK_OVERFETCH_CAP = 30
 
 
 def _chunk_enabled(hit: dict) -> bool:
-    """Skip chunks explicitly disabled via chunk management UI."""
-    enabled = (hit.get("payload") or {}).get("enabled", True)
-    return enabled is not False and enabled != "false" and enabled != 0
+    """Skip chunks disabled at chunk or document level."""
+    payload = hit.get("payload") or {}
+    chunk_on = payload.get("enabled", True)
+    if chunk_on is False or chunk_on == "false" or chunk_on == 0:
+        return False
+    doc_on = payload.get("doc_enabled", True)
+    return doc_on is not False and doc_on != "false" and doc_on != 0
 
 
 class KBSearchTool(Tool):

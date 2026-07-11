@@ -113,6 +113,7 @@ class PatchDocumentRequest(BaseModel):
     chunk_target: Optional[int] = Field(default=None, ge=200, le=8000)
     chunk_max_size: Optional[int] = Field(default=None, ge=200, le=10000)
     chunk_overlap: Optional[int] = Field(default=None, ge=0, le=2000)
+    enabled: Optional[bool] = None
 
 
 class PatchChunkRequest(BaseModel):
@@ -126,6 +127,15 @@ class SplitChunkRequest(BaseModel):
 
 class MergeChunksRequest(BaseModel):
     chunk_ids: list[str] = Field(min_length=2, max_length=2)
+
+
+class BatchPatchChunksRequest(BaseModel):
+    chunk_ids: list[str] = Field(min_length=1, max_length=100)
+    enabled: bool
+
+
+class BatchAllChunksRequest(BaseModel):
+    enabled: bool
 
 
 class CreateURLDocRequest(BaseModel):
@@ -749,6 +759,7 @@ async def patch_document(
 ) -> dict:
     kb = await _load_writable_kb(session, kb_id, user.id)
     doc = await _load_document(session, kb_id, doc_id)
+    enabled_changed = False
     if body.filename is not None:
         doc.filename = body.filename.strip()
     if body.chunk_target is not None:
@@ -757,6 +768,16 @@ async def patch_document(
         doc.chunk_max_size = body.chunk_max_size
     if body.chunk_overlap is not None:
         doc.chunk_overlap = body.chunk_overlap
+    if body.enabled is not None and doc.enabled != body.enabled:
+        doc.enabled = body.enabled
+        enabled_changed = True
+    if enabled_changed:
+        from src.kb.chunk_service import sync_document_vector_payloads
+
+        ecfg = await _resolve_doc_embedding_cfg(session, kb, user)
+        store = get_store()
+        if hasattr(store, "upsert"):
+            await sync_document_vector_payloads(session, store, kb, doc, ecfg)
     await session.commit()
     await session.refresh(doc)
     return doc.to_public_dict()
@@ -815,6 +836,8 @@ async def list_document_chunks(
     session: AsyncSession = Depends(get_session),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
+    q: str | None = Query(default=None, max_length=200),
+    enabled: bool | None = Query(default=None),
 ) -> dict:
     kb = await _load_readable_kb(session, kb_id, user.id)
     doc = await _load_document(session, kb_id, doc_id)
@@ -822,7 +845,14 @@ async def list_document_chunks(
 
     store = get_store()
     rows, total = await list_document_chunks_with_backfill(
-        session, store, kb, doc, page=page, page_size=page_size
+        session,
+        store,
+        kb,
+        doc,
+        page=page,
+        page_size=page_size,
+        q=q,
+        enabled=enabled,
     )
     return {
         "items": [c.to_public_dict() for c in rows],
@@ -846,6 +876,61 @@ async def get_chunk(
     if chunk is None or chunk.doc_id != doc_id:
         raise HTTPException(status_code=404, detail="chunk not found")
     return chunk.to_public_dict()
+
+
+@router.patch("/{kb_id}/documents/{doc_id}/chunks/batch-all")
+async def batch_patch_all_chunks(
+    kb_id: str,
+    doc_id: str,
+    body: BatchAllChunksRequest,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    from src.kb.chunk_service import batch_set_all_document_chunks_enabled
+
+    kb = await _load_writable_kb(session, kb_id, user.id)
+    doc = await _load_document(session, kb_id, doc_id)
+    ecfg = await _resolve_doc_embedding_cfg(session, kb, user)
+    store = get_store()
+    if not hasattr(store, "upsert"):
+        raise HTTPException(status_code=500, detail="vector store unavailable")
+    total = await batch_set_all_document_chunks_enabled(
+        session, store, kb, doc, enabled=body.enabled, embedding_cfg=ecfg
+    )
+    await session.commit()
+    return {"updated": total, "enabled": body.enabled}
+
+
+@router.patch("/{kb_id}/documents/{doc_id}/chunks/batch")
+async def batch_patch_chunks(
+    kb_id: str,
+    doc_id: str,
+    body: BatchPatchChunksRequest,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    from src.kb.chunk_service import batch_set_chunks_enabled
+
+    kb = await _load_writable_kb(session, kb_id, user.id)
+    doc = await _load_document(session, kb_id, doc_id)
+    ecfg = await _resolve_doc_embedding_cfg(session, kb, user)
+    store = get_store()
+    if not hasattr(store, "upsert"):
+        raise HTTPException(status_code=500, detail="vector store unavailable")
+    rows = await batch_set_chunks_enabled(
+        session,
+        store,
+        kb,
+        doc,
+        body.chunk_ids,
+        enabled=body.enabled,
+        embedding_cfg=ecfg,
+    )
+    await session.commit()
+    return {
+        "updated": len(rows),
+        "items": [c.to_public_dict() for c in rows],
+    }
 
 
 @router.patch("/{kb_id}/documents/{doc_id}/chunks/{chunk_id}")

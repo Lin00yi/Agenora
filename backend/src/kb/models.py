@@ -215,6 +215,9 @@ class Document(Base):
     chunk_max_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
     chunk_overlap: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
 
+    # v4: when False, all chunks from this document are excluded from KB search.
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
@@ -244,6 +247,7 @@ class Document(Base):
             "chunk_max_size": self.chunk_max_size,
             "chunk_overlap": self.chunk_overlap,
             "parsed_text_length": len(self.parsed_text or ""),
+            "enabled": bool(self.enabled),
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

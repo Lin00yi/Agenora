@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   ChangeEvent,
@@ -12,7 +13,6 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Trash2,
-  ChevronLeft,
   FileText,
   Link2,
   RefreshCw,
@@ -27,7 +27,9 @@ import {
   UserPlus,
   Copy,
   X,
-  ChevronRight,
+  Search,
+  Plus,
+  Play,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -39,7 +41,9 @@ import {
   deleteDocument,
   deleteKb,
   patchKb,
+  patchDocument,
   rebuildKb,
+  reingestDocument,
   listMembers,
   inviteMember,
   patchMember,
@@ -59,7 +63,17 @@ import { toastApiError } from "@/lib/byok-toast";
 import { cn } from "@/lib/cn";
 import Dialog from "@/components/Dialog";
 import Select from "@/components/Select";
-import ThemeToggle from "@/components/ThemeToggle";
+import { Switch } from "@/components/ui/switch";
+import {
+  AdminPageShell,
+  AdminPanel,
+} from "@/components/kb/AdminPageShell";
+import {
+  DOC_STATUS_UI,
+  fileExtension,
+  formatAdminDate,
+  formatFileSize,
+} from "@/components/kb/admin-utils";
 
 export default function KbDetailPage({ params }: { params: { id: string } }) {
   const { id } = params;
@@ -88,6 +102,13 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
   const [chunkOverlap, setChunkOverlap] = useState("150");
   const [pendingRebuild, setPendingRebuild] = useState(false);
   const [rebuildingKb, setRebuildingKb] = useState(false);
+  const [docSearch, setDocSearch] = useState("");
+  const [docStatusFilter, setDocStatusFilter] = useState<
+    "all" | DocStatus
+  >("all");
+  const [docPage, setDocPage] = useState(1);
+  const [docToggleBusy, setDocToggleBusy] = useState<string | null>(null);
+  const docPageSize = 10;
 
   const refresh = useCallback(async () => {
     try {
@@ -255,6 +276,45 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
     }
   };
 
+  const onToggleDocEnabled = async (doc: Document, enabled: boolean) => {
+    setDocToggleBusy(doc.id);
+    try {
+      const updated = await patchDocument(id, doc.id, { enabled });
+      setKb((cur) =>
+        cur
+          ? {
+              ...cur,
+              documents: cur.documents.map((d) =>
+                d.id === doc.id ? { ...d, enabled: updated.enabled } : d
+              ),
+            }
+          : cur
+      );
+      toast.success(enabled ? "文档已启用，参与检索" : "文档已禁用，不再参与检索");
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setDocToggleBusy(null);
+    }
+  };
+
+  const filteredDocuments = useMemo(() => {
+    if (!kb) return [];
+    const q = docSearch.trim().toLowerCase();
+    return kb.documents.filter((d) => {
+      if (docStatusFilter !== "all" && d.status !== docStatusFilter) return false;
+      if (!q) return true;
+      return (
+        d.filename.toLowerCase().includes(q) ||
+        (d.source_url?.toLowerCase().includes(q) ?? false)
+      );
+    });
+  }, [kb, docSearch, docStatusFilter]);
+
+  useEffect(() => {
+    setDocPage(1);
+  }, [docSearch, docStatusFilter]);
+
   if (loading) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-sm text-muted">
@@ -280,32 +340,53 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
   const isOwner = myRole === "owner";
   const canWrite = (isOwner || myRole === "editor") && !kb.is_system;
 
-  return (
-    <div className="min-h-screen bg-bg text-fg">
-      <header className="border-b bg-bg/80 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-4xl items-center gap-3 px-4 sm:px-6">
-          <Link
-            href="/kbs"
-            className="inline-flex items-center gap-1 text-sm text-muted transition hover:text-fg"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            <span>知识库</span>
-          </Link>
-          <div className="min-w-0 flex-1 truncate text-sm font-medium">{kb.name}</div>
-          <button
-            onClick={refresh}
-            className="rounded-md p-2 transition hover:bg-surface-2"
-            title="刷新"
-            aria-label="refresh"
-            type="button"
-          >
-            <RefreshCw className="h-4 w-4" />
-          </button>
-          <ThemeToggle />
-        </div>
-      </header>
+  const docTotalPages = Math.max(
+    1,
+    Math.ceil(filteredDocuments.length / docPageSize)
+  );
+  const pagedDocuments = filteredDocuments.slice(
+    (docPage - 1) * docPageSize,
+    docPage * docPageSize
+  );
 
-      <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
+  return (
+    <AdminPageShell
+      breadcrumbs={[
+        { label: "首页", href: "/" },
+        { label: "知识库管理", href: "/kbs" },
+        { label: "文档管理" },
+      ]}
+      title="文档管理"
+      subtitle={`${kb.name}（${kb.id.slice(0, 8)}…）`}
+      actions={
+        <>
+          <Link href="/kbs" className="admin-btn-secondary">
+            返回知识库
+          </Link>
+          {canWrite && !kb.is_system && (
+            <>
+              <input
+                ref={fileInput}
+                type="file"
+                multiple
+                accept=".md,.markdown,.txt,.pdf,.docx"
+                onChange={onFileChange}
+                className="hidden"
+              />
+              <button
+                type="button"
+                className="admin-btn-primary"
+                disabled={uploadingFiles.length > 0}
+                onClick={() => fileInput.current?.click()}
+              >
+                <Plus className="h-4 w-4" />
+                上传文档
+              </button>
+            </>
+          )}
+        </>
+      }
+    >
         {/* v2-M9: role banner for non-owner / non-system access */}
         {!kb.is_system && myRole === "editor" && (
           <div className="card mb-4 border-info/30 bg-info/10 p-3 text-sm">
@@ -364,96 +445,229 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
             </p>
           </div>
         ) : canWrite ? (
-          <div className="mb-6 grid gap-3 sm:grid-cols-2">
-            <div className="card p-4">
-              <div className="mb-2 text-sm font-medium">上传文件</div>
-              <input
-                ref={fileInput}
-                type="file"
-                multiple
-                accept=".md,.markdown,.txt,.pdf,.docx"
-                onChange={onFileChange}
-                disabled={uploadingFiles.length > 0}
-                className="block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-brand file:px-3 file:py-2 file:text-sm file:text-white hover:file:bg-brand/90 disabled:opacity-50"
-              />
-              <div className="mt-2 text-xs text-muted">
-                支持 .md / .txt / .pdf / .docx（单文件 ≤ 50 MB）
-              </div>
-              {uploadingFiles.length > 0 && (
-                <div className="mt-2 text-xs text-muted">
-                  正在上传 {uploadingFiles.join(", ")}…
-                </div>
-              )}
-            </div>
-
-            <form onSubmit={onSubmitUrl} className="card p-4">
-              <div className="mb-2 text-sm font-medium">从 URL 抓取</div>
-              <input
-                type="url"
-                required
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://example.com/article"
-                className="block w-full rounded-md border bg-bg px-3 py-2 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-              />
-              <button
-                type="submit"
-                disabled={!url.trim() || submittingUrl}
-                className="btn btn-primary btn-sm mt-2"
-              >
-                <Link2 className="h-3 w-3" />
-                {submittingUrl ? "提交中…" : "抓取并 ingest"}
-              </button>
-            </form>
-          </div>
+          <form
+            onSubmit={onSubmitUrl}
+            className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-surface-border/60 bg-surface px-4 py-3"
+          >
+            <Link2 className="h-4 w-4 text-muted" />
+            <input
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="从 URL 抓取并 ingest…"
+              className="min-w-[200px] flex-1 bg-transparent text-sm outline-none"
+            />
+            <button
+              type="submit"
+              disabled={!url.trim() || submittingUrl}
+              className="admin-btn-secondary btn-sm !py-1.5 text-xs"
+            >
+              {submittingUrl ? "提交中…" : "抓取"}
+            </button>
+          </form>
         ) : null}
 
-        <div className="card overflow-hidden">
-          <div className="border-b px-4 py-2 text-sm font-medium">
-            文档（{kb.documents.length}）
-            {!kb.is_system && kb.documents.length > 0 && (
-              <span className="ml-2 text-xs font-normal text-muted">
-                · 点击「分块管理」查看 / 编辑 chunks
-              </span>
-            )}
-            {kb.is_system && (
-              <span className="ml-2 text-xs text-muted">
-                · 示例库不在 Document 表里展示明细
-              </span>
-            )}
-          </div>
-          {kb.documents.length === 0 ? (
-            <div className="px-4 py-10 text-center text-sm text-muted">
-              {kb.is_system ? (
-                <>
-                  示例库的策展数据通过 <code className="rounded bg-surface-2 px-1.5 py-0.5">data/ingest.py</code> 灌入 Qdrant，不通过此页面管理。
-                  <br />
-                  直接在对话中选中它体验即可。
-                </>
-              ) : (
-                <div className="inline-flex flex-col items-center gap-2">
-                  <FileText className="h-6 w-6 text-muted/50" />
-                  <div>还没有文档</div>
-                  <div className="text-xs">上传一份开始 ingest</div>
+        <AdminPanel
+          title="文档列表"
+          subtitle="支持筛选与分块管理"
+          toolbar={
+            <>
+              <div className="input-shell flex items-center gap-2 px-3 py-1.5">
+                <Search className="h-3.5 w-3.5 text-muted" />
+                <input
+                  type="search"
+                  value={docSearch}
+                  onChange={(e) => setDocSearch(e.target.value)}
+                  placeholder="搜索文档名称"
+                  className="w-36 bg-transparent text-xs outline-none sm:w-44"
+                />
+              </div>
+              <Select
+                size="sm"
+                className="w-[110px]"
+                value={docStatusFilter}
+                onChange={(e) =>
+                  setDocStatusFilter(e.target.value as typeof docStatusFilter)
+                }
+                options={[
+                  { value: "all", label: "全部状态" },
+                  { value: "done", label: "完成" },
+                  { value: "ingesting", label: "处理中" },
+                  { value: "pending", label: "排队" },
+                  { value: "failed", label: "失败" },
+                ]}
+              />
+              <button
+                type="button"
+                onClick={refresh}
+                className="admin-btn-secondary btn-sm !px-3 !py-1.5 text-xs"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                刷新
+              </button>
+            </>
+          }
+          footer={
+            <div className="flex items-center justify-between text-xs text-muted">
+              <span>共 {filteredDocuments.length} 条</span>
+              {docTotalPages > 1 && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="admin-btn-secondary !px-2 !py-1 text-xs"
+                    disabled={docPage <= 1}
+                    onClick={() => setDocPage((p) => Math.max(1, p - 1))}
+                  >
+                    上一页
+                  </button>
+                  <span>
+                    {docPage} / {docTotalPages}
+                  </span>
+                  <button
+                    type="button"
+                    className="admin-btn-secondary !px-2 !py-1 text-xs"
+                    disabled={docPage >= docTotalPages}
+                    onClick={() => setDocPage((p) => p + 1)}
+                  >
+                    下一页
+                  </button>
                 </div>
               )}
             </div>
+          }
+        >
+          {kb.documents.length === 0 ? (
+            <div className="px-4 py-16 text-center text-sm text-muted">
+              {kb.is_system ? (
+                <>示例库文档不在此列表展示</>
+              ) : (
+                <div className="inline-flex flex-col items-center gap-2">
+                  <FileText className="h-8 w-8 text-muted/40" />
+                  <div>还没有文档，点击右上角上传</div>
+                </div>
+              )}
+            </div>
+          ) : filteredDocuments.length === 0 ? (
+            <div className="py-16 text-center text-sm text-muted">没有匹配的文档</div>
           ) : (
-            <ul className="divide-y">
-              {kb.documents.map((d) => (
-                <DocRow
-                  key={d.id}
-                  doc={d}
-                  kbId={id}
-                  readOnly={!canWrite}
-                  onDelete={() => setPendingDelete(d)}
-                />
-              ))}
-            </ul>
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>文档</th>
+                  <th className="w-24">来源</th>
+                  <th className="w-20">处理模式</th>
+                  <th className="w-28">状态</th>
+                  <th className="w-16">启用</th>
+                  <th className="w-16">分块数</th>
+                  <th className="w-20">类型</th>
+                  <th className="w-24">大小</th>
+                  <th className="w-40">更新时间</th>
+                  <th className="w-36">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pagedDocuments.map((d) => {
+                  const st = DOC_STATUS_UI[d.status];
+                  return (
+                    <tr key={d.id}>
+                      <td>
+                        <Link
+                          href={`/kbs/${id}/documents/${d.id}`}
+                          className="inline-flex max-w-xs items-center gap-2 truncate font-medium text-brand hover:underline"
+                        >
+                          <FileText className="h-4 w-4 shrink-0 text-muted" />
+                          <span className="truncate">{d.filename}</span>
+                        </Link>
+                      </td>
+                      <td className="text-xs text-muted">
+                        {d.source_type === "url" ? "URL" : "Local File"}
+                      </td>
+                      <td className="text-xs text-muted">chunk</td>
+                      <td>
+                        <span className="inline-flex items-center gap-1.5 text-xs">
+                          <span className={cn("h-2 w-2 rounded-full", st.dot)} />
+                          {st.label}
+                        </span>
+                      </td>
+                      <td>
+                        <Switch
+                          size="sm"
+                          checked={d.enabled !== false}
+                          disabled={
+                            !canWrite ||
+                            d.status !== "done" ||
+                            docToggleBusy === d.id
+                          }
+                          onCheckedChange={(checked) =>
+                            onToggleDocEnabled(d, checked)
+                          }
+                          title={
+                            d.status !== "done"
+                              ? "ingest 完成后才可启用检索"
+                              : d.enabled !== false
+                                ? "禁用后整篇文档不参与检索"
+                                : "启用后文档 chunks 可参与检索"
+                          }
+                        />
+                      </td>
+                      <td className="tabular-nums">{d.chunks_count}</td>
+                      <td className="text-xs text-muted">
+                        {fileExtension(d.filename)}
+                      </td>
+                      <td className="text-xs text-muted">
+                        {formatFileSize(d.size_bytes)}
+                      </td>
+                      <td className="text-xs text-muted">
+                        {formatAdminDate(d.updated_at ?? d.created_at)}
+                      </td>
+                      <td>
+                        <div className="flex items-center gap-2 text-muted">
+                          {canWrite && d.status === "done" && (
+                            <button
+                              type="button"
+                              title="重新 ingest"
+                              className="rounded p-1 hover:bg-surface-2 hover:text-brand"
+                              onClick={async () => {
+                                try {
+                                  await reingestDocument(id, d.id);
+                                  toast.success("已提交重新 ingest");
+                                  await refresh();
+                                } catch (e) {
+                                  toast.error((e as Error).message);
+                                }
+                              }}
+                            >
+                              <Play className="h-4 w-4" />
+                            </button>
+                          )}
+                          <Link
+                            href={`/kbs/${id}/documents/${d.id}`}
+                            title="分块管理"
+                            className="rounded p-1 hover:bg-surface-2 hover:text-brand"
+                          >
+                            <Layers className="h-4 w-4" />
+                          </Link>
+                          {canWrite && (
+                            <button
+                              type="button"
+                              title="删除"
+                              className="rounded p-1 hover:bg-danger/10 hover:text-danger"
+                              onClick={() => setPendingDelete(d)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           )}
-        </div>
+        </AdminPanel>
 
-        {/* v2-M9: members section. Hidden for system KBs (no real owner / no members). */}
+        <div className="mt-6 space-y-6">
         {!kb.is_system && (
           <MembersSection kbId={kb.id} isOwner={isOwner} />
         )}
@@ -565,7 +779,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
             </button>
           </div>
         )}
-      </main>
+        </div>
 
       <Dialog
         open={pendingDelete != null}
@@ -598,7 +812,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
         onConfirm={confirmRebuildKb}
         busy={rebuildingKb}
       />
-    </div>
+    </AdminPageShell>
   );
 }
 
@@ -619,96 +833,6 @@ function Stat({
         <div className="truncate text-sm">{value}</div>
       </div>
     </div>
-  );
-}
-
-function DocRow({
-  doc,
-  kbId,
-  readOnly,
-  onDelete,
-}: {
-  doc: Document;
-  kbId: string;
-  readOnly?: boolean;
-  onDelete: () => void;
-}) {
-  return (
-    <li className="group flex items-center gap-3 px-4 py-3">
-      <FileText className="h-4 w-4 flex-none opacity-60" />
-      <div className="min-w-0 flex-1">
-        <Link
-          href={`/kbs/${kbId}/documents/${doc.id}`}
-          className="truncate text-sm text-brand hover:underline block"
-        >
-          {doc.filename}
-        </Link>
-        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted">
-          <StatusBadge status={doc.status} />
-          {doc.status === "done" && <span>{doc.chunks_count} chunks</span>}
-          {doc.source_type === "file" && doc.size_bytes > 0 && (
-            <span>{(doc.size_bytes / 1024).toFixed(1)} KB</span>
-          )}
-          {doc.source_type === "url" && doc.source_url && (
-            <a
-              href={doc.source_url}
-              target="_blank"
-              rel="noreferrer"
-              className="max-w-[200px] truncate text-brand hover:underline"
-            >
-              来源
-            </a>
-          )}
-        </div>
-        {doc.status === "failed" && doc.error && (
-          <div className="mt-1 flex items-start gap-1 text-xs text-danger">
-            <AlertCircle className="mt-0.5 h-3 w-3 flex-none" />
-            <span className="truncate">{doc.error}</span>
-          </div>
-        )}
-      </div>
-      <Link
-        href={`/kbs/${kbId}/documents/${doc.id}`}
-        className="btn btn-secondary btn-sm shrink-0"
-        title="查看文档详情与分块管理"
-      >
-        <Layers className="h-3.5 w-3.5" />
-        分块管理
-        <ChevronRight className="h-3.5 w-3.5" />
-      </Link>
-      {!readOnly && (
-        <button
-          onClick={onDelete}
-          className={cn(
-            "rounded-md p-1.5 text-muted opacity-0 transition",
-            "group-hover:opacity-100",
-            "hover:bg-danger/15 hover:text-danger"
-          )}
-          aria-label="delete document"
-          type="button"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
-      )}
-    </li>
-  );
-}
-
-function StatusBadge({ status }: { status: DocStatus }) {
-  const styles: Record<DocStatus, string> = {
-    pending: "border-warning/30 bg-warning/10 text-warning",
-    ingesting: "border-info/30 bg-info/10 text-info",
-    done: "border-success/30 bg-success/10 text-success",
-    failed: "border-danger/30 bg-danger/10 text-danger",
-  };
-  const labels: Record<DocStatus, string> = {
-    pending: "排队",
-    ingesting: "处理中",
-    done: "完成",
-    failed: "失败",
-  };
-  return (
-    <span className={cn("chip", styles[status])}>{labels[status]}</span>
   );
 }
 

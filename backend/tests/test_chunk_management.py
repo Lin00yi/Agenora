@@ -115,6 +115,131 @@ async def test_get_document_and_list_chunks(client, create_user, create_kb, db):
 
 
 @pytest.mark.asyncio
+async def test_list_chunks_search_and_filter(client, create_user, create_kb, db):
+    owner = await create_user("search@x.com")
+    kb = await create_kb(owner.id, name="Search KB")
+
+    from src.infra.database import get_session_factory
+
+    doc_id = str(uuid.uuid4())
+    c1 = str(uuid.uuid4())
+    c2 = str(uuid.uuid4())
+    factory = get_session_factory()
+    async with factory() as session:
+        session.add(
+            Document(
+                id=doc_id,
+                kb_id=kb.id,
+                filename="search.md",
+                status="done",
+                chunks_count=2,
+            )
+        )
+        session.add(
+            Chunk(
+                id=c1,
+                doc_id=doc_id,
+                kb_id=kb.id,
+                chunk_idx=0,
+                text="alpha content",
+                char_count=13,
+                enabled=True,
+            )
+        )
+        session.add(
+            Chunk(
+                id=c2,
+                doc_id=doc_id,
+                kb_id=kb.id,
+                chunk_idx=1,
+                text="beta disabled",
+                char_count=13,
+                enabled=False,
+            )
+        )
+        await session.commit()
+
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": "search@x.com", "password": "password123"},
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    base = f"/api/kbs/{kb.id}/documents/{doc_id}/chunks"
+
+    r_q = await client.get(f"{base}?q=alpha", headers=headers)
+    assert r_q.status_code == 200
+    assert r_q.json()["total"] == 1
+    assert "alpha" in r_q.json()["items"][0]["text"]
+
+    r_disabled = await client.get(f"{base}?enabled=false", headers=headers)
+    assert r_disabled.status_code == 200
+    assert r_disabled.json()["total"] == 1
+    assert r_disabled.json()["items"][0]["enabled"] is False
+
+
+@pytest.mark.asyncio
+async def test_batch_patch_chunks_enabled(client, create_user, create_kb, db):
+    owner = await create_user("batch@x.com")
+    kb = await create_kb(owner.id)
+
+    from src.infra.database import get_session_factory
+
+    doc_id = str(uuid.uuid4())
+    c1 = str(uuid.uuid4())
+    c2 = str(uuid.uuid4())
+    factory = get_session_factory()
+    async with factory() as session:
+        session.add(
+            Document(
+                id=doc_id,
+                kb_id=kb.id,
+                filename="batch.md",
+                status="done",
+                chunks_count=2,
+            )
+        )
+        session.add(
+            Chunk(
+                id=c1,
+                doc_id=doc_id,
+                kb_id=kb.id,
+                chunk_idx=0,
+                text="one",
+                char_count=3,
+                enabled=True,
+            )
+        )
+        session.add(
+            Chunk(
+                id=c2,
+                doc_id=doc_id,
+                kb_id=kb.id,
+                chunk_idx=1,
+                text="two",
+                char_count=3,
+                enabled=True,
+            )
+        )
+        await session.commit()
+
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": "batch@x.com", "password": "password123"},
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    r = await client.patch(
+        f"/api/kbs/{kb.id}/documents/{doc_id}/chunks/batch",
+        headers=headers,
+        json={"chunk_ids": [c1, c2], "enabled": False},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["updated"] == 2
+    assert all(not item["enabled"] for item in body["items"])
+
+
+@pytest.mark.asyncio
 async def test_merge_chunks_requires_adjacency(client, create_user, create_kb):
     owner = await create_user("merge@x.com")
     kb = await create_kb(owner.id)

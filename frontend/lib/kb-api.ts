@@ -52,6 +52,7 @@ export type Document = {
   chunk_max_size: number | null;
   chunk_overlap: number | null;
   parsed_text_length: number;
+  enabled: boolean;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -295,6 +296,7 @@ export async function patchDocument(
     chunk_target?: number | null;
     chunk_max_size?: number | null;
     chunk_overlap?: number | null;
+    enabled?: boolean;
   }
 ): Promise<Document> {
   return unwrap(
@@ -343,14 +345,47 @@ export async function listDocumentChunks(
   kbId: string,
   docId: string,
   page = 1,
-  pageSize = 20
+  pageSize = 20,
+  opts?: { q?: string; enabled?: boolean | null }
 ): Promise<ChunkListResponse> {
   const q = new URLSearchParams({
     page: String(page),
     page_size: String(pageSize),
   });
+  if (opts?.q?.trim()) q.set("q", opts.q.trim());
+  if (opts?.enabled === true) q.set("enabled", "true");
+  if (opts?.enabled === false) q.set("enabled", "false");
   return unwrap(
     await authFetch(`/api/kbs/${kbId}/documents/${docId}/chunks?${q}`)
+  );
+}
+
+export async function batchPatchAllChunks(
+  kbId: string,
+  docId: string,
+  enabled: boolean
+): Promise<{ updated: number; enabled: boolean }> {
+  return unwrap(
+    await authFetch(`/api/kbs/${kbId}/documents/${docId}/chunks/batch-all`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    })
+  );
+}
+
+export async function batchPatchChunks(
+  kbId: string,
+  docId: string,
+  chunkIds: string[],
+  enabled: boolean
+): Promise<{ updated: number; items: Chunk[] }> {
+  return unwrap(
+    await authFetch(`/api/kbs/${kbId}/documents/${docId}/chunks/batch`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chunk_ids: chunkIds, enabled }),
+    })
   );
 }
 
