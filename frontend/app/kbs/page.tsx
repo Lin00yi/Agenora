@@ -502,7 +502,7 @@ function CreateKbDialog({
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-xl rounded-2xl border bg-bg shadow-lift"
+        className="relative w-full max-w-xl rounded-lg border bg-bg shadow-lift"
         role="dialog"
         aria-modal="true"
       >
@@ -545,7 +545,7 @@ function CreateKbDialog({
           </FormField>
 
           {/* v3-M8: embedding always required, no inherit/custom toggle */}
-          <section className="rounded-xl border bg-surface/40 p-4 space-y-2">
+          <section className="rounded-lg border bg-surface/40 p-4 space-y-2">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-medium">Embedding 配置</h3>
               {embedDim != null && (
@@ -924,7 +924,7 @@ function CollapsibleSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border bg-surface/40">
+    <section className="rounded-lg border bg-surface/40">
       <button
         type="button"
         onClick={onToggle}

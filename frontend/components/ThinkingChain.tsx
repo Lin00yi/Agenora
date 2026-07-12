@@ -52,7 +52,7 @@ export default function ThinkingChain({ events }: { events: ToolEvent[] }) {
     : `思考过程 · ${events.length} 步`;
 
   return (
-    <div className="rounded-xl border bg-surface">
+    <div className="rounded-lg border bg-surface">
       <button
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center justify-between px-3 py-2 text-sm"

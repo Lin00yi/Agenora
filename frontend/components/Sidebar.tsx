@@ -61,6 +61,13 @@ export default function Sidebar({
     if (!onRename || !v || v === currentTitle) return;
     void onRename(id, v);
   };
+
+  const requestDelete = (id: string, title: string) => {
+    if (window.confirm(`删除对话「${title}」？此操作不可恢复。`)) {
+      onDelete(id);
+    }
+  };
+
   return (
     <>
       {/* Mobile overlay */}
@@ -73,7 +80,7 @@ export default function Sidebar({
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-[17rem] flex-col border-r border-surface-border/60 bg-surface/95 backdrop-blur-xl transition-transform md:relative md:translate-x-0",
+          "fixed inset-y-0 left-0 z-40 flex w-[18rem] flex-col border-r border-surface-border/70 bg-surface/96 backdrop-blur-xl transition-transform md:relative md:translate-x-0",
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >
@@ -82,8 +89,9 @@ export default function Sidebar({
           <Brand size="sm" />
           <button
             onClick={onToggle}
-            className="rounded-md p-1 hover:bg-surface-2 md:hidden"
-            aria-label="close sidebar"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-lg hover:bg-surface-2 md:hidden"
+            aria-label="关闭侧栏"
+            type="button"
           >
             <X className="h-4 w-4" />
           </button>
@@ -92,7 +100,7 @@ export default function Sidebar({
         {/* New chat */}
         <button
           onClick={onNew}
-          className="m-3 inline-flex items-center justify-center gap-2 rounded-xl border border-brand/25 bg-brand/8 px-3 py-2.5 text-sm font-medium text-brand transition-all hover:border-brand/40 hover:bg-brand/12 active:scale-[0.98]"
+          className="mx-3 mt-3 inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-brand/25 bg-brand px-3 text-sm font-medium text-white shadow-soft transition-all hover:bg-brand-dark active:scale-[0.98]"
           type="button"
         >
           <Plus className="h-4 w-4" />
@@ -102,7 +110,7 @@ export default function Sidebar({
         {/* Conversation list */}
         <nav className="flex-1 overflow-y-auto px-2 pb-3">
           {conversations.length === 0 ? (
-            <div className="mt-4 flex flex-col items-center gap-2 rounded-xl border border-dashed px-3 py-6 text-center text-xs text-muted">
+            <div className="mt-4 flex flex-col items-center gap-2 rounded-lg border border-dashed border-surface-border/80 bg-surface-2/45 px-3 py-6 text-center text-xs text-muted">
               <Sparkles className="h-4 w-4 text-brand/70" />
               <div>还没有对话</div>
               <button
@@ -121,9 +129,9 @@ export default function Sidebar({
                 <div
                   key={c.id}
                   className={cn(
-                    "group flex cursor-pointer items-center gap-2 rounded-xl px-2.5 py-2 text-sm transition-all",
+                    "group flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-all",
                     active
-                      ? "bg-brand/12 font-medium text-brand shadow-sm ring-1 ring-brand/15"
+                      ? "bg-brand/12 font-medium text-fg shadow-sm ring-1 ring-brand/20"
                       : "text-fg/80 hover:bg-surface-2"
                   )}
                   onClick={() => !isEditing && onSelect(c.id)}
@@ -156,8 +164,8 @@ export default function Sidebar({
                         e.stopPropagation();
                         setEditingId(c.id);
                       }}
-                      className="rounded p-1 opacity-0 transition hover:bg-brand/15 hover:text-brand group-hover:opacity-100"
-                      aria-label="rename conversation"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg opacity-100 transition hover:bg-brand/15 hover:text-brand sm:opacity-0 sm:group-hover:opacity-100"
+                      aria-label="重命名对话"
                       title="重命名"
                       type="button"
                     >
@@ -168,10 +176,10 @@ export default function Sidebar({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        onDelete(c.id);
+                        requestDelete(c.id, c.title);
                       }}
-                      className="rounded p-1 opacity-0 transition hover:bg-danger/15 hover:text-danger group-hover:opacity-100"
-                      aria-label="delete conversation"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg opacity-100 transition hover:bg-danger/15 hover:text-danger sm:opacity-0 sm:group-hover:opacity-100"
+                      aria-label="删除对话"
                       title="删除"
                       type="button"
                     >
@@ -249,10 +257,10 @@ function UserMenu({
   const initial = (user.display_name?.trim()?.[0] || user.email[0] || "?").toUpperCase();
 
   return (
-    <div ref={containerRef} className="relative border-t p-2">
+    <div ref={containerRef} className="relative border-t border-surface-border/70 p-2">
       {/* Popup menu — anchored above the trigger button */}
       {open && (
-        <div className="absolute bottom-full left-2 right-2 mb-1 overflow-hidden rounded-lg border bg-bg shadow-lift">
+        <div className="absolute bottom-full left-2 right-2 mb-1 overflow-hidden rounded-lg border border-surface-border/80 bg-surface shadow-lift">
           <button
             onClick={() => {
               setOpen(false);
@@ -339,7 +347,7 @@ export function SidebarToggle({ onClick }: { onClick: () => void }) {
     <button
       onClick={onClick}
       className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-surface-2 md:hidden"
-      aria-label="toggle sidebar"
+      aria-label="打开侧栏"
       type="button"
     >
       <Menu className="h-5 w-5" />

@@ -7,7 +7,7 @@ export default function ReportView({ markdown, streaming }: { markdown: string; 
   return (
     <article
       id="report-output"
-      className="prose-tg rounded-2xl rounded-tl-sm border bg-surface px-4 py-3 shadow-soft"
+      className="prose-tg rounded-lg rounded-tl-sm border bg-surface px-4 py-3 shadow-soft"
     >
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown.replace(/\\n/g, "\n")}</ReactMarkdown>
       {streaming && (

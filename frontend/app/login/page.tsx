@@ -61,7 +61,7 @@ export default function LoginPage() {
 
         <div className="flex flex-1 items-center justify-center py-8">
           <div className="w-full max-w-sm">
-            <div className="card p-8 shadow-lift">
+            <div className="card p-7 shadow-lift sm:p-8">
               <h1 className="text-2xl font-bold tracking-tight">
                 欢迎回到 {APP_NAME}
               </h1>

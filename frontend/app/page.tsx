@@ -738,7 +738,7 @@ export default function Page() {
 
       <main className="flex flex-1 flex-col min-w-0">
         {/* Top bar */}
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-surface-border/60 bg-bg/70 px-3 backdrop-blur-xl md:gap-3 md:px-6">
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-surface-border/70 bg-surface/82 px-3 backdrop-blur-xl md:gap-3 md:px-5">
           <SidebarToggle onClick={() => setSidebarOpen(true)} />
 
           {/* Brand: icon-only on mobile, full on md+ */}
@@ -747,7 +747,7 @@ export default function Page() {
           <div className="hidden h-5 w-px bg-border md:block" />
 
           {/* Current conversation title */}
-          <div className="flex-1 min-w-0 truncate text-sm text-muted">
+          <div className="flex-1 min-w-0 truncate text-sm font-medium text-muted">
             {current?.title ?? "开始新对话"}
           </div>
 
@@ -823,9 +823,9 @@ export default function Page() {
 
         {/* Messages area */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-none px-6 py-6 sm:px-10 md:px-16 lg:px-24">
+          <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
             {isEmpty ? (
-              <Hero
+              <HeroV2
                 mode={
                   !currentKbId
                     ? "unbound"
@@ -864,8 +864,8 @@ export default function Page() {
         </div>
 
         {/* Input area */}
-        <div className="shrink-0 border-t border-surface-border/60 bg-bg/70 backdrop-blur-xl">
-          <div className="mx-auto w-full max-w-none px-6 py-3 sm:px-10 md:px-16 lg:px-24">
+        <div className="shrink-0 border-t border-surface-border/70 bg-surface/82 backdrop-blur-xl">
+          <div className="mx-auto w-full max-w-6xl px-4 py-3 sm:px-6 lg:px-8">
             <ChatBox onSend={handleSend} onStop={handleStop} busy={busy} />
             <p className="mt-2 text-center text-[11px] text-muted">
               {APP_NAME} 可能产生不准确的信息。请以原文为准。
@@ -894,28 +894,121 @@ function Hero({
       ? "TravelGPT 演示库 · 4 城本地老饕"
       : `📚 在「${kbName ?? "知识库"}」中提问`;
   return (
-    <div className="flex min-h-[60vh] flex-col items-center justify-center text-center">
-      <Brand size="lg" showWordmark={false} className="mb-5" />
-      <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+    <div className="flex min-h-[62vh] flex-col items-center justify-center text-center">
+      <Brand size="lg" showWordmark={false} className="mb-4" />
+      <h1 className="text-3xl font-semibold tracking-tight text-fg sm:text-4xl">
         {APP_NAME}
       </h1>
-      <p className="mt-2 text-sm text-fg/80 sm:text-base">{subtitle}</p>
-      <p className="mt-1 text-xs text-muted">
+      <p className="mt-3 text-sm text-fg/80 sm:text-base">{subtitle}</p>
+      <p className="mt-1 text-xs leading-6 text-muted">
         上传文档 · 抓取网页 · 一句话问
       </p>
 
-      <div className="mt-8 grid w-full max-w-xl grid-cols-1 gap-2 sm:grid-cols-2">
+      <div className="mt-8 grid w-full max-w-3xl grid-cols-1 gap-3 sm:grid-cols-2">
         {suggestions.map(({ text, Icon }) => (
           <button
             key={text}
             onClick={() => onPick(text)}
-            className="card card-hover group flex items-start gap-3 border-surface-border/60 px-4 py-3.5 text-left text-sm"
+            className="group flex min-h-[88px] items-start gap-3 rounded-lg border border-surface-border/70 bg-surface px-4 py-3.5 text-left text-sm leading-6 shadow-soft transition hover:border-brand/35 hover:shadow-lift"
             type="button"
           >
-            <Icon className="mt-0.5 h-4 w-4 flex-none text-brand transition group-hover:scale-110" />
+            <span className="mt-0.5 flex h-7 w-7 flex-none items-center justify-center rounded-lg bg-brand/10 text-brand transition group-hover:bg-brand/15">
+              <Icon className="h-4 w-4" />
+            </span>
             <span>{text}</span>
           </button>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function HeroV2({
+  mode,
+  kbName,
+  onPick,
+}: {
+  mode: HeroMode;
+  kbName: string | null;
+  onPick: (p: string) => void;
+}) {
+  const suggestions = SUGGESTIONS_BY_MODE[mode];
+  const modeLabel =
+    mode === "unbound"
+      ? "通用聊天"
+      : mode === "travel"
+      ? "TravelGPT 示例库"
+      : kbName ?? "当前知识库";
+
+  return (
+    <div className="grid min-h-[62vh] items-center gap-6 lg:grid-cols-[0.92fr_1.08fr]">
+      <section className="rounded-lg border border-surface-border/80 bg-surface p-5 shadow-soft sm:p-6">
+        <div className="flex items-center gap-3">
+          <Brand size="md" showWordmark={false} />
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-brand">
+              {modeLabel}
+            </div>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
+              今天要从哪份知识开始？
+            </h1>
+          </div>
+        </div>
+        <p className="mt-4 max-w-xl text-sm leading-7 text-muted">
+          选择知识库、输入问题，AnyKB 会展示检索过程、命中来源和最终报告。你也可以直接从右侧建议问题开始。
+        </p>
+        <div className="mt-6 grid gap-2 sm:grid-cols-3">
+          <HeroStat label="知识库" value={kbName ?? "未绑定"} icon={<BookOpen className="h-4 w-4" />} />
+          <HeroStat label="模式" value={mode === "unbound" ? "通用" : "RAG"} icon={<MessageSquare className="h-4 w-4" />} />
+          <HeroStat label="输出" value="报告" icon={<FileText className="h-4 w-4" />} />
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-surface-border/80 bg-surface p-3 shadow-soft">
+        <div className="flex items-center justify-between border-b border-surface-border/70 px-2 pb-3">
+          <div>
+            <p className="text-sm font-semibold">建议问题</p>
+            <p className="mt-1 text-xs text-muted">点击后会直接发送到当前对话。</p>
+          </div>
+          <Sparkles className="h-4 w-4 text-brand" />
+        </div>
+        <div className="mt-3 grid gap-2">
+          {suggestions.map(({ text, Icon }) => (
+            <button
+              key={text}
+              onClick={() => onPick(text)}
+              className="group flex min-h-[64px] cursor-pointer items-start gap-3 rounded-lg border border-surface-border/70 bg-bg px-3.5 py-3 text-left text-sm leading-6 transition hover:border-brand/35 hover:bg-surface hover:shadow-soft"
+              type="button"
+            >
+              <span className="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-brand/10 text-brand">
+                <Icon className="h-4 w-4" />
+              </span>
+              <span className="pt-0.5">{text}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function HeroStat({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border border-surface-border/70 bg-bg px-3 py-3">
+      <div className="flex items-center gap-2 text-xs text-muted">
+        <span className="text-brand">{icon}</span>
+        {label}
+      </div>
+      <div className="mt-2 truncate text-sm font-medium" title={value}>
+        {value}
       </div>
     </div>
   );

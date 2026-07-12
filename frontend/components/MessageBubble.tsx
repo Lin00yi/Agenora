@@ -18,7 +18,7 @@ export default function MessageBubble({
     return (
       <div className="flex justify-end">
         <div className="flex max-w-[85%] items-end gap-2.5">
-          <div className="rounded-2xl rounded-br-md bg-gradient-to-br from-brand to-brand-dark px-4 py-2.5 text-[15px] leading-relaxed text-white shadow-sm whitespace-pre-wrap break-words">
+          <div className="rounded-lg rounded-br-sm bg-brand px-4 py-2.5 text-[15px] leading-relaxed text-white shadow-soft whitespace-pre-wrap break-words">
             {message.content}
           </div>
           <div className="mb-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-full bg-brand/15 text-brand ring-1 ring-brand/20">
@@ -53,13 +53,13 @@ export default function MessageBubble({
           {showWritingHint && <ThinkingPlaceholder label="正在撰写报告" />}
 
           {message.error && (
-            <div className="rounded-xl border border-red-300/40 bg-red-50/80 p-3.5 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
+            <div className="rounded-lg border border-red-300/40 bg-red-50/80 p-3.5 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
               {message.error}
             </div>
           )}
 
           {hasContent && (
-            <div className="rounded-2xl rounded-tl-md border border-surface-border/60 bg-surface px-4 py-3 shadow-soft">
+            <div className="rounded-lg rounded-tl-sm border border-surface-border/70 bg-surface px-4 py-3 shadow-soft">
               <ReportView markdown={message.content} streaming={streaming} />
             </div>
           )}
@@ -83,7 +83,7 @@ export default function MessageBubble({
 
 function ThinkingPlaceholder({ label }: { label: string }) {
   return (
-    <div className="inline-flex items-center gap-2.5 rounded-xl border border-surface-border/60 bg-surface px-3.5 py-2.5 text-sm text-muted shadow-soft">
+    <div className="inline-flex items-center gap-2.5 rounded-lg border border-surface-border/70 bg-surface px-3.5 py-2.5 text-sm text-muted shadow-soft">
       <span className="relative inline-flex h-2 w-2">
         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-50" />
         <span className="relative inline-flex h-2 w-2 rounded-full bg-brand" />

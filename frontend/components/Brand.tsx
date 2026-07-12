@@ -18,12 +18,12 @@ const SIZES: Record<BrandSize, { box: string; icon: string; text: string }> = {
     text: "text-sm font-semibold",
   },
   md: {
-    box: "h-8 w-8 rounded-xl",
+    box: "h-8 w-8 rounded-lg",
     icon: "h-4 w-4",
     text: "text-base font-semibold",
   },
   lg: {
-    box: "h-14 w-14 rounded-2xl",
+    box: "h-14 w-14 rounded-xl",
     icon: "h-7 w-7",
     text: "text-3xl font-semibold tracking-tight sm:text-4xl",
   },
@@ -44,7 +44,7 @@ export default function Brand({
       <div
         className={cn(
           "flex items-center justify-center text-white",
-          "bg-gradient-to-br from-brand to-brand/70 shadow-soft",
+          "bg-brand shadow-soft ring-1 ring-white/20",
           s.box
         )}
         aria-hidden
