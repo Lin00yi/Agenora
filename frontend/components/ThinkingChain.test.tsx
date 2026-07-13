@@ -1,3 +1,4 @@
+import React from "react";
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import ThinkingChain from "@/components/ThinkingChain";
@@ -12,6 +13,6 @@ describe("ThinkingChain", () => {
         ]}
       />
     );
-    expect(screen.getByText(/思考过程 · 2 步/)).toBeTruthy();
+    expect(screen.getByText(/思考中 · 1\/2 步/)).toBeTruthy();
   });
 });

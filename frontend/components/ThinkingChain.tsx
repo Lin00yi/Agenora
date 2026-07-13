@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, CircleCheck, CircleAlert, LoaderCircle, Ban } from "lucide-react";
 
 export type ToolEvent = {

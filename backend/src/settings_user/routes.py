@@ -107,6 +107,30 @@ class KbOptionsBody(BaseModel):
 # ---------------------------------------------------------------------------
 def _to_public(user: User) -> dict:
     """Saved-side projection (user's persisted choices). Never reveal api_key."""
+    from src.settings import get_settings
+
+    s = get_settings()
+    user_llm_configured = bool(
+        user.llm_provider
+        and user.llm_base_url
+        and user.llm_api_key_enc
+        and user.llm_default_model
+    )
+    system_llm_base_url = (
+        s.deepseek_base_url if s.llm_provider == "deepseek" else s.anthropic_base_url
+    )
+    system_llm_has_key = bool(
+        s.deepseek_api_key if s.llm_provider == "deepseek" else s.anthropic_api_key
+    )
+    system_llm_configured = bool(system_llm_base_url and system_llm_has_key and s.llm_default_model)
+    effective_llm_source = (
+        "user"
+        if user_llm_configured
+        else "system"
+        if (not s.byok_required and system_llm_configured)
+        else "missing"
+    )
+
     return {
         "llm": {
             "provider": user.llm_provider,
@@ -114,11 +138,15 @@ def _to_public(user: User) -> dict:
             "default_model": user.llm_default_model,
             "complex_model": user.llm_complex_model,
             "has_key": bool(user.llm_api_key_enc),
-            "configured": bool(
-                user.llm_provider
-                and user.llm_base_url
-                and user.llm_api_key_enc
-                and user.llm_default_model
+            "configured": user_llm_configured,
+            "effective_configured": effective_llm_source != "missing",
+            "effective_source": effective_llm_source,
+            "effective_model": (
+                user.llm_default_model
+                if user_llm_configured
+                else s.llm_default_model
+                if effective_llm_source == "system"
+                else None
             ),
         },
         "embedding": {
