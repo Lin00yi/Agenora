@@ -37,6 +37,7 @@ export type Conversation = {
   kb_id?: string | null;
   /** v3-M6: per-conversation LLM model override. null = use user default. */
   llm_model?: string | null;
+  message_count?: number;
   created_at: number;
   updated_at: number;
 };

@@ -25,6 +25,232 @@
   --info: 37 99 235;
 }
 
+/* Chat workspace theme bridge.
+   The redesigned chat page originally used hardcoded dark Tailwind utilities.
+   These scoped rules let the existing layout respond to the app theme without
+   affecting admin/settings/auth pages. */
+@layer components {
+  .ak-chat {
+    --ak-bg: 237 242 249;
+    --ak-sidebar: 244 248 252;
+    --ak-topbar: 248 251 253;
+    --ak-surface: 250 252 254;
+    --ak-surface-2: 244 248 252;
+    --ak-panel: 246 250 253;
+    --ak-card: 253 254 255;
+    --ak-composer: 240 246 252;
+    --ak-border: 203 214 229;
+    --ak-text: 15 23 42;
+    --ak-text-2: 51 65 85;
+    --ak-muted: 100 116 139;
+    --ak-faint: 148 163 184;
+    --ak-tint: 15 23 42 / 0.028;
+    --ak-hover: 15 23 42 / 0.055;
+    --ak-main-bg:
+      radial-gradient(circle at 50% 0%, rgb(16 185 129 / 0.055), transparent 34%),
+      linear-gradient(180deg, rgb(248 251 253), rgb(237 242 249));
+    background: rgb(var(--ak-bg)) !important;
+    color: rgb(var(--ak-text)) !important;
+  }
+
+  .dark .ak-chat {
+    --ak-bg: 8 16 28;
+    --ak-sidebar: 10 18 31;
+    --ak-topbar: 11 20 34;
+    --ak-surface: 17 28 43;
+    --ak-surface-2: 13 23 38;
+    --ak-panel: 10 18 31;
+    --ak-card: 17 28 43;
+    --ak-composer: 8 16 28;
+    --ak-border: 255 255 255 / 0.10;
+    --ak-text: 241 245 249;
+    --ak-text-2: 203 213 225;
+    --ak-muted: 148 163 184;
+    --ak-faint: 71 85 105;
+    --ak-tint: 255 255 255 / 0.05;
+    --ak-hover: 255 255 255 / 0.08;
+    --ak-main-bg:
+      radial-gradient(circle at 50% 0%, rgb(16 185 129 / 0.10), transparent 32%),
+      linear-gradient(180deg, #0d1624, #08101c);
+  }
+
+  .ak-chat [class*="bg-[#08101c]"],
+  .ak-chat [class*="bg-[#0a121f]"],
+  .ak-chat [class*="bg-[#0b1422]"],
+  .ak-chat [class*="bg-[#0d1726]"],
+  .ak-chat [class*="bg-[#111c2b]"] {
+    background-color: rgb(var(--ak-surface)) !important;
+  }
+
+  .ak-chat .ak-sidebar {
+    background-color: rgb(var(--ak-sidebar) / 0.98) !important;
+  }
+
+  .ak-chat .ak-topbar {
+    background-color: rgb(var(--ak-topbar) / 0.94) !important;
+  }
+
+  .ak-chat .ak-main {
+    background: var(--ak-main-bg) !important;
+  }
+
+  .ak-chat .ak-insight {
+    background-color: rgb(var(--ak-panel)) !important;
+  }
+
+  .ak-chat .ak-composer {
+    background-color: rgb(var(--ak-composer) / 0.94) !important;
+  }
+
+  .ak-chat .ak-card,
+  .ak-chat .ak-composer-box,
+  .ak-chat .ak-popover {
+    background-color: rgb(var(--ak-card)) !important;
+    border-color: rgb(var(--ak-border)) !important;
+    box-shadow: 0 10px 28px rgb(15 23 42 / 0.06) !important;
+  }
+
+  .dark .ak-chat .ak-card,
+  .dark .ak-chat .ak-composer-box,
+  .dark .ak-chat .ak-popover {
+    box-shadow: 0 18px 46px rgb(0 0 0 / 0.28) !important;
+  }
+
+  .ak-chat [class*="bg-[radial-gradient"] {
+    background: var(--ak-main-bg) !important;
+  }
+
+  .ak-chat [class*="bg-white/"],
+  .ak-chat [class*="bg-black/"] {
+    background-color: rgb(var(--ak-tint)) !important;
+  }
+
+  .ak-chat [class*="hover:bg-white"]:hover,
+  .ak-chat [class*="hover:bg-black"]:hover {
+    background-color: rgb(var(--ak-hover)) !important;
+  }
+
+  .ak-chat .ak-sidebar [class*="bg-white/"] {
+    background-color: rgb(15 23 42 / 0.035) !important;
+  }
+
+  .ak-chat .ak-sidebar [class*="bg-black/"] {
+    background-color: rgb(15 23 42 / 0.025) !important;
+  }
+
+  .ak-chat .ak-composer [class*="bg-white/"] {
+    background-color: rgb(255 255 255 / 0.72) !important;
+  }
+
+  .ak-chat .ak-composer .ak-control,
+  .ak-chat .ak-control {
+    background-color: rgb(249 252 255 / 0.96) !important;
+    border-color: rgb(var(--ak-border)) !important;
+    color: rgb(var(--ak-text-2)) !important;
+  }
+
+  .ak-chat .ak-composer .ak-control:hover,
+  .ak-chat .ak-control:hover {
+    background-color: rgb(255 255 255) !important;
+  }
+
+  .ak-chat .ak-composer .ak-control:disabled,
+  .ak-chat .ak-composer .ak-control [disabled],
+  .ak-chat .ak-control:disabled,
+  .ak-chat .ak-control [disabled] {
+    background-color: transparent !important;
+    color: rgb(var(--ak-text-2)) !important;
+    opacity: 0.72 !important;
+  }
+
+  .ak-chat .ak-composer .ak-control:has(select:disabled),
+  .ak-chat .ak-composer .ak-control:has(option:disabled) {
+    background-color: rgb(249 252 255 / 0.96) !important;
+  }
+
+  .ak-chat .ak-composer .ak-control select,
+  .ak-chat .ak-control select {
+    background-color: transparent !important;
+    color: rgb(var(--ak-text-2)) !important;
+  }
+
+  .ak-chat .ak-control-primary:not(:disabled) {
+    background-color: rgb(16 185 129) !important;
+    color: white !important;
+  }
+
+  .ak-chat .ak-control-primary:disabled {
+    background-color: rgb(148 211 190) !important;
+    color: rgb(255 255 255 / 0.82) !important;
+    opacity: 1 !important;
+  }
+
+  .dark .ak-chat .ak-composer .ak-control,
+  .dark .ak-chat .ak-control {
+    background-color: rgb(15 26 42 / 0.94) !important;
+    border-color: rgb(255 255 255 / 0.12) !important;
+    color: rgb(var(--ak-text-2)) !important;
+  }
+
+  .dark .ak-chat .ak-composer .ak-control:hover,
+  .dark .ak-chat .ak-control:hover {
+    background-color: rgb(20 34 53 / 0.98) !important;
+  }
+
+  .dark .ak-chat .ak-composer .ak-control:has(select:disabled),
+  .dark .ak-chat .ak-composer .ak-control:has(option:disabled) {
+    background-color: rgb(15 26 42 / 0.94) !important;
+  }
+
+  .ak-chat [class*="border-white/"],
+  .ak-chat [class*="border-slate-600"] {
+    border-color: rgb(var(--ak-border)) !important;
+  }
+
+  .ak-chat .text-slate-100 {
+    color: rgb(var(--ak-text)) !important;
+  }
+
+  .ak-chat .text-slate-200,
+  .ak-chat .text-slate-300 {
+    color: rgb(var(--ak-text-2)) !important;
+  }
+
+  .ak-chat .text-slate-400,
+  .ak-chat .text-slate-500 {
+    color: rgb(var(--ak-muted)) !important;
+  }
+
+  .ak-chat .text-slate-600 {
+    color: rgb(var(--ak-faint)) !important;
+  }
+
+  .ak-chat [class*="hover:text-slate"]:hover {
+    color: rgb(var(--ak-text)) !important;
+  }
+
+  .ak-chat [class*="bg-slate-700"] {
+    background-color: rgb(var(--ak-border)) !important;
+    color: rgb(var(--ak-muted)) !important;
+  }
+
+  .ak-chat select,
+  .ak-chat option,
+  .ak-chat textarea,
+  .ak-chat input {
+    color: rgb(var(--ak-text)) !important;
+  }
+
+  .ak-chat select,
+  .ak-chat option {
+    background-color: rgb(var(--ak-surface)) !important;
+  }
+
+  .ak-chat ::placeholder {
+    color: rgb(var(--ak-muted)) !important;
+  }
+}
+
 .dark {
   --bg: 12 15 19;
   --fg: 244 247 251;

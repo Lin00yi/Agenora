@@ -6,13 +6,14 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 
 const OPTIONS = [
-  { value: "light" as const, Icon: Sun, label: "亮色" },
+  { value: "light" as const, Icon: Sun, label: "浅色" },
   { value: "system" as const, Icon: Monitor, label: "跟随系统" },
-  { value: "dark" as const, Icon: Moon, label: "暗色" },
+  { value: "dark" as const, Icon: Moon, label: "深色" },
 ];
 
 export default function ThemeToggle({ className }: { className?: string }) {
   const { theme, setTheme } = useTheme();
+
   return (
     <ToggleGroup
       type="single"

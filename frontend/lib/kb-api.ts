@@ -24,6 +24,12 @@ export type KB = {
   vector_size: number;
   chunks_count: number;
   documents_count: number;
+  document_status_counts?: {
+    pending: number;
+    ingesting: number;
+    done: number;
+    failed: number;
+  };
   is_system: boolean;
   /** v3-M3: owner toggle. When true, KB search returns at most 1 chunk per
    *  document via Milvus group_by_field. */

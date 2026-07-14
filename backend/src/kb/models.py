@@ -166,6 +166,16 @@ class KB(Base):
         return m.role if m else None  # type: ignore[return-value]
 
     def to_public_dict(self, my_role: Optional[Role] = None) -> dict:
+        docs = self.documents or []
+        status_counts = {
+            "pending": 0,
+            "ingesting": 0,
+            "done": 0,
+            "failed": 0,
+        }
+        for doc in docs:
+            if doc.status in status_counts:
+                status_counts[doc.status] += 1
         out = {
             "id": self.id,
             "name": self.name,
@@ -173,7 +183,8 @@ class KB(Base):
             "embedding_model": self.embedding_model,
             "vector_size": self.vector_size,
             "chunks_count": self.chunks_count,
-            "documents_count": len(self.documents) if self.documents is not None else 0,
+            "documents_count": len(docs),
+            "document_status_counts": status_counts,
             "is_system": bool(self.is_system),
             "grouping_enabled": bool(self.grouping_enabled),
             "chunk_target": self.chunk_target,

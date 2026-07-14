@@ -7,13 +7,10 @@ const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || "AnyKB";
 
 export const metadata: Metadata = {
   title: APP_NAME,
-  description:
-    "把任意知识库变成可对话的：上传文档、抓取网页，然后一句话问出来。",
+  description: "把任意知识库变成可对话的资料助手：上传文档、抓取网页，然后一句话问出答案。",
 };
 
-// Inline script that runs synchronously before paint so the dark class is
-// applied before the first frame — avoids the flash of light theme for
-// users who prefer dark.
+// Runs before paint so the dark class is applied before the first frame.
 const NO_FLASH = `(function(){try{var t=localStorage.getItem('anykb:theme')||'system';var d=t==='dark'||(t==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);}catch(e){}})()`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

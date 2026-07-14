@@ -320,6 +320,20 @@ _KNOWN_PAYLOAD_KEYS = [
     "description", "reason", "tags",
 ]
 
+_MILVUS_VARCHAR_PAYLOAD_FIELDS: dict[str, int] = {
+    "doc_id": 64,
+    "kb_id": 64,
+    "filename": 1024,
+    "source_type": 32,
+    "source_url": 2048,
+    "city": 128,
+    "cuisine": 128,
+    "name": 512,
+    "address": 1024,
+    "description": 8192,
+    "reason": 8192,
+}
+
 
 def _build_milvus_filter_expr(filters: dict[str, str] | None) -> str:
     """Convert {key: value} dict to Milvus filter expression syntax.
@@ -427,6 +441,25 @@ class MilvusStore:
                 return int(field.get("params", {}).get("dim", 0))
         return 0
 
+    def _field_names_sync(self, name: str) -> set[str]:
+        if not self._has(name):
+            return set()
+        info = self._client.describe_collection(collection_name=name)
+        return {
+            str(field.get("name"))
+            for field in info.get("fields", [])
+            if field.get("name")
+        }
+
+    async def _field_names(self, name: str) -> set[str]:
+        return await asyncio.to_thread(self._field_names_sync, name)
+
+    async def _output_fields(self, name: str) -> list[str]:
+        fields = await self._field_names(name)
+        return ["vector"] + [
+            key for key in _KNOWN_PAYLOAD_KEYS if key in fields and key != "vector"
+        ]
+
     async def ensure_collection(
         self, vector_size: int, collection_name: str | None = None
     ) -> None:
@@ -463,6 +496,18 @@ class MilvusStore:
             max_length=65535,
             enable_analyzer=True,
         )
+        for field_name, max_length in _MILVUS_VARCHAR_PAYLOAD_FIELDS.items():
+            schema.add_field(
+                field_name,
+                DataType.VARCHAR,
+                max_length=max_length,
+                nullable=True,
+            )
+        schema.add_field("chunk_idx", DataType.INT64, nullable=True)
+        schema.add_field("enabled", DataType.BOOL, nullable=True)
+        schema.add_field("doc_enabled", DataType.BOOL, nullable=True)
+        schema.add_field("rating", DataType.FLOAT, nullable=True)
+        schema.add_field("tags", DataType.JSON, nullable=True)
         schema.add_field("text_bm25", DataType.SPARSE_FLOAT_VECTOR)
         schema.add_function(
             Function(
@@ -579,10 +624,15 @@ class MilvusStore:
             composed["city"] = city
         if filters:
             composed.update(filters)
+        fields = await self._field_names(target)
+        if composed and not set(composed).issubset(fields):
+            return []
         expr = _build_milvus_filter_expr(composed)
 
         # Explicit output fields — Milvus 3.0 ignores '*' for dynamic.
-        output_fields = ["vector"] + _KNOWN_PAYLOAD_KEYS
+        output_fields = ["vector"] + [
+            key for key in _KNOWN_PAYLOAD_KEYS if key in fields and key != "vector"
+        ]
 
         raw = await asyncio.to_thread(
             self._client.search,
@@ -651,8 +701,13 @@ class MilvusStore:
         if not filters:
             raise ValueError("list_by_filter requires at least one filter")
         await self._ensure_loaded(collection_name)
+        fields = await self._field_names(collection_name)
+        if not set(filters).issubset(fields):
+            return []
         expr = _build_milvus_filter_expr(filters)
-        output_fields = _KNOWN_PAYLOAD_KEYS
+        output_fields = [
+            key for key in _KNOWN_PAYLOAD_KEYS if key in fields and key != "vector"
+        ]
         raw = await asyncio.to_thread(
             self._client.query,
             collection_name=collection_name,
@@ -683,7 +738,7 @@ class MilvusStore:
             for i in point_ids
         )
         expr = f"id in [{ids_escaped}]"
-        output_fields = ["vector"] + _KNOWN_PAYLOAD_KEYS
+        output_fields = await self._output_fields(collection_name)
         raw = await asyncio.to_thread(
             self._client.query,
             collection_name=collection_name,
@@ -718,12 +773,8 @@ class MilvusStore:
         """
         if not self._has(collection_name):
             return False
-        info = await asyncio.to_thread(
-            self._client.describe_collection, collection_name=collection_name
-        )
-        return any(
-            f.get("name") == "text_bm25" for f in info.get("fields", [])
-        )
+        fields = await self._field_names(collection_name)
+        return {"text_bm25", "doc_id"}.issubset(fields)
 
     async def hybrid_search(
         self,
@@ -754,6 +805,11 @@ class MilvusStore:
         from pymilvus import AnnSearchRequest, RRFRanker
 
         await self._ensure_loaded(collection_name)
+        fields = await self._field_names(collection_name)
+        if filters and not set(filters).issubset(fields):
+            return []
+        if group_by and group_by not in fields:
+            return []
         expr = _build_milvus_filter_expr(filters) if filters else ""
 
         # Over-fetch each route so RRF has more candidates to fuse.
@@ -778,7 +834,9 @@ class MilvusStore:
             reqs=[dense_req, sparse_req],
             ranker=RRFRanker(k=60),
             limit=limit,
-            output_fields=["vector"] + _KNOWN_PAYLOAD_KEYS,
+            output_fields=["vector"] + [
+                key for key in _KNOWN_PAYLOAD_KEYS if key in fields and key != "vector"
+            ],
         )
         if group_by:
             kwargs["group_by_field"] = group_by

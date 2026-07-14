@@ -1,17 +1,25 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import ThemeToggle from "@/components/ThemeToggle";
 import {
   Box,
+  BookOpen,
   Check,
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
-  ChevronRight,
   Circle,
   Copy,
   Database,
@@ -25,6 +33,7 @@ import {
   Search,
   Send,
   Settings,
+  Shield,
   ShieldCheck,
   SlidersHorizontal,
   Square,
@@ -58,11 +67,11 @@ import {
 import { listKbs, type KB } from "@/lib/kb-api";
 import { connectChat, type ChatEvent, type ChatMessage } from "@/lib/sseClient";
 
-const DEFAULT_TITLE = "新对话";
+const DEFAULT_TITLE = "\u65b0\u5bf9\u8bdd";
 const EMPTY_PROMPTS = [
-  "AnyKB 如何保证数据的安全性？是否支持本地部署和私有化？",
-  "总结这个知识库最近上传资料的核心结论",
-  "帮我找出权限配置和 BYOK 相关说明",
+  "AnyKB \u5982\u4f55\u4fdd\u8bc1\u6570\u636e\u7684\u5b89\u5168\u6027\uff1f\u662f\u5426\u652f\u6301\u672c\u5730\u90e8\u7f72\u548c\u79c1\u6709\u5316\uff1f",
+  "\u603b\u7ed3\u8fd9\u4e2a\u77e5\u8bc6\u5e93\u6700\u8fd1\u4e0a\u4f20\u8d44\u6599\u7684\u6838\u5fc3\u7ed3\u8bba",
+  "\u5e2e\u6211\u627e\u51fa\u6743\u9650\u914d\u7f6e\u548c BYOK \u76f8\u5173\u8bf4\u660e",
 ];
 
 type SourceRow = {
@@ -80,6 +89,8 @@ type ProcessStep = {
 };
 
 type LlmSource = "user" | "system" | "missing";
+
+const CONVERSATION_PAGE_SIZE = 30;
 
 function conversationHref(id: string) {
   return `/c/${encodeURIComponent(id)}`;
@@ -115,9 +126,22 @@ function summaryToConv(s: ConversationSummary, messages: Message[] = []): Conver
     messages,
     kb_id: s.kb_id,
     llm_model: s.llm_model,
+    message_count: s.message_count,
     created_at: createdMs,
     updated_at: updatedMs,
   };
+}
+
+function mergeConversationSummaries(
+  current: ConversationSummary[],
+  incoming: ConversationSummary[]
+) {
+  const seen = new Set<string>();
+  return [...current, ...incoming].filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
 }
 
 export function ChatPage({ routeConversationId = null }: { routeConversationId?: string | null }) {
@@ -126,6 +150,10 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
   const [authChecked, setAuthChecked] = useState(false);
 
   const [summaries, setSummaries] = useState<ConversationSummary[]>([]);
+  const [conversationTotal, setConversationTotal] = useState(0);
+  const [conversationPage, setConversationPage] = useState(1);
+  const [conversationHasMore, setConversationHasMore] = useState(false);
+  const [conversationLoadingMore, setConversationLoadingMore] = useState(false);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [currentMessages, setCurrentMessages] = useState<Message[]>([]);
   const [currentKbId, setCurrentKbId] = useState<string | null>(null);
@@ -182,15 +210,27 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
       setCurrentMessages(msgs);
       setCurrentKbId(detail.kb_id);
       setCurrentModel(detail.llm_model ?? null);
+      setSummaries((prev) => {
+        if (prev.some((item) => item.id === detail.id)) return prev;
+        const summary: ConversationSummary = {
+          id: detail.id,
+          title: detail.title,
+          kb_id: detail.kb_id,
+          llm_model: detail.llm_model,
+          message_count: detail.message_count,
+          created_at: detail.created_at,
+          updated_at: detail.updated_at,
+        };
+        return [summary, ...prev];
+      });
       return true;
     } catch (e) {
       setCurrentId(null);
       setCurrentMessages([]);
       setCurrentKbId(null);
       setCurrentModel(null);
-      toast.error("加载会话失败");
+      toast.error((e as Error)?.message ?? "\u52a0\u8f7d\u4f1a\u8bdd\u5931\u8d25");
       return false;
-      toast.error((e as Error)?.message ?? "加载会话失败");
     }
   }, []);
 
@@ -266,7 +306,7 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
         try {
           const imported = await migrateFromLocalStorage(u.id);
           if (!cancelled && imported > 0) {
-            toast.success(`已从本地恢复 ${imported} 条历史对话`);
+            toast.success(`\u5df2\u4ece\u672c\u5730\u6062\u590d ${imported} \u6761\u5386\u53f2\u5bf9\u8bdd`);
           }
         } catch (e) {
           console.warn("conversation migration failed", e);
@@ -312,9 +352,13 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
       }
 
       try {
-        const list = await listConversations();
+        const page = await listConversations({ page: 1, pageSize: CONVERSATION_PAGE_SIZE });
         if (cancelled) return;
+        const list = page.items;
         setSummaries(list);
+        setConversationTotal(page.total);
+        setConversationPage(page.page);
+        setConversationHasMore(page.has_more);
         const fallbackId = list[0]?.id ?? null;
         const targetId = routeConversationId ?? fallbackId;
         if (targetId) {
@@ -340,7 +384,7 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
       } catch (e) {
         if (!cancelled) {
           console.error("list conversations failed", e);
-          toast.error((e as Error)?.message ?? "加载会话历史失败");
+          toast.error((e as Error)?.message ?? "\u52a0\u8f7d\u4f1a\u8bdd\u5386\u53f2\u5931\u8d25");
         }
       }
     })();
@@ -389,6 +433,26 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
     ta.style.height = `${Math.min(ta.scrollHeight, 112)}px`;
   }, [composerValue]);
 
+  const loadMoreConversations = useCallback(async () => {
+    if (conversationLoadingMore || !conversationHasMore) return;
+    setConversationLoadingMore(true);
+    try {
+      const nextPage = conversationPage + 1;
+      const page = await listConversations({
+        page: nextPage,
+        pageSize: CONVERSATION_PAGE_SIZE,
+      });
+      setSummaries((prev) => mergeConversationSummaries(prev, page.items));
+      setConversationTotal(page.total);
+      setConversationPage(page.page);
+      setConversationHasMore(page.has_more);
+    } catch (e) {
+      toast.error((e as Error)?.message ?? "\u52a0\u8f7d\u66f4\u591a\u5bf9\u8bdd\u5931\u8d25");
+    } finally {
+      setConversationLoadingMore(false);
+    }
+  }, [conversationHasMore, conversationLoadingMore, conversationPage]);
+
   const handleNew = useCallback(async (kbId: string | null = currentKbId) => {
     try {
       const created = await createConversation({ kb_id: kbId });
@@ -402,6 +466,7 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
         updated_at: created.updated_at,
       };
       setSummaries((prev) => [summary, ...prev]);
+      setConversationTotal((total) => total + 1);
       setCurrentId(created.id);
       messagesCache.current.set(created.id, []);
       setCurrentMessages([]);
@@ -410,7 +475,7 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
       setSidebarOpen(false);
       window.history.pushState(null, "", conversationHref(created.id));
     } catch (e) {
-      toast.error((e as Error)?.message ?? "新建对话失败");
+      toast.error((e as Error)?.message ?? "\u65b0\u5efa\u5bf9\u8bdd\u5931\u8d25");
     }
   }, [currentKbId, router]);
 
@@ -426,7 +491,7 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
   const handleKbChange = useCallback(
     async (kbId: string | null) => {
       if (currentId && currentMessages.length > 0) {
-        toast.info("当前会话的知识库已锁定，请新建对话后再切换。");
+        toast.info("\u5f53\u524d\u4f1a\u8bdd\u7684\u77e5\u8bc6\u5e93\u5df2\u9501\u5b9a\uff0c\u8bf7\u65b0\u5efa\u5bf9\u8bdd\u540e\u518d\u5207\u6362\u3002");
         return;
       }
       setCurrentKbId(kbId);
@@ -437,7 +502,7 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
           prev.map((c) => (c.id === currentId ? { ...c, kb_id: kbId } : c))
         );
       } catch (e) {
-        toast.error((e as Error)?.message ?? "保存知识库绑定失败");
+        toast.error((e as Error)?.message ?? "\u4fdd\u5b58\u77e5\u8bc6\u5e93\u7ed1\u5b9a\u5931\u8d25");
       }
     },
     [currentId, currentMessages.length]
@@ -455,7 +520,7 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
         );
       } catch (e) {
         setCurrentModel(prevModel);
-        toast.error((e as Error)?.message ?? "保存模型选择失败");
+        toast.error((e as Error)?.message ?? "\u4fdd\u5b58\u6a21\u578b\u9009\u62e9\u5931\u8d25");
       }
     },
     [currentId, currentModel]
@@ -466,12 +531,13 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
       try {
         await deleteConversation(id);
       } catch (e) {
-        toast.error((e as Error)?.message ?? "删除会话失败");
+        toast.error((e as Error)?.message ?? "\u5220\u9664\u4f1a\u8bdd\u5931\u8d25");
         return;
       }
       messagesCache.current.delete(id);
       const next = summaries.filter((c) => c.id !== id);
       setSummaries(next);
+      setConversationTotal((total) => Math.max(0, total - 1));
       if (currentId === id) {
         const newId = next[0]?.id ?? null;
         setCurrentId(newId);
@@ -517,6 +583,7 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
             updated_at: created.updated_at,
           };
           setSummaries((prev) => [summary, ...prev]);
+          setConversationTotal((total) => total + 1);
           setCurrentId(created.id);
           messagesCache.current.set(created.id, []);
           setCurrentMessages([]);
@@ -524,7 +591,7 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
           setCurrentModel(created.llm_model ?? null);
           window.history.replaceState(null, "", conversationHref(created.id));
         } catch (e) {
-          toast.error((e as Error)?.message ?? "创建会话失败");
+          toast.error((e as Error)?.message ?? "\u521b\u5efa\u4f1a\u8bdd\u5931\u8d25");
           return;
         }
       }
@@ -534,7 +601,7 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
         const persisted = await appendUserMessage(convId!, trimmed);
         userMsg = serverMsgToLocal(persisted) as Message;
       } catch (e) {
-        toast.error((e as Error)?.message ?? "保存消息失败");
+        toast.error((e as Error)?.message ?? "\u4fdd\u5b58\u6d88\u606f\u5931\u8d25");
         return;
       }
 
@@ -599,7 +666,7 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
           bumpSummary(snap.convId, {}, 1, true);
         } catch (e) {
           console.error("persist assistant failed", e);
-          toast.error("助手回复保存失败，刷新后可能丢失");
+          toast.error("\u52a9\u624b\u56de\u590d\u4fdd\u5b58\u5931\u8d25\uff0c\u5237\u65b0\u540e\u53ef\u80fd\u4e22\u5931");
         }
       };
 
@@ -678,14 +745,14 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
               break;
             }
             case "error": {
-              const errMsg = evt.message ?? "生成失败";
+              const errMsg = evt.message ?? "\u751f\u6210\u5931\u8d25";
               updateLastAssistant((m) =>
                 m.role === "assistant" ? { ...m, error: errMsg, streaming: false } : m
               );
               if (evt.code === "llm_not_configured" || evt.code === "embedding_not_configured") {
                 toast.error(errMsg, {
                   action: {
-                    label: "去配置",
+                    label: "\u53bb\u914d\u7f6e",
                     onClick: () => router.push(evt.settings_url ?? "/settings"),
                   },
                 });
@@ -734,7 +801,7 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
     setBusy(false);
     updateLastAssistant((m) =>
       m.role === "assistant" && m.streaming
-        ? { ...m, streaming: false, error: m.error ?? "用户已停止生成" }
+        ? { ...m, streaming: false, error: m.error ?? "\u7528\u6237\u5df2\u505c\u6b62\u751f\u6210" }
         : m
     );
     const snap = streamingRef.current;
@@ -743,7 +810,7 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
       void appendAssistantMessage(snap.convId, {
         content: snap.content,
         tools: snap.tools,
-        error: "用户已停止生成",
+        error: "\u7528\u6237\u5df2\u505c\u6b62\u751f\u6210",
       })
         .then((result) => {
           setMessagesForCurrent((prev) =>
@@ -761,17 +828,17 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
 
   if (!authChecked) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0b111b] text-slate-400">
+      <div className="ak-chat flex min-h-screen items-center justify-center bg-[#0b111b] text-slate-400">
         <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3">
           <LoaderCircle className="h-4 w-4 animate-spin text-emerald-400" />
-          正在加载 {APP_NAME}
+          {"\u6b63\u5728\u52a0\u8f7d "}{APP_NAME}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-[#08101c] text-slate-100">
+    <div className="ak-chat h-screen w-screen overflow-hidden bg-[#08101c] text-slate-100">
       {sidebarOpen && (
         <button
           aria-label="关闭侧栏"
@@ -785,16 +852,18 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
         <DarkSidebar
           open={sidebarOpen}
           conversations={sidebarConversations}
+          conversationTotal={conversationTotal}
+          conversationHasMore={conversationHasMore}
+          conversationLoadingMore={conversationLoadingMore}
           currentId={currentId}
-          kbs={kbs}
           currentKbId={currentKbId}
           user={user}
-          kbLocked={!!currentId && hasConversationMessages}
+          busy={busy}
           onClose={() => setSidebarOpen(false)}
           onNew={handleNew}
           onSelectConversation={handleSelect}
           onDeleteConversation={handleDelete}
-          onSelectKb={handleKbChange}
+          onLoadMoreConversations={loadMoreConversations}
           onLogout={handleLogout}
         />
 
@@ -807,12 +876,12 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
           />
 
           <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_338px]">
-            <main className="flex min-h-0 min-w-0 flex-col border-r border-white/10 bg-[radial-gradient(circle_at_50%_0%,rgba(16,185,129,0.10),transparent_32%),linear-gradient(180deg,#0d1624,#08101c)]">
+            <main className="ak-main flex min-h-0 min-w-0 flex-col border-r border-white/10 bg-[radial-gradient(circle_at_50%_0%,rgba(16,185,129,0.10),transparent_32%),linear-gradient(180deg,#0d1624,#08101c)]">
               <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
                 <div className="mx-auto flex w-full max-w-[820px] flex-col gap-7">
                   {currentMessages.length === 0 ? (
                     <EmptyWorkbench
-                      currentKbName={currentKb?.name ?? "通用对话"}
+                      currentKbName={currentKb?.name ?? "\u901a\u7528\u5bf9\u8bdd"}
                       onPick={handleSend}
                     />
                   ) : (
@@ -827,8 +896,8 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
                 value={composerValue}
                 textareaRef={textareaRef}
                 busy={busy}
-                currentKbName={currentKb?.name ?? "通用对话"}
                 currentKbId={currentKbId}
+                kbs={kbs}
                 currentModel={currentModel}
                 modelOptions={modelOptions}
                 llmReady={llmReady}
@@ -837,12 +906,13 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
                 onChange={setComposerValue}
                 onSubmit={submitComposer}
                 onStop={handleStop}
+                onSelectKb={handleKbChange}
                 onModelChange={handleModelChange}
               />
             </main>
 
             <RightInsightPanel
-              currentKbName={currentKb?.name ?? "通用对话"}
+              currentKbName={currentKb?.name ?? "\u901a\u7528\u5bf9\u8bdd"}
               currentConversation={currentConversation}
               currentModel={currentModel}
               llmSource={llmSource}
@@ -861,51 +931,172 @@ export default function Page() {
   return <ChatPage />;
 }
 
+function getKbStatusView(kb: KB) {
+  const counts = kb.document_status_counts;
+  const failed = counts?.failed ?? 0;
+  const running = (counts?.pending ?? 0) + (counts?.ingesting ?? 0);
+  if (failed > 0) {
+    return {
+      label: "\u9700\u5904\u7406",
+      detail: `${failed} \u4e2a\u6587\u6863\u5f02\u5e38`,
+      dot: "bg-red-400",
+      tone: "text-red-300",
+    };
+  }
+  if (running > 0) {
+    return {
+      label: "\u5904\u7406\u4e2d",
+      detail: `${running} \u4e2a\u6587\u6863\u6392\u961f/\u89e3\u6790`,
+      dot: "bg-amber-300",
+      tone: "text-amber-200",
+    };
+  }
+  if (kb.documents_count === 0) {
+    return {
+      label: "\u7a7a\u5e93",
+      detail: "\u7b49\u5f85\u4e0a\u4f20\u8d44\u6599",
+      dot: "bg-slate-500",
+      tone: "text-slate-400",
+    };
+  }
+  if (kb.chunks_count > 0) {
+    return {
+      label: "\u53ef\u68c0\u7d22",
+      detail: `${kb.chunks_count.toLocaleString()} chunks`,
+      dot: "bg-emerald-400",
+      tone: "text-emerald-300",
+    };
+  }
+  return {
+    label: "\u5f85\u7d22\u5f15",
+    detail: `${kb.documents_count.toLocaleString()} \u4e2a\u6587\u6863`,
+    dot: "bg-sky-300",
+    tone: "text-sky-200",
+  };
+}
+
+function formatConversationTime(value?: number | null) {
+  if (!value) return "";
+  const diff = Date.now() - value;
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (diff < minute) return "\u521a\u521a";
+  if (diff < hour) return `${Math.max(1, Math.floor(diff / minute))} \u5206\u949f\u524d`;
+  if (diff < day) return `${Math.floor(diff / hour)} \u5c0f\u65f6\u524d`;
+  if (diff < 7 * day) return `${Math.floor(diff / day)} \u5929\u524d`;
+  return new Date(value).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" });
+}
+
+function getConversationStatusView(conversation: Conversation, currentId: string | null, busy: boolean) {
+  const active = conversation.id === currentId;
+  const messageCount = conversation.messages.length || conversation.message_count || 0;
+  if (active && busy) {
+    return {
+      label: "\u751f\u6210\u4e2d",
+      dot: "bg-amber-300",
+      tone: "border-amber-300/20 bg-amber-300/10 text-amber-200",
+    };
+  }
+  if (active) {
+    return {
+      label: "\u5f53\u524d",
+      dot: "bg-emerald-400",
+      tone: "border-emerald-300/20 bg-emerald-400/10 text-emerald-300",
+    };
+  }
+  if (messageCount === 0) {
+    return {
+      label: "\u7a7a\u4f1a\u8bdd",
+      dot: "bg-slate-500",
+      tone: "border-white/10 bg-white/[0.04] text-slate-400",
+    };
+  }
+  return {
+    label: "\u5df2\u4fdd\u5b58",
+    dot: "bg-sky-300",
+    tone: "border-sky-300/15 bg-sky-300/10 text-sky-200",
+  };
+}
+
 function DarkSidebar({
   open,
   conversations,
+  conversationTotal,
+  conversationHasMore,
+  conversationLoadingMore,
   currentId,
-  kbs,
   currentKbId,
   user,
-  kbLocked,
+  busy,
   onClose,
   onNew,
   onSelectConversation,
   onDeleteConversation,
-  onSelectKb,
+  onLoadMoreConversations,
   onLogout,
 }: {
   open: boolean;
   conversations: Conversation[];
+  conversationTotal: number;
+  conversationHasMore: boolean;
+  conversationLoadingMore: boolean;
   currentId: string | null;
-  kbs: KB[];
   currentKbId: string | null;
   user: User | null;
-  kbLocked: boolean;
+  busy: boolean;
   onClose: () => void;
   onNew: (kbId?: string | null) => void;
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
-  onSelectKb: (id: string | null) => void;
+  onLoadMoreConversations: () => void;
   onLogout: () => void;
 }) {
-  const visibleKbs = kbs.length > 0 ? kbs.slice(0, 5) : [];
   const [searchTerm, setSearchTerm] = useState("");
   const [newMenuOpen, setNewMenuOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
   const filteredConversations = conversations.filter((conversation) =>
     conversation.title.toLowerCase().includes(searchTerm.trim().toLowerCase())
   );
+  const handleConversationScroll = useCallback(
+    (event: { currentTarget: HTMLDivElement }) => {
+      const target = event.currentTarget;
+      const nearBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 80;
+      if (nearBottom && conversationHasMore && !conversationLoadingMore) {
+        onLoadMoreConversations();
+      }
+    },
+    [conversationHasMore, conversationLoadingMore, onLoadMoreConversations]
+  );
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setUserMenuOpen(false);
+    };
+    const onPointerDown = (event: MouseEvent) => {
+      if (!userMenuRef.current?.contains(event.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onPointerDown);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onPointerDown);
+    };
+  }, [userMenuOpen]);
 
   return (
     <aside
       className={cn(
-        "fixed inset-y-0 left-0 z-40 flex w-[286px] flex-col border-r border-white/10 bg-[#0a121f]/98 px-3 py-4 shadow-2xl transition-transform lg:relative lg:z-auto lg:translate-x-0 lg:shadow-none",
+        "ak-sidebar fixed inset-y-0 left-0 z-40 flex h-full min-h-0 w-[286px] flex-col overflow-hidden border-r border-white/10 bg-[#0a121f]/98 px-3 py-4 shadow-2xl transition-transform lg:relative lg:z-auto lg:translate-x-0 lg:shadow-none",
         open ? "translate-x-0" : "-translate-x-full"
       )}
     >
       <div className="flex items-center justify-between px-2">
-        <Brand className="text-white" size="md" />
+        <Brand className="text-slate-950 dark:text-white" size="md" />
         <button
           aria-label="关闭侧栏"
           className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-white/10 lg:hidden"
@@ -924,7 +1115,7 @@ function DarkSidebar({
             type="button"
           >
             <Plus className="h-4 w-4" />
-            新建对话
+            {"\u65b0\u5efa\u5bf9\u8bdd"}
           </button>
           <button
             aria-expanded={newMenuOpen}
@@ -937,7 +1128,7 @@ function DarkSidebar({
           </button>
         </div>
         {newMenuOpen && (
-          <div className="absolute left-0 right-0 top-12 z-20 overflow-hidden rounded-lg border border-white/10 bg-[#111c2b] p-1 text-sm text-slate-200 shadow-2xl">
+          <div className="ak-popover absolute left-0 right-0 top-12 z-20 overflow-hidden rounded-lg border border-white/10 bg-[#111c2b] p-1 text-sm text-slate-200 shadow-2xl">
             <button
               className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left transition hover:bg-white/[0.06]"
               onClick={() => {
@@ -947,7 +1138,7 @@ function DarkSidebar({
               type="button"
             >
               <MessageCircle className="h-4 w-4 text-slate-400" />
-              新建通用对话
+              {"\u65b0\u5efa\u901a\u7528\u5bf9\u8bdd"}
             </button>
             <button
               className={cn(
@@ -960,11 +1151,11 @@ function DarkSidebar({
                 setNewMenuOpen(false);
                 onNew(currentKbId);
               }}
-              title={currentKbId ? "使用当前知识库新建对话" : "当前未绑定知识库"}
+              title={currentKbId ? "\u4f7f\u7528\u5f53\u524d\u77e5\u8bc6\u5e93\u65b0\u5efa\u5bf9\u8bdd" : "\u5f53\u524d\u672a\u7ed1\u5b9a\u77e5\u8bc6\u5e93"}
               type="button"
             >
               <Database className="h-4 w-4 text-emerald-300" />
-              基于当前知识库新建
+              {"\u57fa\u4e8e\u5f53\u524d\u77e5\u8bc6\u5e93\u65b0\u5efa"}
             </button>
           </div>
         )}
@@ -989,114 +1180,66 @@ function DarkSidebar({
         type="button"
       >
         <MessageCircle className="h-4 w-4" />
-        <span className="flex-1 text-left">全部对话</span>
-        <span className="tabular-nums text-slate-500">{conversations.length}</span>
+        <span className="flex-1 text-left">{"\u5168\u90e8\u5bf9\u8bdd"}</span>
+        <span className="tabular-nums text-slate-500">{conversationTotal}</span>
       </button>
 
       <div className="my-4 h-px bg-white/10" />
 
-      <div className="flex items-center justify-between px-2 text-sm text-slate-400">
-        <span>知识库</span>
-        <Link
-          href="/kbs"
-          aria-label="添加知识库"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-white/10"
-        >
-          <Plus className="h-4 w-4" />
-        </Link>
-      </div>
-
-      <div className="mt-2 space-y-1">
-        {visibleKbs.length > 0 ? (
-          visibleKbs.map((item) => {
-            const active = item.id === currentKbId;
-            const locked = kbLocked;
-            const count =
-              item.chunks_count > 0
-                ? item.chunks_count.toLocaleString()
-                : item.documents_count.toLocaleString();
-            return (
-              <button
-                key={item.id}
-                disabled={locked}
-                onClick={() => {
-                  if (!locked) onSelectKb(item.id);
-                }}
-                title={locked ? "当前会话已锁定知识库，请新建对话后切换" : item.name}
-                className={cn(
-                  "flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm transition",
-                  active
-                    ? cn(
-                        "bg-emerald-400/16 text-emerald-200 ring-1 ring-emerald-300/15",
-                        locked && "cursor-not-allowed"
-                      )
-                    : locked
-                    ? "cursor-not-allowed text-slate-600 opacity-55"
-                    : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-100"
-                )}
-                type="button"
-              >
-              <span
-                className={cn(
-                  "flex h-5 w-5 items-center justify-center rounded-md",
-                  active ? "bg-emerald-400/20 text-emerald-300" : "bg-slate-700/60"
-                )}
-              >
-                <Database className="h-3.5 w-3.5" />
-              </span>
-              <span className="min-w-0 flex-1 truncate text-left">{item.name}</span>
-              {locked ? (
-                <LockKeyhole className="h-3.5 w-3.5 text-slate-600" />
-              ) : (
-                <span className={active ? "text-emerald-300" : "text-slate-500"}>{count}</span>
-              )}
-              </button>
-            );
-          })
-        ) : (
-          <Link
-            href="/kbs"
-            className="block rounded-lg border border-dashed border-white/10 px-3 py-4 text-sm leading-6 text-slate-500 transition hover:border-emerald-300/30 hover:text-slate-300"
-          >
-            暂无知识库，去创建或上传资料
-          </Link>
-        )}
-      </div>
-
-      <Link
-        href="/kbs"
-        className="mt-3 flex h-10 items-center gap-2 rounded-lg px-3 text-sm text-slate-500 hover:bg-white/[0.06] hover:text-slate-200"
+      <div
+        className="min-h-0 basis-0 flex-1 overflow-y-auto pr-1"
+        onScroll={handleConversationScroll}
       >
-        查看全部知识库
-        <ChevronRight className="ml-auto h-4 w-4" />
-      </Link>
-
-      <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
-        <div className="px-2 pb-2 text-sm text-slate-400">最近对话</div>
+        <div className="flex items-center justify-between px-2 pb-2 text-sm text-slate-400">
+          <span>{"\u6700\u8fd1\u5bf9\u8bdd"}</span>
+          <span className="text-xs tabular-nums text-slate-600">
+            {filteredConversations.length}/{conversationTotal}
+          </span>
+        </div>
         <div className="space-y-1">
-          {filteredConversations.slice(0, 8).map((conversation) => (
+          {filteredConversations.map((conversation) => {
+            const statusView = getConversationStatusView(conversation, currentId, busy);
+            const messageCount = conversation.messages.length || conversation.message_count || 0;
+            const showStatusTag = conversation.id === currentId && busy;
+            return (
             <div
               key={conversation.id}
               className={cn(
-                "group flex h-9 items-center gap-2 rounded-lg px-3 text-sm transition",
+                "group flex min-h-12 items-center gap-2 rounded-lg px-3 py-2 text-sm transition",
                 conversation.id === currentId
                   ? "bg-white/[0.08] text-slate-100"
                   : "text-slate-500 hover:bg-white/[0.06] hover:text-slate-200"
               )}
             >
               <button
-                className="min-w-0 flex-1 truncate text-left"
+                className="min-w-0 flex-1 text-left"
                 onClick={() => onSelectConversation(conversation.id)}
                 type="button"
                 title={conversation.title}
               >
-                {conversation.title}
+                <span className="block truncate">{conversation.title}</span>
+                <span className="mt-0.5 flex items-center gap-2 text-[11px] text-slate-600">
+                  <span className={cn("h-1.5 w-1.5 rounded-full", statusView.dot)} />
+                  <span>{formatConversationTime(conversation.updated_at)}</span>
+                  <span className="h-1 w-1 rounded-full bg-slate-700" />
+                  <span>{messageCount}{" \u6761\u6d88\u606f"}</span>
+                </span>
               </button>
+              {showStatusTag && (
+                <span
+                  className={cn(
+                    "shrink-0 rounded-md border px-1.5 py-0.5 text-[11px] group-hover:hidden",
+                    statusView.tone
+                  )}
+                >
+                  {statusView.label}
+                </span>
+              )}
               <button
                 aria-label="删除会话"
-                className="hidden h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-red-400/10 hover:text-red-300 group-hover:flex"
+                className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-500 hover:bg-red-400/10 hover:text-red-300 group-hover:flex"
                 onClick={() => {
-                  if (window.confirm(`删除对话「${conversation.title}」？此操作不可恢复。`)) {
+                  if (window.confirm(`\u5220\u9664\u5bf9\u8bdd\u300c${conversation.title}\u300d\uff1f\u6b64\u64cd\u4f5c\u4e0d\u53ef\u6062\u590d\u3002`)) {
                     onDeleteConversation(conversation.id);
                   }
                 }}
@@ -1105,45 +1248,99 @@ function DarkSidebar({
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
             </div>
-          ))}
+            );
+          })}
           {filteredConversations.length === 0 && (
             <div className="rounded-lg border border-dashed border-white/10 px-3 py-4 text-sm text-slate-500">
-              {searchTerm ? "没有匹配的对话。" : "还没有对话，先问一个问题。"}
+              {searchTerm ? "\u6ca1\u6709\u5339\u914d\u7684\u5bf9\u8bdd\u3002" : "\u8fd8\u6ca1\u6709\u5bf9\u8bdd\uff0c\u5148\u95ee\u4e00\u4e2a\u95ee\u9898\u3002"}
             </div>
+          )}
+          {(conversationHasMore || conversationLoadingMore) && (
+            <button
+              className="flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] text-xs text-slate-500 transition hover:border-emerald-300/20 hover:text-slate-300 disabled:cursor-wait disabled:opacity-70"
+              disabled={conversationLoadingMore}
+              onClick={onLoadMoreConversations}
+              type="button"
+            >
+              {conversationLoadingMore ? (
+                <>
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                  {"\u6b63\u5728\u52a0\u8f7d"}
+                </>
+              ) : (
+                "\u52a0\u8f7d\u66f4\u591a\u5bf9\u8bdd"
+              )}
+            </button>
           )}
         </div>
       </div>
 
-      <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.04] p-3">
-        <div className="flex items-center justify-between text-sm">
-          <span className="flex items-center gap-2 text-slate-200">
-            <ShieldCheck className="h-4 w-4 text-emerald-400" />
-            企业版
-          </span>
-          <span className="text-xs text-emerald-300">已激活</span>
-        </div>
-        <div className="mt-2 text-xs text-slate-500">私有化部署 · BYOK</div>
-      </div>
-
-      <div className="mt-3 flex items-center justify-between rounded-lg border border-white/10 bg-black/20 p-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-500 text-sm font-semibold text-white">
-            {(user?.display_name?.[0] || user?.email?.[0] || "Z").toUpperCase()}
+      <div ref={userMenuRef} className="relative mt-3 shrink-0">
+        {userMenuOpen && (
+          <div className="ak-popover absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-lg border border-white/10 bg-[#111c2b] shadow-2xl">
+            <Link
+              className="flex items-center gap-2 px-3 py-2.5 text-sm text-slate-200 transition hover:bg-white/[0.06]"
+              href="/settings"
+              onClick={() => setUserMenuOpen(false)}
+            >
+              <Settings className="h-4 w-4 text-slate-400" />
+              模型设置
+            </Link>
+            <Link
+              className="flex items-center gap-2 px-3 py-2.5 text-sm text-slate-200 transition hover:bg-white/[0.06]"
+              href="/kbs"
+              onClick={() => setUserMenuOpen(false)}
+            >
+              <BookOpen className="h-4 w-4 text-slate-400" />
+              我的知识库
+            </Link>
+            {user?.is_admin && (
+              <Link
+                className="flex items-center gap-2 px-3 py-2.5 text-sm text-slate-200 transition hover:bg-white/[0.06]"
+                href="/admin"
+                onClick={() => setUserMenuOpen(false)}
+              >
+                <Shield className="h-4 w-4 text-slate-400" />
+                后台管理
+              </Link>
+            )}
+            <div className="h-px bg-white/10" />
+            <button
+              className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-red-300 transition hover:bg-red-400/10"
+              onClick={() => {
+                setUserMenuOpen(false);
+                onLogout();
+              }}
+              type="button"
+            >
+              <LogOut className="h-4 w-4" />
+              退出登录
+            </button>
           </div>
-          <div className="min-w-0">
-            <div className="truncate text-sm font-medium text-slate-100">
-              {user?.display_name || user?.email || "用户"}
-            </div>
-            <div className="text-xs text-slate-500">{user?.is_admin ? "管理员" : "成员"}</div>
-          </div>
-        </div>
+        )}
         <button
-          aria-label="退出登录"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-white/10 hover:text-slate-200"
-          onClick={onLogout}
+          aria-expanded={userMenuOpen}
+          aria-haspopup="menu"
+          aria-label="用户菜单"
+          className={cn(
+            "flex w-full items-center justify-between rounded-lg border border-white/10 bg-black/20 p-2 text-left transition hover:bg-white/[0.06]",
+            userMenuOpen && "border-emerald-300/30 bg-white/[0.06]"
+          )}
+          onClick={() => setUserMenuOpen((open) => !open)}
           type="button"
         >
-          <LogOut className="h-4 w-4" />
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-500 text-sm font-semibold text-white">
+              {(user?.display_name?.[0] || user?.email?.[0] || "Z").toUpperCase()}
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-medium text-slate-100">
+                {user?.display_name || user?.email || "\u7528\u6237"}
+              </span>
+              <span className="block text-xs text-slate-500">{user?.is_admin ? "\u7ba1\u7406\u5458" : "\u6210\u5458"}</span>
+            </span>
+          </span>
+          <ChevronDown className={cn("h-4 w-4 shrink-0 text-slate-500 transition", userMenuOpen && "rotate-180")} />
         </button>
       </div>
     </aside>
@@ -1161,12 +1358,12 @@ function TopBar({
   llmSource: LlmSource;
   onOpenSidebar: () => void;
 }) {
-  const statusLabel = llmReady ? (llmSource === "system" ? "系统默认" : "就绪") : "待配置";
+  const statusLabel = llmReady ? (llmSource === "system" ? "\u7cfb\u7edf\u9ed8\u8ba4" : "\u5c31\u7eea") : "\u5f85\u914d\u7f6e";
   const configLabel =
-    llmSource === "user" ? "BYOK" : llmSource === "system" ? "系统模型" : "去配置";
+    llmSource === "user" ? "BYOK" : llmSource === "system" ? "\u7cfb\u7edf\u6a21\u578b" : "\u53bb\u914d\u7f6e";
 
   return (
-    <header className="grid h-[72px] shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-b border-white/10 bg-[#0b1422]/88 px-4 backdrop-blur-xl xl:px-7">
+    <header className="ak-topbar grid h-[72px] shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-b border-white/10 bg-[#0b1422]/88 px-4 backdrop-blur-xl xl:px-7">
       <button
         className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 text-slate-300 lg:hidden"
         onClick={onOpenSidebar}
@@ -1177,14 +1374,15 @@ function TopBar({
       </button>
 
       <div className="min-w-0">
-        <div className="text-xs text-slate-500">当前会话知识库</div>
+        <div className="text-xs text-slate-500">{"\u5f53\u524d\u4f1a\u8bdd\u77e5\u8bc6\u5e93"}</div>
         <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-100">
           <Database className="h-4 w-4 text-emerald-300" />
-          <span className="truncate">{currentKb?.name ?? "通用对话"}</span>
+          <span className="truncate">{currentKb?.name ?? "\u901a\u7528\u5bf9\u8bdd"}</span>
         </div>
       </div>
 
       <div className="flex items-center justify-end gap-2">
+        <ThemeToggle className="hidden sm:flex" />
         <Link
           href="/settings"
           className={cn(
@@ -1209,10 +1407,10 @@ function TopBar({
           <LockKeyhole className="h-4 w-4" />
           {configLabel}
         </Link>
-        <IconButton label="设置" href="/settings">
+        <IconButton label="璁剧疆" href="/settings">
           <Settings className="h-5 w-5" />
         </IconButton>
-        <IconButton label="帮助" href="/welcome">
+        <IconButton label="甯姪" href="/welcome">
           <HelpCircle className="h-5 w-5" />
         </IconButton>
       </div>
@@ -1254,16 +1452,16 @@ function EmptyWorkbench({
 }) {
   return (
     <div className="flex min-h-full items-center justify-center py-2">
-      <section className="w-full max-w-[720px] rounded-lg border border-white/10 bg-[#111c2b]/72 p-5 shadow-[0_18px_46px_rgba(0,0,0,0.28)]">
+      <section className="ak-card w-full max-w-[720px] rounded-lg border border-white/10 bg-[#111c2b]/72 p-5 shadow-[0_18px_46px_rgba(0,0,0,0.28)]">
         <div className="flex items-start gap-4">
           <Avatar label={<Box className="h-4 w-4" />} tone="assistant" />
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium text-emerald-300">已连接 {currentKbName}</div>
+            <div className="text-sm font-medium text-emerald-300">{"\u5df2\u8fde\u63a5 "}{currentKbName}</div>
             <h1 className="mt-2 text-xl font-semibold tracking-tight text-slate-100 sm:text-2xl">
-              向知识库提问，检索过程会实时展示
+              {"\u5411\u77e5\u8bc6\u5e93\u63d0\u95ee\uff0c\u68c0\u7d22\u8fc7\u7a0b\u4f1a\u5b9e\u65f6\u5c55\u793a"}
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
-              这里不会预置假答案。发送问题后，中间区域会显示真实对话，右侧会根据工具调用展示检索、重排、生成状态。
+              {"\u8fd9\u91cc\u4e0d\u4f1a\u9884\u7f6e\u5047\u7b54\u6848\u3002\u53d1\u9001\u95ee\u9898\u540e\uff0c\u4e2d\u95f4\u533a\u57df\u4f1a\u663e\u793a\u771f\u5b9e\u5bf9\u8bdd\uff0c\u53f3\u4fa7\u4f1a\u6839\u636e\u5de5\u5177\u8c03\u7528\u5c55\u793a\u68c0\u7d22\u3001\u91cd\u6392\u3001\u751f\u6210\u72b6\u6001\u3002"}
             </p>
           </div>
         </div>
@@ -1328,7 +1526,7 @@ function DarkMessage({ message, user }: { message: Message; user: User | null })
     <div className="flex items-start gap-4">
       <Avatar label={<Box className="h-4 w-4" />} tone="assistant" />
       <div className="min-w-0 flex-1">
-        <div className="rounded-lg border border-white/10 bg-[#111c2b]/78 px-5 py-4 shadow-[0_18px_46px_rgba(0,0,0,0.28)]">
+        <div className="ak-card rounded-lg border border-white/10 bg-[#111c2b]/78 px-5 py-4 shadow-[0_18px_46px_rgba(0,0,0,0.28)]">
           {message.error && (
             <div className="mb-3 rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-200">
               {message.error}
@@ -1337,12 +1535,12 @@ function DarkMessage({ message, user }: { message: Message; user: User | null })
           {!hasContent && streaming && (
             <div className="flex items-center gap-2 text-sm text-slate-400">
               <LoaderCircle className="h-4 w-4 animate-spin text-emerald-400" />
-              正在检索并生成回答
+              {"\u6b63\u5728\u68c0\u7d22\u5e76\u751f\u6210\u56de\u7b54"}
             </div>
           )}
           {hasContent && <AnswerMarkdown markdown={message.content} streaming={streaming} />}
           {!hasContent && !streaming && !message.error && (
-            <div className="text-sm text-slate-500">暂无内容</div>
+            <div className="text-sm text-slate-500">{"\u6682\u65e0\u5185\u5bb9"}</div>
           )}
           {hasContent && (
             <>
@@ -1353,7 +1551,7 @@ function DarkMessage({ message, user }: { message: Message; user: User | null })
                   icon={<Copy className="h-4 w-4" />}
                   onClick={() => {
                     void navigator.clipboard.writeText(message.content);
-                    toast.success("已复制回答");
+                    toast.success("\u5df2\u590d\u5236\u56de\u7b54");
                   }}
                 />
               </div>
@@ -1398,7 +1596,7 @@ function SourceStrip({ sources }: { sources: SourceRow[] }) {
 
   return (
     <div className="mt-5 rounded-lg border border-white/10 bg-black/14 p-2">
-      <div className="mb-2 text-sm font-medium text-emerald-300">工具调用</div>
+      <div className="mb-2 text-sm font-medium text-emerald-300">{"\u5de5\u5177\u8c03\u7528"}</div>
       <div className="grid gap-2 sm:grid-cols-2">
         {sources.map((source) => (
           <div
@@ -1423,7 +1621,7 @@ function buildMessageSources(message: Extract<Message, { role: "assistant" }>): 
   if (message.tools.length === 0) return [];
   return message.tools.slice(0, 4).map((tool) => ({
     title: getToolLabel(tool.name),
-    meta: tool.status === "running" ? "正在执行" : tool.status === "ok" ? "已完成" : "未完成",
+    meta: tool.status === "running" ? "\u6b63\u5728\u6267\u884c" : tool.status === "ok" ? "\u5df2\u5b8c\u6210" : "\u672a\u5b8c\u6210",
     score:
       tool.status === "ok"
         ? "done"
@@ -1441,35 +1639,34 @@ function buildPanelSources(tools: ToolEvent[]): SourceRow[] {
       title: getToolLabel(tool.name),
       meta:
         tool.status === "running"
-          ? "正在执行"
+          ? "\u6b63\u5728\u6267\u884c"
           : tool.status === "ok"
-          ? `已完成${tool.latency_ms ? ` · ${tool.latency_ms}ms` : ""}`
+          ? `\u5df2\u5b8c\u6210${tool.latency_ms ? ` · ${tool.latency_ms}ms` : ""}`
           : tool.status === "blocked"
-          ? tool.reason || "已阻止"
-          : tool.error || "执行失败",
+          ? tool.reason || "\u5df2\u963b\u6b62"
+          : tool.error || "\u6267\u884c\u5931\u8d25",
       score:
         tool.status === "ok"
-          ? "完成"
+          ? "\u5b8c\u6210"
           : tool.status === "running"
-          ? "实时"
+          ? "\u5b9e\u65f6"
           : tool.status === "blocked"
-          ? "阻止"
-          : "失败",
+          ? "\u963b\u6b62"
+          : "\u5931\u8d25",
     }));
   }
-
   return [];
 }
 
 function getToolLabel(name: string): string {
   const labels: Record<string, string> = {
-    search_kb: "知识库检索",
-    generate_kb_report: "知识库报告生成",
-    web_search: "网络搜索",
-    get_weather: "天气查询",
-    search_restaurant_kb: "本地知识检索",
-    amap_search: "地图兜底搜索",
-    generate_travel_report: "旅行报告生成",
+    search_kb: "\u77e5\u8bc6\u5e93\u68c0\u7d22",
+    generate_kb_report: "\u77e5\u8bc6\u5e93\u62a5\u544a\u751f\u6210",
+    web_search: "\u7f51\u7edc\u641c\u7d22",
+    get_weather: "\u5929\u6c14\u67e5\u8be2",
+    search_restaurant_kb: "\u672c\u5730\u77e5\u8bc6\u68c0\u7d22",
+    amap_search: "\u5730\u56fe\u641c\u7d22",
+    generate_travel_report: "\u65c5\u884c\u62a5\u544a\u751f\u6210",
   };
   return labels[name] ?? name;
 }
@@ -1484,41 +1681,41 @@ function buildPanelSourcesClean(tools: ToolEvent[]): SourceRow[] {
 
 function getToolLabelClean(name: string): string {
   const labels: Record<string, string> = {
-    search_kb: "知识库检索",
-    generate_kb_report: "知识库报告",
-    web_search: "网络搜索",
-    get_weather: "天气查询",
-    search_restaurant_kb: "本地知识检索",
-    amap_search: "地图兜底搜索",
-    generate_travel_report: "旅行报告",
+    search_kb: "\u77e5\u8bc6\u5e93\u68c0\u7d22",
+    generate_kb_report: "\u77e5\u8bc6\u5e93\u62a5\u544a",
+    web_search: "\u7f51\u7edc\u641c\u7d22",
+    get_weather: "\u5929\u6c14\u67e5\u8be2",
+    search_restaurant_kb: "\u672c\u5730\u77e5\u8bc6\u68c0\u7d22",
+    amap_search: "\u5730\u56fe\u641c\u7d22",
+    generate_travel_report: "\u65c5\u884c\u62a5\u544a",
   };
   return labels[name] ?? name;
 }
 
 function getToolStatusLabelClean(status: ToolEvent["status"]) {
-  if (status === "ok") return "完成";
-  if (status === "running") return "进行中";
-  if (status === "blocked") return "阻止";
-  return "失败";
+  if (status === "ok") return "\u5b8c\u6210";
+  if (status === "running") return "\u8fdb\u884c\u4e2d";
+  if (status === "blocked") return "\u963b\u585e";
+  return "\u5931\u8d25";
 }
 
 function getToolMetaClean(tool: ToolEvent) {
-  if (tool.status === "running") return "正在执行";
+  if (tool.status === "running") return "\u6b63\u5728\u6267\u884c";
   if (tool.status === "ok") {
-    return tool.latency_ms ? `已完成 · ${formatDuration(tool.latency_ms)}` : "已完成";
+    return tool.latency_ms ? `\u5df2\u5b8c\u6210 \u00b7 ${formatDuration(tool.latency_ms)}` : "\u5df2\u5b8c\u6210";
   }
-  if (tool.status === "blocked") return tool.reason || "调用被策略阻止";
+  if (tool.status === "blocked") return tool.reason || "\u8c03\u7528\u88ab\u7b56\u7565\u963b\u6b62";
   return normalizeToolError(tool.error);
 }
 
 function normalizeToolError(error?: string | null) {
-  if (!error) return "调用失败";
+  if (!error) return "\u8c03\u7528\u5931\u8d25";
   const lower = error.toLowerCase();
   if (lower.includes("timed out") || lower.includes("timeout")) {
-    return "请求超时，已跳过该结果";
+    return "\u8bf7\u6c42\u8d85\u65f6\uff0c\u5df2\u8df3\u8fc7\u8be5\u7ed3\u679c";
   }
   if (lower.includes("network") || lower.includes("fetch") || lower.includes("request")) {
-    return "网络请求失败，已跳过该结果";
+    return "\u7f51\u7edc\u8bf7\u6c42\u5931\u8d25\uff0c\u5df2\u8df3\u8fc7\u8be5\u7ed3\u679c";
   }
   return error.length > 48 ? `${error.slice(0, 48)}...` : error;
 }
@@ -1529,7 +1726,7 @@ function formatDuration(ms: number) {
 }
 
 function describeToolSummary(tools: ToolEvent[]) {
-  if (tools.length === 0) return "本轮未调用检索工具";
+  if (tools.length === 0) return "\u672c\u8f6e\u672a\u8c03\u7528\u68c0\u7d22\u5de5\u5177";
   const counts = new Map<string, number>();
   for (const tool of tools) {
     const label = getToolLabelClean(tool.name);
@@ -1537,7 +1734,7 @@ function describeToolSummary(tools: ToolEvent[]) {
   }
   return Array.from(counts.entries())
     .map(([label, count]) => (count > 1 ? `${label} x${count}` : label))
-    .join("、");
+    .join("\u3001");
 }
 
 function Avatar({ label, tone }: { label: ReactNode; tone: "user" | "assistant" }) {
@@ -1576,7 +1773,7 @@ function SmallAction({
       )}
       disabled={disabled}
       onClick={onClick}
-      title={disabled ? `${label}暂未接入` : label}
+      title={disabled ? `${label}\u6682\u672a\u63a5\u5165` : label}
       type="button"
     >
       {icon ?? <Circle className="h-3.5 w-3.5" />}
@@ -1588,8 +1785,8 @@ function Composer({
   value,
   textareaRef,
   busy,
-  currentKbName,
   currentKbId,
+  kbs,
   currentModel,
   modelOptions,
   llmReady,
@@ -1598,13 +1795,14 @@ function Composer({
   onChange,
   onSubmit,
   onStop,
+  onSelectKb,
   onModelChange,
 }: {
   value: string;
   textareaRef: React.RefObject<HTMLTextAreaElement>;
   busy: boolean;
-  currentKbName: string;
   currentKbId: string | null;
+  kbs: KB[];
   currentModel: string | null;
   modelOptions: string[];
   llmReady: boolean;
@@ -1613,17 +1811,18 @@ function Composer({
   onChange: (value: string) => void;
   onSubmit: () => void;
   onStop: () => void;
+  onSelectKb: (id: string | null) => void;
   onModelChange: (model: string | null) => void;
 }) {
   const defaultModelLabel = llmReady
     ? llmSource === "system"
-      ? "系统默认模型"
-      : "默认模型"
-    : "未配置模型";
+      ? "\u7cfb\u7edf\u9ed8\u8ba4\u6a21\u578b"
+      : "\u9ed8\u8ba4\u6a21\u578b"
+    : "\u672a\u914d\u7f6e\u6a21\u578b";
 
   return (
-    <div className="shrink-0 border-t border-white/10 bg-[#08101c]/90 px-5 py-3 backdrop-blur-xl">
-      <div className="mx-auto max-w-[820px] rounded-lg border border-white/12 bg-[#0d1726]/94 shadow-[0_18px_46px_rgba(0,0,0,0.32)] focus-within:border-emerald-300/40">
+    <div className="ak-composer shrink-0 border-t border-white/10 bg-[#08101c]/90 px-5 py-3 backdrop-blur-xl">
+      <div className="ak-composer-box mx-auto max-w-[820px] rounded-lg border border-white/12 bg-[#0d1726]/94 shadow-[0_18px_46px_rgba(0,0,0,0.32)] focus-within:border-emerald-300/40">
         <textarea
           ref={textareaRef}
           value={value}
@@ -1642,27 +1841,40 @@ function Composer({
         />
         <div className="flex flex-wrap items-center gap-2 border-t border-white/8 px-3 py-2">
           <div
-            className="inline-flex h-9 max-w-[220px] items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-slate-300"
-            title={kbLocked ? "当前会话已锁定知识库，新建对话后可切换" : "当前会话知识库"}
+            className="ak-control inline-flex h-9 max-w-[240px] items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-slate-300"
+            title={kbLocked ? "当前会话已有消息，知识库已锁定" : "选择通用聊天或知识库"}
           >
             <Database className="h-4 w-4 text-emerald-300" />
-            <span className="truncate">{currentKbName}</span>
+            <select
+              aria-label="选择知识库"
+              className="min-w-0 flex-1 bg-transparent text-sm text-slate-200 outline-none disabled:cursor-not-allowed disabled:text-slate-500"
+              disabled={kbLocked || busy}
+              onChange={(e) => onSelectKb(e.target.value || null)}
+              value={currentKbId ?? ""}
+            >
+              <option value="">通用聊天</option>
+              {kbs.map((kb) => (
+                <option key={kb.id} value={kb.id}>
+                  {kb.name}
+                </option>
+              ))}
+            </select>
             {kbLocked && <LockKeyhole className="h-3.5 w-3.5 text-slate-500" />}
           </div>
           <Link
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-slate-300 transition hover:bg-white/[0.08]"
+            className="ak-control inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-slate-300 transition hover:bg-white/[0.08]"
             href={currentKbId ? `/kbs/${currentKbId}` : "/kbs"}
-            aria-label={currentKbId ? "打开知识库上传资料" : "选择知识库后上传资料"}
-            title={currentKbId ? "打开知识库上传资料" : "选择知识库后上传资料"}
+            aria-label={currentKbId ? "\u6253\u5f00\u77e5\u8bc6\u5e93\u4e0a\u4f20\u8d44\u6599" : "\u9009\u62e9\u77e5\u8bc6\u5e93\u540e\u4e0a\u4f20\u8d44\u6599"}
+            title={currentKbId ? "\u6253\u5f00\u77e5\u8bc6\u5e93\u4e0a\u4f20\u8d44\u6599" : "\u9009\u62e9\u77e5\u8bc6\u5e93\u540e\u4e0a\u4f20\u8d44\u6599"}
           >
             <Paperclip className="h-4 w-4" />
           </Link>
           <select
-            className="ml-auto h-9 max-w-[190px] rounded-lg border border-white/10 bg-[#111c2b] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/40 disabled:cursor-not-allowed disabled:opacity-50"
+            className="ak-control ml-auto h-9 max-w-[190px] rounded-lg border border-white/10 bg-[#111c2b] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/40 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={busy || modelOptions.length === 0}
             value={currentModel ?? ""}
             onChange={(e) => onModelChange(e.target.value || null)}
-            title={modelOptions.length > 0 ? "模型选择" : "请先在设置中配置模型"}
+            title={modelOptions.length > 0 ? "\u6a21\u578b\u9009\u62e9" : "\u8bf7\u5148\u5728\u8bbe\u7f6e\u4e2d\u914d\u7f6e\u6a21\u578b"}
           >
             <option value="">{defaultModelLabel}</option>
             {modelOptions.map((model) => (
@@ -1673,11 +1885,11 @@ function Composer({
           </select>
           <Link
             href="/settings"
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-slate-300 transition hover:bg-white/[0.08]"
+            className="ak-control inline-flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-slate-300 transition hover:bg-white/[0.08]"
             title="检索与模型设置"
           >
             <SlidersHorizontal className="h-4 w-4 text-indigo-300" />
-            混合检索
+            {"\u6df7\u5408\u68c0\u7d22"}
           </Link>
           {busy ? (
             <button
@@ -1688,11 +1900,11 @@ function Composer({
               type="button"
             >
               <Square className="h-3.5 w-3.5 fill-current" />
-              停止
+              {"\u505c\u6b62"}
             </button>
           ) : (
             <button
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-400 px-4 text-sm font-medium text-white shadow-[0_10px_24px_rgba(16,185,129,0.28)] transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-45"
+              className="ak-control-primary inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-400 px-4 text-sm font-medium text-white shadow-[0_10px_24px_rgba(16,185,129,0.28)] transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-45"
               aria-label="发送消息"
               data-testid="composer-send"
               disabled={!value.trim()}
@@ -1705,7 +1917,7 @@ function Composer({
           )}
         </div>
       </div>
-      <p className="mt-2 text-center text-xs text-slate-500">内容由 AI 生成，请仔细甄别</p>
+      <p className="mt-2 text-center text-xs text-slate-500">{"\u5185\u5bb9\u7531 AI \u751f\u6210\uff0c\u8bf7\u4ed4\u7ec6\u7504\u522b"}</p>
     </div>
   );
 }
@@ -1730,13 +1942,13 @@ function RightInsightPanel({
   const steps = deriveStepsClean(tools, busy, messages);
   const panelSources = buildPanelSourcesClean(tools);
   const messageStats = formatMessageStats(messages);
-  const modelLabel = currentModel || (llmSource === "system" ? "系统默认" : llmSource === "user" ? "默认模型" : "未配置");
+  const modelLabel = currentModel || (llmSource === "system" ? "\u7cfb\u7edf\u9ed8\u8ba4" : llmSource === "user" ? "\u9ed8\u8ba4\u6a21\u578b" : "\u672a\u914d\u7f6e");
 
   return (
-    <aside className="hidden min-w-0 flex-col overflow-y-auto bg-[#0a121f] lg:flex">
+    <aside className="ak-insight hidden min-w-0 flex-col overflow-y-auto bg-[#0a121f] lg:flex">
       <section className="border-b border-white/10 p-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-slate-100">检索与推理过程</h2>
+          <h2 className="text-base font-semibold text-slate-100">{"\u68c0\u7d22\u4e0e\u63a8\u7406\u8fc7\u7a0b"}</h2>
           <span className="text-xs text-slate-500">只读状态</span>
         </div>
         <div className="mt-5 space-y-0">
@@ -1778,7 +1990,7 @@ function RightInsightPanel({
 
       <section className="border-b border-white/10 p-5">
         <div className="flex items-center gap-2">
-          <h2 className="text-base font-semibold text-slate-100">工具调用记录</h2>
+          <h2 className="text-base font-semibold text-slate-100">{"\u5de5\u5177\u8c03\u7528\u8bb0\u5f55"}</h2>
           <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-slate-400">
             {panelSources.length}
           </span>
@@ -1806,25 +2018,25 @@ function RightInsightPanel({
           </>
         ) : (
           <div className="mt-4 rounded-lg border border-dashed border-white/10 px-3 py-5 text-sm leading-6 text-slate-500">
-            暂无工具调用。发送问题后，如果后端返回检索、重排或其他工具事件，这里会实时更新。
+            {"\u6682\u65e0\u5de5\u5177\u8c03\u7528\u3002\u53d1\u9001\u95ee\u9898\u540e\uff0c\u5982\u679c\u540e\u7aef\u8fd4\u56de\u68c0\u7d22\u3001\u91cd\u6392\u6216\u5176\u4ed6\u5de5\u5177\u4e8b\u4ef6\uff0c\u8fd9\u91cc\u4f1a\u5b9e\u65f6\u66f4\u65b0\u3002"}
           </div>
         )}
       </section>
 
       <section className="flex-1 p-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-slate-100">会话信息</h2>
+          <h2 className="text-base font-semibold text-slate-100">{"\u4f1a\u8bdd\u4fe1\u606f"}</h2>
           {currentConversation?.id && (
             <button
               className="inline-flex h-7 items-center gap-1.5 rounded-md border border-white/10 px-2 text-xs text-slate-400 transition hover:border-emerald-300/40 hover:text-emerald-200"
               onClick={() => {
                 void navigator.clipboard.writeText(currentConversation.id);
-                toast.success("已复制会话 ID");
+                toast.success("\u5df2\u590d\u5236\u4f1a\u8bdd ID");
               }}
               type="button"
             >
               <Copy className="h-3.5 w-3.5" />
-              复制 ID
+              {"\u590d\u5236 ID"}
             </button>
           )}
         </div>
@@ -1849,7 +2061,7 @@ function RightInsightPanel({
                   {currentKbName}
                 </Link>
               ) : (
-                "通用对话"
+                "\u901a\u7528\u5bf9\u8bdd"
               )
             }
           />
@@ -1858,7 +2070,7 @@ function RightInsightPanel({
       </section>
 
       <section className="hidden">
-        <h2 className="text-base font-semibold text-slate-100">会话信息</h2>
+        <h2 className="text-base font-semibold text-slate-100">{"\u4f1a\u8bdd\u4fe1\u606f"}</h2>
         <dl className="mt-5 space-y-4 text-sm">
           <InfoRow label="会话 ID" value={currentConversation?.id.slice(0, 8) ?? "-"} />
           <InfoRow label="创建时间" value={formatTime(currentConversation?.created_at)} />
@@ -1881,26 +2093,26 @@ function deriveStepsClean(tools: ToolEvent[], busy: boolean, messages: Message[]
   if (!hasMessages) {
     return [
       {
-        title: "等待提问",
-        description: "输入问题后开始分析意图",
+        title: "\u7b49\u5f85\u63d0\u95ee",
+        description: "\u8f93\u5165\u95ee\u9898\u540e\u5f00\u59cb\u5206\u6790\u610f\u56fe",
         status: "pending",
         active: false,
       },
       {
-        title: "检索知识",
-        description: "绑定知识库时执行混合检索",
+        title: "\u68c0\u7d22\u77e5\u8bc6",
+        description: "\u7ed1\u5b9a\u77e5\u8bc6\u5e93\u65f6\u6267\u884c\u6df7\u5408\u68c0\u7d22",
         status: "pending",
         active: false,
       },
       {
-        title: "重排结果",
-        description: "有检索结果时进行相关性排序",
+        title: "\u91cd\u6392\u7ed3\u679c",
+        description: "\u6709\u68c0\u7d22\u7ed3\u679c\u65f6\u8fdb\u884c\u76f8\u5173\u6027\u6392\u5e8f",
         status: "pending",
         active: false,
       },
       {
-        title: "生成回答",
-        description: "检索完成后生成最终回答",
+        title: "\u751f\u6210\u56de\u7b54",
+        description: "\u68c0\u7d22\u5b8c\u6210\u540e\u751f\u6210\u6700\u7ec8\u56de\u7b54",
         status: "pending",
         active: false,
       },
@@ -1913,36 +2125,36 @@ function deriveStepsClean(tools: ToolEvent[], busy: boolean, messages: Message[]
 
   return [
     {
-      title: "理解问题",
-      description: "分析用户问题，识别关键意图",
+      title: "\u7406\u89e3\u95ee\u9898",
+      description: "\u5206\u6790\u7528\u6237\u95ee\u9898\uff0c\u8bc6\u522b\u5173\u952e\u610f\u56fe",
       status: "done",
       active: false,
     },
     {
-      title: "检索知识",
+      title: "\u68c0\u7d22\u77e5\u8bc6",
       description:
         tools.length > 0
-          ? `${describeToolSummary(tools)}${hasToolFailures ? "，部分调用失败" : ""}`
-          : "本轮未返回结构化检索事件",
+          ? `${describeToolSummary(tools)}${hasToolFailures ? "\uff0c\u90e8\u5206\u8c03\u7528\u5931\u8d25" : ""}`
+          : "\u672c\u8f6e\u672a\u8fd4\u56de\u7ed3\u6784\u5316\u68c0\u7d22\u4e8b\u4ef6",
       status: retrievalStatus,
       active: retrievalStatus === "running",
     },
     {
-      title: "重排结果",
+      title: "\u91cd\u6392\u7ed3\u679c",
       description:
         tools.length > 0
-          ? "已整理可用检索结果"
-          : "无可展示的重排结果",
+          ? "\u5df2\u6574\u7406\u53ef\u7528\u68c0\u7d22\u7ed3\u679c"
+          : "\u65e0\u53ef\u5c55\u793a\u7684\u91cd\u6392\u7ed3\u679c",
       status: rerankStatus,
       active: false,
     },
     {
-      title: "生成回答",
+      title: "\u751f\u6210\u56de\u7b54",
       description: busy
-        ? "正在生成最终回答"
+        ? "\u6b63\u5728\u751f\u6210\u6700\u7ec8\u56de\u7b54"
         : hasAssistantAnswer
-        ? "回答已写入当前会话"
-        : "等待模型返回回答",
+        ? "\u56de\u7b54\u5df2\u5199\u5165\u5f53\u524d\u4f1a\u8bdd"
+        : "\u7b49\u5f85\u6a21\u578b\u8fd4\u56de\u56de\u7b54",
       status: answerStatus,
       active: answerStatus === "running",
     },
@@ -1950,125 +2162,7 @@ function deriveStepsClean(tools: ToolEvent[], busy: boolean, messages: Message[]
 }
 
 function deriveSteps(tools: ToolEvent[], busy: boolean, messages: Message[]): ProcessStep[] {
-  const hasMessages = messages.length > 0;
-  const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
-  const hasAssistantAnswer =
-    lastAssistant?.role === "assistant" && Boolean(lastAssistant.content.trim());
-  const hasRunning = tools.some((tool) => tool.status === "running");
-  const hasErrors = tools.some((tool) => tool.status === "error" || tool.status === "blocked");
-
-  if (!hasMessages) {
-    return [
-      {
-        title: "等待提问",
-        description: "输入问题后开始分析意图",
-        status: "pending",
-        active: false,
-      },
-      {
-        title: "检索知识",
-        description: "绑定知识库时执行混合检索",
-        status: "pending",
-        active: false,
-      },
-      {
-        title: "重排结果",
-        description: "有检索结果时进行相关性排序",
-        status: "pending",
-        active: false,
-      },
-      {
-        title: "生成回答",
-        description: "检索完成后生成可引用的回答",
-        status: "pending",
-        active: false,
-      },
-    ];
-  }
-
-  if (tools.length > 0) {
-    const hasRunning = tools.some((tool) => tool.status === "running");
-    return [
-      {
-        title: "理解问题",
-        description: "分析用户问题，识别关键意图",
-        status: "done" as const,
-        active: false,
-      },
-      {
-        title: "检索知识",
-        description: tools.map((tool) => tool.name).join("、") || "执行混合检索",
-        status: hasRunning ? ("running" as const) : ("done" as const),
-        active: hasRunning,
-      },
-      {
-        title: "重排结果",
-        description: "对检索结果进行相关性重排",
-        status: hasRunning ? ("pending" as const) : ("done" as const),
-        active: !hasRunning && busy,
-      },
-      {
-        title: "生成回答",
-        description: "基于检索结果生成最终回答",
-        status: busy ? ("running" as const) : ("pending" as const),
-        active: busy,
-      },
-    ];
-  }
-  if (busy) {
-    return [
-      {
-        title: "理解问题",
-        description: "正在分析用户问题",
-        status: "running" as const,
-        active: true,
-      },
-      {
-        title: "检索知识",
-        description: "等待后端返回检索事件",
-        status: "pending" as const,
-        active: false,
-      },
-      {
-        title: "重排结果",
-        description: "等待检索结果",
-        status: "pending" as const,
-        active: false,
-      },
-      {
-        title: "生成回答",
-        description: "准备生成最终回答",
-        status: "pending" as const,
-        active: false,
-      },
-    ];
-  }
-  return [
-    {
-      title: "理解问题",
-      description: "分析用户问题，识别关键意图",
-      status: "done" as const,
-      active: false,
-    },
-    {
-      title: "检索知识",
-      description: "本轮未返回结构化检索事件",
-      status: "pending" as const,
-      active: false,
-    },
-    {
-      title: "重排结果",
-      description: "无可展示的重排结果",
-      status: "pending" as const,
-      active: false,
-    },
-    {
-      title: "生成回答",
-      description: "回答已写入当前会话",
-      status: "done" as const,
-      active: false,
-    },
-  ];
+  return deriveStepsClean(tools, busy, messages);
 }
 
 function InfoRow({
@@ -2093,7 +2187,7 @@ function InfoRow({
 function formatMessageStats(messages: Message[]) {
   const userCount = messages.filter((message) => message.role === "user").length;
   const assistantCount = messages.filter((message) => message.role === "assistant").length;
-  return `${userCount} 轮 · ${messages.length} 条`;
+  return `${userCount} \u8f6e \u00b7 ${messages.length} \u6761`;
 }
 
 function formatTime(value?: number | null) {

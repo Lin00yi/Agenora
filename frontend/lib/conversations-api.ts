@@ -42,6 +42,14 @@ export type ConversationDetail = ConversationSummary & {
   messages: MessagePayload[];
 };
 
+export type ConversationListPage = {
+  items: ConversationSummary[];
+  total: number;
+  page: number;
+  page_size: number;
+  has_more: boolean;
+};
+
 /** Structured error mirror of KbApiError. */
 export class ConversationApiError extends Error {
   status: number;
@@ -83,8 +91,21 @@ async function unwrap<T>(r: Response): Promise<T> {
 // ---------------------------------------------------------------------------
 // CRUD
 // ---------------------------------------------------------------------------
-export async function listConversations(): Promise<ConversationSummary[]> {
-  return unwrap(await authFetch("/api/conversations"));
+export async function listConversations(): Promise<ConversationSummary[]>;
+export async function listConversations(opts: {
+  page: number;
+  pageSize?: number;
+}): Promise<ConversationListPage>;
+export async function listConversations(opts?: {
+  page: number;
+  pageSize?: number;
+}): Promise<ConversationSummary[] | ConversationListPage> {
+  if (!opts) return unwrap(await authFetch("/api/conversations"));
+  const q = new URLSearchParams({
+    page: String(opts.page),
+    page_size: String(opts.pageSize ?? 30),
+  });
+  return unwrap(await authFetch(`/api/conversations?${q}`));
 }
 
 export async function getConversation(id: string): Promise<ConversationDetail> {

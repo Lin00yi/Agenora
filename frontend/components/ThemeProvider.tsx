@@ -37,13 +37,9 @@ function applyClass(resolved: "light" | "dark") {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  // SSR-safe initial — actual resolution happens in effect to avoid hydration mismatch.
   const [theme, setThemeState] = useState<Theme>("system");
   const [resolved, setResolved] = useState<"light" | "dark">("light");
 
-  // Mount: hydrate from localStorage + sync the class (the no-flash inline
-  // script in layout.tsx has already applied it pre-paint; this just keeps
-  // React state in sync). Also run the one-time travelgpt → anykb migration.
   useEffect(() => {
     migrateLegacyKeys();
     const t = readStored();
@@ -54,7 +50,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     applyClass(r);
   }, []);
 
-  // Listen to system theme changes when user is on "system".
   useEffect(() => {
     if (theme !== "system" || typeof window === "undefined") return;
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
@@ -72,7 +67,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     try {
       window.localStorage.setItem(STORAGE_KEY, t);
     } catch {
-      /* ignore quota / disabled */
+      /* ignore */
     }
     const r: "light" | "dark" =
       t === "system" ? (systemPrefersDark() ? "dark" : "light") : t;
@@ -90,8 +85,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 export function useTheme(): Ctx {
   const ctx = useContext(ThemeContext);
   if (!ctx) {
-    // Soft fallback for use during SSR / outside provider — avoids crashes in
-    // components that render before mount.
     return {
       theme: "system",
       resolved: "light",

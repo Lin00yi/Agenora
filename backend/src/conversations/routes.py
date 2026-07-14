@@ -18,10 +18,10 @@ import uuid
 from datetime import datetime, timezone
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, desc, select
+from sqlalchemy import delete, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.middleware import CurrentUser
@@ -119,19 +119,40 @@ def _ms_to_dt(ms: int | None) -> datetime | None:
 @router.get("")
 async def list_conversations(
     user: CurrentUser,
+    page: int | None = Query(default=None, ge=1),
+    page_size: int = Query(default=30, ge=1, le=100),
     session: AsyncSession = Depends(get_session),
-) -> list[dict]:
+) -> list[dict] | dict:
     """List the user's conversations, newest update first.
 
     Returns summaries only — call GET /api/conversations/{id} to fetch the
     full messages array for a single conversation.
     """
-    result = await session.execute(
+    base = (
         select(Conversation)
         .where(Conversation.user_id == user.id)
         .order_by(desc(Conversation.updated_at))
     )
-    return [c.to_summary_dict() for c in result.scalars().all()]
+    if page is None:
+        result = await session.execute(base)
+        return [c.to_summary_dict() for c in result.scalars().all()]
+
+    total = (
+        await session.execute(
+            select(func.count()).select_from(Conversation).where(Conversation.user_id == user.id)
+        )
+    ).scalar_one()
+    result = await session.execute(
+        base.offset((page - 1) * page_size).limit(page_size)
+    )
+    items = [c.to_summary_dict() for c in result.scalars().all()]
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "has_more": page * page_size < total,
+    }
 
 
 # ---------------------------------------------------------------------------
