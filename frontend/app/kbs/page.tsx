@@ -188,7 +188,7 @@ export default function KbsPage() {
                           "rounded-md p-2 text-muted/70 transition",
                           "hover:bg-danger/15 hover:text-danger"
                         )}
-                        aria-label="delete kb"
+                        aria-label="删除知识库"
                         title="删除知识库"
                         type="button"
                       >

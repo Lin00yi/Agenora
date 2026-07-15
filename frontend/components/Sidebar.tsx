@@ -323,7 +323,7 @@ function UserMenu({
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="user menu"
+        aria-label="用户菜单"
       >
         <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-brand/15 text-xs font-semibold text-brand">
           {initial}

@@ -1358,9 +1358,9 @@ function TopBar({
   llmSource: LlmSource;
   onOpenSidebar: () => void;
 }) {
-  const statusLabel = llmReady ? (llmSource === "system" ? "\u7cfb\u7edf\u9ed8\u8ba4" : "\u5c31\u7eea") : "\u5f85\u914d\u7f6e";
+  const statusLabel = llmReady ? (llmSource === "system" ? "系统默认" : "就绪") : "待配置";
   const configLabel =
-    llmSource === "user" ? "BYOK" : llmSource === "system" ? "\u7cfb\u7edf\u6a21\u578b" : "\u53bb\u914d\u7f6e";
+    llmSource === "user" ? "BYOK" : llmSource === "system" ? "系统模型" : "未配置模型";
 
   return (
     <header className="ak-topbar grid h-[72px] shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-b border-white/10 bg-[#0b1422]/88 px-4 backdrop-blur-xl xl:px-7">
@@ -1383,14 +1383,14 @@ function TopBar({
 
       <div className="flex items-center justify-end gap-2">
         <ThemeToggle className="hidden sm:flex" />
-        <Link
-          href="/settings"
+        <div
           className={cn(
-            "hidden h-7 items-center gap-2 rounded-lg border px-3 text-sm sm:flex",
+            "hidden h-9 items-center gap-2 rounded-lg border px-3 text-xs sm:flex",
             llmReady
-              ? "border-emerald-300/10 bg-emerald-400/12 text-emerald-300"
-              : "border-amber-300/20 bg-amber-400/10 text-amber-200"
+              ? "border-emerald-300/20 bg-emerald-400/10 text-emerald-300"
+              : "border-amber-300/25 bg-amber-400/10 text-amber-200"
           )}
+          title="模型状态"
         >
           <span
             className={cn(
@@ -1398,48 +1398,20 @@ function TopBar({
               llmReady ? "bg-emerald-400" : "bg-amber-300"
             )}
           />
-          {statusLabel}
-        </Link>
+          <span className="font-medium">{statusLabel}</span>
+          <span className="h-3 w-px bg-white/15" />
+          <span className="text-slate-400">{configLabel}</span>
+        </div>
         <Link
-          className="hidden items-center gap-2 text-sm text-slate-400 transition hover:text-slate-100 sm:flex"
-          href="/settings"
+          className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/10 px-3 text-sm text-slate-400 transition hover:border-emerald-300/30 hover:bg-white/[0.06] hover:text-slate-100"
+          href="/welcome"
+          aria-label="打开产品介绍"
         >
-          <LockKeyhole className="h-4 w-4" />
-          {configLabel}
+          <HelpCircle className="h-4 w-4" />
+          <span className="hidden sm:inline">介绍</span>
         </Link>
-        <IconButton label="璁剧疆" href="/settings">
-          <Settings className="h-5 w-5" />
-        </IconButton>
-        <IconButton label="甯姪" href="/welcome">
-          <HelpCircle className="h-5 w-5" />
-        </IconButton>
       </div>
     </header>
-  );
-}
-
-function IconButton({
-  label,
-  href,
-  children,
-}: {
-  label: string;
-  href?: string;
-  children: ReactNode;
-}) {
-  const className =
-    "inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white/[0.06] hover:text-slate-100";
-  if (href) {
-    return (
-      <Link href={href} aria-label={label} className={className}>
-        {children}
-      </Link>
-    );
-  }
-  return (
-    <button aria-label={label} className={className} type="button">
-      {children}
-    </button>
   );
 }
 

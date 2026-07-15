@@ -20,14 +20,14 @@ export default function BrandPanel() {
               让团队资料变成可追问、可引用的答案
             </h2>
             <p className="mt-4 text-sm leading-7 text-white/70">
-              {APP_NAME} 面向私有知识库场景：模型密钥由你提供，文档和向量数据留在自己的部署环境里。
+              {APP_NAME} 面向私有知识库场景：模型密钥由你提供，文档和向量数据保留在自己的部署环境里。
             </p>
           </div>
 
           <div className="mt-10 max-w-md rounded-lg border border-white/12 bg-white/[0.06] p-4 shadow-2xl shadow-black/20">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium">论文知识库</p>
+                <p className="text-sm font-medium">产品资料库</p>
                 <p className="mt-1 text-xs text-white/55">Hybrid search · reranker on</p>
               </div>
               <span className="rounded-md bg-emerald-400/15 px-2 py-1 text-xs text-emerald-200">
@@ -35,7 +35,7 @@ export default function BrandPanel() {
               </span>
             </div>
             <div className="grid grid-cols-3 gap-2">
-              <MiniStat label="Docs" value="32" />
+              <MiniStat label="Docs" value="42" />
               <MiniStat label="Chunks" value="1.2k" />
               <MiniStat label="Hits" value="3" />
             </div>

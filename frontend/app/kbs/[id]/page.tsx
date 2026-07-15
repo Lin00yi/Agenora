@@ -997,7 +997,7 @@ function MembersSection({ kbId, isOwner }: { kbId: string; isOwner: boolean }) {
                       setPendingRemove({ user_id: m.user_id, email: m.email })
                     }
                     className="rounded-md p-1.5 text-muted transition hover:bg-danger/15 hover:text-danger"
-                    aria-label="remove member"
+                    aria-label="移除成员"
                     type="button"
                   >
                     <X className="h-3.5 w-3.5" />
@@ -1173,7 +1173,7 @@ function InviteDialog({
           <button
             onClick={onClose}
             className="rounded-md p-1 text-muted hover:bg-surface-2"
-            aria-label="close"
+            aria-label="关闭"
             type="button"
           >
             <X className="h-4 w-4" />

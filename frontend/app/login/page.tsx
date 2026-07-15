@@ -2,12 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useState, FormEvent, useEffect } from "react";
-import { ArrowRight, LogIn, Mail, Lock, ChevronLeft } from "lucide-react";
+import { ArrowRight, ChevronLeft, Lock, LogIn, Mail } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
 import Brand, { APP_NAME } from "@/components/Brand";
 import BrandPanel from "@/components/BrandPanel";
+import ThemeToggle from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,7 +47,7 @@ export default function LoginPage() {
       <BrandPanel />
 
       <div className="app-gradient-bg flex min-h-screen flex-col px-6 py-8 sm:px-10">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <Link
             href="/welcome"
             className="inline-flex items-center gap-1 text-sm text-muted transition hover:text-fg"
@@ -54,18 +55,19 @@ export default function LoginPage() {
             <ChevronLeft className="h-4 w-4" />
             返回首页
           </Link>
-          <div className="flex items-center gap-2 lg:hidden">
-            <Brand size="sm" showWordmark />
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+            <div className="flex items-center gap-2 lg:hidden">
+              <Brand size="sm" showWordmark />
+            </div>
           </div>
         </div>
 
         <div className="flex flex-1 items-center justify-center py-8">
           <div className="w-full max-w-sm">
             <div className="card p-7 shadow-lift sm:p-8">
-              <h1 className="text-2xl font-bold tracking-tight">
-                欢迎回到 {APP_NAME}
-              </h1>
-              <p className="mt-2 text-sm text-muted">登录开始管理你的知识库</p>
+              <h1 className="text-2xl font-bold tracking-tight">欢迎回到 {APP_NAME}</h1>
+              <p className="mt-2 text-sm text-muted">登录后继续管理你的知识库和会话。</p>
 
               <form onSubmit={onSubmit} className="mt-8 space-y-5">
                 <div className="space-y-2">
@@ -125,7 +127,7 @@ export default function LoginPage() {
                   href="/register"
                   className="inline-flex items-center gap-0.5 font-medium text-brand hover:underline"
                 >
-                  免费注册 <ArrowRight className="h-3 w-3" />
+                  创建账号 <ArrowRight className="h-3 w-3" />
                 </Link>
               </p>
             </div>

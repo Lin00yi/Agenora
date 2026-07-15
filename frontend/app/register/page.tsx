@@ -2,19 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useState, FormEvent } from "react";
-import {
-  ArrowRight,
-  UserPlus,
-  Mail,
-  Lock,
-  User as UserIcon,
-  ChevronLeft,
-} from "lucide-react";
+import { ArrowRight, ChevronLeft, Lock, Mail, User as UserIcon, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
 import Brand, { APP_NAME } from "@/components/Brand";
 import BrandPanel from "@/components/BrandPanel";
+import ThemeToggle from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,7 +41,7 @@ export default function RegisterPage() {
       <BrandPanel />
 
       <div className="app-gradient-bg flex min-h-screen flex-col px-6 py-8 sm:px-10">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <Link
             href="/welcome"
             className="inline-flex items-center gap-1 text-sm text-muted transition hover:text-fg"
@@ -55,19 +49,20 @@ export default function RegisterPage() {
             <ChevronLeft className="h-4 w-4" />
             返回首页
           </Link>
-          <div className="flex items-center gap-2 lg:hidden">
-            <Brand size="sm" showWordmark />
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+            <div className="flex items-center gap-2 lg:hidden">
+              <Brand size="sm" showWordmark />
+            </div>
           </div>
         </div>
 
         <div className="flex flex-1 items-center justify-center py-8">
           <div className="w-full max-w-sm">
             <div className="card p-7 shadow-lift sm:p-8">
-              <h1 className="text-2xl font-bold tracking-tight">
-                创建 {APP_NAME} 账号
-              </h1>
+              <h1 className="text-2xl font-bold tracking-tight">创建 {APP_NAME} 账号</h1>
               <p className="mt-2 text-sm text-muted">
-                免费 · 数据存在你自己的机器上
+                注册后即可创建知识库，并在当前部署环境中管理资料。
               </p>
 
               <form onSubmit={onSubmit} className="mt-8 space-y-5">
@@ -90,8 +85,7 @@ export default function RegisterPage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="displayName">
-                    显示名{" "}
-                    <span className="font-normal text-muted">（可选）</span>
+                    昵称 <span className="font-normal text-muted">（可选）</span>
                   </Label>
                   <div className="relative">
                     <UserIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
@@ -102,7 +96,7 @@ export default function RegisterPage() {
                       value={displayName}
                       onChange={(e) => setDisplayName(e.target.value)}
                       className="h-10 bg-bg pl-9"
-                      placeholder="如何称呼你"
+                      placeholder="例如：张小北"
                     />
                   </div>
                 </div>
@@ -131,24 +125,17 @@ export default function RegisterPage() {
                   className="h-10 w-full bg-brand text-white hover:bg-brand-dark"
                 >
                   {loading ? (
-                    "注册中..."
+                    "创建中..."
                   ) : (
                     <>
                       <UserPlus className="h-4 w-4" />
-                      免费注册
+                      创建账号
                     </>
                   )}
                 </Button>
 
                 <p className="text-center text-[11px] leading-relaxed text-muted">
-                  注册即代表你同意我们的{" "}
-                  <a href="#" className="underline hover:text-fg">
-                    服务协议
-                  </a>{" "}
-                  和{" "}
-                  <a href="#" className="underline hover:text-fg">
-                    隐私政策
-                  </a>
+                  请使用你能接收邀请的邮箱注册。管理员可在后台调整账号权限。
                 </p>
               </form>
 
