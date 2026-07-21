@@ -1,22 +1,10 @@
-"""Conversations + Messages HTTP routes (v2-M3).
-
-Authorization model mirrors `kb/routes.py`:
-- All routes require Bearer JWT.
-- Every conversation is scoped to its owner. Cross-user requests return 404
-  (not 403) to avoid leaking the existence of other users' resources.
-
-Frontend orchestration:
-- `POST /messages` is called twice per chat turn (once before SSE for the user
-  message, once after `done`/`error` for the assistant message). The chat
-  endpoint itself (`src/app.py`) stays stateless — it doesn't know about
-  conversation_id.
-"""
+"""Conversations, messages, and user-memory HTTP routes."""
 from __future__ import annotations
 
 import json
 import uuid
 from datetime import datetime, timezone
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
@@ -25,15 +13,18 @@ from sqlalchemy import delete, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.middleware import CurrentUser
-from src.conversations.models import Conversation, Message
+from src.conversations.context import (
+    compute_budget,
+    context_status_payload,
+    get_latest_summary,
+    store_explicit_user_memory,
+)
+from src.conversations.models import Conversation, Message, UserMemory
 from src.infra.database import get_session
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
 
-# ---------------------------------------------------------------------------
-# Schemas
-# ---------------------------------------------------------------------------
 class CreateConversationRequest(BaseModel):
     kb_id: str | None = Field(default=None, max_length=36)
     title: str | None = Field(default=None, max_length=128)
@@ -42,17 +33,12 @@ class CreateConversationRequest(BaseModel):
 class PatchConversationRequest(BaseModel):
     title: str | None = Field(default=None, max_length=128)
     kb_id: str | None = Field(default=None, max_length=36)
-    # v3-M6: per-conversation LLM model override. NULL = use user's default cfg.
     llm_model: str | None = Field(default=None, max_length=128)
-    # Sentinel: pass {"kb_id": null} (or {"llm_model": null}) to unbind/reset.
-    # Pydantic exposes this as `kb_id=None` whether the field was omitted or
-    # set to null, so we use `model_fields_set` in the handler to disambiguate.
 
 
 class AppendMessageRequest(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(default="")
-    # Frontend passes ToolEvent[] as `tools`; stored as JSON text in DB.
     tools: list[dict[str, Any]] | None = Field(default=None)
     cost_usd: float | None = Field(default=None)
     error: str | None = Field(default=None, max_length=4096)
@@ -64,15 +50,14 @@ class ImportMessage(BaseModel):
     tools: list[dict[str, Any]] | None = None
     cost_usd: float | None = None
     error: str | None = None
-    # Epoch ms (client). Server converts → datetime to preserve original time.
     created_at: int | None = None
 
 
 class ImportConversation(BaseModel):
     title: str = "新对话"
     kb_id: str | None = None
-    created_at: int | None = None  # epoch ms
-    updated_at: int | None = None  # epoch ms
+    created_at: int | None = None
+    updated_at: int | None = None
     messages: list[ImportMessage] = Field(default_factory=list)
 
 
@@ -80,24 +65,33 @@ class ImportRequest(BaseModel):
     conversations: list[ImportConversation] = Field(default_factory=list)
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 async def _load_owned_conversation(
     session: AsyncSession, conv_id: str, user_id: str
 ) -> Conversation:
-    """Fetch a conversation owned by `user_id`, else 404 (no existence leak)."""
     conv = await session.get(Conversation, conv_id)
     if conv is None or conv.user_id != user_id:
         raise HTTPException(status_code=404, detail="conversation not found")
     return conv
 
 
+async def _build_context_status(
+    session: AsyncSession,
+    conv: Conversation,
+) -> dict:
+    result = await session.execute(
+        select(Message).where(Message.conversation_id == conv.id).order_by(Message.created_at)
+    )
+    messages = list(result.scalars().all())
+    budget = compute_budget(messages, conv.llm_model)
+    summary = await get_latest_summary(session, conv.id)
+    return context_status_payload(budget=budget, summary=summary)
+
+
 def _derive_title(content: str) -> str:
     cleaned = " ".join(content.strip().split())
     if not cleaned:
         return "新对话"
-    return cleaned[:24] + "…" if len(cleaned) > 24 else cleaned
+    return cleaned[:24] + "..." if len(cleaned) > 24 else cleaned
 
 
 def _is_default_title(title: str) -> bool:
@@ -113,9 +107,6 @@ def _ms_to_dt(ms: int | None) -> datetime | None:
         return None
 
 
-# ---------------------------------------------------------------------------
-# Endpoints
-# ---------------------------------------------------------------------------
 @router.get("")
 async def list_conversations(
     user: CurrentUser,
@@ -123,11 +114,6 @@ async def list_conversations(
     page_size: int = Query(default=30, ge=1, le=100),
     session: AsyncSession = Depends(get_session),
 ) -> list[dict] | dict:
-    """List the user's conversations, newest update first.
-
-    Returns summaries only — call GET /api/conversations/{id} to fetch the
-    full messages array for a single conversation.
-    """
     base = (
         select(Conversation)
         .where(Conversation.user_id == user.id)
@@ -142,9 +128,7 @@ async def list_conversations(
             select(func.count()).select_from(Conversation).where(Conversation.user_id == user.id)
         )
     ).scalar_one()
-    result = await session.execute(
-        base.offset((page - 1) * page_size).limit(page_size)
-    )
+    result = await session.execute(base.offset((page - 1) * page_size).limit(page_size))
     items = [c.to_summary_dict() for c in result.scalars().all()]
     return {
         "items": items,
@@ -155,18 +139,11 @@ async def list_conversations(
     }
 
 
-# ---------------------------------------------------------------------------
-# v3-M5: bulk delete + export
-# ---------------------------------------------------------------------------
 @router.delete("", status_code=status.HTTP_200_OK)
 async def delete_all_conversations(
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    """Hard-delete every conversation owned by the current user.
-
-    ON DELETE CASCADE on messages.conversation_id handles message cleanup.
-    """
     await session.execute(delete(Conversation).where(Conversation.user_id == user.id))
     await session.commit()
     return {"ok": True}
@@ -177,7 +154,6 @@ async def export_conversations(
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ):
-    """Stream a JSON dump of all conversations + messages for download."""
     convs_result = await session.execute(
         select(Conversation)
         .where(Conversation.user_id == user.id)
@@ -187,23 +163,50 @@ async def export_conversations(
     out: list[dict] = []
     for c in convs:
         msgs_result = await session.execute(
-            select(Message)
-            .where(Message.conversation_id == c.id)
-            .order_by(Message.created_at)
+            select(Message).where(Message.conversation_id == c.id).order_by(Message.created_at)
         )
         msgs = msgs_result.scalars().all()
-        out.append({
-            "id": c.id,
-            "title": c.title,
-            "kb_id": c.kb_id,
-            "created_at": c.created_at.isoformat() if c.created_at else None,
-            "updated_at": c.updated_at.isoformat() if c.updated_at else None,
-            "messages": [m.to_public_dict() for m in msgs],
-        })
+        out.append(
+            {
+                "id": c.id,
+                "title": c.title,
+                "kb_id": c.kb_id,
+                "created_at": c.created_at.isoformat() if c.created_at else None,
+                "updated_at": c.updated_at.isoformat() if c.updated_at else None,
+                "messages": [m.to_public_dict() for m in msgs],
+            }
+        )
     return JSONResponse(
         out,
         headers={"Content-Disposition": 'attachment; filename="anykb-export.json"'},
     )
+
+
+@router.get("/memories")
+async def list_memories(
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> list[dict]:
+    result = await session.execute(
+        select(UserMemory)
+        .where(UserMemory.user_id == user.id, UserMemory.status == "active")
+        .order_by(desc(UserMemory.updated_at))
+    )
+    return [m.to_public_dict() for m in result.scalars().all()]
+
+
+@router.delete("/memories/{memory_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_memory(
+    memory_id: str,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> None:
+    row = await session.get(UserMemory, memory_id)
+    if row is None or row.user_id != user.id:
+        raise HTTPException(status_code=404, detail="memory not found")
+    row.status = "deleted"
+    row.updated_at = datetime.now(timezone.utc)
+    await session.commit()
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -231,7 +234,19 @@ async def get_conversation(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     conv = await _load_owned_conversation(session, conv_id, user.id)
-    return conv.to_dict_with_messages()
+    payload = conv.to_dict_with_messages()
+    payload["context_status"] = await _build_context_status(session, conv)
+    return payload
+
+
+@router.get("/{conv_id}/context-status")
+async def get_conversation_context_status(
+    conv_id: str,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    conv = await _load_owned_conversation(session, conv_id, user.id)
+    return await _build_context_status(session, conv)
 
 
 @router.patch("/{conv_id}")
@@ -249,10 +264,8 @@ async def patch_conversation(
         if title:
             conv.title = title
     if "kb_id" in fields_set:
-        # Explicit set, including null (unbind).
         conv.kb_id = req.kb_id
     if "llm_model" in fields_set:
-        # v3-M6: explicit set, including null (reset to user default).
         conv.llm_model = req.llm_model
 
     await session.commit()
@@ -267,7 +280,7 @@ async def delete_conversation(
     session: AsyncSession = Depends(get_session),
 ) -> None:
     conv = await _load_owned_conversation(session, conv_id, user.id)
-    await session.delete(conv)  # cascade drops messages
+    await session.delete(conv)
     await session.commit()
 
 
@@ -278,12 +291,6 @@ async def append_message(
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    """Append a message to a conversation.
-
-    Side effect: if this is the first user message AND the conversation title
-    is still a default, derive a title from the content. Saves a round trip
-    for the frontend.
-    """
     conv = await _load_owned_conversation(session, conv_id, user.id)
 
     msg = Message(
@@ -297,12 +304,16 @@ async def append_message(
     )
     session.add(msg)
 
-    # Auto-derive title on the first user message if user hasn't renamed yet.
-    if req.role == "user" and _is_default_title(conv.title) and req.content.strip():
-        conv.title = _derive_title(req.content)
+    if req.role == "user":
+        await store_explicit_user_memory(
+            session,
+            user_id=user.id,
+            message_id=msg.id,
+            content=req.content or "",
+        )
+        if _is_default_title(conv.title) and req.content.strip():
+            conv.title = _derive_title(req.content)
 
-    # Touch updated_at so the conversation bubbles to the top of the sidebar.
-    # onupdate=_utcnow fires automatically since we're mutating `conv`.
     conv.updated_at = datetime.now(timezone.utc)
 
     await session.commit()
@@ -316,20 +327,10 @@ async def import_conversations(
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    """Bulk-import conversations from frontend localStorage shape.
-
-    Each conversation gets a fresh server UUID — client IDs are not reused
-    (avoids any collision with future server-generated IDs). Client-supplied
-    timestamps are preserved so old conversations don't all show "now".
-    No dedup logic — frontend uses a migrated flag to prevent re-imports.
-    """
     imported = 0
     for c in req.conversations:
         c_created = _ms_to_dt(c.created_at) or datetime.now(timezone.utc)
         c_updated = _ms_to_dt(c.updated_at) or c_created
-
-        # Pick a sensible title if the imported one is the default and we have
-        # a user message to derive from.
         title = (c.title or "新对话").strip()[:128] or "新对话"
         if _is_default_title(title):
             for m in c.messages:
@@ -346,7 +347,7 @@ async def import_conversations(
             updated_at=c_updated,
         )
         session.add(conv)
-        await session.flush()  # populate conv.id for FK
+        await session.flush()
 
         for m in c.messages:
             m_created = _ms_to_dt(m.created_at) or c_created

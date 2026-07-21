@@ -26,6 +26,8 @@ from src.agent.graph import build_graph
 from src.auth.middleware import CurrentUser
 from src.auth.models import User
 from src.auth.routes import router as auth_router
+from src.conversations.context import build_context_for_conversation
+from src.conversations.models import Conversation
 from src.conversations.routes import router as conversations_router
 from src.infra.database import get_session, init_db
 from src.infra.rate_limit import check as rate_check
@@ -127,7 +129,8 @@ class ChatMessage(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    messages: list[ChatMessage] = Field(..., min_length=1)
+    messages: list[ChatMessage] | None = Field(default=None)
+    conversation_id: str | None = Field(default=None, max_length=36)
     kb_id: str | None = Field(default=None, description="Bind to a KB; agent uses search_kb only")
     # v3-M6: optional per-request LLM model override. Frontend reads
     # currentConv.llm_model (saved per-conversation in DB) and passes it here.
@@ -268,9 +271,18 @@ async def chat_post(
     """
     require_user_llm(user)
 
+    conv: Conversation | None = None
+    if req.conversation_id:
+        conv = await session.get(Conversation, req.conversation_id)
+        if conv is None or conv.user_id != user.id:
+            raise HTTPException(status_code=404, detail="conversation not found")
+
+    effective_kb_id = req.kb_id if req.kb_id is not None else (conv.kb_id if conv else None)
+    selected_model = req.model or (conv.llm_model if conv else None)
+
     kb: KB | None = None
-    if req.kb_id:
-        kb = await session.get(KB, req.kb_id)
+    if effective_kb_id:
+        kb = await session.get(KB, effective_kb_id)
         if kb is None:
             raise HTTPException(status_code=404, detail="kb not found")
         # v2-M9: any role (owner / editor / viewer) grants read access. System
@@ -286,14 +298,29 @@ async def chat_post(
         if not kb.is_system and not bool(getattr(kb, "embedding_provider", None)):
             require_user_embedding(user)
 
-    messages = [{"role": m.role, "content": m.content} for m in req.messages]
+    if conv is not None:
+        built = await build_context_for_conversation(
+            session,
+            conversation_id=conv.id,
+            user_id=user.id,
+            model=selected_model,
+        )
+        messages = built.messages
+    elif req.messages:
+        messages = [{"role": m.role, "content": m.content} for m in req.messages]
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="messages or conversation_id is required",
+        )
+
     return _run_chat_session(
         messages,
         rate_key=f"user:{user.id}",
         user_email=user.email,
         kb=kb,
         user=user,
-        model_override=req.model,
+        model_override=selected_model,
     )
 
 

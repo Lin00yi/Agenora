@@ -7,16 +7,27 @@ RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors
         /etc/apt/sources.list.d/debian.sources 2>/dev/null || true; \
     sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors.aliyun.com|g' \
         /etc/apt/sources.list 2>/dev/null || true; \
-    apt-get update && apt-get install -y --no-install-recommends \
+    (apt-get -o Acquire::Retries=5 update && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
         build-essential \
         curl \
-        ca-certificates \
+        ca-certificates) \
+    || (sed -i 's|mirrors.aliyun.com/debian-security|security.debian.org/debian-security|g; s|mirrors.aliyun.com/debian|deb.debian.org/debian|g' \
+            /etc/apt/sources.list.d/debian.sources 2>/dev/null || true; \
+        sed -i 's|mirrors.aliyun.com/debian-security|security.debian.org/debian-security|g; s|mirrors.aliyun.com/debian|deb.debian.org/debian|g' \
+            /etc/apt/sources.list 2>/dev/null || true; \
+        apt-get clean; \
+        rm -rf /var/lib/apt/lists/*; \
+        apt-get -o Acquire::Retries=5 update && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
+            build-essential \
+            curl \
+            ca-certificates) \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python deps first for layer caching.
 # Extras: milvus (Milvus Lite embedded vector store) + asyncpg (PostgreSQL async driver)
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -e '.[milvus]' asyncpg
+RUN pip install --no-cache-dir --retries 5 -i https://pypi.tuna.tsinghua.edu.cn/simple -e '.[milvus]' asyncpg \
+    || pip install --no-cache-dir --retries 5 -i https://pypi.org/simple -e '.[milvus]' asyncpg
 
 # Source.
 COPY src ./src

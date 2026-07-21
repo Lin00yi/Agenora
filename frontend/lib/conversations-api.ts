@@ -26,6 +26,28 @@ export type ConversationSummary = {
   message_count: number;
   created_at: string | null;
   updated_at: string | null;
+  context_status?: ConversationContextStatus | null;
+};
+
+export type ConversationContextStatus = {
+  state: "normal" | "approaching" | "ready" | "critical" | "compressed";
+  label: string;
+  description: string;
+  current_tokens: number;
+  available_tokens: number;
+  context_window: number;
+  ratio: number;
+  percent: number;
+  prepare_threshold_percent: number;
+  summary_threshold_percent: number;
+  force_threshold_percent: number;
+  retained_recent_turns: number;
+  summary: {
+    id: string;
+    covered_message_count: number;
+    token_count: number;
+    updated_at: string | null;
+  } | null;
 };
 
 export type MessagePayload = {
@@ -110,6 +132,12 @@ export async function listConversations(opts?: {
 
 export async function getConversation(id: string): Promise<ConversationDetail> {
   return unwrap(await authFetch(`/api/conversations/${id}`));
+}
+
+export async function getConversationContextStatus(
+  id: string
+): Promise<ConversationContextStatus> {
+  return unwrap(await authFetch(`/api/conversations/${id}/context-status`));
 }
 
 export async function createConversation(

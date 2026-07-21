@@ -52,9 +52,11 @@ import {
   createConversation,
   deleteConversation,
   getConversation,
+  getConversationContextStatus,
   listConversations,
   migrateFromLocalStorage,
   patchConversation,
+  type ConversationContextStatus,
   type ConversationSummary,
   type MessagePayload,
 } from "@/lib/conversations-api";
@@ -158,6 +160,8 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
   const [currentMessages, setCurrentMessages] = useState<Message[]>([]);
   const [currentKbId, setCurrentKbId] = useState<string | null>(null);
   const [currentModel, setCurrentModel] = useState<string | null>(null);
+  const [currentContextStatus, setCurrentContextStatus] =
+    useState<ConversationContextStatus | null>(null);
   const [modelOptions, setModelOptions] = useState<string[]>([]);
   const [llmReady, setLlmReady] = useState(false);
   const [llmSource, setLlmSource] = useState<LlmSource>("missing");
@@ -198,9 +202,22 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
         if (found) {
           setCurrentKbId(found.kb_id);
           setCurrentModel(found.llm_model ?? null);
+          setCurrentContextStatus(found.context_status ?? null);
         }
         return cur;
       });
+      getConversationContextStatus(id)
+        .then((status) => {
+          setCurrentContextStatus(status);
+          setSummaries((cur) =>
+            cur.map((item) =>
+              item.id === id ? { ...item, context_status: status } : item
+            )
+          );
+        })
+        .catch(() => {
+          /* best-effort status refresh */
+        });
       return true;
     }
     try {
@@ -210,8 +227,8 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
       setCurrentMessages(msgs);
       setCurrentKbId(detail.kb_id);
       setCurrentModel(detail.llm_model ?? null);
+      setCurrentContextStatus(detail.context_status ?? null);
       setSummaries((prev) => {
-        if (prev.some((item) => item.id === detail.id)) return prev;
         const summary: ConversationSummary = {
           id: detail.id,
           title: detail.title,
@@ -220,7 +237,11 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
           message_count: detail.message_count,
           created_at: detail.created_at,
           updated_at: detail.updated_at,
+          context_status: detail.context_status ?? null,
         };
+        if (prev.some((item) => item.id === detail.id)) {
+          return prev.map((item) => (item.id === detail.id ? { ...item, ...summary } : item));
+        }
         return [summary, ...prev];
       });
       return true;
@@ -229,6 +250,7 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
       setCurrentMessages([]);
       setCurrentKbId(null);
       setCurrentModel(null);
+      setCurrentContextStatus(null);
       toast.error((e as Error)?.message ?? "\u52a0\u8f7d\u4f1a\u8bdd\u5931\u8d25");
       return false;
     }
@@ -380,6 +402,7 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
           setCurrentMessages([]);
           setCurrentKbId(null);
           setCurrentModel(null);
+          setCurrentContextStatus(null);
         }
       } catch (e) {
         if (!cancelled) {
@@ -409,6 +432,7 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
         setCurrentMessages([]);
         setCurrentKbId(null);
         setCurrentModel(null);
+        setCurrentContextStatus(null);
       }
     };
     window.addEventListener("popstate", handlePopState);
@@ -464,6 +488,7 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
         message_count: 0,
         created_at: created.created_at,
         updated_at: created.updated_at,
+        context_status: created.context_status ?? null,
       };
       setSummaries((prev) => [summary, ...prev]);
       setConversationTotal((total) => total + 1);
@@ -472,6 +497,7 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
       setCurrentMessages([]);
       setCurrentKbId(created.kb_id);
       setCurrentModel(created.llm_model ?? null);
+      setCurrentContextStatus(created.context_status ?? null);
       setSidebarOpen(false);
       window.history.pushState(null, "", conversationHref(created.id));
     } catch (e) {
@@ -548,6 +574,7 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
           setCurrentMessages([]);
           setCurrentKbId(null);
           setCurrentModel(null);
+          setCurrentContextStatus(null);
           window.history.replaceState(null, "", "/");
         }
       }
@@ -580,8 +607,9 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
             llm_model: created.llm_model,
             message_count: 0,
             created_at: created.created_at,
-            updated_at: created.updated_at,
-          };
+          updated_at: created.updated_at,
+          context_status: created.context_status ?? null,
+        };
           setSummaries((prev) => [summary, ...prev]);
           setConversationTotal((total) => total + 1);
           setCurrentId(created.id);
@@ -589,6 +617,7 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
           setCurrentMessages([]);
           setCurrentKbId(created.kb_id);
           setCurrentModel(created.llm_model ?? null);
+          setCurrentContextStatus(created.context_status ?? null);
           window.history.replaceState(null, "", conversationHref(created.id));
         } catch (e) {
           toast.error((e as Error)?.message ?? "\u521b\u5efa\u4f1a\u8bdd\u5931\u8d25");
@@ -664,6 +693,18 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
             prev.map((m) => (m.id === snap.msgId ? { ...m, id: result.id } : m))
           );
           bumpSummary(snap.convId, {}, 1, true);
+          getConversationContextStatus(snap.convId)
+            .then((status) => {
+              setCurrentContextStatus(status);
+              setSummaries((prev) =>
+                prev.map((item) =>
+                  item.id === snap.convId ? { ...item, context_status: status } : item
+                )
+              );
+            })
+            .catch(() => {
+              /* best-effort status refresh */
+            });
         } catch (e) {
           console.error("persist assistant failed", e);
           toast.error("\u52a9\u624b\u56de\u590d\u4fdd\u5b58\u5931\u8d25\uff0c\u5237\u65b0\u540e\u53ef\u80fd\u4e22\u5931");
@@ -776,7 +817,7 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
               break;
           }
         },
-        { kbId: currentKbId, model: currentModel }
+        { conversationId: convId!, kbId: currentKbId, model: currentModel }
       );
 
       cleanupRef.current = cleanup;
@@ -879,6 +920,7 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
             <main className="ak-main flex min-h-0 min-w-0 flex-col border-r border-white/10 bg-[radial-gradient(circle_at_50%_0%,rgba(16,185,129,0.10),transparent_32%),linear-gradient(180deg,#0d1624,#08101c)]">
               <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
                 <div className="mx-auto flex w-full max-w-[820px] flex-col gap-7">
+                  <ContextCompressionNotice contextStatus={currentContextStatus} />
                   {currentMessages.length === 0 ? (
                     <EmptyWorkbench
                       currentKbName={currentKb?.name ?? "\u901a\u7528\u5bf9\u8bdd"}
@@ -916,6 +958,7 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
               currentConversation={currentConversation}
               currentModel={currentModel}
               llmSource={llmSource}
+              contextStatus={currentContextStatus}
               messages={currentMessages}
               tools={activeTools}
               busy={busy}
@@ -1589,6 +1632,30 @@ function SourceStrip({ sources }: { sources: SourceRow[] }) {
   );
 }
 
+function ContextCompressionNotice({
+  contextStatus,
+}: {
+  contextStatus: ConversationContextStatus | null;
+}) {
+  if (!contextStatus || contextStatus.state === "normal") return null;
+  const isCompressed = contextStatus.state === "compressed";
+  return (
+    <div className="mx-auto flex w-fit max-w-full items-center gap-2 rounded-full border border-white/10 bg-[#0d1726]/82 px-3 py-1.5 text-xs text-slate-400 shadow-[0_10px_28px_rgba(0,0,0,0.18)]">
+      <ShieldCheck
+        className={cn(
+          "h-3.5 w-3.5",
+          isCompressed ? "text-emerald-300" : "text-amber-300"
+        )}
+      />
+      <span className="truncate">
+        {isCompressed
+          ? `已自动压缩早期上下文，保留最近 ${contextStatus.retained_recent_turns} 轮完整对话`
+          : contextStatus.description}
+      </span>
+    </div>
+  );
+}
+
 function buildMessageSources(message: Extract<Message, { role: "assistant" }>): SourceRow[] {
   if (message.tools.length === 0) return [];
   return message.tools.slice(0, 4).map((tool) => ({
@@ -1855,14 +1922,6 @@ function Composer({
               </option>
             ))}
           </select>
-          <Link
-            href="/settings"
-            className="ak-control inline-flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-slate-300 transition hover:bg-white/[0.08]"
-            title="检索与模型设置"
-          >
-            <SlidersHorizontal className="h-4 w-4 text-indigo-300" />
-            {"\u6df7\u5408\u68c0\u7d22"}
-          </Link>
           {busy ? (
             <button
               className="inline-flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-4 text-sm font-medium text-slate-100 hover:bg-white/10"
@@ -1899,6 +1958,7 @@ function RightInsightPanel({
   currentConversation,
   currentModel,
   llmSource,
+  contextStatus,
   messages,
   tools,
   busy,
@@ -1907,6 +1967,7 @@ function RightInsightPanel({
   currentConversation: Conversation | null;
   currentModel: string | null;
   llmSource: LlmSource;
+  contextStatus: ConversationContextStatus | null;
   messages: Message[];
   tools: ToolEvent[];
   busy: boolean;
@@ -2039,6 +2100,7 @@ function RightInsightPanel({
           />
           <InfoRow label="模型" value={modelLabel} />
         </dl>
+        <ContextStatusCard contextStatus={contextStatus} />
       </section>
 
       <section className="hidden">
@@ -2051,6 +2113,73 @@ function RightInsightPanel({
         </dl>
       </section>
     </aside>
+  );
+}
+
+function ContextStatusCard({
+  contextStatus,
+}: {
+  contextStatus: ConversationContextStatus | null;
+}) {
+  const status = contextStatus ?? {
+    state: "normal" as const,
+    label: "正常",
+    description: "当前上下文无需压缩。",
+    current_tokens: 0,
+    available_tokens: 0,
+    context_window: 0,
+    ratio: 0,
+    percent: 0,
+    prepare_threshold_percent: 60,
+    summary_threshold_percent: 72,
+    force_threshold_percent: 85,
+    retained_recent_turns: 10,
+    summary: null,
+  };
+  const tone =
+    status.state === "compressed"
+      ? "border-emerald-300/20 bg-emerald-400/8 text-emerald-200"
+      : status.state === "normal"
+      ? "border-white/10 bg-white/[0.03] text-slate-300"
+      : "border-amber-300/20 bg-amber-300/8 text-amber-200";
+  const bar =
+    status.state === "compressed"
+      ? "bg-emerald-400"
+      : status.state === "normal"
+      ? "bg-slate-500"
+      : "bg-amber-300";
+
+  return (
+    <div className={cn("mt-5 rounded-lg border p-3", tone)}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <ShieldCheck className="h-4 w-4 shrink-0" />
+          <span className="truncate text-sm font-medium">上下文状态</span>
+        </div>
+        <span className="shrink-0 rounded-full bg-black/18 px-2 py-0.5 text-xs">
+          {status.label}
+        </span>
+      </div>
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+        <div
+          className={cn("h-full rounded-full transition-all", bar)}
+          style={{ width: `${Math.min(100, Math.max(0, status.percent))}%` }}
+        />
+      </div>
+      <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+        <span>{status.percent}%</span>
+        <span>
+          {formatTokenCount(status.current_tokens)} / {formatTokenCount(status.available_tokens)}
+        </span>
+      </div>
+      <p className="mt-3 text-xs leading-5 text-slate-500">{status.description}</p>
+      {status.summary && (
+        <div className="mt-3 rounded-md border border-white/10 bg-black/14 px-2.5 py-2 text-xs text-slate-400">
+          已覆盖 {status.summary.covered_message_count} 条早期消息 · 摘要约{" "}
+          {formatTokenCount(status.summary.token_count)}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2154,6 +2283,12 @@ function InfoRow({
       </dd>
     </div>
   );
+}
+
+function formatTokenCount(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "-";
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
+  return String(value);
 }
 
 function formatMessageStats(messages: Message[]) {

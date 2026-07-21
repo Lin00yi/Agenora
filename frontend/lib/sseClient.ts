@@ -46,7 +46,7 @@ import { getToken, handleSessionExpired } from "@/lib/auth";
 export function connectChat(
   messages: ChatMessage[],
   onEvent: (e: ChatEvent) => void,
-  opts?: { kbId?: string | null; model?: string | null }
+  opts?: { conversationId?: string | null; kbId?: string | null; model?: string | null }
 ): () => void {
   const controller = new AbortController();
 
@@ -58,7 +58,9 @@ export function connectChat(
     const token = getToken();
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    const body: Record<string, unknown> = { messages };
+    const body: Record<string, unknown> = opts?.conversationId
+      ? { conversation_id: opts.conversationId }
+      : { messages };
     if (opts?.kbId) body.kb_id = opts.kbId;
     if (opts?.model) body.model = opts.model;
 
