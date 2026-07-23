@@ -376,9 +376,13 @@ async def build_context_for_conversation(
     out: list[dict[str, str]] = []
     mem_text = memory_block(memories)
     if mem_text:
-        out.append({"role": "system", "content": mem_text})
+        out.append(
+            {"role": "system", "content": mem_text, "_context_source": "memory"}
+        )
     if summary:
-        out.append({"role": "system", "content": summary.summary})
+        out.append(
+            {"role": "system", "content": summary.summary, "_context_source": "summary"}
+        )
     out.extend({"role": m.role, "content": m.content or ""} for m in recent)
 
     return BuiltContext(
