@@ -6,10 +6,12 @@ conversation grows beyond the configured budget.
 """
 from __future__ import annotations
 
+import json
 import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from hashlib import sha256
 
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -65,6 +67,20 @@ class BuiltContext:
     budget: ContextBudget
     summary: ConversationSummary | None
     injected_memory_count: int
+
+
+@dataclass(frozen=True)
+class MemoryCandidate:
+    """A high-confidence memory inferred from one user-authored message."""
+
+    type: str
+    key: str
+    value: str
+    content: str
+    confidence: float
+    importance: float
+    source: str
+    scope: str = "personal"
 
 
 def estimate_tokens(text: str) -> int:
@@ -307,6 +323,7 @@ async def retrieve_user_memories(
     *,
     user_id: str,
     query: str,
+    kb_id: str | None = None,
     limit: int = 6,
 ) -> list[UserMemory]:
     result = await session.execute(
@@ -320,13 +337,27 @@ async def retrieve_user_memories(
         return []
 
     query_terms = _memory_terms(query)
-    scored: list[tuple[int, UserMemory]] = []
+    wants_preferences = bool(re.search(r"偏好|默认|风格|语言|格式|习惯", query))
+    scored: list[tuple[float, UserMemory]] = []
     for row in rows:
+        if row.scope == "kb" and row.scope_id != kb_id:
+            continue
+        if row.scope not in {"personal", "kb"}:
+            continue
         terms = _memory_terms(row.content)
-        score = len(query_terms & terms)
-        if score > 0 or row.type == "preference":
+        keyword_score = len(query_terms & terms)
+        type_bonus = 1.5 if wants_preferences and row.type == "preference" else 0.0
+        scope_bonus = 0.75 if row.scope == "kb" and row.scope_id == kb_id else 0.0
+        if keyword_score > 0 or type_bonus > 0:
+            score = (
+                keyword_score * 4
+                + type_bonus
+                + scope_bonus
+                + float(row.importance or 0.5)
+                + float(row.confidence or 0.0)
+            )
             scored.append((score, row))
-    scored.sort(key=lambda item: (item[0], item[1].confidence), reverse=True)
+    scored.sort(key=lambda item: item[0], reverse=True)
     return [row for _, row in scored[:limit]]
 
 
@@ -380,6 +411,213 @@ def extract_explicit_memory_candidate(text: str) -> str | None:
     return None
 
 
+def _is_question(text: str) -> bool:
+    return text.rstrip().endswith(("?", "？", "吗", "么")) or bool(
+        re.search(r"能否|可不可以|是否|怎么", text)
+    )
+
+
+def _stable_key(prefix: str, value: str) -> str:
+    digest = sha256(value.encode("utf-8")).hexdigest()[:16]
+    return f"{prefix}:{digest}"
+
+
+def _language_value(value: str) -> str:
+    normalized = value.lower()
+    if normalized in {"中文", "汉语", "chinese"}:
+        return "zh-CN"
+    return "en"
+
+
+def extract_memory_candidates(text: str) -> list[MemoryCandidate]:
+    """Silently extract only stable, user-authored, high-confidence memories.
+
+    The rules intentionally favour precision over recall: a false positive is
+    more harmful than asking a user to repeat a preference once. Explicit
+    ``记住`` commands always qualify; implicit capture requires future/default
+    language that signals a durable preference or constraint.
+    """
+    cleaned = " ".join((text or "").strip().split())
+    if not cleaned or contains_sensitive_memory_content(cleaned):
+        return []
+
+    explicit = extract_explicit_memory_candidate(cleaned)
+    if explicit:
+        return [
+            MemoryCandidate(
+                type="explicit",
+                key=_stable_key("explicit", explicit),
+                value=explicit,
+                content=explicit,
+                confidence=0.95,
+                importance=0.8,
+                source="explicit",
+            )
+        ]
+    if _is_question(cleaned):
+        return []
+
+    candidates: list[MemoryCandidate] = []
+    future_marker = r"(?:以后|今后|之后|默认|长期|一直)"
+
+    language = re.search(
+        future_marker + r".{0,20}?(?:使用|用|回复|回答|输出|写)(中文|汉语|英文|English|Chinese)",
+        cleaned,
+        re.IGNORECASE,
+    )
+    if language:
+        value = _language_value(language.group(1))
+        display = "中文" if value == "zh-CN" else "英文"
+        candidates.append(
+            MemoryCandidate(
+                type="preference",
+                key="response_language",
+                value=value,
+                content=f"用户偏好使用{display}回复。",
+                confidence=0.86,
+                importance=0.9,
+                source="auto_rule",
+            )
+        )
+
+    style = re.search(
+        future_marker + r".{0,24}?(简洁|详细|专业|口语化)(?:回复|回答|输出|报告|说明)?",
+        cleaned,
+    )
+    if style:
+        value = style.group(1)
+        candidates.append(
+            MemoryCandidate(
+                type="preference",
+                key="response_style",
+                value=value,
+                content=f"用户偏好{value}的回复风格。",
+                confidence=0.82,
+                importance=0.75,
+                source="auto_rule",
+            )
+        )
+
+    length = re.search(
+        future_marker + r".{0,30}?(?:控制在|不超过|少于)\s*(\d{2,5})\s*字", cleaned
+    )
+    if length:
+        value = length.group(1)
+        candidates.append(
+            MemoryCandidate(
+                type="preference",
+                key="response_max_chars",
+                value=value,
+                content=f"用户偏好回复控制在 {value} 字以内。",
+                confidence=0.84,
+                importance=0.75,
+                source="auto_rule",
+            )
+        )
+
+    constraint = re.search(
+        r"(?:项目|团队|代码库).{0,36}?(必须|禁止|不可|不能|统一使用)\s*(.{4,160})", cleaned
+    )
+    if constraint:
+        value = f"{constraint.group(1)} {constraint.group(2).rstrip('。.!！')}"
+        candidates.append(
+            MemoryCandidate(
+                type="constraint",
+                key=_stable_key("constraint", value),
+                value=value,
+                content=f"项目约束：{value}。",
+                confidence=0.8,
+                importance=0.9,
+                source="auto_rule",
+                scope="kb",
+            )
+        )
+
+    # A message can state the same preference twice; retain one candidate per
+    # structured key so writes are deterministic.
+    unique: dict[str, MemoryCandidate] = {}
+    for candidate in candidates:
+        unique[candidate.key] = candidate
+    return list(unique.values())
+
+
+def _source_message_ids(row: UserMemory) -> list[str]:
+    if not row.source_message_ids:
+        return []
+    try:
+        value = json.loads(row.source_message_ids)
+        return [str(item) for item in value] if isinstance(value, list) else []
+    except (TypeError, ValueError):
+        return []
+
+
+async def store_user_memories(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    message_id: str,
+    content: str,
+    kb_id: str | None = None,
+) -> list[UserMemory]:
+    """Persist high-confidence explicit or implicit memories without UI friction.
+
+    A new value for the same ``scope + type + key`` automatically supersedes
+    the older active row. This prevents conflicting preferences from being
+    injected together on later turns.
+    """
+    stored: list[UserMemory] = []
+    for candidate in extract_memory_candidates(content):
+        scope = candidate.scope if candidate.scope != "kb" or kb_id else "personal"
+        scope_id = kb_id if scope == "kb" else None
+        result = await session.execute(
+            select(UserMemory).where(
+                UserMemory.user_id == user_id,
+                UserMemory.scope == scope,
+                UserMemory.scope_id == scope_id,
+                UserMemory.type == candidate.type,
+                UserMemory.memory_key == candidate.key,
+                UserMemory.status == "active",
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing and existing.memory_value == candidate.value:
+            ids = _source_message_ids(existing)
+            if message_id not in ids:
+                ids.append(message_id)
+            existing.source_message_ids = json.dumps(ids, ensure_ascii=False)
+            existing.confidence = max(existing.confidence, candidate.confidence)
+            existing.importance = max(existing.importance, candidate.importance)
+            existing.updated_at = datetime.now(timezone.utc)
+            stored.append(existing)
+            continue
+
+        if existing:
+            existing.status = "superseded"
+            existing.updated_at = datetime.now(timezone.utc)
+
+        row = UserMemory(
+            id=str(uuid.uuid4()),
+            user_id=user_id,
+            scope=scope,
+            scope_id=scope_id,
+            type=candidate.type,
+            memory_key=candidate.key,
+            memory_value=candidate.value,
+            content=candidate.content,
+            source_message_ids=json.dumps([message_id], ensure_ascii=False),
+            source=candidate.source,
+            confidence=candidate.confidence,
+            importance=candidate.importance,
+            status="active",
+            supersedes_memory_id=existing.id if existing else None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        session.add(row)
+        stored.append(row)
+    return stored
+
+
 async def store_explicit_user_memory(
     session: AsyncSession,
     *,
@@ -387,37 +625,14 @@ async def store_explicit_user_memory(
     message_id: str,
     content: str,
 ) -> UserMemory | None:
-    candidate = extract_explicit_memory_candidate(content)
-    if not candidate:
+    """Backward-compatible explicit-only entrypoint used by older callers."""
+    explicit = extract_explicit_memory_candidate(content)
+    if not explicit:
         return None
-
-    existing = await session.execute(
-        select(UserMemory).where(
-            UserMemory.user_id == user_id,
-            UserMemory.status == "active",
-            UserMemory.content == candidate,
-        )
+    rows = await store_user_memories(
+        session, user_id=user_id, message_id=message_id, content=content
     )
-    row = existing.scalar_one_or_none()
-    if row:
-        row.confidence = max(row.confidence, 0.95)
-        row.updated_at = datetime.now(timezone.utc)
-        return row
-
-    row = UserMemory(
-        id=str(uuid.uuid4()),
-        user_id=user_id,
-        scope="personal",
-        type="explicit",
-        content=candidate,
-        source_message_ids=f'["{message_id}"]',
-        confidence=0.95,
-        status="active",
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-    )
-    session.add(row)
-    return row
+    return rows[0] if rows else None
 
 
 async def build_context_for_conversation(
@@ -426,6 +641,7 @@ async def build_context_for_conversation(
     conversation_id: str,
     user_id: str,
     model: str | None,
+    kb_id: str | None = None,
 ) -> BuiltContext:
     result = await session.execute(
         select(Message)
@@ -443,7 +659,7 @@ async def build_context_for_conversation(
 
     last_user = next((m for m in reversed(messages) if m.role == "user"), None)
     memories = await retrieve_user_memories(
-        session, user_id=user_id, query=last_user.content if last_user else ""
+        session, user_id=user_id, query=last_user.content if last_user else "", kb_id=kb_id
     )
 
     keep_count = RECENT_TURNS * 2

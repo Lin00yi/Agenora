@@ -16,8 +16,10 @@ from src.conversations.context import (
     estimate_messages_tokens,
     estimate_tokens,
     ensure_summary_if_needed,
+    extract_memory_candidates,
     extract_explicit_memory_candidate,
     memory_block,
+    store_user_memories,
     trim_messages_to_token_budget,
 )
 from src.conversations.models import Conversation, Message, UserMemory
@@ -150,6 +152,60 @@ def test_explicit_memory_rejects_sensitive_values() -> None:
     assert extract_explicit_memory_candidate("请记住：我偏好中文和简洁回答") == "我偏好中文和简洁回答"
     assert extract_explicit_memory_candidate("请记住：api_key=super-secret-token-value") is None
     assert contains_sensitive_memory_content("password: unsafe-value")
+
+
+def test_implicit_memory_capture_requires_a_stable_future_preference() -> None:
+    candidates = extract_memory_candidates("以后请用中文并且简洁回复。")
+
+    assert {(item.key, item.value) for item in candidates} == {
+        ("response_language", "zh-CN"),
+        ("response_style", "简洁"),
+    }
+    assert extract_memory_candidates("这次可以用中文吗？") == []
+    assert extract_memory_candidates("以后请用中文，api_key=not-safe-secret-token") == []
+
+
+@pytest.mark.asyncio
+async def test_new_preference_silently_supersedes_previous_value(db, create_user):
+    """A newer durable preference replaces a conflicting active memory."""
+    from sqlalchemy import select
+
+    from src.infra.database import get_session_factory
+
+    user = await create_user("memory@example.com")
+    factory = get_session_factory()
+    async with factory() as session:
+        first = await store_user_memories(
+            session,
+            user_id=user.id,
+            message_id=str(uuid.uuid4()),
+            content="以后请用中文回复。",
+        )
+        await session.commit()
+        second = await store_user_memories(
+            session,
+            user_id=user.id,
+            message_id=str(uuid.uuid4()),
+            content="以后请用英文回复。",
+        )
+        await session.commit()
+
+        rows = list(
+            (
+                await session.execute(
+                    select(UserMemory)
+                    .where(UserMemory.user_id == user.id, UserMemory.memory_key == "response_language")
+                    .order_by(UserMemory.created_at)
+                )
+            ).scalars()
+        )
+
+    assert first[0].memory_value == "zh-CN"
+    assert second[0].memory_value == "en"
+    assert len(rows) == 2
+    assert rows[0].status == "superseded"
+    assert rows[1].status == "active"
+    assert rows[1].supersedes_memory_id == rows[0].id
 
 
 def test_memory_block_has_a_hard_token_cap() -> None:

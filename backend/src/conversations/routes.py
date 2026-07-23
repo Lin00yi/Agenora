@@ -17,7 +17,7 @@ from src.conversations.context import (
     compute_budget,
     context_status_payload,
     get_latest_summary,
-    store_explicit_user_memory,
+    store_user_memories,
 )
 from src.conversations.models import Conversation, Message, UserMemory
 from src.infra.database import get_session
@@ -42,6 +42,14 @@ class AppendMessageRequest(BaseModel):
     tools: list[dict[str, Any]] | None = Field(default=None)
     cost_usd: float | None = Field(default=None)
     error: str | None = Field(default=None, max_length=4096)
+
+
+class PatchMemoryRequest(BaseModel):
+    """Optional user control for a silently captured memory."""
+
+    content: str | None = Field(default=None, min_length=4, max_length=500)
+    importance: float | None = Field(default=None, ge=0, le=1)
+    status: Literal["active", "deleted"] | None = None
 
 
 class ImportMessage(BaseModel):
@@ -209,6 +217,31 @@ async def delete_memory(
     await session.commit()
 
 
+@router.patch("/memories/{memory_id}")
+async def patch_memory(
+    memory_id: str,
+    req: PatchMemoryRequest,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    row = await session.get(UserMemory, memory_id)
+    if row is None or row.user_id != user.id:
+        raise HTTPException(status_code=404, detail="memory not found")
+    if req.content is not None:
+        row.content = req.content.strip()
+        row.memory_value = row.content
+        row.source = "user_edited"
+        row.confidence = 1.0
+    if req.importance is not None:
+        row.importance = req.importance
+    if req.status is not None:
+        row.status = req.status
+    row.updated_at = datetime.now(timezone.utc)
+    await session.commit()
+    await session.refresh(row)
+    return row.to_public_dict()
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_conversation(
     req: CreateConversationRequest,
@@ -305,11 +338,12 @@ async def append_message(
     session.add(msg)
 
     if req.role == "user":
-        await store_explicit_user_memory(
+        await store_user_memories(
             session,
             user_id=user.id,
             message_id=msg.id,
             content=req.content or "",
+            kb_id=conv.kb_id,
         )
         if _is_default_title(conv.title) and req.content.strip():
             conv.title = _derive_title(req.content)

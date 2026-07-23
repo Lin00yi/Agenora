@@ -138,18 +138,25 @@ class ConversationSummary(Base):
 
 
 class UserMemory(Base):
-    """Long-term user memory extracted from explicit user requests."""
+    """Structured, user-scoped long-term memory across conversations."""
 
     __tablename__ = "user_memories"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     user_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
     scope: Mapped[str] = mapped_column(String(32), default="personal", nullable=False)
+    scope_id: Mapped[str | None] = mapped_column(String(36), index=True, nullable=True, default=None)
     type: Mapped[str] = mapped_column(String(32), default="fact", nullable=False)
+    memory_key: Mapped[str | None] = mapped_column(String(128), index=True, nullable=True, default=None)
+    memory_value: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     content: Mapped[str] = mapped_column(Text, default="", nullable=False)
     source_message_ids: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    source: Mapped[str] = mapped_column(String(32), default="explicit", nullable=False)
     confidence: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    importance: Mapped[float] = mapped_column(Float, default=0.5, nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    supersedes_memory_id: Mapped[str | None] = mapped_column(String(36), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -171,11 +178,18 @@ class UserMemory(Base):
             "id": self.id,
             "user_id": self.user_id,
             "scope": self.scope,
+            "scope_id": self.scope_id,
             "type": self.type,
+            "key": self.memory_key,
+            "value": self.memory_value,
             "content": self.content,
             "source_message_ids": source_ids,
+            "source": self.source,
             "confidence": self.confidence,
+            "importance": self.importance,
             "status": self.status,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "supersedes_memory_id": self.supersedes_memory_id,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

@@ -49,6 +49,8 @@ backups/
 
 # Internal docs (not for public repo)
 docs/
+!docs/
+!docs/memory-system.md
 PROGRESS.md
 
 # AI assistant / agent tool configs (per-developer, like .claude/)

@@ -243,3 +243,22 @@ def _migrate_additive_columns(sync_conn) -> None:
             sync_conn.execute(
                 text("ALTER TABLE conversations ADD COLUMN llm_model VARCHAR(128)")
             )
+
+    # v4: structured long-term memory. Existing explicit memories remain
+    # readable; the nullable key/value fields are populated only by new writes.
+    if "user_memories" in tables:
+        memory_cols = {c["name"] for c in insp.get_columns("user_memories")}
+        memory_new_cols = [
+            ("scope_id", "VARCHAR(36)"),
+            ("memory_key", "VARCHAR(128)"),
+            ("memory_value", "TEXT"),
+            ("source", "VARCHAR(32) NOT NULL DEFAULT 'explicit'"),
+            ("importance", "FLOAT NOT NULL DEFAULT 0.5"),
+            ("expires_at", "TIMESTAMP"),
+            ("supersedes_memory_id", "VARCHAR(36)"),
+        ]
+        for col_name, col_type in memory_new_cols:
+            if col_name not in memory_cols:
+                sync_conn.execute(
+                    text(f"ALTER TABLE user_memories ADD COLUMN {col_name} {col_type}")
+                )

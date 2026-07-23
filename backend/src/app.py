@@ -304,6 +304,7 @@ async def chat_post(
             conversation_id=conv.id,
             user_id=user.id,
             model=selected_model,
+            kb_id=conv.kb_id,
         )
         messages = built.messages
     elif req.messages:

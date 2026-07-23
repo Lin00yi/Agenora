@@ -72,6 +72,26 @@ export type ConversationListPage = {
   has_more: boolean;
 };
 
+export type UserMemory = {
+  id: string;
+  user_id: string;
+  scope: "personal" | "kb" | string;
+  scope_id: string | null;
+  type: "explicit" | "preference" | "constraint" | string;
+  key: string | null;
+  value: string | null;
+  content: string;
+  source_message_ids: string[];
+  source: "explicit" | "auto_rule" | "user_edited" | string;
+  confidence: number;
+  importance: number;
+  status: "active" | "superseded" | "deleted" | string;
+  expires_at: string | null;
+  supersedes_memory_id: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
 /** Structured error mirror of KbApiError. */
 export class ConversationApiError extends Error {
   status: number;
@@ -167,6 +187,31 @@ export async function patchConversation(
 
 export async function deleteConversation(id: string): Promise<void> {
   await unwrap(await authFetch(`/api/conversations/${id}`, { method: "DELETE" }));
+}
+
+// ---------------------------------------------------------------------------
+// Long-term memory (captured silently in the backend; these helpers support
+// future settings/audit UI without putting a confirmation step in chat).
+// ---------------------------------------------------------------------------
+export async function listMemories(): Promise<UserMemory[]> {
+  return unwrap(await authFetch("/api/conversations/memories"));
+}
+
+export async function patchMemory(
+  id: string,
+  patch: { content?: string; importance?: number; status?: "active" | "deleted" }
+): Promise<UserMemory> {
+  return unwrap(
+    await authFetch(`/api/conversations/memories/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    })
+  );
+}
+
+export async function deleteMemory(id: string): Promise<void> {
+  await unwrap(await authFetch(`/api/conversations/memories/${id}`, { method: "DELETE" }));
 }
 
 // ---------------------------------------------------------------------------
