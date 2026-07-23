@@ -6,16 +6,21 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.agent.nodes import build_effective_system_prompt
+from src.agent.nodes import allocate_provider_context, build_effective_system_prompt
 from src.agent.nodes import plan_node
 from src.infra.llm import CostTracker
 from src.conversations.context import (
+    MAX_MEMORY_CONTEXT_TOKENS,
     compute_budget,
     contains_sensitive_memory_content,
+    estimate_messages_tokens,
+    estimate_tokens,
     ensure_summary_if_needed,
     extract_explicit_memory_candidate,
+    memory_block,
+    trim_messages_to_token_budget,
 )
-from src.conversations.models import Conversation, Message
+from src.conversations.models import Conversation, Message, UserMemory
 
 
 def test_context_blocks_are_merged_into_one_system_prompt() -> None:
@@ -145,6 +150,54 @@ def test_explicit_memory_rejects_sensitive_values() -> None:
     assert extract_explicit_memory_candidate("请记住：我偏好中文和简洁回答") == "我偏好中文和简洁回答"
     assert extract_explicit_memory_candidate("请记住：api_key=super-secret-token-value") is None
     assert contains_sensitive_memory_content("password: unsafe-value")
+
+
+def test_memory_block_has_a_hard_token_cap() -> None:
+    memories = [
+        UserMemory(id=str(index), user_id="u", type="explicit", content="偏好" * 1_000)
+        for index in range(3)
+    ]
+
+    block = memory_block(memories)
+
+    assert estimate_tokens(block) <= MAX_MEMORY_CONTEXT_TOKENS
+    assert "[已截断]" in block
+
+
+def test_recent_history_is_trimmed_to_its_actual_token_budget() -> None:
+    messages = [
+        Message(id=str(index), conversation_id="c", role="user" if index % 2 == 0 else "assistant", content="测" * 500)
+        for index in range(8)
+    ]
+
+    kept = trim_messages_to_token_budget(messages, 1_300)
+
+    assert kept
+    assert kept[-1].id == messages[-1].id
+    assert estimate_messages_tokens(kept) <= 1_300
+    assert kept[0].role == "user"
+
+
+def test_provider_allocator_measures_system_and_tools_before_history() -> None:
+    messages = [
+        {"role": "user" if index % 2 == 0 else "assistant", "content": "测" * 10_000}
+        for index in range(6)
+    ]
+    system_prompt = "系统规则" * 2_000
+    tools_schema = [{"name": "search", "input_schema": {"description": "参数" * 1_000}}]
+
+    kept = allocate_provider_context(
+        model="deepseek-chat",
+        system_prompt=system_prompt,
+        tools_schema=tools_schema,
+        conversation_messages=messages,
+    )
+
+    available = 64_000 - 2_048 - 2_000 - estimate_tokens(system_prompt) - estimate_tokens(
+        __import__("json").dumps(tools_schema, ensure_ascii=False)
+    )
+    assert kept[-1]["content"] == messages[-1]["content"]
+    assert sum(estimate_tokens(item["content"]) + 6 for item in kept) <= available
 
 
 @pytest.mark.asyncio

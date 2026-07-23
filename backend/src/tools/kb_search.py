@@ -22,6 +22,7 @@ from typing import Any, TYPE_CHECKING
 
 from src.infra.embedding import embed
 from src.infra.reranker import rerank
+from src.conversations.context import RAG_RESERVE, estimate_tokens, truncate_text_to_token_budget
 from src.infra.vector_store import QdrantStore, get_store
 from src.kb.models import KB
 from src.tools.base import Tool, ToolResult
@@ -37,6 +38,10 @@ log = logging.getLogger(__name__)
 # capped at 30 so a misbehaving caller can't blow up the upstream quota.
 _RERANK_OVERFETCH_MULTIPLIER = 4
 _RERANK_OVERFETCH_CAP = 30
+# The chat allocator reserves this capacity for retrieved knowledge. Enforcing
+# it at the tool boundary prevents one large document from consuming the whole
+# prompt before the next planning step can apply its final context budget.
+MAX_RAG_RESULT_TOKENS = RAG_RESERVE
 
 
 def _chunk_enabled(hit: dict) -> bool:
@@ -189,17 +194,34 @@ class KBSearchTool(Tool):
 
         # Format: per-chunk block with source filename + score for citation.
         blocks: list[str] = []
+        used_tokens = 0
         for i, c in enumerate(hits, start=1):
             p = c.get("payload", {}) or {}
             filename = p.get("filename", "(unknown)")
             text = (p.get("text") or "").strip()
             score = c.get("score", 0.0)
-            blocks.append(
-                f"[chunk {i}] 来源: {filename}  相关度: {score:.3f}\n{text}"
+            header = f"[chunk {i}] 来源: {filename}  相关度: {score:.3f}\n"
+            separator_tokens = estimate_tokens("\n\n---\n\n") if blocks else 0
+            remaining = MAX_RAG_RESULT_TOKENS - used_tokens - separator_tokens
+            if remaining <= estimate_tokens(header):
+                break
+            block = header + text
+            if estimate_tokens(block) > remaining:
+                block = header + truncate_text_to_token_budget(
+                    text, remaining - estimate_tokens(header)
+                )
+            blocks.append(block)
+            used_tokens += separator_tokens + estimate_tokens(block)
+
+        if not blocks:
+            return ToolResult(
+                text=f"知识库「{self.kb_name}」中命中了内容，但结果超过上下文预算。请缩小查询范围。",
+                latency_ms=0,
+                raw={"hits": 0, "kb_id": self.kb_id, "truncated": True},
             )
 
         return ToolResult(
             text="\n\n---\n\n".join(blocks),
             latency_ms=0,
-            raw={"hits": len(hits), "kb_id": self.kb_id},
+            raw={"hits": len(blocks), "kb_id": self.kb_id, "truncated": len(blocks) < len(hits)},
         )

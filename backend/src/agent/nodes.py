@@ -9,6 +9,13 @@ from typing import Any, TYPE_CHECKING
 
 from src.agent.prompts import SYSTEM_PROMPT
 from src.agent.state import AgentState
+from src.conversations.context import (
+    MAX_OUTPUT_TOKENS,
+    SAFETY_RESERVE,
+    context_window_for_model,
+    estimate_tokens,
+    truncate_text_to_token_budget,
+)
 from src.infra.llm import CostTracker, get_client, pick_model, with_cache_control, convert_to_openai_format
 from src.safety.tool_guard import is_tool_allowed
 from src.skills.loader import invoke_skill
@@ -74,6 +81,72 @@ def build_effective_system_prompt(
     return effective_prompt, conversation_messages
 
 
+def _estimate_message_tokens(message: dict[str, Any]) -> int:
+    content = message.get("content", "")
+    if isinstance(content, str):
+        text = content
+    else:
+        # Tool calls and tool results are structured blocks. JSON retains their
+        # complete semantics while making their allocation measurable.
+        text = json.dumps(content, ensure_ascii=False, default=str)
+    return estimate_tokens(text) + 6
+
+
+def _trim_provider_messages(messages: list[dict[str, Any]], token_budget: int) -> list[dict[str, Any]]:
+    """Retain the newest provider messages without splitting content blocks."""
+    if token_budget <= 0:
+        return []
+
+    kept_reversed: list[dict[str, Any]] = []
+    remaining = token_budget
+    for message in reversed(messages):
+        cost = _estimate_message_tokens(message)
+        if cost <= remaining:
+            kept_reversed.append(message)
+            remaining -= cost
+            continue
+        if not kept_reversed and isinstance(message.get("content"), str):
+            clipped = dict(message)
+            clipped["content"] = truncate_text_to_token_budget(
+                message["content"], max(1, remaining - 6)
+            )
+            kept_reversed.append(clipped)
+        break
+
+    kept = list(reversed(kept_reversed))
+    # Do not start an Anthropic/OpenAI history with an orphaned assistant turn.
+    # Tool exchanges are normally recent and remain together under the reserved
+    # budget; this guard only applies after an overflow trim.
+    while kept and kept[0].get("role") == "assistant":
+        kept.pop(0)
+    return kept
+
+
+def allocate_provider_context(
+    *,
+    model: str,
+    system_prompt: str,
+    tools_schema: list[dict[str, Any]],
+    conversation_messages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Fit actual prompt components into the selected model's context window.
+
+    Fixed reserves are retained as a safety cushion, but the system prompt and
+    tool schemas are now measured on every model call. The remaining capacity
+    is allocated to the newest complete conversation/tool messages.
+    """
+    context_window = context_window_for_model(model)
+    system_tokens = estimate_tokens(system_prompt)
+    tool_tokens = estimate_tokens(json.dumps(tools_schema, ensure_ascii=False, default=str))
+    conversation_budget = context_window - MAX_OUTPUT_TOKENS - SAFETY_RESERVE
+    conversation_budget -= system_tokens + tool_tokens
+    # All configured models have a large context window. Keep a small minimum
+    # so the latest user instruction can still be represented if configuration
+    # text unexpectedly grows.
+    conversation_budget = max(1_000, conversation_budget)
+    return _trim_provider_messages(conversation_messages, conversation_budget)
+
+
 async def plan_node(
     state: AgentState,
     *,
@@ -112,6 +185,12 @@ async def plan_node(
         extra.append(_kb_skill_tool_schema())
     tools_schema = registry.all_schemas() + extra
     model = pick_model(messages, tools_schema, llm_cfg)
+    provider_messages = allocate_provider_context(
+        model=model,
+        system_prompt=effective_system_prompt,
+        tools_schema=tools_schema,
+        conversation_messages=conversation_messages,
+    )
     client = get_client(llm_cfg)
 
     # Decide API shape: anthropic vs openai-compat. User cfg wins; env fallback otherwise.
@@ -123,7 +202,7 @@ async def plan_node(
     if not is_anthropic:
         # OpenAI-compatible (DeepSeek, OpenAI, vLLM, Together, Groq, LMStudio, etc.)
         _, openai_messages, openai_tools = convert_to_openai_format(
-            conversation_messages, tools_schema
+            provider_messages, tools_schema
         )
         resp = await client.chat.completions.create(
             model=model,
@@ -169,7 +248,7 @@ async def plan_node(
             model=model,
             max_tokens=2048,
             system=system_blocks,
-            messages=conversation_messages,
+            messages=provider_messages,
             tools=tools_schema,
         )
         cost.add(model, resp.usage)

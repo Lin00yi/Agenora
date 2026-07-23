@@ -32,6 +32,8 @@ MAX_OUTPUT_TOKENS = 2_048
 SYSTEM_AND_TOOL_RESERVE = 6_000
 RAG_RESERVE = 8_000
 SAFETY_RESERVE = 2_000
+MAX_MEMORY_CONTEXT_TOKENS = 1_200
+MAX_SUMMARY_CONTEXT_TOKENS = 2_600
 PREPARE_SUMMARY_RATIO = 0.60
 SUMMARY_TRIGGER_RATIO = 0.72
 FORCE_SUMMARY_RATIO = 0.85
@@ -84,6 +86,68 @@ def estimate_messages_tokens(messages: list[Message] | list[dict[str, str]]) -> 
         content = msg.content if isinstance(msg, Message) else msg.get("content", "")
         total += estimate_tokens(content) + 6
     return total
+
+
+def truncate_text_to_token_budget(text: str, token_budget: int, *, suffix: str = "…[已截断]") -> str:
+    """Return a prefix that fits the cheap multilingual token estimate.
+
+    This is a hard guard around individual context blocks. The estimator is
+    deliberately conservative, so a later tokenizer-specific implementation
+    can replace it without changing the allocation policy.
+    """
+    if token_budget <= 0:
+        return ""
+    if estimate_tokens(text) <= token_budget:
+        return text
+    suffix_tokens = estimate_tokens(suffix)
+    if suffix_tokens >= token_budget:
+        return ""
+
+    low, high = 0, len(text)
+    target = token_budget - suffix_tokens
+    while low < high:
+        middle = (low + high + 1) // 2
+        if estimate_tokens(text[:middle]) <= target:
+            low = middle
+        else:
+            high = middle - 1
+    return text[:low].rstrip() + suffix
+
+
+def trim_messages_to_token_budget(
+    messages: list[Message], token_budget: int
+) -> list[Message]:
+    """Keep the newest complete messages within a concrete context budget."""
+    if token_budget <= 0:
+        return []
+
+    kept_reversed: list[Message] = []
+    remaining = token_budget
+    for message in reversed(messages):
+        cost = estimate_tokens(message.content or "") + 6
+        if cost <= remaining:
+            kept_reversed.append(message)
+            remaining -= cost
+            continue
+        # The newest message is always more valuable than older context. Keep
+        # a bounded copy even when one message alone is over budget.
+        if not kept_reversed:
+            clipped = Message(
+                id=message.id,
+                conversation_id=message.conversation_id,
+                role=message.role,
+                content=truncate_text_to_token_budget(message.content or "", max(1, remaining - 6)),
+            )
+            kept_reversed.append(clipped)
+        break
+
+    kept = list(reversed(kept_reversed))
+    # A standalone assistant reply has no preceding user turn and is less
+    # useful than the retained recent turns. Remove it for provider-safe chat
+    # history (Anthropic requires a user message first).
+    while kept and kept[0].role == "assistant":
+        kept.pop(0)
+    return kept
 
 
 def context_window_for_model(model: str | None) -> int:
@@ -266,14 +330,25 @@ async def retrieve_user_memories(
     return [row for _, row in scored[:limit]]
 
 
-def memory_block(memories: list[UserMemory]) -> str:
+def memory_block(memories: list[UserMemory], *, token_budget: int = MAX_MEMORY_CONTEXT_TOKENS) -> str:
     if not memories:
         return ""
     lines = [
         "以下是用户长期记忆。仅在与当前问题相关时使用，不要透露为系统内部信息："
     ]
     for mem in memories:
-        lines.append(f"- [{mem.type}] {mem.content}")
+        candidate = f"- [{mem.type}] {mem.content}"
+        joined = "\n".join([*lines, candidate])
+        if estimate_tokens(joined) <= token_budget:
+            lines.append(candidate)
+            continue
+        # Preserve the highest-ranked memory currently being considered, but
+        # never let it consume the whole prompt allocation.
+        remaining = token_budget - estimate_tokens("\n".join(lines))
+        clipped = truncate_text_to_token_budget(candidate, remaining)
+        if clipped:
+            lines.append(clipped)
+        break
     return "\n".join(lines)
 
 
@@ -372,16 +447,29 @@ async def build_context_for_conversation(
     )
 
     keep_count = RECENT_TURNS * 2
-    recent = messages[-keep_count:] if summary else messages
     out: list[dict[str, str]] = []
     mem_text = memory_block(memories)
+    summary_text = (
+        truncate_text_to_token_budget(summary.summary, MAX_SUMMARY_CONTEXT_TOKENS)
+        if summary
+        else ""
+    )
+    # The history budget already leaves room for the system prompt, tool
+    # schemas, RAG results and safety margin. Memory and summary now consume
+    # a measured portion of that history budget instead of being unbounded.
+    recent_budget = max(
+        1_000,
+        budget.available_history_tokens - estimate_tokens(mem_text) - estimate_tokens(summary_text),
+    )
+    recent_source = messages[-keep_count:] if summary else messages
+    recent = trim_messages_to_token_budget(recent_source, recent_budget)
     if mem_text:
         out.append(
             {"role": "system", "content": mem_text, "_context_source": "memory"}
         )
-    if summary:
+    if summary_text:
         out.append(
-            {"role": "system", "content": summary.summary, "_context_source": "summary"}
+            {"role": "system", "content": summary_text, "_context_source": "summary"}
         )
     out.extend({"role": m.role, "content": m.content or ""} for m in recent)
 
