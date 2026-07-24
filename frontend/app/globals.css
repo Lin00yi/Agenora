@@ -253,6 +253,117 @@
   .ak-chat ::placeholder {
     color: rgb(var(--ak-muted)) !important;
   }
+
+  /* Chat-only visual refresh. The conversation sidebar deliberately keeps its
+     existing appearance; these rules are scoped to the main workspace. */
+  .ak-chat {
+    --chat-canvas: #f2f4f8;
+    --chat-surface: #ffffff;
+    --chat-soft: #f7f8fb;
+    --chat-ink: #26313c;
+    --chat-muted: #70808f;
+    --chat-line: #dfe5ec;
+    --chat-accent: #f27b52;
+  }
+
+  .dark .ak-chat {
+    --chat-canvas: #11131a;
+    --chat-surface: #191d27;
+    --chat-soft: #202633;
+    --chat-ink: #eef2f8;
+    --chat-muted: #9aa8b9;
+    --chat-line: #313949;
+    --chat-accent: #ff9b72;
+  }
+
+  .ak-chat .ak-workspace {
+    background: var(--chat-canvas) !important;
+    color: var(--chat-ink) !important;
+  }
+
+  .ak-chat .ak-chat-header {
+    background: color-mix(in srgb, var(--chat-canvas) 88%, transparent) !important;
+    border-bottom: 1px solid var(--chat-line) !important;
+    color: var(--chat-ink) !important;
+  }
+
+  .ak-chat .ak-header-help {
+    border: 1px solid var(--chat-line);
+    color: var(--chat-muted);
+    transition: background-color var(--duration-press) var(--ease-out), color var(--duration-press) var(--ease-out);
+  }
+  .ak-chat .ak-header-help:hover { background: var(--chat-surface); color: var(--chat-ink); }
+
+  .ak-chat .ak-workspace .ak-card,
+  .ak-chat .ak-workspace .ak-composer-box {
+    background: var(--chat-surface) !important;
+    border-color: var(--chat-line) !important;
+    box-shadow: 0 12px 32px rgb(36 49 60 / 0.06) !important;
+  }
+
+  .dark .ak-chat .ak-workspace .ak-card,
+  .dark .ak-chat .ak-workspace .ak-composer-box {
+    box-shadow: 0 18px 46px rgb(0 0 0 / 0.22) !important;
+  }
+
+  .ak-chat .ak-workspace .ak-answer { color: var(--chat-ink); }
+  .ak-chat .ak-workspace .text-slate-100,
+  .ak-chat .ak-workspace .text-slate-200 { color: var(--chat-ink) !important; }
+  .ak-chat .ak-workspace .text-slate-300,
+  .ak-chat .ak-workspace .text-slate-400,
+  .ak-chat .ak-workspace .text-slate-500 { color: var(--chat-muted) !important; }
+  .ak-chat .ak-workspace .ak-answer .text-slate-300,
+  .ak-chat .ak-workspace .ak-answer .text-slate-200 { color: var(--chat-ink) !important; }
+  .ak-chat .ak-workspace .ak-answer .text-slate-400,
+  .ak-chat .ak-workspace .ak-answer .text-slate-500 { color: var(--chat-muted) !important; }
+  .ak-chat .ak-workspace .ak-answer .marker\:text-emerald-400::marker { color: var(--chat-accent) !important; }
+  .ak-chat .ak-workspace .ak-answer code { background: color-mix(in srgb, var(--chat-accent) 12%, transparent); color: var(--chat-ink) !important; }
+
+  .ak-chat .ak-workspace .ak-message-user {
+    border: 1px solid color-mix(in srgb, var(--chat-accent) 30%, var(--chat-line));
+    background: color-mix(in srgb, var(--chat-accent) 12%, var(--chat-surface));
+    color: var(--chat-ink) !important;
+  }
+
+  .dark .ak-chat .ak-workspace .ak-message-user {
+    background: color-mix(in srgb, var(--chat-accent) 16%, var(--chat-surface));
+  }
+
+  .ak-chat .ak-workspace .text-emerald-300,
+  .ak-chat .ak-workspace .text-emerald-200 { color: var(--chat-accent) !important; }
+
+  .ak-chat .ak-workspace .rounded-lg.border.bg-surface { border-color: var(--chat-line); background: var(--chat-soft); }
+
+  .ak-chat .ak-workspace .ak-composer {
+    background: color-mix(in srgb, var(--chat-canvas) 86%, transparent) !important;
+    border-top: 1px solid var(--chat-line) !important;
+  }
+
+  .ak-chat .ak-workspace .ak-composer .ak-control,
+  .ak-chat .ak-workspace .ak-composer .ak-control:has(select:disabled),
+  .dark .ak-chat .ak-workspace .ak-composer .ak-control,
+  .dark .ak-chat .ak-workspace .ak-composer .ak-control:has(select:disabled) {
+    background: var(--chat-soft) !important;
+    border-color: var(--chat-line) !important;
+    color: var(--chat-ink) !important;
+  }
+
+  .ak-chat .ak-workspace .ak-composer .ak-control:hover,
+  .dark .ak-chat .ak-workspace .ak-composer .ak-control:hover { background: var(--chat-surface) !important; }
+
+  .ak-chat .ak-workspace .ak-composer .ak-control-primary:not(:disabled) {
+    background: var(--chat-accent) !important;
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--chat-accent) 32%, transparent) !important;
+  }
+
+  .ak-chat .ak-workspace .ak-context-usage { color: var(--chat-muted); }
+  .ak-chat .ak-workspace .ak-context-ring { color: var(--chat-accent) !important; }
+  .ak-chat .ak-workspace .ak-context-usage:focus-visible { --tw-ring-color: var(--chat-accent); }
+  .ak-chat .ak-workspace .ak-composer [role="tooltip"] {
+    background: var(--chat-surface) !important;
+    border-color: var(--chat-line) !important;
+    color: var(--chat-ink) !important;
+  }
 }
 
 .dark {

@@ -12,9 +12,11 @@ type Props = {
   /** Optional — user question that triggered this assistant answer.
    *  Rendered as the share-card sub-heading when present. */
   question?: string;
+  /** DOM id of the answer to export. */
+  reportId?: string;
 };
 
-export default function ExportActions({ markdown, cost, question }: Props) {
+export default function ExportActions({ markdown, cost, question, reportId = "report-output" }: Props) {
   const [shareOpen, setShareOpen] = useState(false);
 
   const copy = async () => {
@@ -29,7 +31,7 @@ export default function ExportActions({ markdown, cost, question }: Props) {
   const downloadPdf = async () => {
     // Dynamic import to keep initial bundle small.
     const html2pdf = (await import("html2pdf.js")).default;
-    const el = document.getElementById("report-output");
+    const el = document.getElementById(reportId);
     if (!el) {
       toast.error("找不到报告内容");
       return;
@@ -39,13 +41,13 @@ export default function ExportActions({ markdown, cost, question }: Props) {
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2 text-sm">
+      <div className="ak-export-actions mt-4 flex flex-wrap items-center gap-2 text-sm">
         <button
           onClick={copy}
           className="inline-flex items-center gap-1 rounded-full border px-3 py-1.5 transition hover:bg-surface-2"
           type="button"
         >
-          <Copy className="h-3.5 w-3.5" /> 复制
+          <Copy className="h-3.5 w-3.5" /> 复制 Markdown
         </button>
         <button
           onClick={downloadPdf}
@@ -59,7 +61,7 @@ export default function ExportActions({ markdown, cost, question }: Props) {
           className="inline-flex items-center gap-1 rounded-full border px-3 py-1.5 transition hover:bg-surface-2"
           type="button"
         >
-          <ImageIcon className="h-3.5 w-3.5" /> 图文分享
+          <ImageIcon className="h-3.5 w-3.5" /> 分享
         </button>
         {cost != null && (
           <span className="ml-auto text-xs text-muted">

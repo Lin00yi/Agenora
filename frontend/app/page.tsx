@@ -14,6 +14,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import ThemeToggle from "@/components/ThemeToggle";
+import ExportActions from "@/components/ExportActions";
 import {
   Box,
   BookOpen,
@@ -44,7 +45,7 @@ import {
 import { toast } from "sonner";
 
 import Brand, { APP_NAME } from "@/components/Brand";
-import type { ToolEvent } from "@/components/ThinkingChain";
+import ThinkingChain, { type ToolEvent } from "@/components/ThinkingChain";
 import { getToken, getUser, logout, type User } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import {
@@ -231,8 +232,6 @@ function ChatPage({ routeConversationId = null }: { routeConversationId?: string
 
   const currentConversation = sidebarConversations.find((c) => c.id === currentId) ?? null;
   const currentKb = kbs.find((kb) => kb.id === currentKbId) ?? null;
-  const activeAssistant = [...currentMessages].reverse().find((m) => m.role === "assistant");
-  const activeTools = activeAssistant?.role === "assistant" ? activeAssistant.tools : [];
   const hasConversationMessages = currentMessages.length > 0;
 
   const loadConversation = useCallback(async (id: string) => {
@@ -973,16 +972,14 @@ function ChatPage({ routeConversationId = null }: { routeConversationId?: string
 
         <div className="flex h-[100dvh] max-h-[100dvh] min-h-0 min-w-0 flex-col overflow-hidden">
           <TopBar
-            currentKb={currentKb}
-            llmReady={llmReady}
-            llmSource={llmSource}
+            title={currentConversation?.title ?? DEFAULT_TITLE}
             onOpenSidebar={() => setSidebarOpen(true)}
           />
 
-          <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_338px]">
-            <main className="ak-main flex min-h-0 min-w-0 flex-col border-r border-white/10 bg-[radial-gradient(circle_at_50%_0%,rgba(16,185,129,0.10),transparent_32%),linear-gradient(180deg,#0d1624,#08101c)]">
+          <div className="min-h-0 flex-1">
+            <main className="ak-main ak-workspace flex h-full min-h-0 min-w-0 flex-col">
               <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-                <div className="mx-auto flex w-full max-w-[820px] flex-col gap-7">
+                <div className="mx-auto flex w-full max-w-[860px] flex-col gap-7">
                   <ContextCompressionNotice contextStatus={currentContextStatus} />
                   {currentMessages.length === 0 ? (
                     <EmptyWorkbench
@@ -1017,16 +1014,6 @@ function ChatPage({ routeConversationId = null }: { routeConversationId?: string
                 onModelChange={handleModelChange}
               />
             </main>
-
-            <RightInsightPanel
-              currentKbName={currentKb?.name ?? "\u901a\u7528\u5bf9\u8bdd"}
-              currentConversation={currentConversation}
-              currentModel={currentModel}
-              llmSource={llmSource}
-              messages={currentMessages}
-              tools={activeTools}
-              busy={busy}
-            />
           </div>
         </div>
       </div>
@@ -1470,22 +1457,14 @@ function DarkSidebar({
 }
 
 function TopBar({
-  currentKb,
-  llmReady,
-  llmSource,
+  title,
   onOpenSidebar,
 }: {
-  currentKb: KB | null;
-  llmReady: boolean;
-  llmSource: LlmSource;
+  title: string;
   onOpenSidebar: () => void;
 }) {
-  const statusLabel = llmReady ? (llmSource === "system" ? "系统默认" : "就绪") : "待配置";
-  const configLabel =
-    llmSource === "user" ? "BYOK" : llmSource === "system" ? "系统模型" : "未配置模型";
-
   return (
-    <header className="ak-topbar grid h-[72px] shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-b border-white/10 bg-[#0b1422]/88 px-4 backdrop-blur-xl xl:px-7">
+    <header className="ak-topbar ak-chat-header grid h-[64px] shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 xl:px-7">
       <button
         className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 text-slate-300 lg:hidden"
         onClick={onOpenSidebar}
@@ -1496,41 +1475,17 @@ function TopBar({
       </button>
 
       <div className="min-w-0">
-        <div className="text-xs text-slate-500">{"\u5f53\u524d\u4f1a\u8bdd\u77e5\u8bc6\u5e93"}</div>
-        <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-100">
-          <Database className="h-4 w-4 text-emerald-300" />
-          <span className="truncate">{currentKb?.name ?? "\u901a\u7528\u5bf9\u8bdd"}</span>
-        </div>
+        <h1 className="truncate text-[15px] font-semibold tracking-[-0.01em]">{title}</h1>
       </div>
 
       <div className="flex items-center justify-end gap-2">
         <ThemeToggle className="hidden sm:flex" />
-        <div
-          className={cn(
-            "hidden h-9 items-center gap-2 rounded-lg border px-3 text-xs sm:flex",
-            llmReady
-              ? "border-emerald-300/20 bg-emerald-400/10 text-emerald-300"
-              : "border-amber-300/25 bg-amber-400/10 text-amber-200"
-          )}
-          title="模型状态"
-        >
-          <span
-            className={cn(
-              "h-2 w-2 rounded-full",
-              llmReady ? "bg-emerald-400" : "bg-amber-300"
-            )}
-          />
-          <span className="font-medium">{statusLabel}</span>
-          <span className="h-3 w-px bg-white/15" />
-          <span className="text-slate-400">{configLabel}</span>
-        </div>
         <Link
-          className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/10 px-3 text-sm text-slate-400 transition hover:border-emerald-300/30 hover:bg-white/[0.06] hover:text-slate-100"
+          className="ak-header-help inline-flex h-9 w-9 items-center justify-center rounded-lg"
           href="/welcome"
           aria-label="打开产品介绍"
         >
           <HelpCircle className="h-4 w-4" />
-          <span className="hidden sm:inline">介绍</span>
         </Link>
       </div>
     </header>
@@ -1555,7 +1510,7 @@ function EmptyWorkbench({
               {"\u5411\u77e5\u8bc6\u5e93\u63d0\u95ee\uff0c\u68c0\u7d22\u8fc7\u7a0b\u4f1a\u5b9e\u65f6\u5c55\u793a"}
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
-              {"\u8fd9\u91cc\u4e0d\u4f1a\u9884\u7f6e\u5047\u7b54\u6848\u3002\u53d1\u9001\u95ee\u9898\u540e\uff0c\u4e2d\u95f4\u533a\u57df\u4f1a\u663e\u793a\u771f\u5b9e\u5bf9\u8bdd\uff0c\u53f3\u4fa7\u4f1a\u6839\u636e\u5de5\u5177\u8c03\u7528\u5c55\u793a\u68c0\u7d22\u3001\u91cd\u6392\u3001\u751f\u6210\u72b6\u6001\u3002"}
+              {"\u8fd9\u91cc\u4e0d\u4f1a\u9884\u7f6e\u5047\u7b54\u6848\u3002\u53d1\u9001\u95ee\u9898\u540e\uff0c\u5bf9\u8bdd\u3001\u68c0\u7d22\u8fc7\u7a0b\u4e0e\u5f15\u7528\u6765\u6e90\u4f1a\u5728\u5f53\u524d\u5de5\u4f5c\u533a\u6309\u65f6\u5c55\u793a\u3002"}
             </p>
           </div>
         </div>
@@ -1603,7 +1558,7 @@ function DarkMessage({ message, user }: { message: Message; user: User | null })
     return (
       <div className="flex items-start justify-end gap-3">
         <div className="flex max-w-[72%] flex-col items-end">
-          <div className="rounded-lg border border-emerald-300/20 bg-emerald-400/14 px-5 py-3 text-[15px] leading-7 text-slate-100 shadow-[0_12px_34px_rgba(0,0,0,0.24)]">
+          <div className="ak-message-user rounded-xl px-5 py-3 text-[15px] leading-7 shadow-[0_12px_34px_rgba(0,0,0,0.08)]">
             {message.content}
           </div>
           <div className="mt-2 text-xs text-slate-500">{formatMessageTime(message.created_at)}</div>
@@ -1620,7 +1575,7 @@ function DarkMessage({ message, user }: { message: Message; user: User | null })
     <div className="flex items-start gap-4">
       <Avatar label={<Box className="h-4 w-4" />} tone="assistant" />
       <div className="min-w-0 flex-1">
-        <div className="ak-card rounded-lg border border-white/10 bg-[#111c2b]/78 px-5 py-4 shadow-[0_18px_46px_rgba(0,0,0,0.28)]">
+        <div className="ak-card ak-answer rounded-xl px-5 py-4">
           {message.error && (
             <div className="mb-3 rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-200">
               {message.error}
@@ -1632,23 +1587,29 @@ function DarkMessage({ message, user }: { message: Message; user: User | null })
               {"\u6b63\u5728\u68c0\u7d22\u5e76\u751f\u6210\u56de\u7b54"}
             </div>
           )}
-          {hasContent && <AnswerMarkdown markdown={message.content} streaming={streaming} />}
+          {hasContent && (
+            <div id={`report-output-${message.id}`}>
+              <AnswerMarkdown markdown={message.content} streaming={streaming} />
+            </div>
+          )}
           {!hasContent && !streaming && !message.error && (
             <div className="text-sm text-slate-500">{"\u6682\u65e0\u5185\u5bb9"}</div>
           )}
           {hasContent && (
             <>
+              {message.tools.length > 0 && (
+                <div className="mt-4">
+                  <ThinkingChain events={message.tools} />
+                </div>
+              )}
               <SourceStrip sources={buildMessageSources(message)} />
-              <div className="mt-4 flex items-center gap-2 text-slate-500">
-                <SmallAction
-                  label="复制"
-                  icon={<Copy className="h-4 w-4" />}
-                  onClick={() => {
-                    void navigator.clipboard.writeText(message.content);
-                    toast.success("\u5df2\u590d\u5236\u56de\u7b54");
-                  }}
+              {!streaming && (
+                <ExportActions
+                  markdown={message.content}
+                  cost={message.cost_usd}
+                  reportId={`report-output-${message.id}`}
                 />
-              </div>
+              )}
             </>
           )}
         </div>
