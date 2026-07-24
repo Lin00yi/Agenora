@@ -1162,10 +1162,8 @@ function DarkSidebar({
   onLogout: () => void;
 }) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [newMenuOpen, setNewMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const newMenuRef = useRef<HTMLDivElement | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const filteredConversations = conversations.filter((conversation) =>
     conversation.title.toLowerCase().includes(searchTerm.trim().toLowerCase())
@@ -1200,24 +1198,6 @@ function DarkSidebar({
   }, [userMenuOpen]);
 
   useEffect(() => {
-    if (!newMenuOpen) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setNewMenuOpen(false);
-    };
-    const onPointerDown = (event: MouseEvent) => {
-      if (!newMenuRef.current?.contains(event.target as Node)) {
-        setNewMenuOpen(false);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("mousedown", onPointerDown);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("mousedown", onPointerDown);
-    };
-  }, [newMenuOpen]);
-
-  useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -1248,60 +1228,14 @@ function DarkSidebar({
         </button>
         </div>
 
-        <div ref={newMenuRef} className="relative mt-5">
-        <div className="ak-sidebar-new flex overflow-hidden rounded-lg border border-emerald-300/20 bg-emerald-400 text-sm font-medium text-white shadow-[0_10px_30px_rgba(16,185,129,0.22)]">
-          <button
-            className="ak-press flex h-11 flex-1 items-center justify-center gap-2 bg-gradient-to-r from-emerald-400 to-emerald-500"
-            onClick={() => onNew(currentKbId)}
-            type="button"
-          >
-            <Plus className="h-4 w-4" />
-            {"\u65b0\u5efa\u5bf9\u8bdd"}
-          </button>
-          <button
-            aria-expanded={newMenuOpen}
-            aria-controls="new-conversation-menu"
-            aria-label="新建菜单"
-            className="ak-press flex w-10 items-center justify-center border-l border-white/20 hover:bg-emerald-500"
-            onClick={() => setNewMenuOpen((open) => !open)}
-            type="button"
-          >
-            <ChevronDown className={cn("h-4 w-4 transition-transform duration-press ease-ui-out", newMenuOpen && "rotate-180")} />
-          </button>
-        </div>
-        {newMenuOpen && (
-          <div id="new-conversation-menu" className="ak-popover ak-motion-enter absolute left-0 right-0 top-12 z-20 overflow-hidden rounded-lg border border-white/10 bg-[#111c2b] p-1 text-sm text-slate-200 shadow-2xl">
-            <button
-              className="ak-press flex w-full items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-white/[0.06]"
-              onClick={() => {
-                setNewMenuOpen(false);
-                onNew(null);
-              }}
-              type="button"
-            >
-              <MessageCircle className="h-4 w-4 text-slate-400" />
-              {"\u65b0\u5efa\u901a\u7528\u5bf9\u8bdd"}
-            </button>
-            <button
-              className={cn(
-                "ak-press flex w-full items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-white/[0.06]",
-                !currentKbId && "cursor-not-allowed opacity-45 hover:bg-transparent"
-              )}
-              disabled={!currentKbId}
-              onClick={() => {
-                if (!currentKbId) return;
-                setNewMenuOpen(false);
-                onNew(currentKbId);
-              }}
-              title={currentKbId ? "\u4f7f\u7528\u5f53\u524d\u77e5\u8bc6\u5e93\u65b0\u5efa\u5bf9\u8bdd" : "\u5f53\u524d\u672a\u7ed1\u5b9a\u77e5\u8bc6\u5e93"}
-              type="button"
-            >
-              <Database className="h-4 w-4 text-emerald-300" />
-              {"\u57fa\u4e8e\u5f53\u524d\u77e5\u8bc6\u5e93\u65b0\u5efa"}
-            </button>
-          </div>
-        )}
-      </div>
+        <button
+          className="ak-sidebar-new ak-press mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-emerald-300/20 bg-emerald-400 text-sm font-medium text-white shadow-[0_10px_30px_rgba(16,185,129,0.22)]"
+          onClick={() => onNew(currentKbId)}
+          type="button"
+        >
+          <Plus className="h-4 w-4" />
+          {"\u65b0\u5efa\u5bf9\u8bdd"}
+        </button>
 
         <div className="ak-sidebar-search mt-4 flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 text-sm text-slate-400 focus-within:border-emerald-300/35">
         <Search className="h-4 w-4" />
@@ -2018,7 +1952,7 @@ function Composer({
             </button>
           ) : (
             <button
-              className="ak-control-primary ak-press inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-4 text-sm font-medium text-white shadow-sm hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-45"
+              className="ak-control-primary ak-send-button ak-press inline-flex size-10 items-center justify-center rounded-full bg-brand text-white disabled:cursor-not-allowed disabled:opacity-45"
               aria-label="发送消息"
               data-testid="composer-send"
               disabled={!value.trim()}

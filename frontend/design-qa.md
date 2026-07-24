@@ -18,6 +18,8 @@
 - The light-mode brand and muted text tokens were darkened to meet normal-text contrast targets; primary actions now have at least a 5.1:1 contrast ratio against white.
 - Chat search now supports Ctrl/Cmd+K, the new-conversation menu closes on Escape and outside click, and the context-usage indicator is focusable informational content rather than an inert button.
 - Theme switching is present on the admin shell and mobile chat header.
+- The composer send action is now a compact circular primary control; shared Radix selects and remaining native selects use a consistent elevated trigger, focus ring, and option treatment.
+- The new-conversation split dropdown was removed; its primary action continues to create a conversation using the currently selected knowledge base when one is active.
 
 ## Automated verification
 

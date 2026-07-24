@@ -21,7 +21,7 @@ export default function ThemeToggle({ className }: { className?: string }) {
       onValueChange={(value) => {
         if (value) setTheme(value as typeof theme);
       }}
-      className={cn("rounded-lg border bg-muted/40 p-0.5", className)}
+      className={cn("ak-theme-toggle rounded-full border border-surface-border/80 bg-surface/80 p-1 shadow-soft", className)}
       aria-label="主题切换"
     >
       {OPTIONS.map(({ value, Icon, label }) => (
@@ -29,7 +29,7 @@ export default function ThemeToggle({ className }: { className?: string }) {
           key={value}
           value={value}
           size="sm"
-          className="h-7 w-7 p-0"
+          className="h-7 w-7 rounded-full p-0 text-muted transition-[background-color,color,box-shadow,transform] duration-press data-[state=on]:bg-brand data-[state=on]:text-white data-[state=on]:shadow-sm hover:bg-surface-2 hover:text-fg"
           title={label}
           aria-label={label}
         >

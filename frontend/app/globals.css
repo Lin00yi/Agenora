@@ -426,6 +426,13 @@
     color: var(--chat-muted) !important;
     box-shadow: 0 8px 24px rgb(38 52 80 / 0.08) !important;
   }
+  .ak-chat .ak-workspace .ak-send-button {
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--chat-accent) 34%, transparent) !important;
+  }
+  .ak-chat .ak-workspace .ak-send-button:not(:disabled):hover {
+    transform: translateY(-1px);
+    filter: brightness(0.96);
+  }
 }
 
 .dark {
@@ -562,6 +569,24 @@ body {
     @apply rounded-lg border border-surface-border/80 bg-surface
            transition-[border-color,box-shadow] duration-200 ease-ui-out
            focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/15;
+  }
+
+  /* Native selects remain in a few data-management flows. Keep their visual
+     treatment aligned with the shared select trigger without changing values
+     or native keyboard behavior. */
+  select:not([multiple]) {
+    border-color: rgb(var(--surface-border) / 0.9);
+    border-radius: 0.75rem;
+    background-color: rgb(var(--surface));
+    box-shadow: 0 1px 2px rgb(var(--fg) / 0.03);
+    transition: border-color var(--duration-press) var(--ease-out),
+      box-shadow var(--duration-press) var(--ease-out),
+      background-color var(--duration-press) var(--ease-out);
+  }
+  select:not([multiple]):hover { border-color: rgb(var(--brand) / 0.35); }
+  select:not([multiple]):focus-visible {
+    border-color: rgb(var(--brand));
+    box-shadow: 0 0 0 3px rgb(var(--brand) / 0.16);
   }
 
   .app-gradient-bg,
