@@ -71,6 +71,17 @@ import { listKbs, type KB } from "@/lib/kb-api";
 import { connectChat, type ChatEvent, type ChatMessage } from "@/lib/sseClient";
 
 const DEFAULT_TITLE = "\u65b0\u5bf9\u8bdd";
+const DEFAULT_CONTEXT_WINDOW = 16_000;
+const CONTEXT_WINDOWS: Record<string, number> = {
+  "deepseek-chat": 64_000,
+  "deepseek-reasoner": 64_000,
+  "gpt-4o": 128_000,
+  "gpt-4o-mini": 128_000,
+  "claude-haiku-4-5-20251001": 200_000,
+  "claude-sonnet-4-6": 200_000,
+  "claude-opus-4-7": 200_000,
+};
+const CONTEXT_FIXED_RESERVE = 2_048 + 6_000 + 8_000 + 2_000;
 const EMPTY_PROMPTS = [
   "AnyKB \u5982\u4f55\u4fdd\u8bc1\u6570\u636e\u7684\u5b89\u5168\u6027\uff1f\u662f\u5426\u652f\u6301\u672c\u5730\u90e8\u7f72\u548c\u79c1\u6709\u5316\uff1f",
   "\u603b\u7ed3\u8fd9\u4e2a\u77e5\u8bc6\u5e93\u6700\u8fd1\u4e0a\u4f20\u8d44\u6599\u7684\u6838\u5fc3\u7ed3\u8bba",
@@ -92,6 +103,35 @@ type ProcessStep = {
 };
 
 type LlmSource = "user" | "system" | "missing";
+
+function estimateContextStatus(messages: Message[], model: string | null): ConversationContextStatus {
+  const window = CONTEXT_WINDOWS[model ?? ""] ?? DEFAULT_CONTEXT_WINDOW;
+  const available = Math.max(4_000, window - CONTEXT_FIXED_RESERVE);
+  const current = messages.reduce((total, message) => {
+    const content = message.content ?? "";
+    const cjk = [...content].filter((char) => char >= "\u4e00" && char <= "\u9fff").length;
+    return total + Math.max(1, Math.floor(cjk * 1.2 + Math.max(content.length - cjk, 0) / 3.2)) + 6;
+  }, 0);
+  const ratio = current / available;
+  const percent = Math.min(100, Math.round(ratio * 100));
+  const state = ratio >= 0.85 ? "critical" : ratio >= 0.72 ? "ready" : ratio >= 0.6 ? "approaching" : "normal";
+
+  return {
+    state,
+    label: "本地估算",
+    description: `后端尚未提供上下文状态，已按当前消息与 ${model ?? "默认模型"} 的上下文窗口估算。`,
+    current_tokens: current,
+    available_tokens: available,
+    context_window: window,
+    ratio,
+    percent,
+    prepare_threshold_percent: 60,
+    summary_threshold_percent: 72,
+    force_threshold_percent: 85,
+    retained_recent_turns: 10,
+    summary: null,
+  };
+}
 
 const CONVERSATION_PAGE_SIZE = 30;
 
@@ -219,7 +259,7 @@ function ChatPage({ routeConversationId = null }: { routeConversationId?: string
           );
         })
         .catch(() => {
-          /* best-effort status refresh */
+          setCurrentContextStatus(estimateContextStatus(cached, null));
         })
         .finally(() => {
           setContextStatusLoading(false);
@@ -260,7 +300,9 @@ function ChatPage({ routeConversationId = null }: { routeConversationId?: string
           );
         })
         .catch(() => {
-          /* Keep the detail payload when the dedicated refresh is unavailable. */
+          if (!detail.context_status) {
+            setCurrentContextStatus(estimateContextStatus(msgs, detail.llm_model));
+          }
         })
         .finally(() => {
           setContextStatusLoading(false);
@@ -725,7 +767,8 @@ function ChatPage({ routeConversationId = null }: { routeConversationId?: string
               );
             })
             .catch(() => {
-              /* best-effort status refresh */
+              const cachedMessages = messagesCache.current.get(snap.convId) ?? [];
+              setCurrentContextStatus(estimateContextStatus(cachedMessages, currentModel));
             });
         } catch (e) {
           console.error("persist assistant failed", e);

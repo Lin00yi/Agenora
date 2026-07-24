@@ -7,6 +7,7 @@ conversation grows beyond the configured budget.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import re
 import uuid
@@ -16,9 +17,12 @@ from hashlib import sha256
 from typing import TYPE_CHECKING, Iterable
 
 from sqlalchemy import desc, or_, select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.conversations.models import ConversationSummary, Message, UserMemory
+
+log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from src.settings_user import UserLLMConfig
@@ -410,12 +414,25 @@ async def summarize_messages_with_llm(
 async def get_latest_summary(
     session: AsyncSession, conversation_id: str
 ) -> ConversationSummary | None:
-    result = await session.execute(
-        select(ConversationSummary)
-        .where(ConversationSummary.conversation_id == conversation_id)
-        .order_by(desc(ConversationSummary.updated_at))
-        .limit(1)
-    )
+    try:
+        result = await session.execute(
+            select(ConversationSummary)
+            .where(ConversationSummary.conversation_id == conversation_id)
+            .order_by(desc(ConversationSummary.updated_at))
+            .limit(1)
+        )
+    except OperationalError as exc:
+        # A rolling-summary table was added after the original conversation
+        # schema. A process connected to a legacy database must still be able
+        # to calculate and expose its live message budget while the additive
+        # migration is applied on the next restart.
+        detail = str(exc).lower()
+        if "conversation_summaries" not in detail or not any(
+            marker in detail for marker in ("no such table", "does not exist", "undefined table")
+        ):
+            raise
+        log.warning("conversation_summaries is unavailable; omitting rolling summary")
+        return None
     return result.scalar_one_or_none()
 
 
