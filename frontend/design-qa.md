@@ -2,7 +2,7 @@
 
 ## Scope
 
-- Preserve the existing left conversation sidebar without visual changes.
+- Refresh the sidebar launch area (brand, new conversation, search, and all conversations) while preserving the existing recent-conversation list and account area below it.
 - Apply the selected soft-library direction only to the chat workspace, in light and dark mode.
 - Keep knowledge-base selection, model selection, attachments, send/stop, and the context-usage ring inside the composer.
 

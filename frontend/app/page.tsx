@@ -1204,8 +1204,9 @@ function DarkSidebar({
         open ? "translate-x-0" : "-translate-x-full"
       )}
     >
-      <div className="flex items-center justify-between px-2">
-        <Brand className="text-slate-950 dark:text-white" size="md" />
+      <div className="ak-sidebar-top rounded-xl px-2 pb-3 pt-2">
+        <div className="flex items-center justify-between">
+        <Brand className="ak-sidebar-brand text-slate-950 dark:text-white" size="md" />
         <button
           aria-label="关闭侧栏"
           className="ak-press inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-white/10 lg:hidden"
@@ -1214,10 +1215,10 @@ function DarkSidebar({
         >
           <X className="h-4 w-4" />
         </button>
-      </div>
+        </div>
 
-      <div className="relative mt-7">
-        <div className="flex overflow-hidden rounded-lg border border-emerald-300/20 bg-emerald-400 text-sm font-medium text-white shadow-[0_10px_30px_rgba(16,185,129,0.22)]">
+        <div className="relative mt-5">
+        <div className="ak-sidebar-new flex overflow-hidden rounded-lg border border-emerald-300/20 bg-emerald-400 text-sm font-medium text-white shadow-[0_10px_30px_rgba(16,185,129,0.22)]">
           <button
             className="ak-press flex h-11 flex-1 items-center justify-center gap-2 bg-gradient-to-r from-emerald-400 to-emerald-500"
             onClick={() => onNew(currentKbId)}
@@ -1270,7 +1271,7 @@ function DarkSidebar({
         )}
       </div>
 
-      <div className="mt-4 flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 text-sm text-slate-400 focus-within:border-emerald-300/35">
+        <div className="ak-sidebar-search mt-4 flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 text-sm text-slate-400 focus-within:border-emerald-300/35">
         <Search className="h-4 w-4" />
         <input
           className="min-w-0 flex-1 bg-transparent text-sm text-slate-200 outline-none placeholder:text-slate-500"
@@ -1283,8 +1284,8 @@ function DarkSidebar({
         </kbd>
       </div>
 
-      <button
-        className="mt-2 flex h-10 w-full items-center gap-3 rounded-lg bg-white/[0.06] px-3 text-sm text-slate-100"
+        <button
+        className="ak-sidebar-all mt-2 flex h-10 w-full items-center gap-3 rounded-lg bg-white/[0.06] px-3 text-sm text-slate-100"
         onClick={() => setSearchTerm("")}
         type="button"
       >
@@ -1292,6 +1293,7 @@ function DarkSidebar({
         <span className="flex-1 text-left">{"\u5168\u90e8\u5bf9\u8bdd"}</span>
         <span className="tabular-nums text-slate-500">{conversationTotal}</span>
       </button>
+      </div>
 
       <div className="my-4 h-px bg-white/10" />
 

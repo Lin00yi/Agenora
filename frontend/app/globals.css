@@ -364,6 +364,50 @@
     border-color: var(--chat-line) !important;
     color: var(--chat-ink) !important;
   }
+
+  /* Only the sidebar launch area is refreshed. The recent-conversation list
+     and account area intentionally remain on the existing sidebar treatment. */
+  .ak-chat .ak-sidebar .ak-sidebar-top {
+    background: #fff7f3;
+    border: 1px solid #f2dfd6;
+  }
+
+  .dark .ak-chat .ak-sidebar .ak-sidebar-top {
+    background: #211a1b;
+    border-color: #493638;
+  }
+
+  .ak-chat .ak-sidebar .ak-sidebar-brand > div {
+    background: #f27b52 !important;
+    box-shadow: 0 8px 18px rgb(242 123 82 / 0.22) !important;
+  }
+
+  .ak-chat .ak-sidebar .ak-sidebar-brand { color: #26313c !important; }
+  .dark .ak-chat .ak-sidebar .ak-sidebar-brand { color: #f6eef0 !important; }
+
+  .ak-chat .ak-sidebar .ak-sidebar-new {
+    border-color: #e97953 !important;
+    background: #f27b52 !important;
+    box-shadow: 0 10px 24px rgb(242 123 82 / 0.24) !important;
+  }
+
+  .ak-chat .ak-sidebar .ak-sidebar-new > button:first-child { background: transparent !important; }
+  .ak-chat .ak-sidebar .ak-sidebar-new > button:last-child:hover { background: rgb(108 46 27 / 0.12) !important; }
+
+  .ak-chat .ak-sidebar .ak-sidebar-search {
+    border-color: #ead8cf !important;
+    background: rgb(255 255 255 / 0.72) !important;
+    color: #70808f !important;
+  }
+  .dark .ak-chat .ak-sidebar .ak-sidebar-search {
+    border-color: #493638 !important;
+    background: rgb(24 20 23 / 0.66) !important;
+  }
+  .ak-chat .ak-sidebar .ak-sidebar-search:focus-within { border-color: #f27b52 !important; }
+
+  .ak-chat .ak-sidebar .ak-sidebar-all { color: #26313c !important; }
+  .dark .ak-chat .ak-sidebar .ak-sidebar-all { color: #f6eef0 !important; }
+  .ak-chat .ak-sidebar .ak-sidebar-all:hover { background: rgb(242 123 82 / 0.10) !important; }
 }
 
 .dark {
