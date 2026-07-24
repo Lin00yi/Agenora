@@ -81,7 +81,7 @@ export default function Brand({
       <div
         className={cn(
           "relative isolate flex items-center justify-center overflow-hidden text-white shadow-soft ring-1 ring-white/20",
-          "bg-[linear-gradient(145deg,#047857_0%,#10b981_54%,#22c55e_100%)]",
+          "bg-[linear-gradient(145deg,#4f76ed_0%,#6c72ec_54%,#8a75e8_100%)]",
           "before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_70%_18%,rgba(255,255,255,0.34),transparent_28%)]",
           "after:absolute after:inset-x-1 after:bottom-1 after:h-px after:bg-white/28",
           s.box

@@ -74,8 +74,8 @@ export default function AdminShell({
   ];
 
   return (
-    <div className="min-h-dvh bg-bg text-fg">
-      <header className="border-b bg-bg/80 backdrop-blur">
+    <div className="app-page min-h-dvh text-fg">
+      <header className="app-page-header border-b">
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4 sm:px-6">
           <Link
             href="/"
@@ -110,7 +110,7 @@ export default function AdminShell({
         </nav>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6">{children}</main>
+      <main className="app-page-content mx-auto max-w-5xl px-4 py-7 sm:px-6 sm:py-10">{children}</main>
     </div>
   );
 }

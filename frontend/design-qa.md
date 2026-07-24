@@ -4,7 +4,8 @@
 
 - Refresh the sidebar launch area (brand, new conversation, search, and all conversations) while preserving the existing recent-conversation list and account area below it.
 - Use the supplied RAG-answer screenshot as the visual reference: a light cloud canvas, blue-to-violet emphasis, a centered answer-oriented empty state, and a soft, prominent composer.
-- Apply that direction only to the chat workspace, in light and dark mode.
+- Apply that direction to the chat workspace in light and dark mode.
+- Extend the same color system and page-shell layout to the knowledge-base, document management, settings, authentication, invitation, welcome, and admin routes without changing their business flows.
 - Keep knowledge-base selection, model selection, attachments, send/stop, and the context-usage ring inside the composer.
 
 ## Source checks completed
@@ -13,6 +14,7 @@
 - Retrieval/tool events, sources, and answer export actions render inline with each assistant answer.
 - The context-usage control remains a circular progress ring; its detailed token and loading information is still available on hover and keyboard focus.
 - Each answer export action targets its own answer node.
+- Shared global tokens, brand treatment, page chrome, cards, tabs, forms, and primary actions now use the blue-to-violet system across non-chat pages.
 
 ## Automated verification
 

@@ -28,6 +28,7 @@ import {
   type MySettings,
 } from "@/lib/settings-api";
 import { LoadingState } from "@/components/ui/state-view";
+import ThemeToggle from "@/components/ThemeToggle";
 
 /**
  * /settings — LLM provider credentials (v3-M8 simplified).
@@ -71,33 +72,38 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
-      <div className="mb-6 flex items-center gap-2">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1 rounded-md p-1 text-sm text-muted transition hover:bg-surface hover:text-fg"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          返回
-        </Link>
-      </div>
+    <div className="app-page min-h-dvh text-fg">
+      <header className="app-page-header border-b">
+        <div className="mx-auto flex h-14 max-w-3xl items-center px-4 sm:px-6">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1 text-sm text-muted transition hover:text-fg"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            返回对话
+          </Link>
+          <div className="ml-auto"><ThemeToggle /></div>
+        </div>
+      </header>
+      <main className="app-page-content mx-auto max-w-3xl px-4 py-7 sm:px-6 sm:py-10">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand">Model workspace</p>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight">模型设置</h1>
+        <p className="mt-2 text-sm text-muted">
+          配置 LLM 提供商凭据（用于聊天）。Embedding 和 Reranker 现在在创建知识库时按 KB 单独配置。
+        </p>
 
-      <h1 className="text-2xl font-semibold">模型设置</h1>
-      <p className="mt-1 text-sm text-muted">
-        配置 LLM 提供商凭据（用于聊天）。Embedding 和 Reranker 现在在创建知识库时按 KB 单独配置。
-      </p>
-
-      <div className="mt-6 space-y-6">
-        <LLMCard
-          initial={settings?.llm}
-          onChanged={refresh}
-        />
-        <KbOptionsCard
-          initial={settings?.kb_options}
-          onChanged={refresh}
-        />
-        <MemoryCard />
-      </div>
+        <div className="mt-8 space-y-6">
+          <LLMCard
+            initial={settings?.llm}
+            onChanged={refresh}
+          />
+          <KbOptionsCard
+            initial={settings?.kb_options}
+            onChanged={refresh}
+          />
+          <MemoryCard />
+        </div>
+      </main>
     </div>
   );
 }

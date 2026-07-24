@@ -6,14 +6,14 @@ import Brand, { APP_NAME } from "@/components/Brand";
 
 export default function BrandPanel() {
   return (
-    <div className="relative hidden overflow-hidden border-r border-white/10 bg-[#101418] text-white lg:flex lg:flex-col">
-      <div className="absolute inset-0 bg-[linear-gradient(135deg,rgb(16_185_129/0.22),transparent_42%),linear-gradient(315deg,rgb(37_99_235/0.22),transparent_46%)]" />
+    <div className="relative hidden overflow-hidden border-r border-surface-border bg-[#171e30] text-white lg:flex lg:flex-col">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_28%_14%,rgb(101_126_245/0.42),transparent_28%),linear-gradient(145deg,#151c32_0%,#202646_100%)]" />
       <div className="relative z-10 flex h-full flex-col p-10 xl:p-14">
         <Brand size="sm" showWordmark />
 
         <div className="flex flex-1 flex-col justify-center">
           <div className="max-w-md">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-emerald-200/80">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-indigo-200/80">
               Private knowledge workspace
             </p>
             <h2 className="text-3xl font-semibold leading-tight xl:text-4xl">
@@ -30,7 +30,7 @@ export default function BrandPanel() {
                 <p className="text-sm font-medium">产品资料库</p>
                 <p className="mt-1 text-xs text-white/55">Hybrid search · reranker on</p>
               </div>
-              <span className="rounded-md bg-emerald-400/15 px-2 py-1 text-xs text-emerald-200">
+              <span className="rounded-md bg-indigo-300/15 px-2 py-1 text-xs text-indigo-100">
                 Ready
               </span>
             </div>
@@ -60,7 +60,7 @@ export default function BrandPanel() {
 function FeatureLine({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
     <div className="flex items-center gap-2 rounded-md border border-white/10 bg-black/10 px-3 py-2 text-xs text-white/72">
-      <span className="text-emerald-200">{icon}</span>
+      <span className="text-indigo-200">{icon}</span>
       <span>{text}</span>
     </div>
   );

@@ -81,8 +81,8 @@ export default function KbsPage() {
   };
 
   return (
-    <div className="min-h-dvh bg-bg text-fg">
-      <header className="border-b bg-bg/80 backdrop-blur">
+    <div className="app-page min-h-dvh text-fg">
+      <header className="app-page-header border-b">
         <div className="mx-auto flex h-14 max-w-4xl items-center gap-3 px-4 sm:px-6">
           <Link
             href="/"
@@ -100,10 +100,14 @@ export default function KbsPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
-        <div className="mb-6 flex items-center justify-between">
-          <div className="text-sm text-muted">
-            创建新知识库时可选择此 KB 使用的 embedding / reranker 配置。
+      <main className="app-page-content mx-auto max-w-4xl px-4 py-7 sm:px-6 sm:py-10">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand">Knowledge workspace</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight">管理你的知识库</h2>
+            <p className="mt-2 text-sm text-muted">
+              创建新知识库时可选择此 KB 使用的 embedding / reranker 配置。
+            </p>
           </div>
           <button
             onClick={() => setCreateOpen(true)}

@@ -72,7 +72,7 @@ export default function InvitePage({
   };
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-bg px-4 text-fg">
+    <div className="app-page flex min-h-dvh items-center justify-center px-4 text-fg">
       <div className="w-full max-w-md">
         <div className="mb-6 flex flex-col items-center gap-3">
           <Brand size="md" showWordmark={false} />

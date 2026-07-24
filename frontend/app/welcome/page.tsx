@@ -33,8 +33,8 @@ export default function WelcomePage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-bg text-fg">
-      <header className="sticky top-0 z-30 border-b border-surface-border/70 bg-surface/90 backdrop-blur-xl">
+    <div className="app-page min-h-screen text-fg">
+      <header className="app-page-header sticky top-0 z-30 border-b">
         <div className="mx-auto flex h-14 max-w-7xl items-center px-4 sm:px-6 lg:px-8">
           <Brand size="sm" showWordmark />
           <nav className="ml-8 hidden items-center gap-6 text-sm text-muted md:flex">

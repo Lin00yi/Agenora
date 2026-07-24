@@ -27,14 +27,14 @@ export function AdminPageShell({
   className?: string;
 }) {
   return (
-    <div className={cn("admin-page min-h-dvh text-fg", className)}>
-      <header className="border-b border-surface-border/60 bg-surface/90 backdrop-blur dark:bg-surface/95">
-        <div className="mx-auto flex h-12 max-w-7xl items-center justify-end gap-2 px-4 sm:px-6">
+    <div className={cn("app-page admin-page min-h-dvh text-fg", className)}>
+      <header className="app-page-header border-b">
+        <div className="mx-auto flex h-14 max-w-7xl items-center justify-end gap-2 px-4 sm:px-6">
           <ThemeToggle />
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+      <main className="app-page-content mx-auto px-4 py-7 sm:px-6 sm:py-10">
         <nav className="mb-4 flex flex-wrap items-center gap-1 text-xs text-muted">
           {breadcrumbs.map((item, i) => (
             <span key={item.label} className="inline-flex items-center gap-1">
