@@ -584,25 +584,27 @@ async def _memory_query_vector(query: str, embedding_cfg) -> tuple[list[float] |
         return None, None
     try:
         from src.infra.embedding import embed, embedding_fingerprint
-        from src.settings import get_settings
-
-        # A fresh development install defaults to OpenAI's endpoint but has no
-        # key. Do not turn ordinary memory retrieval into an accidental network
-        # call in that case; an explicitly configured self-hosted/BYOK provider
-        # is still allowed to use an empty key.
-        settings = get_settings()
-        if (
-            embedding_cfg is None
-            and settings.embedding_provider == "openai"
-            and not settings.embedding_base_url
-            and not settings.embedding_api_key
-            and not settings.openai_api_key
-        ):
+        if not memory_embedding_is_available(embedding_cfg):
             return None, None
 
         return await embed(query, cfg=embedding_cfg), embedding_fingerprint(embedding_cfg)
     except Exception:  # noqa: BLE001 - memory retrieval must not break chat
         return None, None
+
+
+def memory_embedding_is_available(embedding_cfg=None) -> bool:
+    """Avoid accidental default-OpenAI requests on an unconfigured install."""
+    if embedding_cfg is not None:
+        return True
+    from src.settings import get_settings
+
+    settings = get_settings()
+    return not (
+        settings.embedding_provider == "openai"
+        and not settings.embedding_base_url
+        and not settings.embedding_api_key
+        and not settings.openai_api_key
+    )
 
 
 async def _backfill_memory_embeddings(
@@ -642,6 +644,50 @@ async def refresh_memory_embedding(row: UserMemory, *, embedding_cfg=None) -> bo
         return True
     except Exception:  # noqa: BLE001
         return False
+
+
+async def backfill_user_memory_embeddings(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    embedding_cfg=None,
+    limit: int = 100,
+) -> int:
+    """Backfill active Memory vectors for one user without failing the job.
+
+    A model/provider change changes the fingerprint, so the row is deliberately
+    re-embedded rather than compared across incompatible vector spaces.
+    """
+    if limit <= 0 or not memory_embedding_is_available(embedding_cfg):
+        return 0
+    try:
+        from src.infra.embedding import embedding_fingerprint
+
+        fingerprint = embedding_fingerprint(embedding_cfg)
+        rows = list(
+            (
+                await session.execute(
+                    select(UserMemory)
+                    .where(UserMemory.user_id == user_id, UserMemory.status == "active")
+                    .order_by(desc(UserMemory.updated_at))
+                    .limit(limit)
+                )
+            ).scalars()
+        )
+        before = sum(
+            row.embedding_fingerprint == fingerprint and _memory_vector(row) is not None
+            for row in rows
+        )
+        await _backfill_memory_embeddings(
+            rows, fingerprint=fingerprint, embedding_cfg=embedding_cfg, max_rows=limit
+        )
+        after = sum(
+            row.embedding_fingerprint == fingerprint and _memory_vector(row) is not None
+            for row in rows
+        )
+        return after - before
+    except Exception:  # noqa: BLE001 - maintenance must preserve chat availability
+        return 0
 
 
 def memory_block(memories: list[UserMemory], *, token_budget: int = MAX_MEMORY_CONTEXT_TOKENS) -> str:

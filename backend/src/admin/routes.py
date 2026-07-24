@@ -30,6 +30,7 @@ from src.auth.password import hash_password
 from src.auth.routes import purge_user
 from src.conversations.models import Conversation, Message
 from src.infra.database import get_session
+from src.infra.memory_maintenance import run_memory_maintenance
 from src.kb.models import KB, Document
 from src.kb.routes import _email_map, purge_kb
 
@@ -97,6 +98,28 @@ def _admin_kb_dict(kb: KB, owner: dict | None) -> dict:
 # ---------------------------------------------------------------------------
 # Stats — dashboard overview (read-only)
 # ---------------------------------------------------------------------------
+class MemoryMaintenanceRequest(BaseModel):
+    """Bounded manual run; scheduled workers use the CLI instead."""
+
+    user_limit: int = Field(default=200, ge=1, le=1_000)
+    embedding_limit_per_user: int = Field(default=100, ge=0, le=500)
+
+
+@router.post("/memory-maintenance")
+async def run_memory_maintenance_now(
+    req: MemoryMaintenanceRequest,
+    admin: AdminUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    result = await run_memory_maintenance(
+        session,
+        user_limit=req.user_limit,
+        embedding_limit_per_user=req.embedding_limit_per_user,
+    )
+    log.info("admin_action", actor=admin.email, action="run_memory_maintenance", **result.to_dict())
+    return result.to_dict()
+
+
 @router.get("/stats")
 async def stats(admin: AdminUser, session: AsyncSession = Depends(get_session)) -> dict:  # noqa: ARG001
     cutoff = datetime.now(timezone.utc) - timedelta(days=7)

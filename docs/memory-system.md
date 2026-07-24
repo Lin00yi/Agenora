@@ -184,6 +184,15 @@ user_id + scope + scope_id + type + memory_key
 
 高阈值只用于去除近乎重复的记录；语义相关但不等价的事实不会被自动删除。
 
+此外可由单个外部 Cron/Worker 定时执行完整维护，覆盖不再产生新消息的用户：
+
+```bash
+cd backend
+python -m src.infra.memory_maintenance
+```
+
+该命令会按用户提交处理结果，并输出 `users_scanned`、过期、覆盖、去重、向量回填及失败数量。部署时只应调度一个实例；管理员也可以调用 `POST /api/admin/memory-maintenance` 进行有界的手动执行。
+
 最终的上下文顺序为：
 
 ```text
@@ -238,7 +247,7 @@ user_id + scope + scope_id + type + memory_key
 
 - 隐式识别规则覆盖面有限，尚未使用 LLM 分类或候选抽取；
 - 向量以 JSON 存在关系库中，适合小规模个人记忆；达到较大规模后应迁移至支持 metadata filter 的专用向量索引；
-- 过期与整合目前在新增/编辑记忆时执行；还没有定时后台任务处理长期不活跃用户；
+- 过期与整合可由独立 Worker/Cron 覆盖长期不活跃用户；部署平台仍需负责单实例调度与重试；
 - `constraint` 使用内容哈希键；只有高度语义重复的记录会自动合并，真正冲突的约束仍需要更强的结构化主题识别；
 - Memory 管理页目前提供查看、修改重要性和删除；尚未提供导出、逐条过期时间编辑和注入 Trace；
 
