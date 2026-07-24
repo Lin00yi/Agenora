@@ -12,6 +12,7 @@ from src.conversations.context import (
     MAX_MEMORY_CONTEXT_TOKENS,
     build_extractive_summary,
     compute_budget,
+    consolidate_user_memories,
     contains_sensitive_memory_content,
     ensure_summary_if_needed,
     estimate_messages_tokens,
@@ -307,6 +308,85 @@ async def test_expired_memories_are_not_retrieved(db, create_user):
         )
 
     assert memories == []
+
+
+@pytest.mark.asyncio
+async def test_memory_retrieval_hybridly_recalls_semantic_match_without_keyword_overlap(
+    db, create_user, monkeypatch
+):
+    """A semantic match remains eligible even when lexical terms do not overlap."""
+    import src.infra.embedding as embedding
+    from src.infra.database import get_session_factory
+
+    user = await create_user("semantic-memory@example.com")
+    monkeypatch.setattr(embedding, "embed", lambda _text, cfg=None: _async_value([1.0, 0.0]))
+    monkeypatch.setattr(embedding, "embedding_fingerprint", lambda cfg=None: "test-space")
+    factory = get_session_factory()
+    async with factory() as session:
+        session.add(
+            UserMemory(
+                id=str(uuid.uuid4()), user_id=user.id, type="constraint", scope="personal",
+                content="项目的数据持久化统一使用 PostgreSQL。", status="active",
+                embedding_json="[1.0,0.0]", embedding_fingerprint="test-space",
+            )
+        )
+        await session.commit()
+        memories = await retrieve_user_memories(
+            session, user_id=user.id, query="数据库方案怎么选？", embedding_cfg=object()
+        )
+
+    assert [memory.content for memory in memories] == ["项目的数据持久化统一使用 PostgreSQL。"]
+
+
+async def _async_value(value):
+    return value
+
+
+@pytest.mark.asyncio
+async def test_memory_consolidation_expires_conflicts_and_semantic_duplicates(db, create_user):
+    from sqlalchemy import select
+
+    from src.infra.database import get_session_factory
+
+    user = await create_user("consolidate-memory@example.com")
+    now = datetime.now(timezone.utc)
+    factory = get_session_factory()
+    async with factory() as session:
+        old_preference = UserMemory(
+            id=str(uuid.uuid4()), user_id=user.id, type="preference", scope="personal",
+            memory_key="response_language", memory_value="zh-CN", content="用户偏好中文回复。",
+            status="active", updated_at=now - timedelta(days=1),
+        )
+        new_preference = UserMemory(
+            id=str(uuid.uuid4()), user_id=user.id, type="preference", scope="personal",
+            memory_key="response_language", memory_value="en", content="用户偏好英文回复。",
+            status="active", updated_at=now,
+        )
+        duplicate_a = UserMemory(
+            id=str(uuid.uuid4()), user_id=user.id, type="explicit", scope="personal",
+            memory_key="one", content="团队使用 TypeScript。", status="active",
+            embedding_json="[1.0,0.0]", embedding_fingerprint="test-space",
+        )
+        duplicate_b = UserMemory(
+            id=str(uuid.uuid4()), user_id=user.id, type="explicit", scope="personal",
+            memory_key="two", content="团队统一使用 TypeScript。", status="active",
+            embedding_json="[0.999,0.001]", embedding_fingerprint="test-space",
+        )
+        expired = UserMemory(
+            id=str(uuid.uuid4()), user_id=user.id, type="explicit", scope="personal",
+            content="已经过期", status="active", expires_at=now - timedelta(seconds=1),
+        )
+        session.add_all([old_preference, new_preference, duplicate_a, duplicate_b, expired])
+        await session.commit()
+        stats = await consolidate_user_memories(session, user_id=user.id)
+        await session.commit()
+        rows = list((await session.execute(select(UserMemory).where(UserMemory.user_id == user.id))).scalars())
+
+    assert stats == {"expired": 1, "superseded": 1, "deduplicated": 1}
+    assert next(row for row in rows if row.id == old_preference.id).status == "superseded"
+    assert next(row for row in rows if row.id == new_preference.id).status == "active"
+    assert sum(row.status == "active" for row in rows if row.type == "explicit") == 1
+    assert next(row for row in rows if row.id == expired.id).status == "expired"
 
 
 def test_memory_block_has_a_hard_token_cap() -> None:

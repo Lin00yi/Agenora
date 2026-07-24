@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  Suspense,
   type ReactNode,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -970,9 +971,23 @@ function ChatPage({ routeConversationId = null }: { routeConversationId?: string
   );
 }
 
-export default function Page() {
+function SearchParamChatPage() {
   const searchParams = useSearchParams();
   return <ChatPage routeConversationId={searchParams.get("conversation")} />;
+}
+
+export default function Page() {
+  return (
+    <Suspense
+      fallback={
+        <div className="ak-chat flex min-h-screen items-center justify-center bg-[#0b111b] text-slate-400">
+          <LoaderCircle className="h-4 w-4 animate-spin text-emerald-400" aria-hidden />
+        </div>
+      }
+    >
+      <SearchParamChatPage />
+    </Suspense>
+  );
 }
 
 function getKbStatusView(kb: KB) {

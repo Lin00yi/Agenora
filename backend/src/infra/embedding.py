@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import math
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -120,6 +120,24 @@ def _resolve_config(cfg: "UserEmbeddingConfig | None" = None) -> dict[str, Any]:
         "api_key": api_key,
         "model": model,
     }
+
+
+def embedding_fingerprint(cfg: "UserEmbeddingConfig | None" = None) -> str:
+    """Identify the embedding space without ever persisting credentials.
+
+    Vectors from different models (and often deployments) are not comparable.
+    Callers store this value beside an embedding and only calculate cosine
+    similarity when the current query was produced in the same space.
+    """
+    resolved = _resolve_config(cfg)
+    raw = "|".join(
+        (
+            str(resolved["provider"]).lower(),
+            str(resolved["base_url"]).rstrip("/").lower(),
+            str(resolved["model"]).lower(),
+        )
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
 
 
 # ---------------------------------------------------------------------------

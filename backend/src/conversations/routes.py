@@ -15,13 +15,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth.middleware import CurrentUser
 from src.conversations.context import (
     compute_budget,
+    consolidate_user_memories,
     context_status_payload,
     get_latest_summary,
+    refresh_memory_embedding,
     store_user_memories,
 )
 from src.conversations.models import Conversation, Message, UserMemory
 from src.infra.database import get_session
-from src.settings_user import resolve_user_llm
+from src.settings_user import resolve_user_embedding, resolve_user_llm
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
@@ -235,6 +237,8 @@ async def patch_memory(
         row.content = req.content.strip()
         row.source = "user_edited"
         row.confidence = 1.0
+        row.embedding_json = None
+        row.embedding_fingerprint = None
     if req.value is not None:
         row.memory_value = req.value.strip()
         row.source = "user_edited"
@@ -244,6 +248,9 @@ async def patch_memory(
     if req.status is not None:
         row.status = req.status
     row.updated_at = datetime.now(timezone.utc)
+    if req.content is not None:
+        await refresh_memory_embedding(row, embedding_cfg=resolve_user_embedding(user))
+    await consolidate_user_memories(session, user_id=user.id)
     await session.commit()
     await session.refresh(row)
     return row.to_public_dict()
@@ -357,6 +364,7 @@ async def append_message(
             message_id=msg.id,
             content=req.content or "",
             kb_id=conv.kb_id,
+            embedding_cfg=resolve_user_embedding(user),
         )
         if _is_default_title(conv.title) and req.content.strip():
             conv.title = _derive_title(req.content)

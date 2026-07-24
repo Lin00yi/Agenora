@@ -157,6 +157,12 @@ class UserMemory(Base):
     status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     supersedes_memory_id: Mapped[str | None] = mapped_column(String(36), nullable=True, default=None)
+    # Serialized normalized vector plus the embedding-space fingerprint. Text
+    # keeps this feature portable across SQLite development and PostgreSQL;
+    # the per-user memory volume is small, so no second vector database is
+    # required for the initial hybrid-retrieval implementation.
+    embedding_json: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    embedding_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -190,6 +196,7 @@ class UserMemory(Base):
             "status": self.status,
             "expires_at": self.expires_at.isoformat() if self.expires_at else None,
             "supersedes_memory_id": self.supersedes_memory_id,
+            "has_embedding": bool(self.embedding_json and self.embedding_fingerprint),
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

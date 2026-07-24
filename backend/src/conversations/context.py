@@ -7,12 +7,13 @@ conversation grows beyond the configured budget.
 from __future__ import annotations
 
 import json
+import math
 import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterable
 
 from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -484,7 +485,15 @@ async def retrieve_user_memories(
     query: str,
     kb_id: str | None = None,
     limit: int = 6,
+    embedding_cfg=None,
 ) -> list[UserMemory]:
+    """Hybrid retrieval with a safe lexical fallback.
+
+    Memory vectors deliberately live beside the relational rows.  That keeps
+    per-user data isolated and portable; with the bounded (50-row) candidate
+    set, in-process cosine scoring is cheaper and simpler than provisioning a
+    second vector collection per user.
+    """
     result = await session.execute(
         select(UserMemory)
         .where(
@@ -500,6 +509,15 @@ async def retrieve_user_memories(
         return []
 
     query_terms = _memory_terms(query)
+    query_vector, fingerprint = await _memory_query_vector(query, embedding_cfg)
+    if query_vector and fingerprint:
+        # Existing installs predate memory vectors. Backfill a small batch on
+        # demand; failures remain non-fatal and lexical retrieval still works.
+        backfilled = await _backfill_memory_embeddings(
+            rows, fingerprint=fingerprint, embedding_cfg=embedding_cfg, max_rows=20
+        )
+        if backfilled:
+            await session.commit()
     wants_preferences = bool(re.search(r"偏好|默认|风格|语言|格式|习惯", query))
     scored: list[tuple[float, UserMemory]] = []
     for row in rows:
@@ -509,6 +527,10 @@ async def retrieve_user_memories(
             continue
         terms = _memory_terms(row.content)
         keyword_score = len(query_terms & terms)
+        semantic_score = 0.0
+        vector = _memory_vector(row)
+        if query_vector and fingerprint == row.embedding_fingerprint and vector:
+            semantic_score = max(0.0, _cosine_similarity(query_vector, vector))
         type_bonus = 1.5 if wants_preferences and row.type == "preference" else 0.0
         scope_bonus = 0.75 if row.scope == "kb" and row.scope_id == kb_id else 0.0
         # Response preferences are intentionally global: a request such as
@@ -519,9 +541,10 @@ async def retrieve_user_memories(
             and row.type == "preference"
             and row.memory_key in {"response_language", "response_style", "response_max_chars"}
         )
-        if keyword_score > 0 or type_bonus > 0 or is_global_preference:
+        if keyword_score > 0 or semantic_score >= 0.35 or type_bonus > 0 or is_global_preference:
             score = (
                 keyword_score * 4
+                + semantic_score * 5
                 + type_bonus
                 + scope_bonus
                 + (2.0 if is_global_preference else 0.0)
@@ -531,6 +554,94 @@ async def retrieve_user_memories(
             scored.append((score, row))
     scored.sort(key=lambda item: item[0], reverse=True)
     return [row for _, row in scored[:limit]]
+
+
+def _memory_vector(row: UserMemory) -> list[float] | None:
+    if not row.embedding_json:
+        return None
+    try:
+        value = json.loads(row.embedding_json)
+        if not isinstance(value, list) or not value:
+            return None
+        vector = [float(item) for item in value]
+        return vector if all(math.isfinite(item) for item in vector) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _cosine_similarity(left: list[float], right: list[float]) -> float:
+    if len(left) != len(right) or not left or not right:
+        return 0.0
+    left_norm = math.sqrt(sum(value * value for value in left))
+    right_norm = math.sqrt(sum(value * value for value in right))
+    if left_norm == 0 or right_norm == 0:
+        return 0.0
+    return sum(a * b for a, b in zip(left, right)) / (left_norm * right_norm)
+
+
+async def _memory_query_vector(query: str, embedding_cfg) -> tuple[list[float] | None, str | None]:
+    if not query.strip():
+        return None, None
+    try:
+        from src.infra.embedding import embed, embedding_fingerprint
+        from src.settings import get_settings
+
+        # A fresh development install defaults to OpenAI's endpoint but has no
+        # key. Do not turn ordinary memory retrieval into an accidental network
+        # call in that case; an explicitly configured self-hosted/BYOK provider
+        # is still allowed to use an empty key.
+        settings = get_settings()
+        if (
+            embedding_cfg is None
+            and settings.embedding_provider == "openai"
+            and not settings.embedding_base_url
+            and not settings.embedding_api_key
+            and not settings.openai_api_key
+        ):
+            return None, None
+
+        return await embed(query, cfg=embedding_cfg), embedding_fingerprint(embedding_cfg)
+    except Exception:  # noqa: BLE001 - memory retrieval must not break chat
+        return None, None
+
+
+async def _backfill_memory_embeddings(
+    rows: Iterable[UserMemory], *, fingerprint: str, embedding_cfg, max_rows: int
+) -> bool:
+    missing = [
+        row for row in rows
+        if row.embedding_fingerprint != fingerprint or _memory_vector(row) is None
+    ][:max_rows]
+    if not missing:
+        return False
+    try:
+        from src.infra.embedding import embed_batch
+
+        vectors = await embed_batch([row.content for row in missing], cfg=embedding_cfg)
+        changed = False
+        for row, vector in zip(missing, vectors):
+            if vector:
+                row.embedding_json = json.dumps(vector, separators=(",", ":"))
+                row.embedding_fingerprint = fingerprint
+                changed = True
+        return changed
+    except Exception:  # noqa: BLE001 - the lexical path remains available
+        return False
+
+
+async def refresh_memory_embedding(row: UserMemory, *, embedding_cfg=None) -> bool:
+    """Refresh one row after capture/edit; returns False without raising on IO errors."""
+    try:
+        from src.infra.embedding import embed, embedding_fingerprint
+
+        vector = await embed(row.content, cfg=embedding_cfg)
+        if not vector:
+            return False
+        row.embedding_json = json.dumps(vector, separators=(",", ":"))
+        row.embedding_fingerprint = embedding_fingerprint(embedding_cfg)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def memory_block(memories: list[UserMemory], *, token_budget: int = MAX_MEMORY_CONTEXT_TOKENS) -> str:
@@ -729,6 +840,106 @@ def _source_message_ids(row: UserMemory) -> list[str]:
         return []
 
 
+def _merge_memory_sources(survivor: UserMemory, redundant: UserMemory) -> None:
+    source_ids = list(dict.fromkeys([*_source_message_ids(survivor), *_source_message_ids(redundant)]))
+    survivor.source_message_ids = json.dumps(source_ids, ensure_ascii=False)
+    survivor.confidence = max(float(survivor.confidence or 0), float(redundant.confidence or 0))
+    survivor.importance = max(float(survivor.importance or 0), float(redundant.importance or 0))
+
+
+def _newer_memory(rows: list[UserMemory]) -> UserMemory:
+    return max(rows, key=lambda row: (row.updated_at or row.created_at, row.id))
+
+
+async def consolidate_user_memories(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    semantic_threshold: float = 0.96,
+) -> dict[str, int]:
+    """Idempotently expire, de-duplicate and resolve structured conflicts.
+
+    This is intentionally deterministic: we only auto-resolve records that
+    share the same structured key, or are near-identical in the same embedding
+    space. Ambiguous facts are left untouched rather than silently deleting a
+    user's information.
+    """
+    now = datetime.now(timezone.utc)
+    expired_result = await session.execute(
+        select(UserMemory).where(
+            UserMemory.user_id == user_id,
+            UserMemory.status == "active",
+            UserMemory.expires_at.is_not(None),
+            UserMemory.expires_at <= now,
+        )
+    )
+    expired = list(expired_result.scalars())
+    for row in expired:
+        row.status = "expired"
+        row.updated_at = now
+
+    result = await session.execute(
+        select(UserMemory).where(UserMemory.user_id == user_id, UserMemory.status == "active")
+    )
+    rows = list(result.scalars())
+    superseded = 0
+    deduplicated = 0
+
+    # A structured key denotes one current value. This also repairs old data
+    # written before the write-path had atomic supersession behaviour.
+    keyed: dict[tuple[str, str, str | None, str], list[UserMemory]] = {}
+    for row in rows:
+        if row.memory_key:
+            keyed.setdefault((row.type, row.scope, row.scope_id, row.memory_key), []).append(row)
+    for group in keyed.values():
+        if len(group) < 2:
+            continue
+        survivor = _newer_memory(group)
+        for row in group:
+            if row is survivor:
+                continue
+            _merge_memory_sources(survivor, row)
+            row.status = "superseded"
+            if not survivor.supersedes_memory_id:
+                survivor.supersedes_memory_id = row.id
+            row.updated_at = now
+            superseded += 1
+
+    active_rows = [row for row in rows if row.status == "active"]
+    # Near-identical free-form/constraint memories frequently acquire distinct
+    # hash keys. Merge them only with matching type/scope/fingerprint and a
+    # very high cosine threshold to avoid treating related facts as duplicates.
+    for index, row in enumerate(active_rows):
+        if row.status != "active" or row.type not in {"explicit", "constraint"}:
+            continue
+        row_vector = _memory_vector(row)
+        if not row_vector or not row.embedding_fingerprint:
+            continue
+        for other in active_rows[index + 1 :]:
+            if (
+                other.status != "active"
+                or other.type != row.type
+                or other.scope != row.scope
+                or other.scope_id != row.scope_id
+                or other.embedding_fingerprint != row.embedding_fingerprint
+            ):
+                continue
+            other_vector = _memory_vector(other)
+            if not other_vector or _cosine_similarity(row_vector, other_vector) < semantic_threshold:
+                continue
+            survivor = _newer_memory([row, other])
+            redundant = other if survivor is row else row
+            _merge_memory_sources(survivor, redundant)
+            redundant.status = "superseded"
+            if not survivor.supersedes_memory_id:
+                survivor.supersedes_memory_id = redundant.id
+            redundant.updated_at = now
+            deduplicated += 1
+            break
+
+    return {"expired": len(expired), "superseded": superseded, "deduplicated": deduplicated}
+
+
 async def store_user_memories(
     session: AsyncSession,
     *,
@@ -736,6 +947,7 @@ async def store_user_memories(
     message_id: str,
     content: str,
     kb_id: str | None = None,
+    embedding_cfg=None,
 ) -> list[UserMemory]:
     """Persist high-confidence explicit or implicit memories without UI friction.
 
@@ -802,6 +1014,13 @@ async def store_user_memories(
         )
         session.add(row)
         stored.append(row)
+    if stored:
+        # Flush gives newly captured rows primary identity in the same request;
+        # embedding is best-effort, never a reason to reject a chat message.
+        await session.flush()
+        for row in stored:
+            await refresh_memory_embedding(row, embedding_cfg=embedding_cfg)
+        await consolidate_user_memories(session, user_id=user_id)
     return stored
 
 
@@ -831,6 +1050,7 @@ async def build_context_for_conversation(
     kb_id: str | None = None,
     context_window: int | None = None,
     llm_cfg: "UserLLMConfig | None" = None,
+    embedding_cfg=None,
 ) -> BuiltContext:
     result = await session.execute(
         select(Message)
@@ -849,7 +1069,11 @@ async def build_context_for_conversation(
 
     last_user = next((m for m in reversed(messages) if m.role == "user"), None)
     memories = await retrieve_user_memories(
-        session, user_id=user_id, query=last_user.content if last_user else "", kb_id=kb_id
+        session,
+        user_id=user_id,
+        query=last_user.content if last_user else "",
+        kb_id=kb_id,
+        embedding_cfg=embedding_cfg,
     )
 
     keep_count = RECENT_TURNS * 2
