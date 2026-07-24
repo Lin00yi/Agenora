@@ -257,27 +257,29 @@
   /* Chat-only visual refresh. The conversation sidebar deliberately keeps its
      existing appearance; these rules are scoped to the main workspace. */
   .ak-chat {
-    --chat-canvas: #f2f4f8;
+    --chat-canvas: #f7f9ff;
     --chat-surface: #ffffff;
-    --chat-soft: #f7f8fb;
-    --chat-ink: #26313c;
-    --chat-muted: #70808f;
-    --chat-line: #dfe5ec;
-    --chat-accent: #f27b52;
+    --chat-soft: #f4f7ff;
+    --chat-ink: #263450;
+    --chat-muted: #7e8ca5;
+    --chat-line: #e0e7f5;
+    --chat-accent: #5b7cf0;
   }
 
   .dark .ak-chat {
-    --chat-canvas: #11131a;
-    --chat-surface: #191d27;
-    --chat-soft: #202633;
-    --chat-ink: #eef2f8;
-    --chat-muted: #9aa8b9;
-    --chat-line: #313949;
-    --chat-accent: #ff9b72;
+    --chat-canvas: #0e1321;
+    --chat-surface: #171e30;
+    --chat-soft: #202a40;
+    --chat-ink: #eef3ff;
+    --chat-muted: #a4b1ca;
+    --chat-line: #303d58;
+    --chat-accent: #8ba3ff;
   }
 
   .ak-chat .ak-workspace {
-    background: var(--chat-canvas) !important;
+    background:
+      radial-gradient(circle at 52% 15%, rgb(99 128 242 / 0.10), transparent 28rem),
+      var(--chat-canvas) !important;
     color: var(--chat-ink) !important;
   }
 
@@ -368,46 +370,56 @@
   /* Only the sidebar launch area is refreshed. The recent-conversation list
      and account area intentionally remain on the existing sidebar treatment. */
   .ak-chat .ak-sidebar .ak-sidebar-top {
-    background: #fff7f3;
-    border: 1px solid #f2dfd6;
+    background: #f4f7ff;
+    border: 1px solid #e0e7f5;
   }
 
   .dark .ak-chat .ak-sidebar .ak-sidebar-top {
-    background: #211a1b;
-    border-color: #493638;
+    background: #171e30;
+    border-color: #303d58;
   }
 
   .ak-chat .ak-sidebar .ak-sidebar-brand > div {
-    background: #f27b52 !important;
-    box-shadow: 0 8px 18px rgb(242 123 82 / 0.22) !important;
+    background: #5b7cf0 !important;
+    box-shadow: 0 8px 18px rgb(91 124 240 / 0.22) !important;
   }
 
-  .ak-chat .ak-sidebar .ak-sidebar-brand { color: #26313c !important; }
-  .dark .ak-chat .ak-sidebar .ak-sidebar-brand { color: #f6eef0 !important; }
+  .ak-chat .ak-sidebar .ak-sidebar-brand { color: #263450 !important; }
+  .dark .ak-chat .ak-sidebar .ak-sidebar-brand { color: #eef3ff !important; }
 
   .ak-chat .ak-sidebar .ak-sidebar-new {
-    border-color: #e97953 !important;
-    background: #f27b52 !important;
-    box-shadow: 0 10px 24px rgb(242 123 82 / 0.24) !important;
+    border-color: #5b7cf0 !important;
+    background: #5b7cf0 !important;
+    box-shadow: 0 10px 24px rgb(91 124 240 / 0.24) !important;
   }
 
   .ak-chat .ak-sidebar .ak-sidebar-new > button:first-child { background: transparent !important; }
-  .ak-chat .ak-sidebar .ak-sidebar-new > button:last-child:hover { background: rgb(108 46 27 / 0.12) !important; }
+  .ak-chat .ak-sidebar .ak-sidebar-new > button:last-child:hover { background: rgb(31 57 152 / 0.18) !important; }
 
   .ak-chat .ak-sidebar .ak-sidebar-search {
-    border-color: #ead8cf !important;
+    border-color: #dce5f6 !important;
     background: rgb(255 255 255 / 0.72) !important;
     color: #70808f !important;
   }
   .dark .ak-chat .ak-sidebar .ak-sidebar-search {
-    border-color: #493638 !important;
-    background: rgb(24 20 23 / 0.66) !important;
+    border-color: #303d58 !important;
+    background: rgb(18 25 42 / 0.66) !important;
   }
-  .ak-chat .ak-sidebar .ak-sidebar-search:focus-within { border-color: #f27b52 !important; }
+  .ak-chat .ak-sidebar .ak-sidebar-search:focus-within { border-color: #5b7cf0 !important; }
 
-  .ak-chat .ak-sidebar .ak-sidebar-all { color: #26313c !important; }
-  .dark .ak-chat .ak-sidebar .ak-sidebar-all { color: #f6eef0 !important; }
-  .ak-chat .ak-sidebar .ak-sidebar-all:hover { background: rgb(242 123 82 / 0.10) !important; }
+  .ak-chat .ak-sidebar .ak-sidebar-all { color: #263450 !important; }
+  .dark .ak-chat .ak-sidebar .ak-sidebar-all { color: #eef3ff !important; }
+  .ak-chat .ak-sidebar .ak-sidebar-all:hover { background: rgb(91 124 240 / 0.10) !important; }
+
+  .ak-chat .ak-workspace .ak-empty-workbench { background: transparent; }
+  .ak-chat .ak-workspace .ak-empty-heading { color: var(--chat-ink); }
+  .ak-chat .ak-workspace .ak-empty-heading span {
+    margin-left: 0.18em;
+    background: linear-gradient(100deg, #4f76ed, #8270eb);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
 }
 
 .dark {

@@ -1503,21 +1503,18 @@ function EmptyWorkbench({
 }) {
   return (
     <div className="flex min-h-full items-center justify-center py-2">
-      <section className="ak-card w-full max-w-[720px] rounded-lg border border-white/10 bg-[#111c2b]/72 p-5 shadow-[0_18px_46px_rgba(0,0,0,0.28)]">
-        <div className="flex items-start gap-4">
-          <Avatar label={<Box className="h-4 w-4" />} tone="assistant" />
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium text-emerald-300">{"\u5df2\u8fde\u63a5 "}{currentKbName}</div>
-            <h1 className="mt-2 text-xl font-semibold tracking-tight text-slate-100 sm:text-2xl">
-              {"\u5411\u77e5\u8bc6\u5e93\u63d0\u95ee\uff0c\u68c0\u7d22\u8fc7\u7a0b\u4f1a\u5b9e\u65f6\u5c55\u793a"}
-            </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
-              {"\u8fd9\u91cc\u4e0d\u4f1a\u9884\u7f6e\u5047\u7b54\u6848\u3002\u53d1\u9001\u95ee\u9898\u540e\uff0c\u5bf9\u8bdd\u3001\u68c0\u7d22\u8fc7\u7a0b\u4e0e\u5f15\u7528\u6765\u6e90\u4f1a\u5728\u5f53\u524d\u5de5\u4f5c\u533a\u6309\u65f6\u5c55\u793a\u3002"}
-            </p>
-          </div>
+      <section className="ak-empty-workbench w-full max-w-[720px] px-5 py-8 sm:px-10">
+        <div className="text-center">
+          <div className="text-sm font-medium text-emerald-300">{"\u5df2\u8fde\u63a5 "}{currentKbName}</div>
+          <h1 className="ak-empty-heading mt-4 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">
+            {"\u628a\u95ee\u9898\u53d8\u6210"}<span>{"\u6e05\u6670\u7b54\u6848"}</span>
+          </h1>
+          <p className="mx-auto mt-4 max-w-lg text-sm leading-6 text-slate-400">
+            {"\u4ece\u77e5\u8bc6\u5e93\u4e2d\u68c0\u7d22\u3001\u63a8\u7406\u5e76\u5f15\u7528\u53ef\u8ffd\u6eaf\u7684\u7b54\u6848\u3002"}
+          </p>
         </div>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        <div className="mt-8 grid gap-3 sm:grid-cols-3">
           <EmptyStat icon={<Database className="h-4 w-4" />} label="上下文" value={currentKbName} />
           <EmptyStat icon={<SlidersHorizontal className="h-4 w-4" />} label="检索模式" value="混合检索" />
           <EmptyStat icon={<ShieldCheck className="h-4 w-4" />} label="数据策略" value="BYOK / 私有化" />

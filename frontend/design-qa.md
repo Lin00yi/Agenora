@@ -3,7 +3,8 @@
 ## Scope
 
 - Refresh the sidebar launch area (brand, new conversation, search, and all conversations) while preserving the existing recent-conversation list and account area below it.
-- Apply the selected soft-library direction only to the chat workspace, in light and dark mode.
+- Use the supplied RAG-answer screenshot as the visual reference: a light cloud canvas, blue-to-violet emphasis, a centered answer-oriented empty state, and a soft, prominent composer.
+- Apply that direction only to the chat workspace, in light and dark mode.
 - Keep knowledge-base selection, model selection, attachments, send/stop, and the context-usage ring inside the composer.
 
 ## Source checks completed
