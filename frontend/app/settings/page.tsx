@@ -3,12 +3,18 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, KeyRound, Loader2, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeft, BrainCircuit, KeyRound, Loader2, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import Dialog from "@/components/Dialog";
 import Select from "@/components/Select";
 import { getToken } from "@/lib/auth";
+import {
+  deleteMemory,
+  listMemories,
+  patchMemory,
+  type UserMemory,
+} from "@/lib/conversations-api";
 import {
   clearLLMSettings,
   getMySettings,
@@ -90,6 +96,7 @@ export default function SettingsPage() {
           initial={settings?.kb_options}
           onChanged={refresh}
         />
+        <MemoryCard />
       </div>
     </div>
   );
@@ -113,6 +120,7 @@ function LLMCard({
   const [models, setModels] = useState<string[]>([]);
   const [defaultModel, setDefaultModel] = useState(initial?.default_model || "");
   const [complexModel, setComplexModel] = useState(initial?.complex_model || "");
+  const [contextWindow, setContextWindow] = useState(initial?.context_window ?? 16000);
   const [probing, setProbing] = useState(false);
   const [saving, setSaving] = useState(false);
   const hasSavedKey = initial?.has_key ?? false;
@@ -128,6 +136,9 @@ function LLMCard({
   const canProbe = baseUrl.trim() && apiKey.trim() && !probing;
   const canSave =
     !!defaultModel &&
+    Number.isInteger(contextWindow) &&
+    contextWindow >= 4096 &&
+    contextWindow <= 2_000_000 &&
     (apiKey.trim() || hasSavedKey) &&
     !!baseUrl.trim() &&
     !saving;
@@ -164,6 +175,7 @@ function LLMCard({
         api_key: apiKey,
         default_model: defaultModel,
         complex_model: complexModel,
+        context_window: contextWindow,
       });
       toast.success("LLM 配置已保存");
       setApiKey("");
@@ -184,6 +196,7 @@ function LLMCard({
       setModels([]);
       setDefaultModel("");
       setComplexModel("");
+      setContextWindow(16000);
       await onChanged();
     } catch (e) {
       toast.error((e as Error).message);
@@ -306,6 +319,21 @@ function LLMCard({
             className="min-w-[16rem]"
           />
         </Field>
+
+        <Field label="Context Window（tokens）">
+          <input
+            type="number"
+            min={4096}
+            max={2000000}
+            step={1024}
+            value={contextWindow}
+            onChange={(e) => setContextWindow(Number(e.target.value))}
+            className="block w-full rounded-lg border bg-bg px-3 py-2 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+          />
+          <p className="mt-1 text-xs text-muted">
+            填写该模型的最大上下文窗口；不确定时请使用提供商文档中的输入窗口值。
+          </p>
+        </Field>
       </div>
 
       <div className="mt-4 flex justify-end">
@@ -402,6 +430,161 @@ function KbOptionsCard({
       </div>
     </section>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Memory card — audit and control without interrupting chat capture
+// ---------------------------------------------------------------------------
+function MemoryCard() {
+  const [memories, setMemories] = useState<UserMemory[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<UserMemory | null>(null);
+
+  const refresh = async () => {
+    const rows = await listMemories();
+    setMemories(rows);
+  };
+
+  useEffect(() => {
+    refresh()
+      .catch((e) => toast.error((e as Error).message || "读取记忆失败"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const updateImportance = async (memory: UserMemory, importance: number) => {
+    setBusyId(memory.id);
+    try {
+      const updated = await patchMemory(memory.id, { importance });
+      setMemories((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      toast.success("记忆重要度已更新");
+    } catch (e) {
+      toast.error((e as Error).message || "更新记忆失败");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setBusyId(deleteTarget.id);
+    try {
+      await deleteMemory(deleteTarget.id);
+      setMemories((current) => current.filter((item) => item.id !== deleteTarget.id));
+      setDeleteTarget(null);
+      toast.success("记忆已删除，不会再注入后续对话");
+    } catch (e) {
+      toast.error((e as Error).message || "删除记忆失败");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <section className="card p-5">
+      <header className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="flex items-center gap-2 text-base font-semibold">
+            <BrainCircuit className="h-4 w-4 text-brand" />
+            记忆管理
+          </h2>
+          <p className="mt-1 text-xs leading-relaxed text-muted">
+            系统会在后台仅保存高置信度的偏好和约束。你可以随时查看、降低重要度或删除；不会影响聊天时的静默体验。
+          </p>
+        </div>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => void refresh()} disabled={loading}>
+          刷新
+        </button>
+      </header>
+
+      {loading ? (
+        <div className="flex items-center gap-2 py-5 text-sm text-muted">
+          <Loader2 className="h-4 w-4 animate-spin" /> 读取记忆…
+        </div>
+      ) : memories.length === 0 ? (
+        <div className="rounded-lg border border-dashed p-4 text-sm text-muted">
+          暂无长期记忆。系统只会在识别到稳定偏好或项目约束时静默保存。
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {memories.map((memory) => {
+            const busy = busyId === memory.id;
+            return (
+              <article key={memory.id} className="rounded-lg border p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="break-words text-sm font-medium">{memory.content}</p>
+                    <p className="mt-1 text-xs text-muted">
+                      {memoryTypeLabel(memory.type)} · {memorySourceLabel(memory.source)} · {memory.scope === "kb" ? "知识库范围" : "全局范围"}
+                      {memory.expires_at ? ` · 到期：${formatMemoryDate(memory.expires_at)}` : " · 长期有效"}
+                    </p>
+                    {memory.source_message_ids.length > 0 ? (
+                      <p className="mt-1 text-xs text-muted">来源消息：{memory.source_message_ids.length} 条</p>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm shrink-0 text-muted hover:text-destructive"
+                    onClick={() => setDeleteTarget(memory)}
+                    disabled={busy}
+                    aria-label={`删除记忆：${memory.content}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> 删除
+                  </button>
+                </div>
+                <div className="mt-3 flex items-center gap-2 text-xs">
+                  <span className="text-muted">重要度</span>
+                  <select
+                    value={String(memory.importance)}
+                    onChange={(e) => void updateImportance(memory, Number(e.target.value))}
+                    disabled={busy}
+                    className="rounded border bg-bg px-2 py-1 text-xs"
+                    aria-label={`调整记忆重要度：${memory.content}`}
+                  >
+                    <option value="0.2">低</option>
+                    <option value="0.5">普通</option>
+                    <option value="0.75">较高</option>
+                    <option value="0.8">高</option>
+                    <option value="0.9">很高</option>
+                    <option value="1">最高</option>
+                  </select>
+                  <span className="text-muted">置信度 {Math.round(memory.confidence * 100)}%</span>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !busyId) setDeleteTarget(null);
+        }}
+        title="删除这条记忆？"
+        description="删除后，它不会再作为上下文注入后续对话。"
+        confirmLabel="删除"
+        variant="danger"
+        busy={deleteTarget !== null && busyId === deleteTarget.id}
+        onConfirm={confirmDelete}
+      />
+    </section>
+  );
+}
+
+function memoryTypeLabel(type: UserMemory["type"]) {
+  return type === "preference" ? "偏好" : type === "constraint" ? "约束" : "显式记忆";
+}
+
+function memorySourceLabel(source: UserMemory["source"]) {
+  if (source === "auto_rule") return "自动提取";
+  if (source === "user_edited") return "用户编辑";
+  return "用户明确要求";
+}
+
+function formatMemoryDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "未知" : date.toLocaleDateString();
 }
 
 // ---------------------------------------------------------------------------

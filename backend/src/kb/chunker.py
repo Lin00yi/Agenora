@@ -45,6 +45,11 @@ def chunk_text(
     if not atoms:
         return []
 
+    # ``target`` is the preferred chunk size, while ``max_size`` is a hard
+    # contract for embedding/storage callers. A misconfigured target must not
+    # silently permit oversized chunks.
+    target = min(target, max_size)
+
     chunks: list[str] = []
     current: list[str] = []
     current_len = 0
@@ -61,10 +66,11 @@ def chunk_text(
             tail: list[str] = []
             tail_len = 0
             for a in reversed(current):
-                if tail and tail_len + sep_len + len(a) > overlap:
+                append_cost = len(a) + (sep_len if tail else 0)
+                if tail_len + append_cost > overlap:
                     break
                 tail.insert(0, a)
-                tail_len += len(a) + (sep_len if len(tail) > 1 else 0)
+                tail_len += append_cost
             current = tail + [atom]
             current_len = sum(len(a) for a in current) + sep_len * (len(current) - 1)
         else:

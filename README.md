@@ -764,12 +764,7 @@ pytest -v -k milvus             # 跑 Milvus smoke
 | 文档 | 用途 |
 |---|---|
 | [PROGRESS.md](PROGRESS.md) | 完整开发日志 + 30 个 milestone changelog |
-| [docs/architecture.md](docs/architecture.md) | 内部架构 / Agent 状态图 / 解耦设计 |
-| [docs/deploy.md](docs/deploy.md) | 详细部署（含 systemd / nginx / Linux 迁移） |
-| [docs/rag-primer.md](docs/rag-primer.md) | **入门**：RAG / Embedding / BM25 / Hybrid / Rerank 从零讲 |
-| [docs/milvus-guide.md](docs/milvus-guide.md) | Milvus 向量库定义 / 部署形态 / 集成 AnyKB |
-| [docs/curation-sop.md](docs/curation-sop.md) | 添加 / 维护策展数据 |
-| [docs/tutorial.md](docs/tutorial.md) | 端到端流程教学（适合给团队培训用） |
+| [docs/memory-system.md](docs/memory-system.md) | 上下文压缩与长期记忆的生命周期、注入规则和管理接口 |
 
 ---
 

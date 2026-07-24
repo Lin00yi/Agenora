@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
-import uuid
 from typing import Any, TYPE_CHECKING
 
 from src.agent.prompts import SYSTEM_PROMPT
@@ -128,6 +126,7 @@ def allocate_provider_context(
     system_prompt: str,
     tools_schema: list[dict[str, Any]],
     conversation_messages: list[dict[str, Any]],
+    configured_context_window: int | None = None,
 ) -> list[dict[str, Any]]:
     """Fit actual prompt components into the selected model's context window.
 
@@ -135,7 +134,7 @@ def allocate_provider_context(
     tool schemas are now measured on every model call. The remaining capacity
     is allocated to the newest complete conversation/tool messages.
     """
-    context_window = context_window_for_model(model)
+    context_window = context_window_for_model(model, configured_context_window)
     system_tokens = estimate_tokens(system_prompt)
     tool_tokens = estimate_tokens(json.dumps(tools_schema, ensure_ascii=False, default=str))
     conversation_budget = context_window - MAX_OUTPUT_TOKENS - SAFETY_RESERVE
@@ -190,6 +189,9 @@ async def plan_node(
         system_prompt=effective_system_prompt,
         tools_schema=tools_schema,
         conversation_messages=conversation_messages,
+        configured_context_window=(
+            getattr(llm_cfg, "context_window", None) if llm_cfg is not None else None
+        ),
     )
     client = get_client(llm_cfg)
 

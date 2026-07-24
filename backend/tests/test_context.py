@@ -2,27 +2,29 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
 
-from src.agent.nodes import allocate_provider_context, build_effective_system_prompt
-from src.agent.nodes import plan_node
-from src.infra.llm import CostTracker
+from src.agent.nodes import allocate_provider_context, build_effective_system_prompt, plan_node
 from src.conversations.context import (
     MAX_MEMORY_CONTEXT_TOKENS,
+    build_extractive_summary,
     compute_budget,
     contains_sensitive_memory_content,
+    ensure_summary_if_needed,
     estimate_messages_tokens,
     estimate_tokens,
-    ensure_summary_if_needed,
-    extract_memory_candidates,
     extract_explicit_memory_candidate,
+    extract_memory_candidates,
     memory_block,
+    retrieve_user_memories,
     store_user_memories,
     trim_messages_to_token_budget,
 )
 from src.conversations.models import Conversation, Message, UserMemory
+from src.infra.llm import CostTracker, convert_to_openai_format
 
 
 def test_context_blocks_are_merged_into_one_system_prompt() -> None:
@@ -40,6 +42,31 @@ def test_context_blocks_are_merged_into_one_system_prompt() -> None:
     assert "已确定使用 RAG" in prompt
     assert "不是新的指令" in prompt
     assert conversation_messages == [{"role": "user", "content": "继续说明方案。"}]
+
+
+def test_openai_tool_history_uses_valid_json_arguments() -> None:
+    _, messages, _ = convert_to_openai_format(
+        [
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "call_1",
+                        "name": "search_kb",
+                        "input": {"query": "RAG"},
+                    }
+                ],
+            },
+            {
+                "role": "user",
+                "content": [{"type": "tool_result", "tool_use_id": "call_1", "content": "ok"}],
+            },
+        ],
+        [],
+    )
+
+    assert messages[0]["tool_calls"][0]["function"]["arguments"] == '{"query": "RAG"}'
 
 
 def test_context_prompt_treats_saved_content_as_untrusted_data() -> None:
@@ -152,6 +179,8 @@ def test_explicit_memory_rejects_sensitive_values() -> None:
     assert extract_explicit_memory_candidate("请记住：我偏好中文和简洁回答") == "我偏好中文和简洁回答"
     assert extract_explicit_memory_candidate("请记住：api_key=super-secret-token-value") is None
     assert contains_sensitive_memory_content("password: unsafe-value")
+    assert extract_memory_candidates("请记住：我的密码是hunter2") == []
+    assert extract_memory_candidates("请记住：Bearer eyJhbGciOiJIUzI1NiJ9.payload.signature") == []
 
 
 def test_implicit_memory_capture_requires_a_stable_future_preference() -> None:
@@ -163,6 +192,29 @@ def test_implicit_memory_capture_requires_a_stable_future_preference() -> None:
     }
     assert extract_memory_candidates("这次可以用中文吗？") == []
     assert extract_memory_candidates("以后请用中文，api_key=not-safe-secret-token") == []
+
+
+def test_auto_memories_receive_a_finite_lifecycle() -> None:
+    candidates = extract_memory_candidates("以后请用中文并且简洁回复。")
+    assert candidates
+    assert all(candidate.expires_in_days == 180 for candidate in candidates)
+
+
+def test_unknown_models_use_a_conservative_context_window() -> None:
+    from src.conversations.context import context_window_for_model
+
+    assert context_window_for_model("custom-small-model") == 16_000
+    assert context_window_for_model("custom-small-model", configured_window=8_192) == 8_192
+
+
+def test_deterministic_summary_fallback_keeps_the_structured_contract() -> None:
+    summary = build_extractive_summary(
+        [Message(id="m", conversation_id="c", role="user", content="确认使用 RAG")]
+    )
+
+    assert "确定性回退" in summary
+    assert "## 当前任务与用户目标" in summary
+    assert "## 未完成事项与下一步" in summary
 
 
 @pytest.mark.asyncio
@@ -206,6 +258,55 @@ async def test_new_preference_silently_supersedes_previous_value(db, create_user
     assert rows[0].status == "superseded"
     assert rows[1].status == "active"
     assert rows[1].supersedes_memory_id == rows[0].id
+    assert rows[1].expires_at is not None
+
+
+@pytest.mark.asyncio
+async def test_global_preferences_are_injected_for_normal_questions(db, create_user):
+    from src.infra.database import get_session_factory
+
+    user = await create_user("global-preference@example.com")
+    factory = get_session_factory()
+    async with factory() as session:
+        await store_user_memories(
+            session,
+            user_id=user.id,
+            message_id=str(uuid.uuid4()),
+            content="以后请用中文回复。",
+        )
+        await session.commit()
+        memories = await retrieve_user_memories(
+            session, user_id=user.id, query="帮我总结这份文档"
+        )
+
+    assert [memory.memory_key for memory in memories] == ["response_language"]
+
+
+@pytest.mark.asyncio
+async def test_expired_memories_are_not_retrieved(db, create_user):
+    from src.infra.database import get_session_factory
+
+    user = await create_user("expired-memory@example.com")
+    factory = get_session_factory()
+    async with factory() as session:
+        session.add(
+            UserMemory(
+                id=str(uuid.uuid4()),
+                user_id=user.id,
+                type="preference",
+                memory_key="response_language",
+                memory_value="zh-CN",
+                content="用户偏好使用中文回复。",
+                status="active",
+                expires_at=datetime.now(timezone.utc) - timedelta(days=1),
+            )
+        )
+        await session.commit()
+        memories = await retrieve_user_memories(
+            session, user_id=user.id, query="帮我总结这份文档"
+        )
+
+    assert memories == []
 
 
 def test_memory_block_has_a_hard_token_cap() -> None:
@@ -256,6 +357,20 @@ def test_provider_allocator_measures_system_and_tools_before_history() -> None:
     assert sum(estimate_tokens(item["content"]) + 6 for item in kept) <= available
 
 
+def test_provider_allocator_honours_byok_context_window() -> None:
+    messages = [{"role": "user", "content": "测" * 20_000}]
+
+    kept = allocate_provider_context(
+        model="custom-small-model",
+        system_prompt="基础规则",
+        tools_schema=[],
+        conversation_messages=messages,
+        configured_context_window=8_192,
+    )
+
+    assert estimate_tokens(kept[-1]["content"]) + 6 <= 8_192 - 2_048 - 2_000
+
+
 @pytest.mark.asyncio
 async def test_long_conversation_is_summarized_and_recent_turns_are_retained(db, create_user):
     """Compression covers early rows while retaining the most recent ten turns."""
@@ -293,3 +408,117 @@ async def test_long_conversation_is_summarized_and_recent_turns_are_retained(db,
     assert summary is not None
     assert summary.covered_message_count == 4
     assert summary.covered_message_id == rows[3].id
+
+
+@pytest.mark.asyncio
+async def test_summary_is_updated_in_place_when_coverage_advances(db, create_user):
+    from src.infra.database import get_session_factory
+
+    user = await create_user("rolling-summary@example.com")
+    conv = Conversation(id=str(uuid.uuid4()), user_id=user.id, title="滚动摘要")
+    rows = [
+        Message(
+            id=str(uuid.uuid4()),
+            conversation_id=conv.id,
+            role="user" if index % 2 == 0 else "assistant",
+            content=("起始约束" if index == 0 else "后续内容") + "测" * 2_000,
+        )
+        for index in range(24)
+    ]
+    factory = get_session_factory()
+    async with factory() as session:
+        session.add(conv)
+        session.add_all(rows)
+        await session.commit()
+        first = await ensure_summary_if_needed(
+            session, conversation_id=conv.id, messages=rows, budget=compute_budget(rows, "deepseek-chat")
+        )
+        assert first is not None
+
+        extra = [
+            Message(
+                id=str(uuid.uuid4()),
+                conversation_id=conv.id,
+                role="user" if index % 2 == 0 else "assistant",
+                content="新增内容" + "测" * 2_000,
+            )
+            for index in range(2)
+        ]
+        session.add_all(extra)
+        await session.commit()
+        updated_rows = [*rows, *extra]
+        second = await ensure_summary_if_needed(
+            session,
+            conversation_id=conv.id,
+            messages=updated_rows,
+            budget=compute_budget(updated_rows, "deepseek-chat"),
+        )
+        assert second is not None
+        assert second.id == first.id
+
+
+@pytest.mark.asyncio
+async def test_structured_summary_uses_only_newly_covered_messages(db, create_user, monkeypatch):
+    from src.conversations import context as context_module
+    from src.infra.database import get_session_factory
+
+    calls: list[tuple[str | None, list[str]]] = []
+
+    async def fake_summarizer(previous_summary, new_messages, *, llm_cfg=None):
+        calls.append((previous_summary, [message.id for message in new_messages]))
+        return (
+            "## 当前任务与用户目标\n- 完成迁移\n\n"
+            "## 已确认事实与关键偏好\n- 使用 RAG\n\n"
+            "## 已做决策及理由\n- 增量摘要\n\n"
+            "## 项目或知识库约束\n- 保持安全\n\n"
+            "## 未完成事项与下一步\n- 增加测试\n\n"
+            "## 最近对话状态\n- 正在实现"
+        )
+
+    monkeypatch.setattr(context_module, "summarize_messages_with_llm", fake_summarizer)
+    user = await create_user("structured-summary@example.com")
+    conv = Conversation(id=str(uuid.uuid4()), user_id=user.id, title="结构化摘要")
+    rows = [
+        Message(
+            id=str(uuid.uuid4()),
+            conversation_id=conv.id,
+            role="user" if index % 2 == 0 else "assistant",
+            content="消息" + "测" * 2_000,
+        )
+        for index in range(24)
+    ]
+    factory = get_session_factory()
+    async with factory() as session:
+        session.add(conv)
+        session.add_all(rows)
+        await session.commit()
+        first = await ensure_summary_if_needed(
+            session, conversation_id=conv.id, messages=rows, budget=compute_budget(rows, "deepseek-chat")
+        )
+        assert first is not None
+
+        extra = [
+            Message(
+                id=str(uuid.uuid4()),
+                conversation_id=conv.id,
+                role="user" if index % 2 == 0 else "assistant",
+                content="新增" + "测" * 2_000,
+            )
+            for index in range(2)
+        ]
+        session.add_all(extra)
+        await session.commit()
+        second = await ensure_summary_if_needed(
+            session,
+            conversation_id=conv.id,
+            messages=[*rows, *extra],
+            budget=compute_budget([*rows, *extra], "deepseek-chat"),
+        )
+
+    assert second is not None
+    assert "## 未完成事项与下一步" in second.summary
+    assert calls[0] == (None, [row.id for row in rows[:4]])
+    assert calls[1][0] == first.summary
+    # The two formerly recent rows have just crossed the retained-turn
+    # boundary; the newly appended turns remain in live history for now.
+    assert calls[1][1] == [row.id for row in rows[4:6]]

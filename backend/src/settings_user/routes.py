@@ -55,6 +55,7 @@ class LLMBody(BaseModel):
     api_key: str = Field(default="", max_length=512)  # "" = keep existing
     default_model: str = Field(min_length=1, max_length=128)
     complex_model: str = Field(default="", max_length=128)
+    context_window: int = Field(default=16_000, ge=4_096, le=2_000_000)
 
 
 class EmbeddingBody(BaseModel):
@@ -137,6 +138,7 @@ def _to_public(user: User) -> dict:
             "base_url": user.llm_base_url,
             "default_model": user.llm_default_model,
             "complex_model": user.llm_complex_model,
+            "context_window": getattr(user, "llm_context_window", None) or 16_000,
             "has_key": bool(user.llm_api_key_enc),
             "configured": user_llm_configured,
             "effective_configured": effective_llm_source != "missing",
@@ -212,6 +214,7 @@ async def save_llm(
         )
     user_row.llm_default_model = body.default_model
     user_row.llm_complex_model = body.complex_model or body.default_model
+    user_row.llm_context_window = body.context_window
     await session.commit()
     await session.refresh(user_row)
     return _to_public(user_row)
@@ -230,6 +233,7 @@ async def clear_llm(
     user_row.llm_api_key_enc = None
     user_row.llm_default_model = None
     user_row.llm_complex_model = None
+    user_row.llm_context_window = None
     await session.commit()
 
 

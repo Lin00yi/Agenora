@@ -34,6 +34,9 @@ class User(Base):
     llm_api_key_enc: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True, default=None)
     llm_default_model: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, default=None)
     llm_complex_model: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, default=None)
+    # User-declared maximum input window for arbitrary BYOK model IDs. NULL
+    # keeps backward-compatible conservative fallback handling.
+    llm_context_window: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
 
     embedding_provider: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, default=None)
     embedding_base_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, default=None)

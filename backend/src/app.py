@@ -299,12 +299,15 @@ async def chat_post(
             require_user_embedding(user)
 
     if conv is not None:
+        user_llm_cfg = resolve_user_llm(user)
         built = await build_context_for_conversation(
             session,
             conversation_id=conv.id,
             user_id=user.id,
             model=selected_model,
             kb_id=conv.kb_id,
+            context_window=user_llm_cfg.context_window if user_llm_cfg is not None else None,
+            llm_cfg=user_llm_cfg,
         )
         messages = built.messages
     elif req.messages:

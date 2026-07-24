@@ -180,6 +180,7 @@ def _migrate_additive_columns(sync_conn) -> None:
             ("llm_api_key_enc", "VARCHAR(1024)"),
             ("llm_default_model", "VARCHAR(128)"),
             ("llm_complex_model", "VARCHAR(128)"),
+            ("llm_context_window", "INTEGER"),
             ("embedding_provider", "VARCHAR(32)"),
             ("embedding_base_url", "VARCHAR(255)"),
             ("embedding_api_key_enc", "VARCHAR(1024)"),
@@ -262,3 +263,18 @@ def _migrate_additive_columns(sync_conn) -> None:
                 sync_conn.execute(
                     text(f"ALTER TABLE user_memories ADD COLUMN {col_name} {col_type}")
                 )
+        # ``create_all`` adds model indexes only for fresh databases. Ensure
+        # existing installations also get the lookup indexes used by memory
+        # retrieval and scope filtering.
+        sync_conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_user_memories_retrieval "
+                "ON user_memories (user_id, status, expires_at, updated_at)"
+            )
+        )
+        sync_conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_user_memories_scope_lookup "
+                "ON user_memories (scope, scope_id, memory_key)"
+            )
+        )

@@ -33,6 +33,7 @@ class UserLLMConfig:
     api_key: str           # plaintext (decrypted)
     default_model: str
     complex_model: str     # if user didn't set, mirrors default_model
+    context_window: int    # user-declared max input window for BYOK models
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +104,7 @@ def resolve_user_llm(user: "User") -> Optional[UserLLMConfig]:
         api_key=decrypt(user.llm_api_key_enc or ""),
         default_model=user.llm_default_model or "",
         complex_model=user.llm_complex_model or user.llm_default_model or "",
+        context_window=int(getattr(user, "llm_context_window", None) or 16_000),
     )
 
 

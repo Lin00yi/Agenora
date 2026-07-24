@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -146,7 +146,7 @@ function mergeConversationSummaries(
   });
 }
 
-export function ChatPage({ routeConversationId = null }: { routeConversationId?: string | null }) {
+function ChatPage({ routeConversationId = null }: { routeConversationId?: string | null }) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -971,7 +971,8 @@ export function ChatPage({ routeConversationId = null }: { routeConversationId?:
 }
 
 export default function Page() {
-  return <ChatPage />;
+  const searchParams = useSearchParams();
+  return <ChatPage routeConversationId={searchParams.get("conversation")} />;
 }
 
 function getKbStatusView(kb: KB) {

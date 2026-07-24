@@ -18,6 +18,7 @@ export type MyLLMSettings = {
   base_url: string | null;
   default_model: string | null;
   complex_model: string | null;
+  context_window: number;
   has_key: boolean;
   configured: boolean;
   effective_configured?: boolean;
@@ -64,6 +65,7 @@ export type SaveLLMBody = {
   api_key: string;
   default_model: string;
   complex_model?: string;
+  context_window: number;
 };
 
 export type SaveEmbeddingBody = {

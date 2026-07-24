@@ -199,7 +199,7 @@ export async function listMemories(): Promise<UserMemory[]> {
 
 export async function patchMemory(
   id: string,
-  patch: { content?: string; importance?: number; status?: "active" | "deleted" }
+  patch: { content?: string; value?: string; importance?: number; status?: "active" | "deleted" }
 ): Promise<UserMemory> {
   return unwrap(
     await authFetch(`/api/conversations/memories/${id}`, {

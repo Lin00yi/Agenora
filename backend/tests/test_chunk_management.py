@@ -46,6 +46,16 @@ def test_chunk_document_text_respects_target():
     assert all(len(c) <= 80 for c in chunks)
 
 
+def test_chunk_document_text_never_exceeds_max_when_target_is_larger():
+    kb = KB(id="kb1", user_id="u1", name="t", chunk_target=200, chunk_max_size=80, chunk_overlap=10)
+    doc = Document(id="d1", kb_id="kb1", filename="a.md")
+
+    chunks = chunk_document_text(kb, doc, "A" * 240)
+
+    assert len(chunks) == 3
+    assert all(len(chunk) <= 80 for chunk in chunks)
+
+
 @pytest.mark.asyncio
 async def test_get_document_and_list_chunks(client, create_user, create_kb, db):
     owner = await create_user("docmgr@x.com")

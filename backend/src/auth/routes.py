@@ -34,6 +34,9 @@ class LoginRequest(BaseModel):
 
 class AuthResponse(BaseModel):
     token: str
+    # Keep the original field for the frontend while exposing the conventional
+    # OAuth-style name used by earlier API clients and integration tests.
+    access_token: str
     user: dict
 
 
@@ -58,7 +61,7 @@ async def register(req: RegisterRequest, session: AsyncSession = Depends(get_ses
     await session.refresh(user)
 
     token = issue_token(user.id, user.email)
-    return AuthResponse(token=token, user=user.to_public_dict())
+    return AuthResponse(token=token, access_token=token, user=user.to_public_dict())
 
 
 @router.post("/login", response_model=AuthResponse)
@@ -75,7 +78,7 @@ async def login(req: LoginRequest, session: AsyncSession = Depends(get_session))
         raise HTTPException(status_code=403, detail="account disabled")
 
     token = issue_token(user.id, user.email)
-    return AuthResponse(token=token, user=user.to_public_dict())
+    return AuthResponse(token=token, access_token=token, user=user.to_public_dict())
 
 
 @router.get("/me")

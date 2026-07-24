@@ -21,6 +21,7 @@ from src.conversations.context import (
 )
 from src.conversations.models import Conversation, Message, UserMemory
 from src.infra.database import get_session
+from src.settings_user import resolve_user_llm
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
@@ -48,6 +49,7 @@ class PatchMemoryRequest(BaseModel):
     """Optional user control for a silently captured memory."""
 
     content: str | None = Field(default=None, min_length=4, max_length=500)
+    value: str | None = Field(default=None, min_length=1, max_length=500)
     importance: float | None = Field(default=None, ge=0, le=1)
     status: Literal["active", "deleted"] | None = None
 
@@ -85,12 +87,14 @@ async def _load_owned_conversation(
 async def _build_context_status(
     session: AsyncSession,
     conv: Conversation,
+    *,
+    context_window: int | None = None,
 ) -> dict:
     result = await session.execute(
         select(Message).where(Message.conversation_id == conv.id).order_by(Message.created_at)
     )
     messages = list(result.scalars().all())
-    budget = compute_budget(messages, conv.llm_model)
+    budget = compute_budget(messages, conv.llm_model, context_window)
     summary = await get_latest_summary(session, conv.id)
     return context_status_payload(budget=budget, summary=summary)
 
@@ -229,7 +233,10 @@ async def patch_memory(
         raise HTTPException(status_code=404, detail="memory not found")
     if req.content is not None:
         row.content = req.content.strip()
-        row.memory_value = row.content
+        row.source = "user_edited"
+        row.confidence = 1.0
+    if req.value is not None:
+        row.memory_value = req.value.strip()
         row.source = "user_edited"
         row.confidence = 1.0
     if req.importance is not None:
@@ -268,7 +275,10 @@ async def get_conversation(
 ) -> dict:
     conv = await _load_owned_conversation(session, conv_id, user.id)
     payload = conv.to_dict_with_messages()
-    payload["context_status"] = await _build_context_status(session, conv)
+    llm_cfg = resolve_user_llm(user)
+    payload["context_status"] = await _build_context_status(
+        session, conv, context_window=llm_cfg.context_window if llm_cfg else None
+    )
     return payload
 
 
@@ -279,7 +289,10 @@ async def get_conversation_context_status(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     conv = await _load_owned_conversation(session, conv_id, user.id)
-    return await _build_context_status(session, conv)
+    llm_cfg = resolve_user_llm(user)
+    return await _build_context_status(
+        session, conv, context_window=llm_cfg.context_window if llm_cfg else None
+    )
 
 
 @router.patch("/{conv_id}")

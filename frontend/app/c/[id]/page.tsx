@@ -1,5 +1,5 @@
-import { ChatPage } from "@/app/page";
+import { redirect } from "next/navigation";
 
 export default function ConversationPage({ params }: { params: { id: string } }) {
-  return <ChatPage routeConversationId={params.id} />;
+  redirect(`/?conversation=${encodeURIComponent(params.id)}`);
 }

@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Annotated, Literal, Optional
 
 import httpx
@@ -750,7 +749,7 @@ async def get_document(
     session: AsyncSession = Depends(get_session),
     include_parsed_text: bool = Query(default=False),
 ) -> dict:
-    kb = await _load_readable_kb(session, kb_id, user.id)
+    await _load_readable_kb(session, kb_id, user.id)
     doc = await _load_document(session, kb_id, doc_id)
     return doc.to_public_dict(include_parsed_text=include_parsed_text)
 
@@ -1049,6 +1048,15 @@ async def merge_chunks_route(
     b = await session.get(Chunk, body.chunk_ids[1])
     if a is None or b is None:
         raise HTTPException(status_code=404, detail="chunk not found")
+    # Validate the requested operation before requiring embedding credentials.
+    # Otherwise a malformed merge misleadingly reports a configuration error
+    # instead of the actionable adjacency problem.
+    if a.doc_id != doc.id or b.doc_id != doc.id:
+        raise HTTPException(status_code=400, detail="chunks must belong to the same document")
+    if a.id == b.id:
+        raise HTTPException(status_code=400, detail="cannot merge a chunk with itself")
+    if abs(a.chunk_idx - b.chunk_idx) != 1:
+        raise HTTPException(status_code=400, detail="chunks must be adjacent")
     ecfg = await _resolve_doc_embedding_cfg(session, kb, user)
     store = get_store()
     try:

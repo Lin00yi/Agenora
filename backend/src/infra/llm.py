@@ -1,8 +1,9 @@
 """LLM client wrapper supporting Anthropic and OpenAI-compatible providers."""
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from src.settings import get_settings
 
@@ -134,7 +135,13 @@ def convert_to_openai_format(messages: list[dict], tools: list[dict]) -> tuple[s
                             "type": "function",
                             "function": {
                                 "name": block.get("name"),
-                                "arguments": str(block.get("input", {}))
+                                # OpenAI-compatible APIs require this field to
+                                # be a JSON string. ``str(dict)`` produces
+                                # Python single-quoted syntax and makes the
+                                # next model call fail after a tool round-trip.
+                                "arguments": json.dumps(
+                                    block.get("input", {}), ensure_ascii=False
+                                )
                             }
                         })
                     elif block.get("type") == "tool_result":
