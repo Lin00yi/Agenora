@@ -341,6 +341,46 @@
     border-top: 1px solid var(--chat-line) !important;
   }
 
+  .ak-chat .ak-workspace .ak-composer.ak-composer-centered {
+    background: transparent !important;
+    border-top: 0 !important;
+  }
+  .ak-chat .ak-workspace .ak-composer-centered .ak-composer-box {
+    max-width: 880px;
+    box-shadow: 0 20px 48px rgb(53 76 142 / 0.12) !important;
+  }
+  .ak-chat .ak-workspace .ak-starter-prompts { margin: 0 auto; width: min(100%, 880px); }
+  .ak-chat .ak-workspace .ak-starter-card {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.75rem;
+    border: 1px solid var(--chat-line);
+    border-radius: 0.9rem;
+    background: color-mix(in srgb, var(--chat-surface) 90%, transparent);
+    padding: 0.9rem 1rem;
+    color: var(--chat-ink);
+    text-align: left;
+    transition: transform var(--duration-press) var(--ease-out), border-color var(--duration-press) var(--ease-out), box-shadow var(--duration-press) var(--ease-out);
+  }
+  .ak-chat .ak-workspace .ak-starter-card:hover {
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--chat-accent) 38%, var(--chat-line));
+    box-shadow: 0 10px 20px rgb(38 52 80 / 0.07);
+  }
+  .ak-chat .ak-workspace .ak-starter-card .text-xs { color: var(--chat-muted); }
+  .ak-chat .ak-workspace .ak-starter-icon {
+    display: inline-flex;
+    height: 2.25rem;
+    width: 2.25rem;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--chat-accent) 11%, var(--chat-surface));
+    color: var(--chat-accent);
+  }
+
   .ak-chat .ak-workspace .ak-composer .ak-control,
   .ak-chat .ak-workspace .ak-composer .ak-control:has(select:disabled),
   .dark .ak-chat .ak-workspace .ak-composer .ak-control,

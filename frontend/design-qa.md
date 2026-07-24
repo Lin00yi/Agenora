@@ -19,7 +19,8 @@
 - Chat search now supports Ctrl/Cmd+K, the new-conversation menu closes on Escape and outside click, and the context-usage indicator is focusable informational content rather than an inert button.
 - Theme switching is present on the admin shell and mobile chat header.
 - The composer send action is now a compact circular primary control; shared Radix selects and remaining native selects use a consistent elevated trigger, focus ring, and option treatment.
-- The new-conversation split dropdown was removed; its primary action continues to create a conversation using the currently selected knowledge base when one is active.
+- The new-conversation split dropdown was removed; its primary action keeps the current knowledge-base selection in the draft workspace.
+- New conversation now opens `/c` as a draft workspace without creating a server conversation. The first send creates the conversation and replaces the URL with `/c/{id}`; the centered draft layout keeps the large composer between the answer-oriented heading and starter cards.
 
 ## Automated verification
 

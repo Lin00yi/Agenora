@@ -189,7 +189,13 @@ function mergeConversationSummaries(
   });
 }
 
-function ChatPage({ routeConversationId = null }: { routeConversationId?: string | null }) {
+export function ChatPage({
+  routeConversationId = null,
+  startBlank = false,
+}: {
+  routeConversationId?: string | null;
+  startBlank?: boolean;
+}) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -446,7 +452,7 @@ function ChatPage({ routeConversationId = null }: { routeConversationId?: string
         setConversationPage(page.page);
         setConversationHasMore(page.has_more);
         const fallbackId = list[0]?.id ?? null;
-        const targetId = routeConversationId ?? fallbackId;
+        const targetId = routeConversationId ?? (startBlank ? null : fallbackId);
         if (targetId) {
           const ok = await loadConversation(targetId);
           if (cancelled) return;
@@ -478,7 +484,7 @@ function ChatPage({ routeConversationId = null }: { routeConversationId?: string
     return () => {
       cancelled = true;
     };
-  }, [loadConversation, routeConversationId, router]);
+  }, [loadConversation, routeConversationId, router, startBlank]);
 
   useEffect(() => {
     if (!authChecked) return;
@@ -541,33 +547,16 @@ function ChatPage({ routeConversationId = null }: { routeConversationId?: string
     }
   }, [conversationHasMore, conversationLoadingMore, conversationPage]);
 
-  const handleNew = useCallback(async (kbId: string | null = currentKbId) => {
-    try {
-      const created = await createConversation({ kb_id: kbId });
-      const summary: ConversationSummary = {
-        id: created.id,
-        title: created.title,
-        kb_id: created.kb_id,
-        llm_model: created.llm_model,
-        message_count: 0,
-        created_at: created.created_at,
-        updated_at: created.updated_at,
-        context_status: created.context_status ?? null,
-      };
-      setSummaries((prev) => [summary, ...prev]);
-      setConversationTotal((total) => total + 1);
-      setCurrentId(created.id);
-      messagesCache.current.set(created.id, []);
-      setCurrentMessages([]);
-      setCurrentKbId(created.kb_id);
-      setCurrentModel(created.llm_model ?? null);
-      setCurrentContextStatus(created.context_status ?? null);
-      setSidebarOpen(false);
-      window.history.pushState(null, "", conversationHref(created.id));
-    } catch (e) {
-      toast.error((e as Error)?.message ?? "\u65b0\u5efa\u5bf9\u8bdd\u5931\u8d25");
-    }
-  }, [currentKbId, router]);
+  const handleNew = useCallback((kbId: string | null = currentKbId) => {
+    setCurrentId(null);
+    setCurrentMessages([]);
+    setCurrentKbId(kbId);
+    setCurrentModel(null);
+    setCurrentContextStatus(null);
+    setComposerValue("");
+    setSidebarOpen(false);
+    window.history.pushState(null, "", "/c");
+  }, [currentKbId]);
 
   const handleSelect = useCallback(
     async (id: string) => {
@@ -639,7 +628,7 @@ function ChatPage({ routeConversationId = null }: { routeConversationId?: string
           setCurrentKbId(null);
           setCurrentModel(null);
           setCurrentContextStatus(null);
-          window.history.replaceState(null, "", "/");
+          window.history.replaceState(null, "", "/c");
         }
       }
     },
@@ -978,23 +967,50 @@ function ChatPage({ routeConversationId = null }: { routeConversationId?: string
 
           <div className="min-h-0 flex-1">
             <main className="ak-main ak-workspace flex h-full min-h-0 min-w-0 flex-col">
-              <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-                <div className="mx-auto flex w-full max-w-[860px] flex-col gap-7">
-                  <ContextCompressionNotice contextStatus={currentContextStatus} />
-                  {currentMessages.length === 0 ? (
+              {(!currentId && currentMessages.length === 0) ? (
+                <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+                  <div className="mx-auto flex w-full max-w-[920px] flex-col">
                     <EmptyWorkbench
+                      centered
                       currentKbName={currentKb?.name ?? "\u901a\u7528\u5bf9\u8bdd"}
                       onPick={handleSend}
                     />
-                  ) : (
-                    currentMessages.map((message) => (
-                      <DarkMessage key={message.id} message={message} user={user} />
-                    ))
-                  )}
+                    <Composer
+                      centered
+                      value={composerValue}
+                      textareaRef={textareaRef}
+                      busy={busy}
+                      currentKbId={currentKbId}
+                      kbs={kbs}
+                      currentModel={currentModel}
+                      modelOptions={modelOptions}
+                      llmReady={llmReady}
+                      llmSource={llmSource}
+                      contextStatus={currentContextStatus}
+                      contextStatusLoading={contextStatusLoading}
+                      kbLocked={false}
+                      onChange={setComposerValue}
+                      onSubmit={submitComposer}
+                      onStop={handleStop}
+                      onSelectKb={handleKbChange}
+                      onModelChange={handleModelChange}
+                    />
+                    <StarterPromptCards onPick={handleSend} />
+                  </div>
                 </div>
-              </div>
-
-              <Composer
+              ) : (
+                <>
+                  <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+                    <div className="mx-auto flex w-full max-w-[860px] flex-col gap-7">
+                      <ContextCompressionNotice contextStatus={currentContextStatus} />
+                      {currentMessages.length === 0 ? (
+                        <EmptyWorkbench currentKbName={currentKb?.name ?? "\u901a\u7528\u5bf9\u8bdd"} onPick={handleSend} />
+                      ) : (
+                        currentMessages.map((message) => <DarkMessage key={message.id} message={message} user={user} />)
+                      )}
+                    </div>
+                  </div>
+                  <Composer
                 value={composerValue}
                 textareaRef={textareaRef}
                 busy={busy}
@@ -1012,7 +1028,9 @@ function ChatPage({ routeConversationId = null }: { routeConversationId?: string
                 onStop={handleStop}
                 onSelectKb={handleKbChange}
                 onModelChange={handleModelChange}
-              />
+                  />
+                </>
+              )}
             </main>
           </div>
         </div>
@@ -1465,12 +1483,14 @@ function TopBar({
 function EmptyWorkbench({
   currentKbName,
   onPick,
+  centered = false,
 }: {
   currentKbName: string;
   onPick: (q: string) => void;
+  centered?: boolean;
 }) {
   return (
-    <div className="flex min-h-full items-center justify-center py-2">
+    <div className={cn("flex items-center justify-center", centered ? "pt-12 sm:pt-20" : "min-h-full py-2")}>
       <section className="ak-empty-workbench w-full max-w-[720px] px-5 py-8 sm:px-10">
         <div className="text-center">
           <div className="text-sm font-medium text-emerald-300">{"\u5df2\u8fde\u63a5 "}{currentKbName}</div>
@@ -1482,25 +1502,50 @@ function EmptyWorkbench({
           </p>
         </div>
 
-        <div className="mt-8 grid gap-3 sm:grid-cols-3">
-          <EmptyStat icon={<Database className="h-4 w-4" />} label="上下文" value={currentKbName} />
-          <EmptyStat icon={<SlidersHorizontal className="h-4 w-4" />} label="检索模式" value="混合检索" />
-          <EmptyStat icon={<ShieldCheck className="h-4 w-4" />} label="数据策略" value="BYOK / 私有化" />
-        </div>
+        {!centered && (
+          <>
+            <div className="mt-8 grid gap-3 sm:grid-cols-3">
+              <EmptyStat icon={<Database className="h-4 w-4" />} label="上下文" value={currentKbName} />
+              <EmptyStat icon={<SlidersHorizontal className="h-4 w-4" />} label="检索模式" value="混合检索" />
+              <EmptyStat icon={<ShieldCheck className="h-4 w-4" />} label="数据策略" value="BYOK / 私有化" />
+            </div>
 
-        <div className="mt-5 flex flex-wrap gap-2">
-          {EMPTY_PROMPTS.map((item) => (
-          <button
-            className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-slate-300 transition hover:border-emerald-300/40 hover:text-emerald-200"
-            key={item}
-            onClick={() => onPick(item)}
-            type="button"
-          >
-            {item}
-          </button>
-        ))}
-        </div>
+            <div className="mt-5 flex flex-wrap gap-2">
+              {EMPTY_PROMPTS.map((item) => (
+                <button
+                  className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-slate-300 transition hover:border-emerald-300/40 hover:text-emerald-200"
+                  key={item}
+                  onClick={() => onPick(item)}
+                  type="button"
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </section>
+    </div>
+  );
+}
+
+function StarterPromptCards({ onPick }: { onPick: (q: string) => void }) {
+  const cards = [
+    { icon: <BookOpen className="h-4 w-4" />, title: "资料总结", prompt: EMPTY_PROMPTS[1] },
+    { icon: <ShieldCheck className="h-4 w-4" />, title: "权限与安全", prompt: EMPTY_PROMPTS[2] },
+    { icon: <SlidersHorizontal className="h-4 w-4" />, title: "开始探索", prompt: EMPTY_PROMPTS[0] },
+  ];
+  return (
+    <div className="ak-starter-prompts grid gap-3 pb-8 sm:grid-cols-3">
+      {cards.map((card) => (
+        <button key={card.title} className="ak-starter-card text-left" onClick={() => onPick(card.prompt)} type="button">
+          <span className="ak-starter-icon">{card.icon}</span>
+          <span className="min-w-0">
+            <span className="block text-sm font-medium">{card.title}</span>
+            <span className="mt-1 block truncate text-xs">{card.prompt}</span>
+          </span>
+        </button>
+      ))}
     </div>
   );
 }
@@ -1845,6 +1890,7 @@ function Composer({
   onStop,
   onSelectKb,
   onModelChange,
+  centered = false,
 }: {
   value: string;
   textareaRef: React.RefObject<HTMLTextAreaElement>;
@@ -1863,6 +1909,7 @@ function Composer({
   onStop: () => void;
   onSelectKb: (id: string | null) => void;
   onModelChange: (model: string | null) => void;
+  centered?: boolean;
 }) {
   const defaultModelLabel = llmReady
     ? llmSource === "system"
@@ -1871,7 +1918,7 @@ function Composer({
     : "\u672a\u914d\u7f6e\u6a21\u578b";
 
   return (
-    <div className="ak-composer shrink-0 border-t border-white/10 bg-[#08101c]/90 px-5 py-3 backdrop-blur-xl">
+    <div className={cn("ak-composer", centered ? "ak-composer-centered mt-6 px-0 pb-8" : "shrink-0 border-t border-white/10 bg-[#08101c]/90 px-5 py-3 backdrop-blur-xl")}>
       <div className="ak-composer-box mx-auto max-w-[820px] rounded-lg border border-white/12 bg-[#0d1726]/94 shadow-[0_18px_46px_rgba(0,0,0,0.32)] focus-within:border-brand/40">
         <textarea
           ref={textareaRef}
@@ -1887,7 +1934,7 @@ function Composer({
           aria-label="输入消息"
           data-testid="composer-input"
           placeholder="向当前会话提问，知识库会随会话锁定"
-          className="block max-h-[112px] min-h-[44px] w-full resize-none bg-transparent px-4 py-3 text-[15px] leading-6 text-slate-100 outline-none placeholder:text-slate-500"
+          className={cn("block max-h-[160px] w-full resize-none bg-transparent px-5 py-4 text-[15px] leading-6 text-slate-100 outline-none placeholder:text-slate-500", centered ? "min-h-[112px] text-base" : "min-h-[44px] px-4 py-3")}
         />
         <div className="flex flex-wrap items-center gap-2 border-t border-white/8 px-3 py-2">
           <div
