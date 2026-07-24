@@ -45,8 +45,8 @@ services:
 
       # --- LLM provider + fallback keys (users override in /settings) ---
       LLM_PROVIDER: ${LLM_PROVIDER:-deepseek}
-      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-deepseek-chat}
-      LLM_COMPLEX_MODEL: ${LLM_COMPLEX_MODEL:-deepseek-chat}
+      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-deepseek-v4-flash}
+      LLM_COMPLEX_MODEL: ${LLM_COMPLEX_MODEL:-deepseek-v4-flash}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}

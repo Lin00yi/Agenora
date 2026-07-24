@@ -23,6 +23,7 @@ from src.conversations.context import (
 )
 from src.conversations.models import Conversation, Message, UserMemory
 from src.infra.database import get_session
+from src.infra.llm import normalize_model_name
 from src.settings_user import resolve_user_embedding, resolve_user_llm
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
@@ -319,7 +320,7 @@ async def patch_conversation(
     if "kb_id" in fields_set:
         conv.kb_id = req.kb_id
     if "llm_model" in fields_set:
-        conv.llm_model = req.llm_model
+        conv.llm_model = normalize_model_name(req.llm_model)
 
     await session.commit()
     await session.refresh(conv)

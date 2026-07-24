@@ -26,6 +26,10 @@ _engine = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
+_LEGACY_DEEPSEEK_CHAT = "deepseek-chat"
+_DEEPSEEK_V4_FLASH = "deepseek-v4-flash"
+
+
 def get_engine():
     global _engine
     if _engine is None:
@@ -244,6 +248,34 @@ def _migrate_additive_columns(sync_conn) -> None:
             sync_conn.execute(
                 text("ALTER TABLE conversations ADD COLUMN llm_model VARCHAR(128)")
             )
+
+    # 2026-07: DeepSeek retired `deepseek-chat`. Migrate all persisted model
+    # selections on every startup so existing users and conversations do not
+    # send the retired identifier. These UPDATEs are idempotent and portable
+    # across the supported SQLite and PostgreSQL deployments.
+    if "users" in tables:
+        sync_conn.execute(
+            text(
+                "UPDATE users SET llm_default_model = :new_model "
+                "WHERE llm_default_model = :old_model"
+            ),
+            {"new_model": _DEEPSEEK_V4_FLASH, "old_model": _LEGACY_DEEPSEEK_CHAT},
+        )
+        sync_conn.execute(
+            text(
+                "UPDATE users SET llm_complex_model = :new_model "
+                "WHERE llm_complex_model = :old_model"
+            ),
+            {"new_model": _DEEPSEEK_V4_FLASH, "old_model": _LEGACY_DEEPSEEK_CHAT},
+        )
+    if "conversations" in tables:
+        sync_conn.execute(
+            text(
+                "UPDATE conversations SET llm_model = :new_model "
+                "WHERE llm_model = :old_model"
+            ),
+            {"new_model": _DEEPSEEK_V4_FLASH, "old_model": _LEGACY_DEEPSEEK_CHAT},
+        )
 
     # v4: structured long-term memory. Existing explicit memories remain
     # readable; the nullable key/value fields are populated only by new writes.

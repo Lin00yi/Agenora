@@ -30,6 +30,7 @@ from src.auth.middleware import CurrentUser
 from src.auth.models import User
 from src.infra.crypto import decrypt, encrypt
 from src.infra.database import get_session
+from src.infra.llm import normalize_model_name
 from src.kb.models import KB
 from src.settings_user.probe import (
     EmbeddingProbeResult,
@@ -136,17 +137,17 @@ def _to_public(user: User) -> dict:
         "llm": {
             "provider": user.llm_provider,
             "base_url": user.llm_base_url,
-            "default_model": user.llm_default_model,
-            "complex_model": user.llm_complex_model,
+            "default_model": normalize_model_name(user.llm_default_model),
+            "complex_model": normalize_model_name(user.llm_complex_model),
             "context_window": getattr(user, "llm_context_window", None) or 16_000,
             "has_key": bool(user.llm_api_key_enc),
             "configured": user_llm_configured,
             "effective_configured": effective_llm_source != "missing",
             "effective_source": effective_llm_source,
             "effective_model": (
-                user.llm_default_model
+                normalize_model_name(user.llm_default_model)
                 if user_llm_configured
-                else s.llm_default_model
+                else normalize_model_name(s.llm_default_model)
                 if effective_llm_source == "system"
                 else None
             ),
@@ -212,8 +213,8 @@ async def save_llm(
         raise HTTPException(
             status_code=400, detail="api_key required for first-time configuration"
         )
-    user_row.llm_default_model = body.default_model
-    user_row.llm_complex_model = body.complex_model or body.default_model
+    user_row.llm_default_model = normalize_model_name(body.default_model)
+    user_row.llm_complex_model = normalize_model_name(body.complex_model or body.default_model)
     user_row.llm_context_window = body.context_window
     await session.commit()
     await session.refresh(user_row)

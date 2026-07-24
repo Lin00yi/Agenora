@@ -75,8 +75,12 @@ import { LoadingState } from "@/components/ui/state-view";
 const DEFAULT_TITLE = "\u65b0\u5bf9\u8bdd";
 const DEFAULT_CONTEXT_WINDOW = 16_000;
 const CONTEXT_WINDOWS: Record<string, number> = {
+  // Kept temporarily for conversations that have not yet been opened since
+  // the backend startup migration; new DeepSeek calls use the V4 models.
   "deepseek-chat": 64_000,
   "deepseek-reasoner": 64_000,
+  "deepseek-v4-flash": 1_000_000,
+  "deepseek-v4-pro": 1_000_000,
   "gpt-4o": 128_000,
   "gpt-4o-mini": 128_000,
   "claude-haiku-4-5-20251001": 200_000,

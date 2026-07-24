@@ -15,8 +15,22 @@ PRICING = {
     "claude-haiku-4-5-20251001": {"in": 1.0, "out": 5.0},
     "claude-sonnet-4-6": {"in": 3.0, "out": 15.0},
     "claude-opus-4-7": {"in": 15.0, "out": 75.0},
-    "deepseek-chat": {"in": 0.14, "out": 0.28},  # DeepSeek v3 pricing
+    "deepseek-v4-flash": {"in": 0.14, "out": 0.28},
 }
+
+# DeepSeek retired this identifier. Keep this normalization at the request
+# boundary too: deployment environments can still have an old explicit env
+# value even after their database rows are migrated on startup.
+LEGACY_MODEL_ALIASES = {
+    "deepseek-chat": "deepseek-v4-flash",
+}
+
+
+def normalize_model_name(model: str | None) -> str | None:
+    """Return a vendor-supported model identifier for known retired aliases."""
+    if model is None:
+        return None
+    return LEGACY_MODEL_ALIASES.get(model.strip(), model.strip())
 
 
 @dataclass
@@ -80,6 +94,9 @@ def pick_model(messages: list[dict], tools: list[dict], cfg: "UserLLMConfig | No
         s = get_settings()
         default_model = s.llm_default_model
         complex_model = s.llm_complex_model
+
+    default_model = normalize_model_name(default_model) or default_model
+    complex_model = normalize_model_name(complex_model) or complex_model
 
     last_user = next((m for m in reversed(messages) if m.get("role") == "user"), None)
     text_len = 0

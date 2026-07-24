@@ -28,8 +28,12 @@ if TYPE_CHECKING:
     from src.settings_user import UserLLMConfig
 
 MODEL_CONTEXT_WINDOWS: dict[str, int] = {
+    # Legacy entries remain only so an in-flight request can still calculate a
+    # safe budget while the startup migration updates its stored model name.
     "deepseek-chat": 64_000,
     "deepseek-reasoner": 64_000,
+    "deepseek-v4-flash": 1_000_000,
+    "deepseek-v4-pro": 1_000_000,
     "gpt-4o": 128_000,
     "gpt-4o-mini": 128_000,
     "claude-haiku-4-5-20251001": 200_000,

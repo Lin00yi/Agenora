@@ -49,6 +49,48 @@ def test_migration_adds_admin_columns_and_is_idempotent(tmp_path):
     assert row[1] in (1, True)
 
 
+def test_migration_replaces_retired_deepseek_chat_model(tmp_path):
+    """Existing user and conversation selections are upgraded on startup."""
+    from sqlalchemy import create_engine, text
+
+    from src.infra.database import _migrate_additive_columns
+
+    engine = create_engine(f"sqlite:///{(tmp_path / 'legacy-models.db').as_posix()}")
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "CREATE TABLE users (id VARCHAR(36) PRIMARY KEY, email VARCHAR(255), "
+                "llm_default_model VARCHAR(128), llm_complex_model VARCHAR(128))"
+            )
+        )
+        conn.execute(
+            text("CREATE TABLE conversations (id VARCHAR(36) PRIMARY KEY, llm_model VARCHAR(128))")
+        )
+        conn.execute(
+            text(
+                "INSERT INTO users (id, email, llm_default_model, llm_complex_model) "
+                "VALUES ('u1', 'old@x.com', 'deepseek-chat', 'deepseek-chat')"
+            )
+        )
+        conn.execute(
+            text("INSERT INTO conversations (id, llm_model) VALUES ('c1', 'deepseek-chat')")
+        )
+
+    for _ in range(2):
+        with engine.begin() as conn:
+            _migrate_additive_columns(conn)
+
+    with engine.begin() as conn:
+        user_models = conn.execute(
+            text("SELECT llm_default_model, llm_complex_model FROM users WHERE id = 'u1'")
+        ).one()
+        conversation_model = conn.execute(
+            text("SELECT llm_model FROM conversations WHERE id = 'c1'")
+        ).scalar_one()
+    assert user_models == ("deepseek-v4-flash", "deepseek-v4-flash")
+    assert conversation_model == "deepseek-v4-flash"
+
+
 # ---------------------------------------------------------------------------
 # require_admin dependency (pure — no DB needed).
 # ---------------------------------------------------------------------------

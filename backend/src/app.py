@@ -30,6 +30,7 @@ from src.conversations.context import build_context_for_conversation
 from src.conversations.models import Conversation
 from src.conversations.routes import router as conversations_router
 from src.infra.database import get_session, init_db
+from src.infra.llm import normalize_model_name
 from src.infra.rate_limit import check as rate_check
 from src.kb.models import KB
 from src.kb.routes import invitations_router
@@ -278,7 +279,7 @@ async def chat_post(
             raise HTTPException(status_code=404, detail="conversation not found")
 
     effective_kb_id = req.kb_id if req.kb_id is not None else (conv.kb_id if conv else None)
-    selected_model = req.model or (conv.llm_model if conv else None)
+    selected_model = normalize_model_name(req.model or (conv.llm_model if conv else None))
 
     kb: KB | None = None
     if effective_kb_id:

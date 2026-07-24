@@ -25,7 +25,12 @@ from src.conversations.context import (
     trim_messages_to_token_budget,
 )
 from src.conversations.models import Conversation, Message, UserMemory
-from src.infra.llm import CostTracker, convert_to_openai_format
+from src.infra.llm import CostTracker, convert_to_openai_format, normalize_model_name
+
+
+def test_retired_deepseek_chat_alias_is_normalized_before_a_request() -> None:
+    assert normalize_model_name("deepseek-chat") == "deepseek-v4-flash"
+    assert normalize_model_name("deepseek-v4-pro") == "deepseek-v4-pro"
 
 
 def test_context_blocks_are_merged_into_one_system_prompt() -> None:
