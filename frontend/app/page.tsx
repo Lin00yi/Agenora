@@ -945,6 +945,7 @@ function ChatPage({ routeConversationId = null }: { routeConversationId?: string
                 modelOptions={modelOptions}
                 llmReady={llmReady}
                 llmSource={llmSource}
+                contextStatus={currentContextStatus}
                 kbLocked={!!currentId && hasConversationMessages}
                 onChange={setComposerValue}
                 onSubmit={submitComposer}
@@ -959,7 +960,6 @@ function ChatPage({ routeConversationId = null }: { routeConversationId?: string
               currentConversation={currentConversation}
               currentModel={currentModel}
               llmSource={llmSource}
-              contextStatus={currentContextStatus}
               messages={currentMessages}
               tools={activeTools}
               busy={busy}
@@ -1846,6 +1846,7 @@ function Composer({
   modelOptions,
   llmReady,
   llmSource,
+  contextStatus,
   kbLocked,
   onChange,
   onSubmit,
@@ -1862,6 +1863,7 @@ function Composer({
   modelOptions: string[];
   llmReady: boolean;
   llmSource: LlmSource;
+  contextStatus: ConversationContextStatus | null;
   kbLocked: boolean;
   onChange: (value: string) => void;
   onSubmit: () => void;
@@ -1924,20 +1926,23 @@ function Composer({
           >
             <Paperclip className="h-4 w-4" />
           </Link>
-          <select
-            className="ak-control ml-auto h-9 max-w-[190px] rounded-lg border border-white/10 bg-[#111c2b] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/40 disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={busy || modelOptions.length === 0}
-            value={currentModel ?? ""}
-            onChange={(e) => onModelChange(e.target.value || null)}
-            title={modelOptions.length > 0 ? "\u6a21\u578b\u9009\u62e9" : "\u8bf7\u5148\u5728\u8bbe\u7f6e\u4e2d\u914d\u7f6e\u6a21\u578b"}
-          >
-            <option value="">{defaultModelLabel}</option>
-            {modelOptions.map((model) => (
-              <option key={model} value={model}>
-                {model}
-              </option>
-            ))}
-          </select>
+          <div className="ml-auto flex min-w-0 items-center gap-2">
+            <ContextUsageIndicator contextStatus={contextStatus} />
+            <select
+              className="ak-control h-9 max-w-[190px] rounded-lg border border-white/10 bg-[#111c2b] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/40 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={busy || modelOptions.length === 0}
+              value={currentModel ?? ""}
+              onChange={(e) => onModelChange(e.target.value || null)}
+              title={modelOptions.length > 0 ? "\u6a21\u578b\u9009\u62e9" : "\u8bf7\u5148\u5728\u8bbe\u7f6e\u4e2d\u914d\u7f6e\u6a21\u578b"}
+            >
+              <option value="">{defaultModelLabel}</option>
+              {modelOptions.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+          </div>
           {busy ? (
             <button
               className="ak-press inline-flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-4 text-sm font-medium text-slate-100 hover:bg-white/10"
@@ -1969,12 +1974,86 @@ function Composer({
   );
 }
 
+function ContextUsageIndicator({
+  contextStatus,
+}: {
+  contextStatus: ConversationContextStatus | null;
+}) {
+  const status = contextStatus ?? {
+    state: "normal" as const,
+    label: "正常",
+    description: "发送消息后会显示此会话的上下文使用情况。",
+    current_tokens: 0,
+    available_tokens: 0,
+    percent: 0,
+    retained_recent_turns: 10,
+    summary: null,
+  };
+  const progress = Math.min(100, Math.max(0, status.percent));
+  const circumference = 2 * Math.PI * 8;
+  const dashOffset = circumference * (1 - progress / 100);
+  const isAttention = status.state === "approaching" || status.state === "ready" || status.state === "critical";
+  const ringTone =
+    status.state === "compressed"
+      ? "text-emerald-300"
+      : isAttention
+        ? "text-amber-300"
+        : "text-slate-400";
+
+  return (
+    <div className="group relative shrink-0">
+      <button
+        aria-describedby="context-usage-detail"
+        aria-label={`上下文使用率 ${progress}%：${status.label}`}
+        className="ak-context-usage ak-press inline-flex size-9 items-center justify-center rounded-full text-slate-400 outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70"
+        type="button"
+      >
+        <svg aria-hidden="true" className="size-5 -rotate-90" viewBox="0 0 20 20">
+          <circle className="stroke-current text-white/10" cx="10" cy="10" fill="none" r="8" strokeWidth="2.25" />
+          <circle
+            className={cn("ak-context-ring stroke-current", ringTone)}
+            cx="10"
+            cy="10"
+            fill="none"
+            r="8"
+            strokeDasharray={circumference}
+            strokeDashoffset={dashOffset}
+            strokeLinecap="round"
+            strokeWidth="2.25"
+          />
+        </svg>
+      </button>
+      <div
+        className="pointer-events-none absolute bottom-full right-0 z-20 mb-2 w-72 translate-y-1 rounded-lg border border-white/10 bg-[#111c2b]/98 p-3 text-left opacity-0 shadow-xl transition-[opacity,transform] duration-150 ease-out group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100"
+        id="context-usage-detail"
+        role="tooltip"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm font-medium text-slate-100">上下文使用</span>
+          <span className={cn("text-xs font-medium tabular-nums", ringTone)}>{status.label}</span>
+        </div>
+        <div className="mt-2 flex items-baseline justify-between gap-3 tabular-nums">
+          <span className="text-lg font-semibold text-slate-100">{progress}%</span>
+          <span className="text-xs text-slate-400">
+            {formatTokenCount(status.current_tokens)} / {formatTokenCount(status.available_tokens)}
+          </span>
+        </div>
+        <p className="mt-2 text-xs leading-5 text-slate-400">{status.description}</p>
+        {status.summary && (
+          <p className="mt-2 border-t border-white/10 pt-2 text-xs leading-5 text-slate-400">
+            已压缩 {status.summary.covered_message_count} 条早期消息，摘要约 {formatTokenCount(status.summary.token_count)}。
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function RightInsightPanel({
   currentKbName,
   currentConversation,
   currentModel,
   llmSource,
-  contextStatus,
   messages,
   tools,
   busy,
@@ -1983,7 +2062,6 @@ function RightInsightPanel({
   currentConversation: Conversation | null;
   currentModel: string | null;
   llmSource: LlmSource;
-  contextStatus: ConversationContextStatus | null;
   messages: Message[];
   tools: ToolEvent[];
   busy: boolean;
@@ -2116,7 +2194,6 @@ function RightInsightPanel({
           />
           <InfoRow label="模型" value={modelLabel} />
         </dl>
-        <ContextStatusCard contextStatus={contextStatus} />
       </section>
 
       <section className="hidden">
@@ -2129,84 +2206,6 @@ function RightInsightPanel({
         </dl>
       </section>
     </aside>
-  );
-}
-
-function ContextStatusCard({
-  contextStatus,
-}: {
-  contextStatus: ConversationContextStatus | null;
-}) {
-  const status = contextStatus ?? {
-    state: "normal" as const,
-    label: "正常",
-    description: "当前上下文无需压缩。",
-    current_tokens: 0,
-    available_tokens: 0,
-    context_window: 0,
-    ratio: 0,
-    percent: 0,
-    prepare_threshold_percent: 60,
-    summary_threshold_percent: 72,
-    force_threshold_percent: 85,
-    retained_recent_turns: 10,
-    summary: null,
-  };
-  const tone =
-    status.state === "compressed"
-      ? "border-emerald-300/20 bg-emerald-400/8 text-emerald-200"
-      : status.state === "normal"
-      ? "border-white/10 bg-white/[0.03] text-slate-300"
-      : "border-amber-300/20 bg-amber-300/8 text-amber-200";
-  const bar =
-    status.state === "compressed"
-      ? "bg-emerald-400"
-      : status.state === "normal"
-      ? "bg-slate-500"
-      : "bg-amber-300";
-  const progress = Math.min(100, Math.max(0, status.percent));
-
-  return (
-    <div className={cn("mt-5 rounded-lg border p-3", tone)}>
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <ShieldCheck className="h-4 w-4 shrink-0" />
-          <span className="truncate text-sm font-medium">上下文状态</span>
-        </div>
-        <span className="shrink-0 rounded-full bg-black/18 px-2 py-0.5 text-xs">
-          {status.label}
-        </span>
-      </div>
-      <div
-        aria-label="上下文使用率"
-        aria-valuemax={100}
-        aria-valuemin={0}
-        aria-valuenow={progress}
-        className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10"
-        role="progressbar"
-      >
-        <div
-          className={cn(
-            "ak-motion-enter h-full origin-left rounded-full transition-transform duration-surface ease-ui-out",
-            bar
-          )}
-          style={{ transform: `scaleX(${progress / 100})` }}
-        />
-      </div>
-      <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
-        <span>{status.percent}%</span>
-        <span>
-          {formatTokenCount(status.current_tokens)} / {formatTokenCount(status.available_tokens)}
-        </span>
-      </div>
-      <p className="mt-3 text-xs leading-5 text-slate-500">{status.description}</p>
-      {status.summary && (
-        <div className="mt-3 rounded-md border border-white/10 bg-black/14 px-2.5 py-2 text-xs text-slate-400">
-          已覆盖 {status.summary.covered_message_count} 条早期消息 · 摘要约{" "}
-          {formatTokenCount(status.summary.token_count)}
-        </div>
-      )}
-    </div>
   );
 }
 

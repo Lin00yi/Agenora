@@ -335,6 +335,10 @@ body {
     transform: scale(0.97);
   }
 
+  .ak-context-ring {
+    transition: stroke-dashoffset var(--duration-popover) var(--ease-out), stroke var(--duration-press) ease;
+  }
+
   .ak-popover.ak-motion-enter {
     transform-origin: top;
     transition: opacity var(--duration-popover) var(--ease-out),
