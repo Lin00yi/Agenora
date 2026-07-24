@@ -8,6 +8,7 @@ import { ChevronLeft, LayoutDashboard, Users, BookOpen } from "lucide-react";
 import { getToken, getUser, refreshMe } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import { LoadingState } from "@/components/ui/state-view";
+import ThemeToggle from "@/components/ThemeToggle";
 
 /**
  * Client-side guard + chrome for the /admin/* pages (06-01).
@@ -86,6 +87,7 @@ export default function AdminShell({
           </Link>
           <div className="flex-1" />
           <h1 className="text-sm font-medium">{title}</h1>
+          <ThemeToggle />
         </div>
         <nav className="mx-auto flex max-w-5xl items-center gap-1 px-4 pb-2 sm:px-6">
           {tabs.map((t) => {

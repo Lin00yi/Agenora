@@ -1164,6 +1164,8 @@ function DarkSidebar({
   const [searchTerm, setSearchTerm] = useState("");
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const newMenuRef = useRef<HTMLDivElement | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const filteredConversations = conversations.filter((conversation) =>
     conversation.title.toLowerCase().includes(searchTerm.trim().toLowerCase())
@@ -1197,6 +1199,35 @@ function DarkSidebar({
     };
   }, [userMenuOpen]);
 
+  useEffect(() => {
+    if (!newMenuOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setNewMenuOpen(false);
+    };
+    const onPointerDown = (event: MouseEvent) => {
+      if (!newMenuRef.current?.contains(event.target as Node)) {
+        setNewMenuOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onPointerDown);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onPointerDown);
+    };
+  }, [newMenuOpen]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   return (
     <aside
       className={cn(
@@ -1217,7 +1248,7 @@ function DarkSidebar({
         </button>
         </div>
 
-        <div className="relative mt-5">
+        <div ref={newMenuRef} className="relative mt-5">
         <div className="ak-sidebar-new flex overflow-hidden rounded-lg border border-emerald-300/20 bg-emerald-400 text-sm font-medium text-white shadow-[0_10px_30px_rgba(16,185,129,0.22)]">
           <button
             className="ak-press flex h-11 flex-1 items-center justify-center gap-2 bg-gradient-to-r from-emerald-400 to-emerald-500"
@@ -1229,6 +1260,7 @@ function DarkSidebar({
           </button>
           <button
             aria-expanded={newMenuOpen}
+            aria-controls="new-conversation-menu"
             aria-label="新建菜单"
             className="ak-press flex w-10 items-center justify-center border-l border-white/20 hover:bg-emerald-500"
             onClick={() => setNewMenuOpen((open) => !open)}
@@ -1238,7 +1270,7 @@ function DarkSidebar({
           </button>
         </div>
         {newMenuOpen && (
-          <div className="ak-popover ak-motion-enter absolute left-0 right-0 top-12 z-20 overflow-hidden rounded-lg border border-white/10 bg-[#111c2b] p-1 text-sm text-slate-200 shadow-2xl">
+          <div id="new-conversation-menu" className="ak-popover ak-motion-enter absolute left-0 right-0 top-12 z-20 overflow-hidden rounded-lg border border-white/10 bg-[#111c2b] p-1 text-sm text-slate-200 shadow-2xl">
             <button
               className="ak-press flex w-full items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-white/[0.06]"
               onClick={() => {
@@ -1275,11 +1307,13 @@ function DarkSidebar({
         <Search className="h-4 w-4" />
         <input
           className="min-w-0 flex-1 bg-transparent text-sm text-slate-200 outline-none placeholder:text-slate-500"
+          ref={searchInputRef}
+          aria-label="搜索最近对话"
           value={searchTerm}
           onChange={(event) => setSearchTerm(event.target.value)}
           placeholder="搜索对话"
         />
-        <kbd className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-slate-500">
+        <kbd aria-hidden="true" className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-slate-500">
           Ctrl K
         </kbd>
       </div>
@@ -1481,7 +1515,7 @@ function TopBar({
       </div>
 
       <div className="flex items-center justify-end gap-2">
-        <ThemeToggle className="hidden sm:flex" />
+        <ThemeToggle />
         <Link
           className="ak-header-help inline-flex h-9 w-9 items-center justify-center rounded-lg"
           href="/welcome"
@@ -1679,11 +1713,11 @@ function ContextCompressionNotice({
   if (!contextStatus || contextStatus.state === "normal") return null;
   const isCompressed = contextStatus.state === "compressed";
   return (
-    <div className="mx-auto flex w-fit max-w-full items-center gap-2 rounded-full border border-white/10 bg-[#0d1726]/82 px-3 py-1.5 text-xs text-slate-400 shadow-[0_10px_28px_rgba(0,0,0,0.18)]">
+    <div className="ak-context-notice mx-auto flex w-fit max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-xs shadow-[0_10px_28px_rgba(0,0,0,0.18)]">
       <ShieldCheck
         className={cn(
           "h-3.5 w-3.5",
-          isCompressed ? "text-emerald-300" : "text-amber-300"
+          isCompressed ? "text-brand" : "text-amber-300"
         )}
       />
       <span className="truncate">
@@ -1821,8 +1855,8 @@ function Avatar({ label, tone }: { label: ReactNode; tone: "user" | "assistant" 
       className={cn(
         "flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-semibold shadow-lg",
         tone === "user"
-          ? "bg-emerald-400 text-white"
-          : "border border-emerald-300/30 bg-emerald-400/10 text-emerald-300"
+          ? "bg-brand text-white"
+          : "border border-brand/30 bg-brand/10 text-brand"
       )}
     >
       {label}
@@ -1904,7 +1938,7 @@ function Composer({
 
   return (
     <div className="ak-composer shrink-0 border-t border-white/10 bg-[#08101c]/90 px-5 py-3 backdrop-blur-xl">
-      <div className="ak-composer-box mx-auto max-w-[820px] rounded-lg border border-white/12 bg-[#0d1726]/94 shadow-[0_18px_46px_rgba(0,0,0,0.32)] focus-within:border-emerald-300/40">
+      <div className="ak-composer-box mx-auto max-w-[820px] rounded-lg border border-white/12 bg-[#0d1726]/94 shadow-[0_18px_46px_rgba(0,0,0,0.32)] focus-within:border-brand/40">
         <textarea
           ref={textareaRef}
           value={value}
@@ -1926,7 +1960,7 @@ function Composer({
             className="ak-control inline-flex h-9 max-w-[240px] items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-slate-300"
             title={kbLocked ? "当前会话已有消息，知识库已锁定" : "选择通用聊天或知识库"}
           >
-            <Database className="h-4 w-4 text-emerald-300" />
+            <Database className="h-4 w-4 text-brand" />
             <select
               aria-label="选择知识库"
               className="min-w-0 flex-1 bg-transparent text-sm text-slate-200 outline-none disabled:cursor-not-allowed disabled:text-slate-500"
@@ -1957,7 +1991,7 @@ function Composer({
               loading={contextStatusLoading}
             />
             <select
-              className="ak-control h-9 max-w-[190px] rounded-lg border border-white/10 bg-[#111c2b] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/40 disabled:cursor-not-allowed disabled:opacity-50"
+              className="ak-control h-9 max-w-[190px] rounded-lg border border-white/10 bg-[#111c2b] px-3 text-sm text-slate-200 outline-none transition focus:border-brand/40 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={busy || modelOptions.length === 0}
               value={currentModel ?? ""}
               onChange={(e) => onModelChange(e.target.value || null)}
@@ -1984,7 +2018,7 @@ function Composer({
             </button>
           ) : (
             <button
-              className="ak-control-primary ak-press inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-400 px-4 text-sm font-medium text-white shadow-[0_10px_24px_rgba(16,185,129,0.28)] hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-45"
+              className="ak-control-primary ak-press inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-4 text-sm font-medium text-white shadow-sm hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-45"
               aria-label="发送消息"
               data-testid="composer-send"
               disabled={!value.trim()}
@@ -2027,7 +2061,7 @@ function ContextUsageIndicator({
   const isAttention = status.state === "approaching" || status.state === "ready" || status.state === "critical";
   const ringTone =
     status.state === "compressed"
-      ? "text-emerald-300"
+      ? "text-brand"
       : isAttention
         ? "text-amber-300"
         : "text-slate-400";
@@ -2038,11 +2072,11 @@ function ContextUsageIndicator({
 
   return (
     <div className="group relative shrink-0">
-      <button
+      <span
         aria-describedby="context-usage-detail"
         aria-label={loading ? "正在读取上下文使用率" : `上下文使用率 ${progress}%：${status.label}`}
-        className="ak-context-usage ak-press inline-flex size-9 items-center justify-center rounded-full text-slate-400 outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70"
-        type="button"
+        className="ak-context-usage inline-flex size-9 items-center justify-center rounded-full text-slate-400 outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
+        tabIndex={0}
       >
         <svg
           aria-hidden="true"
@@ -2062,7 +2096,7 @@ function ContextUsageIndicator({
             strokeWidth="2.25"
           />
         </svg>
-      </button>
+      </span>
       <div
         className="pointer-events-none absolute bottom-full right-0 z-20 mb-2 w-72 translate-y-1 rounded-lg border border-white/10 bg-[#111c2b]/98 p-3 text-left opacity-0 shadow-xl transition-[opacity,transform] duration-150 ease-out group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100"
         id="context-usage-detail"

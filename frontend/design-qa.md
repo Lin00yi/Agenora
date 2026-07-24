@@ -15,6 +15,9 @@
 - The context-usage control remains a circular progress ring; its detailed token and loading information is still available on hover and keyboard focus.
 - Each answer export action targets its own answer node.
 - Shared global tokens, brand treatment, page chrome, cards, tabs, forms, and primary actions now use the blue-to-violet system across non-chat pages.
+- The light-mode brand and muted text tokens were darkened to meet normal-text contrast targets; primary actions now have at least a 5.1:1 contrast ratio against white.
+- Chat search now supports Ctrl/Cmd+K, the new-conversation menu closes on Escape and outside click, and the context-usage indicator is focusable informational content rather than an inert button.
+- Theme switching is present on the admin shell and mobile chat header.
 
 ## Automated verification
 

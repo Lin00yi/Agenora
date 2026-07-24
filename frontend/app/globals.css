@@ -9,9 +9,9 @@
 :root {
   --bg: 247 249 255;
   --fg: 38 52 80;
-  --text-subtle: 111 126 153;
-  --brand: 91 124 240;
-  --brand-dark: 72 99 219;
+  --text-subtle: 93 111 142;
+  --brand: 72 99 219;
+  --brand-dark: 55 80 193;
 
   --surface: 255 255 255;
   --surface-2: 243 246 255;
@@ -263,7 +263,7 @@
     --chat-ink: #263450;
     --chat-muted: #7e8ca5;
     --chat-line: #e0e7f5;
-    --chat-accent: #5b7cf0;
+    --chat-accent: #4863db;
   }
 
   .dark .ak-chat {
@@ -380,17 +380,17 @@
   }
 
   .ak-chat .ak-sidebar .ak-sidebar-brand > div {
-    background: #5b7cf0 !important;
-    box-shadow: 0 8px 18px rgb(91 124 240 / 0.22) !important;
+    background: #4863db !important;
+    box-shadow: 0 8px 18px rgb(72 99 219 / 0.22) !important;
   }
 
   .ak-chat .ak-sidebar .ak-sidebar-brand { color: #263450 !important; }
   .dark .ak-chat .ak-sidebar .ak-sidebar-brand { color: #eef3ff !important; }
 
   .ak-chat .ak-sidebar .ak-sidebar-new {
-    border-color: #5b7cf0 !important;
-    background: #5b7cf0 !important;
-    box-shadow: 0 10px 24px rgb(91 124 240 / 0.24) !important;
+    border-color: #4863db !important;
+    background: #4863db !important;
+    box-shadow: 0 10px 24px rgb(72 99 219 / 0.24) !important;
   }
 
   .ak-chat .ak-sidebar .ak-sidebar-new > button:first-child { background: transparent !important; }
@@ -405,7 +405,7 @@
     border-color: #303d58 !important;
     background: rgb(18 25 42 / 0.66) !important;
   }
-  .ak-chat .ak-sidebar .ak-sidebar-search:focus-within { border-color: #5b7cf0 !important; }
+  .ak-chat .ak-sidebar .ak-sidebar-search:focus-within { border-color: #4863db !important; }
 
   .ak-chat .ak-sidebar .ak-sidebar-all { color: #263450 !important; }
   .dark .ak-chat .ak-sidebar .ak-sidebar-all { color: #eef3ff !important; }
@@ -419,6 +419,12 @@
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
+  }
+  .ak-chat .ak-workspace .ak-context-notice {
+    border-color: var(--chat-line) !important;
+    background: var(--chat-surface) !important;
+    color: var(--chat-muted) !important;
+    box-shadow: 0 8px 24px rgb(38 52 80 / 0.08) !important;
   }
 }
 
