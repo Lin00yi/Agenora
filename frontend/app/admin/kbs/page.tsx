@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Sparkles, Lock, Trash2 } from "lucide-react";
+import { Lock, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { listKbs, deleteKb, type AdminKb } from "@/lib/admin-api";
 import { cn } from "@/lib/cn";
 import Dialog from "@/components/Dialog";
 import AdminShell from "../AdminShell";
+import { PageSkeleton, StateView } from "@/components/ui/state-view";
 
 const PAGE_SIZE = 50;
 
@@ -67,12 +68,11 @@ function KbsTable() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted">
-        <Sparkles className="h-4 w-4 animate-pulse text-brand" />
-        加载中…
-      </div>
-    );
+    return <PageSkeleton />;
+  }
+
+  if (kbs.length === 0) {
+    return <StateView title="还没有知识库" description="创建知识库后，这里会展示所有用户的资料库。" />;
   }
 
   return (

@@ -27,6 +27,7 @@ import {
   type MyLLMSettings,
   type MySettings,
 } from "@/lib/settings-api";
+import { LoadingState } from "@/components/ui/state-view";
 
 /**
  * /settings — LLM provider credentials (v3-M8 simplified).
@@ -63,9 +64,8 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center text-muted">
-        <Sparkles className="mr-2 h-4 w-4 animate-pulse" />
-        加载中…
+      <div className="flex min-h-dvh items-center justify-center px-4">
+        <LoadingState label="正在读取模型设置" description="正在检查已保存的模型和知识库偏好。" className="w-full max-w-md" />
       </div>
     );
   }

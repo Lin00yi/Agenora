@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import {
-  Sparkles,
   ShieldCheck,
   ShieldOff,
   Ban,
@@ -23,6 +22,7 @@ import {
 import { cn } from "@/lib/cn";
 import Dialog from "@/components/Dialog";
 import AdminShell from "../AdminShell";
+import { PageSkeleton, StateView } from "@/components/ui/state-view";
 
 const PAGE_SIZE = 50;
 
@@ -123,12 +123,11 @@ function UsersTable() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted">
-        <Sparkles className="h-4 w-4 animate-pulse text-brand" />
-        加载中…
-      </div>
-    );
+    return <PageSkeleton />;
+  }
+
+  if (users.length === 0) {
+    return <StateView title="还没有用户" description="新用户注册后会显示在这里，并可进行权限管理。" />;
   }
 
   return (

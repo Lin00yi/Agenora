@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Sparkles, Users, Eye, CheckCircle, AlertCircle, BookOpen } from "lucide-react";
+import { Users, Eye, CheckCircle, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 
 import Brand, { APP_NAME } from "@/components/Brand";
@@ -13,6 +13,7 @@ import {
   peekInvitation,
   type InvitationPreview,
 } from "@/lib/kb-api";
+import { LoadingState, StateView } from "@/components/ui/state-view";
 
 /**
  * v2-M9: invitation landing page.
@@ -71,7 +72,7 @@ export default function InvitePage({
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-bg px-4 text-fg">
+    <div className="flex min-h-dvh items-center justify-center bg-bg px-4 text-fg">
       <div className="w-full max-w-md">
         <div className="mb-6 flex flex-col items-center gap-3">
           <Brand size="md" showWordmark={false} />
@@ -80,22 +81,9 @@ export default function InvitePage({
 
         <div className="rounded-2xl border bg-surface p-6">
           {loading ? (
-            <div className="flex flex-col items-center gap-2 py-8 text-sm text-muted">
-              <Sparkles className="h-5 w-5 animate-pulse text-brand" />
-              加载中…
-            </div>
+            <LoadingState label="正在验证邀请" description="正在确认知识库和权限信息。" className="min-h-52 border-0 shadow-none" />
           ) : error ? (
-            <div className="flex flex-col items-center gap-3 py-4 text-center">
-              <AlertCircle className="h-8 w-8 text-danger" />
-              <div className="text-sm font-medium">链接无法使用</div>
-              <div className="text-xs text-muted">{error}</div>
-              <Link
-                href="/kbs"
-                className="btn btn-ghost btn-sm mt-2"
-              >
-                返回知识库列表
-              </Link>
-            </div>
+            <StateView variant="error" title="链接无法使用" description={error} action={<Link href="/kbs" className="btn btn-ghost btn-sm">返回知识库列表</Link>} className="min-h-52 border-0 shadow-none" />
           ) : preview ? (
             <div className="flex flex-col items-center gap-3 py-2 text-center">
               <BookOpen className="h-8 w-8 text-brand" />

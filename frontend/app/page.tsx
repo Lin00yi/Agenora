@@ -69,6 +69,7 @@ import {
 } from "@/lib/conversationStore";
 import { listKbs, type KB } from "@/lib/kb-api";
 import { connectChat, type ChatEvent, type ChatMessage } from "@/lib/sseClient";
+import { LoadingState } from "@/components/ui/state-view";
 
 const DEFAULT_TITLE = "\u65b0\u5bf9\u8bdd";
 const DEFAULT_CONTEXT_WINDOW = 16_000;
@@ -934,17 +935,14 @@ function ChatPage({ routeConversationId = null }: { routeConversationId?: string
 
   if (!authChecked) {
     return (
-      <div className="ak-chat flex min-h-screen items-center justify-center bg-[#0b111b] text-slate-400">
-        <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3">
-          <LoaderCircle className="h-4 w-4 animate-spin text-emerald-400" />
-          {"\u6b63\u5728\u52a0\u8f7d "}{APP_NAME}
-        </div>
+      <div className="ak-chat flex min-h-dvh items-center justify-center px-4">
+        <LoadingState label={`正在打开 ${APP_NAME}`} description="正在恢复你的知识库和最近会话。" className="w-full max-w-md" />
       </div>
     );
   }
 
   return (
-    <div className="ak-chat h-screen w-screen overflow-hidden bg-[#08101c] text-slate-100">
+    <div className="ak-chat h-dvh w-screen overflow-hidden text-slate-100">
       {sidebarOpen && (
         <button
           aria-label="关闭侧栏"
@@ -1045,8 +1043,8 @@ export default function Page() {
   return (
     <Suspense
       fallback={
-        <div className="ak-chat flex min-h-screen items-center justify-center bg-[#0b111b] text-slate-400">
-          <LoaderCircle className="h-4 w-4 animate-spin text-emerald-400" aria-hidden />
+        <div className="ak-chat flex min-h-dvh items-center justify-center px-4">
+          <LoadingState label="正在打开工作台" className="w-full max-w-md" />
         </div>
       }
     >

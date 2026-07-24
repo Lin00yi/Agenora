@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { getStats, type AdminStats } from "@/lib/admin-api";
 import AdminShell from "./AdminShell";
+import { PageSkeleton, StateView } from "@/components/ui/state-view";
 
 /**
  * /admin — read-only platform stats dashboard (06-01).
@@ -30,16 +30,11 @@ function Dashboard() {
   }, []);
 
   if (loading) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted">
-        <Sparkles className="h-4 w-4 animate-pulse text-brand" />
-        加载中…
-      </div>
-    );
+    return <PageSkeleton />;
   }
 
   if (!stats) {
-    return <div className="text-sm text-muted">暂无数据</div>;
+    return <StateView title="暂时没有可展示的数据" description="稍后刷新，或先创建用户和知识库后再查看平台概览。" />;
   }
 
   return (

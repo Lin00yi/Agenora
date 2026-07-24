@@ -63,6 +63,7 @@ import { toastApiError } from "@/lib/byok-toast";
 import { cn } from "@/lib/cn";
 import Dialog from "@/components/Dialog";
 import Select from "@/components/Select";
+import { LoadingState, StateView } from "@/components/ui/state-view";
 import { Switch } from "@/components/ui/switch";
 import {
   AdminPageShell,
@@ -353,20 +354,22 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-sm text-muted">
-        <Sparkles className="h-6 w-6 animate-pulse text-brand" />
-        加载中...
+      <div className="flex min-h-dvh items-center justify-center px-4">
+        <LoadingState label="正在打开知识库" description="正在读取文档、处理状态和成员权限。" className="w-full max-w-md" />
       </div>
     );
   }
 
   if (notFound || !kb) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-sm text-muted">
-        <div>找不到这个知识库</div>
-        <Link href="/kbs" className="text-brand hover:underline">
-          返回列表
-        </Link>
+      <div className="flex min-h-dvh items-center justify-center px-4">
+        <StateView
+          variant="error"
+          title="找不到这个知识库"
+          description="它可能已被删除、你没有访问权限，或链接已失效。"
+          action={<Link href="/kbs" className="btn btn-ghost btn-sm">返回知识库列表</Link>}
+          className="w-full max-w-md"
+        />
       </div>
     );
   }

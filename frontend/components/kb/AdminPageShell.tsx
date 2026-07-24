@@ -27,7 +27,7 @@ export function AdminPageShell({
   className?: string;
 }) {
   return (
-    <div className={cn("admin-page min-h-screen text-fg", className)}>
+    <div className={cn("admin-page min-h-dvh text-fg", className)}>
       <header className="border-b border-surface-border/60 bg-surface/90 backdrop-blur dark:bg-surface/95">
         <div className="mx-auto flex h-12 max-w-7xl items-center justify-end gap-2 px-4 sm:px-6">
           <ThemeToggle />

@@ -7,17 +7,17 @@
    Use via tailwind: bg-brand, text-subtle, bg-bg, etc.
    ============================================================ */
 :root {
-  --bg: 247 248 250;
-  --fg: 24 24 27;
-  --text-subtle: 102 112 133;
-  --brand: 16 185 129;
-  --brand-dark: 4 120 87;
+  --bg: 246 248 251;
+  --fg: 24 33 47;
+  --text-subtle: 91 104 124;
+  --brand: 13 148 136;
+  --brand-dark: 15 118 110;
 
   --surface: 255 255 255;
-  --surface-2: 241 244 248;
+  --surface-2: 238 243 248;
 
-  --surface-border: 224 230 238;
-  --surface-border-strong: 202 211 224;
+  --surface-border: 216 225 235;
+  --surface-border-strong: 190 204 219;
 
   --success: 22 163 74;
   --warning: 217 119 6;
@@ -25,9 +25,9 @@
   --info: 37 99 235;
 
   /* Shared motion vocabulary: deliberate, fast, and consistent. */
-  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
-  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-out: ease-out;
+  --ease-in-out: ease-in-out;
+  --ease-drawer: ease-out;
   --duration-press: 160ms;
   --duration-popover: 180ms;
   --duration-surface: 200ms;
@@ -39,24 +39,22 @@
    affecting admin/settings/auth pages. */
 @layer components {
   .ak-chat {
-    --ak-bg: 237 242 249;
-    --ak-sidebar: 244 248 252;
-    --ak-topbar: 248 251 253;
-    --ak-surface: 250 252 254;
-    --ak-surface-2: 244 248 252;
-    --ak-panel: 246 250 253;
-    --ak-card: 253 254 255;
-    --ak-composer: 240 246 252;
-    --ak-border: 203 214 229;
+    --ak-bg: 246 248 251;
+    --ak-sidebar: 250 252 254;
+    --ak-topbar: 255 255 255;
+    --ak-surface: 255 255 255;
+    --ak-surface-2: 238 243 248;
+    --ak-panel: 246 248 251;
+    --ak-card: 255 255 255;
+    --ak-composer: 250 252 254;
+    --ak-border: 216 225 235;
     --ak-text: 15 23 42;
     --ak-text-2: 51 65 85;
     --ak-muted: 100 116 139;
     --ak-faint: 148 163 184;
     --ak-tint: 15 23 42 / 0.028;
     --ak-hover: 15 23 42 / 0.055;
-    --ak-main-bg:
-      radial-gradient(circle at 50% 0%, rgb(16 185 129 / 0.055), transparent 34%),
-      linear-gradient(180deg, rgb(248 251 253), rgb(237 242 249));
+    --ak-main-bg: rgb(var(--ak-bg));
     background: rgb(var(--ak-bg)) !important;
     color: rgb(var(--ak-text)) !important;
   }
@@ -77,9 +75,7 @@
     --ak-faint: 71 85 105;
     --ak-tint: 255 255 255 / 0.05;
     --ak-hover: 255 255 255 / 0.08;
-    --ak-main-bg:
-      radial-gradient(circle at 50% 0%, rgb(16 185 129 / 0.10), transparent 32%),
-      linear-gradient(180deg, #0d1624, #08101c);
+    --ak-main-bg: rgb(var(--ak-bg));
   }
 
   .ak-chat [class*="bg-[#08101c]"],
@@ -260,17 +256,17 @@
 }
 
 .dark {
-  --bg: 12 15 19;
-  --fg: 244 247 251;
-  --text-subtle: 151 161 176;
-  --brand: 52 211 153;
-  --brand-dark: 16 185 129;
+  --bg: 14 20 29;
+  --fg: 241 245 249;
+  --text-subtle: 155 170 189;
+  --brand: 45 212 191;
+  --brand-dark: 20 184 166;
 
-  --surface: 18 23 29;
-  --surface-2: 27 34 43;
+  --surface: 20 29 41;
+  --surface-2: 30 42 57;
 
-  --surface-border: 45 55 68;
-  --surface-border-strong: 69 82 99;
+  --surface-border: 51 65 85;
+  --surface-border-strong: 71 85 105;
 
   --success: 34 197 94;
   --warning: 251 146 60;
@@ -395,17 +391,7 @@ body {
            focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/15;
   }
 
-  .app-gradient-bg {
-    background-color: rgb(var(--bg));
-    background-image:
-      linear-gradient(180deg, rgb(var(--surface) / 0.72), rgb(var(--bg)) 34%),
-      linear-gradient(90deg, rgb(var(--brand) / 0.04), transparent 28%, rgb(var(--info) / 0.035));
-  }
-  .dark .app-gradient-bg {
-    background-image:
-      linear-gradient(180deg, rgb(var(--surface) / 0.58), rgb(var(--bg)) 36%),
-      linear-gradient(90deg, rgb(var(--brand) / 0.065), transparent 30%, rgb(var(--info) / 0.055));
-  }
+  .app-gradient-bg { background: rgb(var(--bg)); }
 
   .filter-tab {
     @apply inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium
@@ -451,7 +437,7 @@ body {
 
   /* Admin / table management pages (doc & chunk lists) */
   .admin-page {
-    @apply bg-[#f4f5f7];
+    @apply bg-bg;
   }
   .dark .admin-page {
     @apply bg-bg;
@@ -535,6 +521,27 @@ body {
   .status-tag-disabled {
     @apply bg-surface-2 text-muted;
   }
+
+  .ak-state-view,
+  .ak-loading-state {
+    @apply flex min-h-56 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-card px-6 py-10 text-center shadow-soft;
+  }
+  .ak-state-view-error { @apply border-danger/30 bg-danger/5; }
+  .ak-state-icon {
+    @apply mb-1 inline-flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground;
+  }
+  .ak-state-view-error .ak-state-icon { @apply bg-danger/10 text-danger; }
+  .ak-inline-loading { @apply inline-flex items-center gap-2 text-sm text-muted-foreground; }
+  .ak-loading-state { @apply border-solid border-border; }
+  .ak-loading-orbit { @apply relative mb-1 flex size-11 items-center justify-center rounded-xl bg-brand/10; }
+  .ak-loading-orbit svg:last-child { @apply absolute -right-1 -top-1; }
+  .ak-skeleton,
+  .ak-skeleton-lines span { @apply rounded-md bg-muted; }
+  .ak-skeleton-lines { @apply mt-2 flex w-full max-w-sm flex-col gap-2; }
+  .ak-skeleton-lines span { @apply h-2.5 w-full; }
+  .ak-skeleton-lines span:nth-child(2) { @apply w-4/5; }
+  .ak-skeleton-lines span:nth-child(3) { @apply w-3/5; }
+  .ak-page-skeleton { @apply space-y-4; }
 }
 
 /* ============================================================
@@ -626,24 +633,24 @@ body {
     --font-sans: var(--font-sans);
   }
   :root {
-    --background: oklch(0.988 0.002 286);
-    --foreground: oklch(0.21 0.006 286);
+    --background: oklch(0.982 0.004 250);
+    --foreground: oklch(0.25 0.018 255);
     --card: oklch(1 0 0);
-    --card-foreground: oklch(0.21 0.006 286);
+    --card-foreground: oklch(0.25 0.018 255);
     --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.21 0.006 286);
-    --primary: oklch(0.627 0.149 163.225);
+    --popover-foreground: oklch(0.25 0.018 255);
+    --primary: oklch(0.57 0.105 190);
     --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.965 0.003 286);
-    --secondary-foreground: oklch(0.21 0.006 286);
-    --muted: oklch(0.965 0.003 286);
-    --muted-foreground: oklch(0.52 0.015 286);
-    --accent: oklch(0.965 0.02 163);
-    --accent-foreground: oklch(0.21 0.006 286);
+    --secondary: oklch(0.955 0.009 250);
+    --secondary-foreground: oklch(0.25 0.018 255);
+    --muted: oklch(0.955 0.009 250);
+    --muted-foreground: oklch(0.52 0.025 255);
+    --accent: oklch(0.94 0.03 190);
+    --accent-foreground: oklch(0.25 0.018 255);
     --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.91 0.004 286);
-    --input: oklch(0.91 0.004 286);
-    --ring: oklch(0.627 0.149 163.225);
+    --border: oklch(0.89 0.012 250);
+    --input: oklch(0.89 0.012 250);
+    --ring: oklch(0.57 0.105 190);
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
@@ -660,24 +667,24 @@ body {
     --sidebar-ring: oklch(0.627 0.149 163.225);
   }
   .dark {
-    --background: oklch(0.16 0.005 286);
-    --foreground: oklch(0.97 0.002 286);
-    --card: oklch(0.21 0.006 286);
-    --card-foreground: oklch(0.97 0.002 286);
-    --popover: oklch(0.21 0.006 286);
-    --popover-foreground: oklch(0.97 0.002 286);
-    --primary: oklch(0.72 0.14 163);
-    --primary-foreground: oklch(0.16 0.005 286);
-    --secondary: oklch(0.27 0.006 286);
-    --secondary-foreground: oklch(0.97 0.002 286);
-    --muted: oklch(0.27 0.006 286);
-    --muted-foreground: oklch(0.65 0.01 286);
-    --accent: oklch(0.27 0.02 163);
-    --accent-foreground: oklch(0.97 0.002 286);
+    --background: oklch(0.18 0.018 255);
+    --foreground: oklch(0.97 0.006 250);
+    --card: oklch(0.225 0.022 255);
+    --card-foreground: oklch(0.97 0.006 250);
+    --popover: oklch(0.225 0.022 255);
+    --popover-foreground: oklch(0.97 0.006 250);
+    --primary: oklch(0.78 0.12 190);
+    --primary-foreground: oklch(0.18 0.018 255);
+    --secondary: oklch(0.29 0.022 255);
+    --secondary-foreground: oklch(0.97 0.006 250);
+    --muted: oklch(0.29 0.022 255);
+    --muted-foreground: oklch(0.69 0.02 250);
+    --accent: oklch(0.3 0.05 190);
+    --accent-foreground: oklch(0.97 0.006 250);
     --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 12%);
-    --ring: oklch(0.72 0.14 163);
+    --border: oklch(0.42 0.025 255);
+    --input: oklch(0.34 0.022 255);
+    --ring: oklch(0.78 0.12 190);
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);

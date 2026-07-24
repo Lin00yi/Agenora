@@ -37,6 +37,7 @@ import { toastApiError } from "@/lib/byok-toast";
 import { cn } from "@/lib/cn";
 import Dialog from "@/components/Dialog";
 import ThemeToggle from "@/components/ThemeToggle";
+import { LoadingState, StateView } from "@/components/ui/state-view";
 
 export default function KbsPage() {
   const router = useRouter();
@@ -80,7 +81,7 @@ export default function KbsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-bg text-fg">
+    <div className="min-h-dvh bg-bg text-fg">
       <header className="border-b bg-bg/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-4xl items-center gap-3 px-4 sm:px-6">
           <Link
@@ -115,16 +116,13 @@ export default function KbsPage() {
         </div>
 
         {loading ? (
-          <div className="flex items-center gap-2 text-sm text-muted">
-            <Sparkles className="h-4 w-4 animate-pulse text-brand" />
-            加载中...
-          </div>
+          <LoadingState label="正在读取知识库" description="正在同步文档、分块和成员信息。" />
         ) : kbs.length === 0 ? (
-          <div className="card flex flex-col items-center gap-3 border-dashed py-12 text-center">
-            <Sparkles className="h-6 w-6 text-brand" />
-            <div className="text-sm">还没有知识库</div>
-            <div className="text-xs text-muted">点上面「新建知识库」开始</div>
-          </div>
+          <StateView
+            title="还没有知识库"
+            description="从一个资料库开始，把文档变成可追问、可引用的答案。"
+            action={<button onClick={() => setCreateOpen(true)} className="btn btn-primary" type="button"><Plus className="size-4" />新建知识库</button>}
+          />
         ) : (
           <ul className="space-y-2">
             {kbs.map((kb) => {

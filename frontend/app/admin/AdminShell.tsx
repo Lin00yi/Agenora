@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
-import { ChevronLeft, LayoutDashboard, Users, BookOpen, Sparkles } from "lucide-react";
+import { ChevronLeft, LayoutDashboard, Users, BookOpen } from "lucide-react";
 
 import { getToken, getUser, refreshMe } from "@/lib/auth";
 import { cn } from "@/lib/cn";
+import { LoadingState } from "@/components/ui/state-view";
 
 /**
  * Client-side guard + chrome for the /admin/* pages (06-01).
@@ -60,9 +61,8 @@ export default function AdminShell({
 
   if (!ready) {
     return (
-      <div className="flex h-screen items-center justify-center text-muted">
-        <Sparkles className="mr-2 h-4 w-4 animate-pulse" />
-        加载中…
+      <div className="flex min-h-dvh items-center justify-center px-4">
+        <LoadingState label="正在验证访问权限" description="正在确认你的后台管理权限。" className="w-full max-w-md" />
       </div>
     );
   }
@@ -74,7 +74,7 @@ export default function AdminShell({
   ];
 
   return (
-    <div className="min-h-screen bg-bg text-fg">
+    <div className="min-h-dvh bg-bg text-fg">
       <header className="border-b bg-bg/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4 sm:px-6">
           <Link
