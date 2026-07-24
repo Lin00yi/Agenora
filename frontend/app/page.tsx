@@ -163,6 +163,7 @@ function ChatPage({ routeConversationId = null }: { routeConversationId?: string
   const [currentModel, setCurrentModel] = useState<string | null>(null);
   const [currentContextStatus, setCurrentContextStatus] =
     useState<ConversationContextStatus | null>(null);
+  const [contextStatusLoading, setContextStatusLoading] = useState(false);
   const [modelOptions, setModelOptions] = useState<string[]>([]);
   const [llmReady, setLlmReady] = useState(false);
   const [llmSource, setLlmSource] = useState<LlmSource>("missing");
@@ -195,6 +196,7 @@ function ChatPage({ routeConversationId = null }: { routeConversationId?: string
 
   const loadConversation = useCallback(async (id: string) => {
     setCurrentId(id);
+    setContextStatusLoading(true);
     const cached = messagesCache.current.get(id);
     if (cached) {
       setCurrentMessages(cached);
@@ -218,6 +220,9 @@ function ChatPage({ routeConversationId = null }: { routeConversationId?: string
         })
         .catch(() => {
           /* best-effort status refresh */
+        })
+        .finally(() => {
+          setContextStatusLoading(false);
         });
       return true;
     }
@@ -245,6 +250,21 @@ function ChatPage({ routeConversationId = null }: { routeConversationId?: string
         }
         return [summary, ...prev];
       });
+      getConversationContextStatus(id)
+        .then((status) => {
+          setCurrentContextStatus(status);
+          setSummaries((prev) =>
+            prev.map((item) =>
+              item.id === id ? { ...item, context_status: status } : item
+            )
+          );
+        })
+        .catch(() => {
+          /* Keep the detail payload when the dedicated refresh is unavailable. */
+        })
+        .finally(() => {
+          setContextStatusLoading(false);
+        });
       return true;
     } catch (e) {
       setCurrentId(null);
@@ -252,6 +272,7 @@ function ChatPage({ routeConversationId = null }: { routeConversationId?: string
       setCurrentKbId(null);
       setCurrentModel(null);
       setCurrentContextStatus(null);
+      setContextStatusLoading(false);
       toast.error((e as Error)?.message ?? "\u52a0\u8f7d\u4f1a\u8bdd\u5931\u8d25");
       return false;
     }
@@ -946,6 +967,7 @@ function ChatPage({ routeConversationId = null }: { routeConversationId?: string
                 llmReady={llmReady}
                 llmSource={llmSource}
                 contextStatus={currentContextStatus}
+                contextStatusLoading={contextStatusLoading}
                 kbLocked={!!currentId && hasConversationMessages}
                 onChange={setComposerValue}
                 onSubmit={submitComposer}
@@ -1847,6 +1869,7 @@ function Composer({
   llmReady,
   llmSource,
   contextStatus,
+  contextStatusLoading,
   kbLocked,
   onChange,
   onSubmit,
@@ -1864,6 +1887,7 @@ function Composer({
   llmReady: boolean;
   llmSource: LlmSource;
   contextStatus: ConversationContextStatus | null;
+  contextStatusLoading: boolean;
   kbLocked: boolean;
   onChange: (value: string) => void;
   onSubmit: () => void;
@@ -1927,7 +1951,10 @@ function Composer({
             <Paperclip className="h-4 w-4" />
           </Link>
           <div className="ml-auto flex min-w-0 items-center gap-2">
-            <ContextUsageIndicator contextStatus={contextStatus} />
+            <ContextUsageIndicator
+              contextStatus={contextStatus}
+              loading={contextStatusLoading}
+            />
             <select
               className="ak-control h-9 max-w-[190px] rounded-lg border border-white/10 bg-[#111c2b] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/40 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={busy || modelOptions.length === 0}
@@ -1976,13 +2003,17 @@ function Composer({
 
 function ContextUsageIndicator({
   contextStatus,
+  loading,
 }: {
   contextStatus: ConversationContextStatus | null;
+  loading: boolean;
 }) {
   const status = contextStatus ?? {
     state: "normal" as const,
-    label: "正常",
-    description: "发送消息后会显示此会话的上下文使用情况。",
+    label: loading ? "正在读取" : "暂不可用",
+    description: loading
+      ? "正在读取当前会话的上下文使用情况。"
+      : "暂时无法读取上下文状态，请刷新后重试。",
     current_tokens: 0,
     available_tokens: 0,
     percent: 0,
@@ -1991,7 +2022,7 @@ function ContextUsageIndicator({
   };
   const progress = Math.min(100, Math.max(0, status.percent));
   const circumference = 2 * Math.PI * 8;
-  const dashOffset = circumference * (1 - progress / 100);
+  const dashOffset = loading ? 0 : circumference * (1 - progress / 100);
   const isAttention = status.state === "approaching" || status.state === "ready" || status.state === "critical";
   const ringTone =
     status.state === "compressed"
@@ -1999,16 +2030,24 @@ function ContextUsageIndicator({
       : isAttention
         ? "text-amber-300"
         : "text-slate-400";
+  const detail =
+    status.state === "compressed"
+      ? `已自动压缩早期上下文，保留最近 ${status.retained_recent_turns} 轮完整对话。`
+      : status.description;
 
   return (
     <div className="group relative shrink-0">
       <button
         aria-describedby="context-usage-detail"
-        aria-label={`上下文使用率 ${progress}%：${status.label}`}
+        aria-label={loading ? "正在读取上下文使用率" : `上下文使用率 ${progress}%：${status.label}`}
         className="ak-context-usage ak-press inline-flex size-9 items-center justify-center rounded-full text-slate-400 outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70"
         type="button"
       >
-        <svg aria-hidden="true" className="size-5 -rotate-90" viewBox="0 0 20 20">
+        <svg
+          aria-hidden="true"
+          className={cn("size-5 -rotate-90", loading && "animate-spin motion-reduce:animate-none")}
+          viewBox="0 0 20 20"
+        >
           <circle className="stroke-current text-white/10" cx="10" cy="10" fill="none" r="8" strokeWidth="2.25" />
           <circle
             className={cn("ak-context-ring stroke-current", ringTone)}
@@ -2016,7 +2055,7 @@ function ContextUsageIndicator({
             cy="10"
             fill="none"
             r="8"
-            strokeDasharray={circumference}
+            strokeDasharray={loading ? `16 ${circumference}` : circumference}
             strokeDashoffset={dashOffset}
             strokeLinecap="round"
             strokeWidth="2.25"
@@ -2038,10 +2077,10 @@ function ContextUsageIndicator({
             {formatTokenCount(status.current_tokens)} / {formatTokenCount(status.available_tokens)}
           </span>
         </div>
-        <p className="mt-2 text-xs leading-5 text-slate-400">{status.description}</p>
+        <p className="mt-2 text-xs leading-5 text-slate-400">{detail}</p>
         {status.summary && (
           <p className="mt-2 border-t border-white/10 pt-2 text-xs leading-5 text-slate-400">
-            已压缩 {status.summary.covered_message_count} 条早期消息，摘要约 {formatTokenCount(status.summary.token_count)}。
+            已覆盖 {status.summary.covered_message_count} 条早期消息 · 摘要约 {formatTokenCount(status.summary.token_count)}
           </p>
         )}
       </div>
