@@ -83,6 +83,16 @@ const config: Config = {
       ringWidth: {
         3: "3px",
       },
+      transitionDuration: {
+        press: "var(--duration-press)",
+        popover: "var(--duration-popover)",
+        surface: "var(--duration-surface)",
+      },
+      transitionTimingFunction: {
+        "ui-out": "var(--ease-out)",
+        "ui-in-out": "var(--ease-in-out)",
+        "ui-drawer": "var(--ease-drawer)",
+      },
     },
   },
   plugins: [

@@ -1135,7 +1135,7 @@ function DarkSidebar({
   return (
     <aside
       className={cn(
-        "ak-sidebar fixed inset-y-0 left-0 z-40 flex h-full min-h-0 w-[286px] flex-col overflow-hidden border-r border-white/10 bg-[#0a121f]/98 px-3 py-4 shadow-2xl transition-transform lg:relative lg:z-auto lg:translate-x-0 lg:shadow-none",
+        "ak-sidebar ak-motion-enter fixed inset-y-0 left-0 z-40 flex h-full min-h-0 w-[286px] flex-col overflow-hidden border-r border-white/10 bg-[#0a121f]/98 px-3 py-4 shadow-2xl transition-transform duration-surface ease-ui-drawer lg:relative lg:z-auto lg:translate-x-0 lg:shadow-none",
         open ? "translate-x-0" : "-translate-x-full"
       )}
     >
@@ -1143,7 +1143,7 @@ function DarkSidebar({
         <Brand className="text-slate-950 dark:text-white" size="md" />
         <button
           aria-label="关闭侧栏"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-white/10 lg:hidden"
+          className="ak-press inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-white/10 lg:hidden"
           onClick={onClose}
           type="button"
         >
@@ -1154,7 +1154,7 @@ function DarkSidebar({
       <div className="relative mt-7">
         <div className="flex overflow-hidden rounded-lg border border-emerald-300/20 bg-emerald-400 text-sm font-medium text-white shadow-[0_10px_30px_rgba(16,185,129,0.22)]">
           <button
-            className="flex h-11 flex-1 items-center justify-center gap-2 bg-gradient-to-r from-emerald-400 to-emerald-500"
+            className="ak-press flex h-11 flex-1 items-center justify-center gap-2 bg-gradient-to-r from-emerald-400 to-emerald-500"
             onClick={() => onNew(currentKbId)}
             type="button"
           >
@@ -1164,17 +1164,17 @@ function DarkSidebar({
           <button
             aria-expanded={newMenuOpen}
             aria-label="新建菜单"
-            className="flex w-10 items-center justify-center border-l border-white/20 transition hover:bg-emerald-500"
+            className="ak-press flex w-10 items-center justify-center border-l border-white/20 hover:bg-emerald-500"
             onClick={() => setNewMenuOpen((open) => !open)}
             type="button"
           >
-            <ChevronDown className={cn("h-4 w-4 transition", newMenuOpen && "rotate-180")} />
+            <ChevronDown className={cn("h-4 w-4 transition-transform duration-press ease-ui-out", newMenuOpen && "rotate-180")} />
           </button>
         </div>
         {newMenuOpen && (
-          <div className="ak-popover absolute left-0 right-0 top-12 z-20 overflow-hidden rounded-lg border border-white/10 bg-[#111c2b] p-1 text-sm text-slate-200 shadow-2xl">
+          <div className="ak-popover ak-motion-enter absolute left-0 right-0 top-12 z-20 overflow-hidden rounded-lg border border-white/10 bg-[#111c2b] p-1 text-sm text-slate-200 shadow-2xl">
             <button
-              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left transition hover:bg-white/[0.06]"
+              className="ak-press flex w-full items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-white/[0.06]"
               onClick={() => {
                 setNewMenuOpen(false);
                 onNew(null);
@@ -1186,7 +1186,7 @@ function DarkSidebar({
             </button>
             <button
               className={cn(
-                "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left transition hover:bg-white/[0.06]",
+                "ak-press flex w-full items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-white/[0.06]",
                 !currentKbId && "cursor-not-allowed opacity-45 hover:bg-transparent"
               )}
               disabled={!currentKbId}
@@ -1902,7 +1902,7 @@ function Composer({
             {kbLocked && <LockKeyhole className="h-3.5 w-3.5 text-slate-500" />}
           </div>
           <Link
-            className="ak-control inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-slate-300 transition hover:bg-white/[0.08]"
+            className="ak-control ak-press inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]"
             href={currentKbId ? `/kbs/${currentKbId}` : "/kbs"}
             aria-label={currentKbId ? "\u6253\u5f00\u77e5\u8bc6\u5e93\u4e0a\u4f20\u8d44\u6599" : "\u9009\u62e9\u77e5\u8bc6\u5e93\u540e\u4e0a\u4f20\u8d44\u6599"}
             title={currentKbId ? "\u6253\u5f00\u77e5\u8bc6\u5e93\u4e0a\u4f20\u8d44\u6599" : "\u9009\u62e9\u77e5\u8bc6\u5e93\u540e\u4e0a\u4f20\u8d44\u6599"}
@@ -1925,7 +1925,7 @@ function Composer({
           </select>
           {busy ? (
             <button
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-4 text-sm font-medium text-slate-100 hover:bg-white/10"
+              className="ak-press inline-flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-4 text-sm font-medium text-slate-100 hover:bg-white/10"
               aria-label="停止生成"
               data-testid="composer-stop"
               onClick={onStop}
@@ -1936,7 +1936,7 @@ function Composer({
             </button>
           ) : (
             <button
-              className="ak-control-primary inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-400 px-4 text-sm font-medium text-white shadow-[0_10px_24px_rgba(16,185,129,0.28)] transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-45"
+              className="ak-control-primary ak-press inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-400 px-4 text-sm font-medium text-white shadow-[0_10px_24px_rgba(16,185,129,0.28)] hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-45"
               aria-label="发送消息"
               data-testid="composer-send"
               disabled={!value.trim()}
@@ -2149,6 +2149,7 @@ function ContextStatusCard({
       : status.state === "normal"
       ? "bg-slate-500"
       : "bg-amber-300";
+  const progress = Math.min(100, Math.max(0, status.percent));
 
   return (
     <div className={cn("mt-5 rounded-lg border p-3", tone)}>
@@ -2161,10 +2162,20 @@ function ContextStatusCard({
           {status.label}
         </span>
       </div>
-      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+      <div
+        aria-label="上下文使用率"
+        aria-valuemax={100}
+        aria-valuemin={0}
+        aria-valuenow={progress}
+        className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10"
+        role="progressbar"
+      >
         <div
-          className={cn("h-full rounded-full transition-all", bar)}
-          style={{ width: `${Math.min(100, Math.max(0, status.percent))}%` }}
+          className={cn(
+            "ak-motion-enter h-full origin-left rounded-full transition-transform duration-surface ease-ui-out",
+            bar
+          )}
+          style={{ transform: `scaleX(${progress / 100})` }}
         />
       </div>
       <div className="mt-2 flex items-center justify-between text-xs text-slate-500">

@@ -100,7 +100,7 @@ export default function Sidebar({
         {/* New chat */}
         <button
           onClick={onNew}
-          className="mx-3 mt-3 inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-brand/25 bg-brand px-3 text-sm font-medium text-white shadow-soft transition-all hover:bg-brand-dark active:scale-[0.98]"
+          className="mx-3 mt-3 inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-brand/25 bg-brand px-3 text-sm font-medium text-white shadow-soft transition-[transform,background-color,border-color,box-shadow] duration-press ease-ui-out hover:bg-brand-dark active:scale-[0.97]"
           type="button"
         >
           <Plus className="h-4 w-4" />
@@ -129,7 +129,7 @@ export default function Sidebar({
                 <div
                   key={c.id}
                   className={cn(
-                    "group flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-all",
+                    "group flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-[background-color,color,box-shadow] duration-press ease-ui-out",
                     active
                       ? "bg-brand/12 font-medium text-fg shadow-sm ring-1 ring-brand/20"
                       : "text-fg/80 hover:bg-surface-2"

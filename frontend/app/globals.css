@@ -23,6 +23,14 @@
   --warning: 217 119 6;
   --danger: 220 38 38;
   --info: 37 99 235;
+
+  /* Shared motion vocabulary: deliberate, fast, and consistent. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --duration-press: 160ms;
+  --duration-popover: 180ms;
+  --duration-surface: 200ms;
 }
 
 /* Chat workspace theme bridge.
@@ -278,6 +286,19 @@ html.dark {
   color-scheme: dark;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .ak-motion-enter,
+  .ak-press {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 html,
 body {
   font-size: 15px;
@@ -305,13 +326,34 @@ body {
    Utility primitives
    ============================================================ */
 @layer components {
+  .ak-press {
+    transition-property: transform, background-color, border-color, color, box-shadow;
+    transition-duration: var(--duration-press);
+    transition-timing-function: var(--ease-out);
+  }
+  .ak-press:not(:disabled):active {
+    transform: scale(0.97);
+  }
+
+  .ak-popover.ak-motion-enter {
+    transform-origin: top;
+    transition: opacity var(--duration-popover) var(--ease-out),
+      transform var(--duration-popover) var(--ease-out);
+  }
+  @starting-style {
+    .ak-popover.ak-motion-enter {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.97);
+    }
+  }
+
   .btn {
     @apply inline-flex items-center justify-center gap-1.5 rounded-lg
            border px-3.5 py-2 text-sm font-medium
-           transition-all duration-200
+           transition-[transform,background-color,border-color,color,box-shadow] duration-200 ease-ui-out
            disabled:opacity-50 disabled:cursor-not-allowed
            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30
-           active:scale-[0.98];
+           active:scale-[0.97];
   }
   .btn-primary {
     @apply border-transparent bg-brand text-white shadow-sm
@@ -334,7 +376,7 @@ body {
     @apply rounded-lg border border-surface-border/80 bg-surface shadow-soft;
   }
   .card-hover {
-    @apply transition-all duration-200
+    @apply transition-[background-color,border-color,box-shadow] duration-200 ease-ui-out
            hover:border-brand/25 hover:bg-surface hover:shadow-lift;
   }
 
@@ -345,7 +387,7 @@ body {
 
   .input-shell {
     @apply rounded-lg border border-surface-border/80 bg-surface
-           transition-all duration-200
+           transition-[border-color,box-shadow] duration-200 ease-ui-out
            focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/15;
   }
 
@@ -363,7 +405,7 @@ body {
 
   .filter-tab {
     @apply inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium
-           text-muted transition-all duration-200
+           text-muted transition-[background-color,color] duration-200 ease-ui-out
            hover:bg-surface-2 hover:text-fg;
   }
   .filter-tab-active {
@@ -374,7 +416,7 @@ body {
   }
 
   .chunk-card {
-    @apply rounded-lg border border-surface-border/70 bg-surface transition-all duration-200;
+    @apply rounded-lg border border-surface-border/70 bg-surface transition-[background-color,border-color,box-shadow,opacity] duration-200 ease-ui-out;
   }
   .dark .chunk-card {
     @apply border-surface-border bg-surface shadow-[0_1px_0_rgb(var(--fg)/0.04)];
@@ -450,7 +492,7 @@ body {
   .admin-toolbar-btn {
     @apply inline-flex items-center justify-center gap-1.5 rounded-lg
            border border-surface-border/80 bg-surface px-3 py-1.5 text-xs font-medium text-fg
-           shadow-sm transition-all duration-150
+           shadow-sm transition-[background-color,border-color,color,box-shadow,transform] duration-150 ease-ui-out
            hover:border-surface-border hover:bg-surface-2 hover:shadow
            disabled:cursor-not-allowed disabled:opacity-50;
   }
@@ -461,7 +503,7 @@ body {
   .admin-row-action {
     @apply inline-flex items-center gap-1 rounded-lg border border-transparent
            px-2 py-1.5 text-xs font-medium text-muted
-           transition-all duration-150
+           transition-[background-color,border-color,color,box-shadow,transform] duration-150 ease-ui-out
            hover:border-surface-border/80 hover:bg-surface-2 hover:text-fg hover:shadow-sm
            disabled:cursor-not-allowed disabled:opacity-50;
   }
