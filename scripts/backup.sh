@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AnyKB 备份 — 打包 PostgreSQL volume + backend data volume 成 tarball。
+# KnowFlow 备份 — 打包 PostgreSQL volume + backend data volume 成 tarball。
 # 用法：
 #   ./scripts/backup.sh                  备份到 ./backups/anykb-YYYY-MM-DD.tgz
 #   ./scripts/backup.sh /mnt/backups     备份到指定目录

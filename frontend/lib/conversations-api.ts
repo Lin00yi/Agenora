@@ -232,7 +232,7 @@ export async function exportConversations(): Promise<void> {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "anykb-export.json";
+  a.download = "knowflow-export.json";
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

@@ -185,7 +185,7 @@ function ProductPreview() {
           <span className="h-2.5 w-2.5 rounded-full bg-warning/60" />
           <span className="h-2.5 w-2.5 rounded-full bg-success/60" />
         </div>
-        <div className="text-[11px] text-muted">anykb.local · 产品资料库</div>
+        <div className="text-[11px] text-muted">knowflow.local · 产品资料库</div>
       </div>
       <div className="grid gap-0 md:grid-cols-[240px_1fr]">
         <aside className="border-b border-surface-border/70 bg-bg/60 p-4 md:border-b-0 md:border-r">
@@ -206,7 +206,7 @@ function ProductPreview() {
         <section className="p-4 sm:p-5">
           <div className="rounded-lg border border-surface-border/70 bg-bg px-4 py-3 text-sm">
             <span className="text-muted">你：</span>
-            AnyKB 如何保证企业数据安全？
+            KnowFlow 如何保证企业数据安全？
           </div>
           <div className="mt-3 rounded-lg border border-brand/25 bg-brand/5 p-4 text-sm leading-7">
             <div className="mb-3 flex items-center justify-between gap-3">

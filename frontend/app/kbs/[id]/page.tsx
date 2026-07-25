@@ -479,7 +479,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
               系统内置示例库
             </div>
             <p className="mt-1 text-xs text-warning/90">
-              这是 AnyKB 内置的旅行演示知识库（4 城本地餐厅策展数据）。所有用户都能在对话中选中它，体验完整的旅行 Agent 工具链（天气 + POI + 报告生成）。
+              这是 KnowFlow 内置的旅行演示知识库（4 城本地餐厅策展数据）。所有用户都能在对话中选中它，体验完整的旅行 Agent 工具链（天气 + POI + 报告生成）。
               本演示库 <strong>只读</strong>：不能上传 / 删除内容。要管理你自己的内容，请回到列表新建一个属于你的 KB。
             </p>
           </div>
@@ -1214,7 +1214,7 @@ function InviteDialog({
           {tab === "email" ? (
             <form onSubmit={onInviteEmail} className="space-y-3">
               <div className="text-xs text-muted">
-                被邀请者必须先在 AnyKB 注册一个账号，再用该邮箱邀请。
+                被邀请者必须先在 KnowFlow 注册一个账号，再用该邮箱邀请。
               </div>
               <input
                 type="email"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AnyKB 部署 — 构建镜像（增量，秒级 cache）+ 创建/更新容器。
+# KnowFlow 部署 — 构建镜像（增量，秒级 cache）+ 创建/更新容器。
 # 用法：
 #   ./scripts/deploy.sh           首次部署 / 代码改了重新部署
 #   ./scripts/deploy.sh backend   只重建 backend 服务

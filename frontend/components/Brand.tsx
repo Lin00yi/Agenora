@@ -1,6 +1,6 @@
 import { cn } from "@/lib/cn";
 
-export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || "AnyKB";
+export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || "KnowFlow";
 
 type BrandSize = "sm" | "md" | "lg";
 

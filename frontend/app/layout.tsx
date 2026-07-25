@@ -3,7 +3,7 @@ import { Toaster } from "sonner";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import "./globals.css";
 
-const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || "AnyKB";
+const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || "KnowFlow";
 
 export const metadata: Metadata = {
   title: APP_NAME,

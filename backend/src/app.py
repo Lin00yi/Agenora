@@ -68,7 +68,7 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     log.info("shutdown")
 
 
-app = FastAPI(title="AnyKB", version="3.1.0", lifespan=lifespan)
+app = FastAPI(title="KnowFlow", version="3.1.0", lifespan=lifespan)
 
 # v2-M7 — optional Logfire monitoring. Enabled only when both:
 #   1) `pip install -e '.[monitoring]'` (or pip install logfire)

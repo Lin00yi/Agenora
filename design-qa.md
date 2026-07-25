@@ -29,4 +29,4 @@ Checks:
 Notes:
 - The first-run screen keeps the visual direction of the reference while clearly showing that no retrieval has happened yet.
 - `npm run lint` is not currently usable as a non-interactive check because Next prompts to create an ESLint config; `npm run build` and `npx vitest run` are the reliable checks used here.
-- Remaining product concerns from self-test: the bundled system KB is still a TravelGPT demo, so default answers/persona can feel off-brand for AnyKB; the in-app browser in this environment does not expose screenshot capture, so mobile layout was checked with DOM/overflow assertions rather than visual screenshots.
+- Remaining product concerns from self-test: the bundled system KB is still a TravelGPT demo, so default answers/persona can feel off-brand for KnowFlow; the in-app browser in this environment does not expose screenshot capture, so mobile layout was checked with DOM/overflow assertions rather than visual screenshots.

@@ -1,7 +1,7 @@
 /**
  * One-time localStorage namespace migration: `travelgpt:*` → `anykb:*`.
  *
- * The app was renamed from "TravelGPT" to "AnyKB" in 2026-05-14. Existing
+ * The app was renamed from "TravelGPT" to "KnowFlow" in 2026-05-14. Existing
  * users had auth tokens, conversation history and theme preference stored
  * under the old prefix; we copy them over on first load after the rename
  * so nobody gets logged out / loses chats.

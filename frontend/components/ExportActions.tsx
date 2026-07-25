@@ -36,7 +36,7 @@ export default function ExportActions({ markdown, cost, question, reportId = "re
       toast.error("找不到报告内容");
       return;
     }
-    html2pdf().set({ filename: "anykb-report.pdf", margin: 10 }).from(el).save();
+    html2pdf().set({ filename: "knowflow-report.pdf", margin: 10 }).from(el).save();
   };
 
   return (

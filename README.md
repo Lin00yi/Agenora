@@ -1,4 +1,4 @@
-# AnyKB — 私有 RAG 知识库 + 透明 Agent
+# KnowFlow — 私有 RAG 知识库 + 透明 Agent
 
 > 上传文档 / 抓取网页 → 选中 KB → 用一句话问出来。
 > 30 秒内吐一份带原文引用的 markdown 报告，全过程思考链可视。
@@ -680,7 +680,7 @@ sudo certbot renew
 
 ```ini
 BACKEND_URL=http://127.0.0.1:8000           # 后端地址（前端 proxy 转发）
-NEXT_PUBLIC_APP_NAME=AnyKB                  # 显示名
+NEXT_PUBLIC_APP_NAME=KnowFlow                  # 显示名
 NEXT_PUBLIC_PLAUSIBLE_DOMAIN=               # 可选 Plausible analytics
 NEXT_TELEMETRY_DISABLED=1                   # 关掉 next telemetry
 ```

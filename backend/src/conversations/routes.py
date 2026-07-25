@@ -193,7 +193,7 @@ async def export_conversations(
         )
     return JSONResponse(
         out,
-        headers={"Content-Disposition": 'attachment; filename="anykb-export.json"'},
+        headers={"Content-Disposition": 'attachment; filename="knowflow-export.json"'},
     )
 
 

@@ -1,7 +1,7 @@
 [project]
 name = "anykb-backend"
 version = "3.1.0"
-description = "AnyKB backend — FastAPI + LangGraph private RAG knowledge base"
+description = "KnowFlow backend — FastAPI + LangGraph private RAG knowledge base"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
