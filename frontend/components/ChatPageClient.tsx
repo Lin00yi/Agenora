@@ -203,6 +203,7 @@ export function ChatPage({
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
 
   const [summaries, setSummaries] = useState<ConversationSummary[]>([]);
   const [conversationTotal, setConversationTotal] = useState(0);
@@ -483,6 +484,8 @@ export function ChatPage({
           console.error("list conversations failed", e);
           toast.error((e as Error)?.message ?? "\u52a0\u8f7d\u4f1a\u8bdd\u5386\u53f2\u5931\u8d25");
         }
+      } finally {
+        if (!cancelled) setInitialLoadDone(true);
       }
     })();
     return () => {
@@ -925,7 +928,7 @@ export function ChatPage({
     void handleSend(composerValue);
   }, [composerValue, handleSend]);
 
-  if (!authChecked) {
+  if (!authChecked || !initialLoadDone) {
     return (
       <ChatLoadingShell
         label={`正在打开 ${APP_NAME}`}
@@ -935,7 +938,7 @@ export function ChatPage({
   }
 
   return (
-    <div className="ak-chat h-dvh w-screen overflow-hidden text-slate-100">
+    <div className="ak-chat ak-page-transition h-dvh w-screen overflow-hidden text-slate-100">
       {sidebarOpen && (
         <button
           aria-label="关闭侧栏"
@@ -1069,7 +1072,7 @@ function ChatLoadingShell({
   description?: string;
 }) {
   return (
-    <div className="ak-chat h-dvh w-screen overflow-hidden text-slate-100">
+    <div className="ak-chat ak-page-transition h-dvh w-screen overflow-hidden text-slate-100">
       <div className="grid h-full grid-cols-1 lg:grid-cols-[286px_minmax(0,1fr)]">
         <aside
           aria-hidden="true"

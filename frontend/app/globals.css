@@ -508,6 +508,7 @@ html.dark {
   }
 
   .ak-motion-enter,
+  .ak-page-transition,
   .ak-press {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
@@ -549,6 +550,21 @@ body {
   }
   .ak-press:not(:disabled):active {
     transform: scale(0.97);
+  }
+
+  .ak-page-transition {
+    animation: ak-page-enter var(--duration-surface) var(--ease-out) both;
+  }
+
+  @keyframes ak-page-enter {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   .ak-context-ring {
