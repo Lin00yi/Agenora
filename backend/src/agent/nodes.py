@@ -317,7 +317,15 @@ async def call_tools_node(
         args = tc.get("input") or {}
         if tc["id"] in blocked_tool_call_ids:
             reason = blocked_tool_call_ids[tc["id"]]
-            await emit({"event": "tool_blocked", "name": name, "reason": reason})
+            await emit(
+                {
+                    "event": "tool_blocked",
+                    "id": tc["id"],
+                    "name": name,
+                    "input": args,
+                    "reason": reason,
+                }
+            )
             return {
                 "type": "tool_result",
                 "tool_use_id": tc["id"],
@@ -330,29 +338,42 @@ async def call_tools_node(
             registry.names() + ["generate_travel_report", "generate_kb_report"],
         )
         if not ok:
-            await emit({"event": "tool_blocked", "name": name, "reason": reason})
+            await emit(
+                {
+                    "event": "tool_blocked",
+                    "id": tc["id"],
+                    "name": name,
+                    "input": args,
+                    "reason": reason,
+                }
+            )
             return {
                 "type": "tool_result",
                 "tool_use_id": tc["id"],
                 "content": f"[blocked by safety] {reason}",
                 "is_error": True,
             }
-        await emit({"event": "tool_start", "name": name, "input": args})
+        await emit({"event": "tool_start", "id": tc["id"], "name": name, "input": args})
 
         if name == "generate_travel_report":
             text = await invoke_skill("travel_report", args, llm_cfg=llm_cfg)
-            await emit({"event": "tool_end", "name": name, "latency_ms": 0, "ok": True})
+            await emit(
+                {"event": "tool_end", "id": tc["id"], "name": name, "latency_ms": 0, "ok": True}
+            )
             return {"type": "tool_result", "tool_use_id": tc["id"], "content": text}
 
         if name == "generate_kb_report":
             text = await invoke_skill("general_report", args, llm_cfg=llm_cfg)
-            await emit({"event": "tool_end", "name": name, "latency_ms": 0, "ok": True})
+            await emit(
+                {"event": "tool_end", "id": tc["id"], "name": name, "latency_ms": 0, "ok": True}
+            )
             return {"type": "tool_result", "tool_use_id": tc["id"], "content": text}
 
         result = await registry.call(name, args)
         await emit(
             {
                 "event": "tool_end",
+                "id": tc["id"],
                 "name": name,
                 "latency_ms": result.latency_ms,
                 "ok": result.error is None,

@@ -8,6 +8,7 @@ export type ChatEvent = {
     | "done"
     | "error";
   name?: string;
+  id?: string;
   input?: Record<string, unknown>;
   text?: string;
   latency_ms?: number;

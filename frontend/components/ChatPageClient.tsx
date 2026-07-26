@@ -98,6 +98,7 @@ type SourceRow = {
   title: string;
   meta: string;
   score: string;
+  detail?: string[];
 };
 
 type ProcessStep = {
@@ -778,6 +779,7 @@ export function ChatPage({
           switch (evt.event) {
             case "tool_start": {
               const newTool: ToolEvent = {
+                id: evt.id,
                 name: evt.name!,
                 input: evt.input,
                 status: "running",
@@ -793,41 +795,30 @@ export function ChatPage({
             }
             case "tool_end": {
               if (streamingRef.current) {
-                const tools = [...streamingRef.current.tools];
-                for (let i = tools.length - 1; i >= 0; i--) {
-                  if (tools[i].name === evt.name && tools[i].status === "running") {
-                    tools[i] = {
-                      ...tools[i],
-                      status: evt.ok ? "ok" : "error",
-                      latency_ms: evt.latency_ms ?? null,
-                      error: evt.error ?? null,
-                    };
-                    break;
-                  }
-                }
-                streamingRef.current.tools = tools;
+                streamingRef.current.tools = updateToolEvent(streamingRef.current.tools, evt, {
+                  status: evt.ok ? "ok" : "error",
+                  latency_ms: evt.latency_ms ?? null,
+                  error: evt.error ?? null,
+                });
               }
               updateLastAssistant((m) => {
                 if (m.role !== "assistant") return m;
-                const tools = [...m.tools];
-                for (let i = tools.length - 1; i >= 0; i--) {
-                  if (tools[i].name === evt.name && tools[i].status === "running") {
-                    tools[i] = {
-                      ...tools[i],
-                      status: evt.ok ? "ok" : "error",
-                      latency_ms: evt.latency_ms ?? null,
-                      error: evt.error ?? null,
-                    };
-                    break;
-                  }
-                }
-                return { ...m, tools };
+                return {
+                  ...m,
+                  tools: updateToolEvent(m.tools, evt, {
+                    status: evt.ok ? "ok" : "error",
+                    latency_ms: evt.latency_ms ?? null,
+                    error: evt.error ?? null,
+                  }),
+                };
               });
               break;
             }
             case "tool_blocked": {
               const newTool: ToolEvent = {
+                id: evt.id,
                 name: evt.name!,
+                input: evt.input,
                 status: "blocked",
                 reason: evt.reason ?? "",
               };
@@ -1738,6 +1729,15 @@ function SourceStrip({ sources }: { sources: SourceRow[] }) {
             <div className="min-w-0 flex-1">
               <div className="truncate text-xs text-slate-200">{source.title}</div>
               <div className="truncate text-xs text-slate-500">{source.meta}</div>
+              {source.detail && source.detail.length > 0 && (
+                <div className="mt-1 space-y-0.5">
+                  {source.detail.map((item, index) => (
+                    <div className="truncate text-[11px] text-slate-500" key={`${item}-${index}`}>
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -1772,18 +1772,7 @@ function ContextCompressionNotice({
 
 function buildMessageSources(message: Extract<Message, { role: "assistant" }>): SourceRow[] {
   if (message.tools.length === 0) return [];
-  return message.tools.slice(0, 4).map((tool) => ({
-    title: getToolLabel(tool.name),
-    meta: tool.status === "running" ? "\u6b63\u5728\u6267\u884c" : tool.status === "ok" ? "\u5df2\u5b8c\u6210" : "\u672a\u5b8c\u6210",
-    score:
-      tool.status === "ok"
-        ? "done"
-        : tool.status === "running"
-        ? "live"
-        : tool.status === "blocked"
-        ? "blocked"
-        : "error",
-  }));
+  return aggregateToolSources(message.tools, 4);
 }
 
 function buildPanelSources(tools: ToolEvent[]): SourceRow[] {
@@ -1824,12 +1813,88 @@ function getToolLabel(name: string): string {
   return labels[name] ?? name;
 }
 
+function updateToolEvent(
+  tools: ToolEvent[],
+  evt: ChatEvent,
+  patch: Partial<ToolEvent>
+): ToolEvent[] {
+  const index = findToolEventIndex(tools, evt);
+  if (index < 0) return tools;
+  return tools.map((tool, i) => (i === index ? { ...tool, ...patch } : tool));
+}
+
+function findToolEventIndex(tools: ToolEvent[], evt: ChatEvent): number {
+  if (evt.id) {
+    const byId = tools.findIndex((tool) => tool.id === evt.id);
+    if (byId >= 0) return byId;
+  }
+  for (let i = tools.length - 1; i >= 0; i--) {
+    if (tools[i].name === evt.name && tools[i].status === "running") return i;
+  }
+  return -1;
+}
+
 function buildPanelSourcesClean(tools: ToolEvent[]): SourceRow[] {
-  return tools.slice(0, 8).map((tool) => ({
-    title: getToolLabelClean(tool.name),
-    meta: getToolMetaClean(tool),
-    score: getToolStatusLabelClean(tool.status),
-  }));
+  return aggregateToolSources(tools, 8);
+}
+
+function aggregateToolSources(tools: ToolEvent[], maxRows: number): SourceRow[] {
+  const groups = new Map<string, ToolEvent[]>();
+  for (const tool of tools) {
+    groups.set(tool.name, [...(groups.get(tool.name) ?? []), tool]);
+  }
+  return Array.from(groups.entries())
+    .slice(0, maxRows)
+    .map(([name, group]) => buildToolSourceRow(name, group));
+}
+
+function buildToolSourceRow(name: string, group: ToolEvent[]): SourceRow {
+  if (group.length === 1) {
+    const tool = group[0];
+    return {
+      title: getToolLabelClean(tool.name),
+      meta: getToolMetaClean(tool),
+      score: getToolStatusLabelClean(tool.status),
+    };
+  }
+
+  const status = getAggregateToolStatus(group);
+  const slowest = group.reduce<number | null>((max, tool) => {
+    if (tool.latency_ms == null) return max;
+    return max == null ? tool.latency_ms : Math.max(max, tool.latency_ms);
+  }, null);
+  const querySummaries = group.map(getToolInputSummary).filter(Boolean).slice(0, 3);
+  const action = name === "search_kb" ? "\u67e5\u8be2" : "\u8c03\u7528";
+  const duration = slowest == null ? "" : ` \u00b7 \u6700\u6162 ${formatDuration(slowest)}`;
+
+  return {
+    title: getToolLabelClean(name),
+    meta: `${group.length} \u6b21${action} \u00b7 ${getAggregateToolMeta(status)}${duration}`,
+    score: getToolStatusLabelClean(status),
+    detail: querySummaries.length > 0 ? querySummaries : undefined,
+  };
+}
+
+function getAggregateToolStatus(group: ToolEvent[]): ToolEvent["status"] {
+  if (group.some((tool) => tool.status === "running")) return "running";
+  if (group.some((tool) => tool.status === "error")) return "error";
+  if (group.some((tool) => tool.status === "blocked")) return "blocked";
+  return "ok";
+}
+
+function getAggregateToolMeta(status: ToolEvent["status"]) {
+  if (status === "ok") return "\u5168\u90e8\u5b8c\u6210";
+  if (status === "running") return "\u6b63\u5728\u6267\u884c";
+  if (status === "blocked") return "\u90e8\u5206\u963b\u585e";
+  return "\u90e8\u5206\u5931\u8d25";
+}
+
+function getToolInputSummary(tool: ToolEvent): string {
+  const query = tool.input?.query;
+  if (typeof query === "string" && query.trim()) return query.trim();
+  const city = tool.input?.city;
+  if (typeof city === "string" && city.trim()) return city.trim();
+  return "";
 }
 
 function getToolLabelClean(name: string): string {
@@ -2255,6 +2320,15 @@ function RightInsightPanel({
                       {source.title}
                     </div>
                     <div className="text-xs text-slate-500">{source.meta}</div>
+                    {source.detail && source.detail.length > 0 && (
+                      <div className="mt-1 space-y-0.5">
+                        {source.detail.map((item, index) => (
+                          <div className="truncate text-[11px] text-slate-500" key={`${item}-${index}`}>
+                            {item}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

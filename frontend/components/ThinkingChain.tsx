@@ -1,9 +1,17 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, CircleCheck, CircleAlert, LoaderCircle, Ban } from "lucide-react";
+import {
+  Ban,
+  ChevronDown,
+  ChevronRight,
+  CircleAlert,
+  CircleCheck,
+  LoaderCircle,
+} from "lucide-react";
 
 export type ToolEvent = {
+  id?: string;
   name: string;
   input?: Record<string, unknown>;
   status: "running" | "ok" | "error" | "blocked";
@@ -14,17 +22,13 @@ export type ToolEvent = {
 };
 
 const NAME_LABEL: Record<string, string> = {
-  // KB mode (generic search across user's knowledge base)
-  search_kb: "📚 检索 KB",
-  // General chat mode (v2-M5)
-  web_search: "🌐 搜索网络",
-  // KB mode report skill (v2-M8)
-  generate_kb_report: "📝 生成 KB 报告",
-  // Travel demo mode (preserved — only triggered by the system travel KB)
-  get_weather: "🌤 查天气",
-  search_restaurant_kb: "🍴 找本地餐厅",
-  amap_search: "🗺 高德兜底",
-  generate_travel_report: "✨ 生成旅行报告",
+  search_kb: "\u68c0\u7d22 KB",
+  web_search: "\u641c\u7d22\u7f51\u7edc",
+  generate_kb_report: "\u751f\u6210 KB \u62a5\u544a",
+  get_weather: "\u67e5\u5929\u6c14",
+  search_restaurant_kb: "\u627e\u672c\u5730\u9910\u5385",
+  amap_search: "\u5730\u56fe\u641c\u7d22",
+  generate_travel_report: "\u751f\u6210\u65c5\u884c\u62a5\u544a",
 };
 
 const STATUS_ICON: Record<ToolEvent["status"], React.ReactNode> = {
@@ -39,7 +43,6 @@ export default function ThinkingChain({ events }: { events: ToolEvent[] }) {
   const hasRunning = events.some((e) => e.status === "running");
   const [, force] = useState(0);
 
-  // Tick every 200ms while something is running, so elapsed time updates live.
   useEffect(() => {
     if (!hasRunning) return;
     const id = setInterval(() => force((v) => v + 1), 200);
@@ -48,8 +51,8 @@ export default function ThinkingChain({ events }: { events: ToolEvent[] }) {
 
   const doneCount = events.filter((e) => e.status !== "running").length;
   const summary = hasRunning
-    ? `思考中 · ${doneCount}/${events.length} 步`
-    : `思考过程 · ${events.length} 步`;
+    ? `\u601d\u8003\u4e2d · ${doneCount}/${events.length} \u6b65`
+    : `\u601d\u8003\u8fc7\u7a0b · ${events.length} \u6b65`;
 
   return (
     <div className="rounded-lg border bg-surface">
@@ -66,33 +69,43 @@ export default function ThinkingChain({ events }: { events: ToolEvent[] }) {
       </button>
       {open && (
         <ul className="space-y-2 border-t p-3 text-sm">
-          {events.map((e, i) => {
-            const running = e.status === "running";
-            const elapsed = running && e.t0 ? Math.max(0, Date.now() - e.t0) : null;
+          {events.map((event, i) => {
+            const running = event.status === "running";
+            const elapsed = running && event.t0 ? Math.max(0, Date.now() - event.t0) : null;
+            const inputRows = formatToolInput(event.input);
             return (
-              <li key={i} className="flex items-start gap-2">
-                {STATUS_ICON[e.status]}
+              <li key={event.id ?? i} className="flex items-start gap-2">
+                {STATUS_ICON[event.status]}
                 <div className="flex-1">
                   <div className="flex items-center justify-between">
                     <span className={running ? "text-fg" : "text-fg/80"}>
-                      {NAME_LABEL[e.name] || e.name}
+                      {NAME_LABEL[event.name] || event.name}
                     </span>
                     {running && elapsed != null && (
                       <span className="text-xs text-muted tabular-nums">
                         {(elapsed / 1000).toFixed(1)}s
                       </span>
                     )}
-                    {!running && e.latency_ms != null && (
-                      <span className="text-xs text-muted tabular-nums">{e.latency_ms}ms</span>
+                    {!running && event.latency_ms != null && (
+                      <span className="text-xs text-muted tabular-nums">
+                        {event.latency_ms}ms
+                      </span>
                     )}
                   </div>
-                  {e.input && Object.keys(e.input).length > 0 && (
-                    <pre className="mt-1 overflow-x-auto rounded bg-fg/5 p-2 text-xs text-muted">
-                      {JSON.stringify(e.input, null, 0)}
-                    </pre>
+                  {inputRows.length > 0 && (
+                    <div className="mt-1 rounded bg-fg/5 p-2 text-xs text-muted">
+                      {inputRows.map((row) => (
+                        <div className="flex gap-2" key={row.label}>
+                          <span className="shrink-0 text-fg/60">{row.label}</span>
+                          <span className="min-w-0 break-words">{row.value}</span>
+                        </div>
+                      ))}
+                    </div>
                   )}
-                  {e.error && <p className="mt-1 text-xs text-red-500">{e.error}</p>}
-                  {e.reason && <p className="mt-1 text-xs text-amber-600">⛔ {e.reason}</p>}
+                  {event.error && <p className="mt-1 text-xs text-red-500">{event.error}</p>}
+                  {event.reason && (
+                    <p className="mt-1 text-xs text-amber-600">{event.reason}</p>
+                  )}
                 </div>
               </li>
             );
@@ -101,4 +114,54 @@ export default function ThinkingChain({ events }: { events: ToolEvent[] }) {
       )}
     </div>
   );
+}
+
+function formatToolInput(input?: Record<string, unknown>): { label: string; value: string }[] {
+  if (!input || Object.keys(input).length === 0) return [];
+  const rows: { label: string; value: string }[] = [];
+  const consumed = new Set<string>();
+
+  addStringRow(rows, consumed, input, "query", "\u67e5\u8be2");
+  addStringRow(rows, consumed, input, "city", "\u57ce\u5e02");
+  addStringRow(rows, consumed, input, "date", "\u65e5\u671f");
+  addScalarRow(rows, consumed, input, "limit", "TopK");
+  addScalarRow(rows, consumed, input, "max_results", "\u6570\u91cf");
+
+  for (const [key, value] of Object.entries(input)) {
+    if (consumed.has(key) || value == null) continue;
+    rows.push({ label: key, value: formatInputValue(value) });
+  }
+  return rows;
+}
+
+function addStringRow(
+  rows: { label: string; value: string }[],
+  consumed: Set<string>,
+  input: Record<string, unknown>,
+  key: string,
+  label: string
+) {
+  const value = input[key];
+  if (typeof value !== "string" || !value.trim()) return;
+  rows.push({ label, value: value.trim() });
+  consumed.add(key);
+}
+
+function addScalarRow(
+  rows: { label: string; value: string }[],
+  consumed: Set<string>,
+  input: Record<string, unknown>,
+  key: string,
+  label: string
+) {
+  const value = input[key];
+  if (typeof value !== "string" && typeof value !== "number") return;
+  rows.push({ label, value: String(value) });
+  consumed.add(key);
+}
+
+function formatInputValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return JSON.stringify(value);
 }
