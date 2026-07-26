@@ -57,6 +57,15 @@ class Settings(BaseSettings):
     llm_default_model: str = "claude-haiku-4-5-20251001"
     llm_complex_model: str = "claude-sonnet-4-6"
 
+    # ===== KB query policy =====
+    # always_direct: skip policy/rewrite, search the original user query.
+    # rule_only: use deterministic rules only; uncertain cases fall back direct.
+    # llm_fallback: deterministic rules first, LLM policy+rewrite for uncertain/complex cases.
+    # always_llm: use LLM policy+rewrite for every non-empty KB-bound query.
+    kb_query_policy_mode: str = "llm_fallback"
+    kb_query_policy_max_queries: int = 3
+    kb_query_policy_llm_model: str = ""
+
     # ===== Tools =====
     qweather_api_key: str = ""
     amap_api_key: str = ""

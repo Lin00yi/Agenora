@@ -660,6 +660,9 @@ sudo certbot renew
 | | `DEEPSEEK_API_KEY` | `sk-...` | 同上 |
 | | `LLM_DEFAULT_MODEL` | `claude-haiku-4-5-20251001` | 默认轻量模型 |
 | | `LLM_COMPLEX_MODEL` | `claude-sonnet-4-6` | 复杂任务用（plan_node 自动切） |
+| **KB Query Policy** | `KB_QUERY_POLICY_MODE` | `llm_fallback` | `always_direct` / `rule_only` / `llm_fallback` / `always_llm` |
+| | `KB_QUERY_POLICY_MAX_QUERIES` | `3` | 单轮 KB 检索 query 上限，代码层最多 3 |
+| | `KB_QUERY_POLICY_LLM_MODEL` | (空) | policy+rewrite 使用的小模型；为空时复用当前 LLM 默认模型 |
 | **向量库** | `VECTOR_STORE` | `milvus` | `milvus` / `qdrant` / `local` |
 | | `MILVUS_URI` | `./data/milvus_local.db` | Lite 文件路径 / Standalone HTTP |
 | | `MILVUS_TOKEN` | (空) | Zilliz Cloud / 鉴权 |

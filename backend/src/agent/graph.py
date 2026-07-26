@@ -8,9 +8,10 @@ from langgraph.graph import END, StateGraph
 from src.agent.nodes import (
     call_tools_node,
     kb_search_node,
-    query_rewrite_node,
+    query_policy_node,
     reason_node,
     should_continue,
+    should_search_kb,
 )
 from src.agent.prompts import (
     SYSTEM_PROMPT_GENERAL,
@@ -105,9 +106,9 @@ def build_graph(
     g = StateGraph(AgentState)
     if user_kb_mode:
         g.add_node(
-            "query_rewrite",
+            "query_policy",
             partial(
-                query_rewrite_node,
+                query_policy_node,
                 cost=cost,
                 kb_name=kb.name,
                 kb_description=kb.description or "",
@@ -138,8 +139,12 @@ def build_graph(
     )
 
     if user_kb_mode:
-        g.set_entry_point("query_rewrite")
-        g.add_edge("query_rewrite", "kb_search")
+        g.set_entry_point("query_policy")
+        g.add_conditional_edges(
+            "query_policy",
+            should_search_kb,
+            {"kb_search": "kb_search", "reason": "reason"},
+        )
         g.add_edge("kb_search", "reason")
     else:
         g.set_entry_point("reason")

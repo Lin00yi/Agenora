@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from typing import Any, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING, Literal, TypedDict
 
 from src.agent.prompts import SYSTEM_PROMPT
 from src.agent.state import AgentState
@@ -29,11 +29,72 @@ MAX_KB_REWRITE_QUERIES = 3
 DEFAULT_KB_SEARCH_LIMIT = 5
 
 _TRUSTED_CONTEXT_SOURCES = {"memory", "summary"}
+_QUERY_POLICY_ACTIONS = {"direct", "normalize", "expand", "skip_kb"}
+_QUERY_POLICY_MODES = {"always_direct", "rule_only", "llm_fallback", "always_llm"}
+_RULE_SKIP_KEYWORDS = (
+    "你好",
+    "您好",
+    "谢谢",
+    "多谢",
+    "你是谁",
+    "总结刚才",
+    "总结上一轮",
+    "刚才的回答",
+    "上一轮回答",
+    "复制",
+    "导出",
+    "分享",
+    "翻译成",
+    "润色",
+    "改写这段",
+)
+_RULE_MULTI_INTENT_KEYWORDS = (
+    "以及",
+    "同时",
+    "分别",
+    "对比",
+    "区别",
+    "差异",
+    "是否",
+    "哪些",
+    "如何",
+    "怎么",
+    "安全",
+    "本地",
+    "部署",
+    "私有化",
+    "权限",
+    "加密",
+    "隐私",
+    "合规",
+)
+_RULE_FOLLOWUP_KEYWORDS = (
+    "这个",
+    "那个",
+    "它",
+    "该功能",
+    "上面",
+    "刚才",
+    "前面",
+    "这种",
+)
+
+
+QueryPolicyAction = Literal["direct", "normalize", "expand", "skip_kb"]
+QueryPolicySource = Literal["rule", "llm", "fallback"]
+
+
+class QueryPolicyDecision(TypedDict):
+    action: QueryPolicyAction
+    queries: list[dict[str, Any]]
+    reason: str
+    source: QueryPolicySource
+    latency_ms: int
 
 
 def _latest_user_text(messages: list[dict[str, Any]]) -> str:
     """Return the latest real user utterance, skipping synthetic tool-result turns."""
-    for message in reversed[dict[str, Any]](messages):
+    for message in reversed(messages):
         if message.get("role") != "user":
             continue
         content = message.get("content", "")
@@ -55,8 +116,24 @@ def _latest_user_text(messages: list[dict[str, Any]]) -> str:
     return ""
 
 
-def _coerce_kb_queries(payload: Any, fallback_query: str) -> list[dict[str, Any]]:
+def _configured_max_kb_queries() -> int:
+    from src.settings import get_settings
+
+    raw = get_settings().kb_query_policy_max_queries
+    try:
+        return max(1, min(int(raw), MAX_KB_REWRITE_QUERIES))
+    except (TypeError, ValueError):
+        return MAX_KB_REWRITE_QUERIES
+
+
+def _coerce_kb_queries(
+    payload: Any,
+    fallback_query: str,
+    *,
+    max_queries: int = MAX_KB_REWRITE_QUERIES,
+) -> list[dict[str, Any]]:
     """Normalize model JSON into at most three deterministic KB search calls."""
+    max_queries = max(1, min(max_queries, MAX_KB_REWRITE_QUERIES))
     raw_queries: Any
     if isinstance(payload, dict):
         raw_queries = payload.get("queries", [])
@@ -84,12 +161,152 @@ def _coerce_kb_queries(payload: Any, fallback_query: str) -> list[dict[str, Any]
                 continue
             seen.add(query)
             queries.append({"query": query, "limit": max(1, min(limit, 10))})
-            if len(queries) >= MAX_KB_REWRITE_QUERIES:
+            if len(queries) >= max_queries:
                 break
 
     if not queries and fallback_query.strip():
         queries.append({"query": fallback_query.strip(), "limit": DEFAULT_KB_SEARCH_LIMIT})
     return queries
+
+
+def _direct_policy_decision(
+    query: str,
+    *,
+    reason: str,
+    source: QueryPolicySource,
+    latency_ms: int,
+) -> QueryPolicyDecision:
+    return {
+        "action": "direct",
+        "queries": _coerce_kb_queries([query], query, max_queries=1),
+        "reason": reason,
+        "source": source,
+        "latency_ms": latency_ms,
+    }
+
+
+def _skip_policy_decision(
+    *,
+    reason: str,
+    source: QueryPolicySource,
+    latency_ms: int,
+) -> QueryPolicyDecision:
+    return {
+        "action": "skip_kb",
+        "queries": [],
+        "reason": reason,
+        "source": source,
+        "latency_ms": latency_ms,
+    }
+
+
+def _apply_query_policy_decision(
+    state: AgentState,
+    decision: QueryPolicyDecision,
+    *,
+    cost: CostTracker | None = None,
+) -> AgentState:
+    should_search = decision["action"] != "skip_kb" and bool(decision["queries"])
+    next_state: AgentState = {
+        **state,
+        "kb_queries": decision["queries"],
+        "kb_context": "",
+        "kb_search_done": not should_search,
+        "query_policy_action": decision["action"],
+        "query_policy_reason": decision["reason"],
+        "query_policy_source": decision["source"],
+        "query_policy_latency_ms": decision["latency_ms"],
+    }
+    if cost is not None:
+        next_state["cost_usd"] = cost.usd
+    return next_state
+
+
+def _rule_query_policy(query: str, *, max_queries: int) -> QueryPolicyDecision | None:
+    """Return a high-confidence rule decision, or None when LLM judgment is useful."""
+    text = " ".join(query.split())
+    lowered = text.lower()
+    if not text:
+        return _skip_policy_decision(reason="empty_query", source="rule", latency_ms=0)
+
+    if any(keyword in text for keyword in _RULE_SKIP_KEYWORDS):
+        return _skip_policy_decision(reason="obvious_non_kb_intent", source="rule", latency_ms=0)
+
+    punctuation_multi = text.count("？") + text.count("?") + text.count("；") + text.count(";")
+    intent_hits = sum(1 for keyword in _RULE_MULTI_INTENT_KEYWORDS if keyword in text)
+    has_connector = any(connector in text for connector in ("和", "及", "与", "、", ",", "，"))
+    if punctuation_multi >= 2 or (has_connector and intent_hits >= 2):
+        return None
+
+    has_followup = any(keyword in text for keyword in _RULE_FOLLOWUP_KEYWORDS)
+    has_named_entity = any(ch.isupper() for ch in text) or any(
+        token in lowered for token in ("anykb", "kb", "api", "sdk", "sso", "ldap")
+    )
+    if has_followup and not has_named_entity:
+        return None
+
+    if len(text) > 120:
+        return None
+
+    if max_queries >= 1:
+        return _direct_policy_decision(
+            text,
+            reason="clear_single_intent",
+            source="rule",
+            latency_ms=0,
+        )
+    return _skip_policy_decision(reason="max_queries_disabled", source="rule", latency_ms=0)
+
+
+def _normalize_query_policy_mode(value: str | None) -> str:
+    mode = (value or "llm_fallback").strip().lower()
+    return mode if mode in _QUERY_POLICY_MODES else "llm_fallback"
+
+
+def _normalize_policy_action(value: Any, query_count: int) -> QueryPolicyAction:
+    action = str(value or "").strip().lower()
+    if action in _QUERY_POLICY_ACTIONS:
+        return action  # type: ignore[return-value]
+    if query_count >= 2:
+        return "expand"
+    if query_count == 1:
+        return "direct"
+    return "skip_kb"
+
+
+def _coerce_policy_decision(
+    payload: Any,
+    fallback_query: str,
+    *,
+    max_queries: int,
+    source: QueryPolicySource,
+    latency_ms: int,
+) -> QueryPolicyDecision:
+    data = payload if isinstance(payload, dict) else {}
+    raw_action = data.get("action") if isinstance(data, dict) else None
+    raw_queries = data.get("queries", []) if isinstance(data, dict) else payload
+    queries = _coerce_kb_queries(raw_queries, fallback_query, max_queries=max_queries)
+    action = _normalize_policy_action(raw_action, len(queries))
+
+    if action == "skip_kb":
+        queries = []
+    elif action in {"direct", "normalize"}:
+        queries = queries[:1] or _coerce_kb_queries([fallback_query], fallback_query, max_queries=1)
+    elif action == "expand":
+        queries = queries[:max_queries] or _coerce_kb_queries(
+            [fallback_query], fallback_query, max_queries=1
+        )
+        if len(queries) <= 1:
+            action = "direct"
+
+    reason = str(data.get("reason") or action) if isinstance(data, dict) else action
+    return {
+        "action": action,
+        "queries": queries,
+        "reason": reason[:80],
+        "source": source,
+        "latency_ms": latency_ms,
+    }
 
 
 def _extract_json_object(text: str) -> Any:
@@ -229,6 +446,126 @@ def allocate_provider_context(
     # text unexpectedly grows.
     conversation_budget = max(1_000, conversation_budget)
     return _trim_provider_messages(conversation_messages, conversation_budget)
+
+
+async def query_policy_node(
+    state: AgentState,
+    *,
+    cost: CostTracker,
+    kb_name: str = "",
+    kb_description: str = "",
+    llm_cfg: "UserLLMConfig | None" = None,
+) -> AgentState:
+    """Plan KB search with deterministic rules first, then LLM fallback."""
+    from src.settings import get_settings
+
+    start = time.perf_counter()
+    user_query = _latest_user_text(state.get("messages", []))
+    if not user_query:
+        decision = _skip_policy_decision(reason="empty_query", source="rule", latency_ms=0)
+        return _apply_query_policy_decision(state, decision, cost=cost)
+
+    settings = get_settings()
+    mode = _normalize_query_policy_mode(settings.kb_query_policy_mode)
+    max_queries = _configured_max_kb_queries()
+
+    if mode == "always_direct":
+        decision = _direct_policy_decision(
+            user_query,
+            reason="mode_always_direct",
+            source="rule",
+            latency_ms=int((time.perf_counter() - start) * 1000),
+        )
+        return _apply_query_policy_decision(state, decision, cost=cost)
+
+    if mode != "always_llm":
+        rule_decision = _rule_query_policy(user_query, max_queries=max_queries)
+        if rule_decision is not None:
+            rule_decision["latency_ms"] = int((time.perf_counter() - start) * 1000)
+            return _apply_query_policy_decision(state, rule_decision, cost=cost)
+        if mode == "rule_only":
+            decision = _direct_policy_decision(
+                user_query,
+                reason="rule_only_uncertain_fallback_direct",
+                source="fallback",
+                latency_ms=int((time.perf_counter() - start) * 1000),
+            )
+            return _apply_query_policy_decision(state, decision, cost=cost)
+
+    client = get_client(llm_cfg)
+    policy_model_is_compatible = (
+        (llm_cfg is not None and llm_cfg.provider == "openai-compat")
+        or (llm_cfg is None and settings.llm_provider != "anthropic")
+    )
+    if settings.kb_query_policy_llm_model and policy_model_is_compatible:
+        model = settings.kb_query_policy_llm_model
+    else:
+        model = pick_model(state.get("messages", []), [], llm_cfg)
+
+    system_prompt = (
+        "你是企业知识库检索策略器。请判断用户问题是否需要检索 KB，并在需要时生成检索 query。\n"
+        "只输出 JSON，不要输出解释文字。\n"
+        "action 只能是 direct、normalize、expand、skip_kb。\n"
+        "- direct: 单一明确意图，queries 最多 1 条，通常使用原问题。\n"
+        "- normalize: 追问、代词或上下文依赖，补全成 1 条明确 query。\n"
+        f"- expand: 多意图或多角度问题，拆成最多 {max_queries} 条 query。\n"
+        "- skip_kb: 闲聊、翻译、润色、总结刚才回答、系统操作等不需要 KB 的请求，queries 为空。\n"
+        "query 必须保留用户原问题里的产品名、实体、限制条件，不要制造新主题。\n"
+        'JSON 格式：{"action":"direct","queries":[{"query":"...","limit":5}],"reason":"short_reason"}\n'
+    )
+    if kb_name or kb_description:
+        system_prompt += (
+            "\n当前知识库信息：\n"
+            f"- name: {kb_name}\n"
+            f"- description: {kb_description or '(empty)'}\n"
+        )
+
+    try:
+        if llm_cfg is not None:
+            is_anthropic = llm_cfg.provider == "anthropic"
+        else:
+            is_anthropic = settings.llm_provider == "anthropic"
+
+        if not is_anthropic:
+            resp = await client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_query},
+                ],
+                max_tokens=512,
+            )
+            cost.add(model, getattr(resp, "usage", None))
+            text = resp.choices[0].message.content or ""
+        else:
+            resp = await client.messages.create(
+                model=model,
+                max_tokens=512,
+                system=with_cache_control([{"type": "text", "text": system_prompt}], llm_cfg),
+                messages=[{"role": "user", "content": user_query}],
+            )
+            cost.add(model, resp.usage)
+            text = "\n".join(
+                block.text for block in resp.content if getattr(block, "type", "") == "text"
+            )
+
+        parsed = _extract_json_object(text)
+        decision = _coerce_policy_decision(
+            parsed,
+            user_query,
+            max_queries=max_queries,
+            source="llm",
+            latency_ms=int((time.perf_counter() - start) * 1000),
+        )
+    except Exception:  # noqa: BLE001
+        decision = _direct_policy_decision(
+            user_query,
+            reason="llm_policy_failed_fallback_direct",
+            source="fallback",
+            latency_ms=int((time.perf_counter() - start) * 1000),
+        )
+
+    return _apply_query_policy_decision(state, decision, cost=cost)
 
 
 async def query_rewrite_node(
@@ -716,6 +1053,14 @@ def should_continue(state: AgentState) -> str:
     if state.get("pending_tool_calls"):
         return "tools"
     return "end"
+
+
+def should_search_kb(state: AgentState) -> str:
+    if state.get("query_policy_action") == "skip_kb":
+        return "reason"
+    if state.get("kb_queries"):
+        return "kb_search"
+    return "reason"
 
 
 def _skill_tool_schema() -> dict[str, Any]:
