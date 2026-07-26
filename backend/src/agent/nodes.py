@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from src.settings_user import UserLLMConfig
 
 MAX_ITERATIONS = 10
+MAX_SEARCH_KB_CALLS_PER_STEP = 3
 
 _TRUSTED_CONTEXT_SOURCES = {"memory", "summary"}
 
@@ -300,9 +301,30 @@ async def call_tools_node(
     if not pending:
         return state
 
+    blocked_tool_call_ids: dict[str, str] = {}
+    search_kb_calls = 0
+    for tc in pending:
+        if tc.get("name") != "search_kb":
+            continue
+        search_kb_calls += 1
+        if search_kb_calls > MAX_SEARCH_KB_CALLS_PER_STEP:
+            blocked_tool_call_ids[tc["id"]] = (
+                f"search_kb call limit exceeded: max {MAX_SEARCH_KB_CALLS_PER_STEP} per step"
+            )
+
     async def _run(tc: dict[str, Any]) -> dict[str, Any]:
         name = tc["name"]
         args = tc.get("input") or {}
+        if tc["id"] in blocked_tool_call_ids:
+            reason = blocked_tool_call_ids[tc["id"]]
+            await emit({"event": "tool_blocked", "name": name, "reason": reason})
+            return {
+                "type": "tool_result",
+                "tool_use_id": tc["id"],
+                "content": f"[blocked by safety] {reason}",
+                "is_error": True,
+            }
+
         ok, reason = is_tool_allowed(
             name,
             registry.names() + ["generate_travel_report", "generate_kb_report"],
