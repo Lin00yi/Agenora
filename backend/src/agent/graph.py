@@ -5,11 +5,17 @@ from typing import Any, Awaitable, Callable, TYPE_CHECKING
 
 from langgraph.graph import END, StateGraph
 
-from src.agent.nodes import call_tools_node, plan_node, should_continue
+from src.agent.nodes import (
+    call_tools_node,
+    kb_search_node,
+    query_rewrite_node,
+    reason_node,
+    should_continue,
+)
 from src.agent.prompts import (
     SYSTEM_PROMPT_GENERAL,
     SYSTEM_PROMPT_TRAVEL,
-    build_kb_system_prompt,
+    build_kb_reason_system_prompt,
 )
 from src.agent.state import AgentState
 from src.infra.llm import CostTracker
@@ -70,18 +76,21 @@ def build_graph(
         system_prompt = SYSTEM_PROMPT_GENERAL
         include_travel_skill = False
         include_kb_skill = False
+        user_kb_mode = False
     elif kb.id == SYSTEM_TRAVEL_KB_ID:
         system_prompt = SYSTEM_PROMPT_TRAVEL
         include_travel_skill = True
         include_kb_skill = False
+        user_kb_mode = False
     else:
-        system_prompt = build_kb_system_prompt(
+        system_prompt = build_kb_reason_system_prompt(
             kb.name,
             kb.description or "",
             with_web_search=kb_web_search_enabled,
         )
         include_travel_skill = False
         include_kb_skill = True
+        user_kb_mode = True
 
     cost = CostTracker()
 
@@ -94,15 +103,32 @@ def build_graph(
     from functools import partial
 
     g = StateGraph(AgentState)
+    if user_kb_mode:
+        g.add_node(
+            "query_rewrite",
+            partial(
+                query_rewrite_node,
+                cost=cost,
+                kb_name=kb.name,
+                kb_description=kb.description or "",
+                llm_cfg=llm_cfg,
+            ),
+        )
+        g.add_node(
+            "kb_search",
+            partial(kb_search_node, registry=registry, emit=em),
+        )
+
     g.add_node(
-        "plan",
+        "reason",
         partial(
-            plan_node,
+            reason_node,
             registry=registry,
             cost=cost,
             system_prompt=system_prompt,
             include_travel_skill=include_travel_skill,
             include_kb_skill=include_kb_skill,
+            excluded_tool_names={"search_kb"} if user_kb_mode else set(),
             llm_cfg=llm_cfg,
         ),
     )
@@ -111,7 +137,13 @@ def build_graph(
         partial(call_tools_node, registry=registry, emit=em, llm_cfg=llm_cfg),
     )
 
-    g.set_entry_point("plan")
-    g.add_conditional_edges("plan", should_continue, {"tools": "call_tools", "end": END})
-    g.add_edge("call_tools", "plan")
+    if user_kb_mode:
+        g.set_entry_point("query_rewrite")
+        g.add_edge("query_rewrite", "kb_search")
+        g.add_edge("kb_search", "reason")
+    else:
+        g.set_entry_point("reason")
+
+    g.add_conditional_edges("reason", should_continue, {"tools": "call_tools", "end": END})
+    g.add_edge("call_tools", "reason")
     return g.compile(), cost
