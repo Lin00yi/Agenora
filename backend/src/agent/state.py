@@ -24,6 +24,9 @@ class AgentState(TypedDict, total=False):
     query_policy_reason: str                 # short machine-readable policy reason
     query_policy_source: str                 # rule | llm | fallback
     query_policy_latency_ms: int
+    prompt_injection_risk: str               # low | medium | high
+    prompt_injection_reasons: list[str]      # direct/indirect injection signals
+    rag_suspicious_chunks: int               # KB chunks removed before kb_context
     final_report: str | None
     iterations: int                          # plan loop guard
     cost_usd: float

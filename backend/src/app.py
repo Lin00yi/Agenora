@@ -36,7 +36,8 @@ from src.kb.models import KB
 from src.kb.routes import invitations_router
 from src.kb.routes import router as kb_router
 from src.safety.input_filter import sanitize_user_input
-from src.safety.output_filter import redact_pii
+from src.safety.output_filter import redact_sensitive_output
+from src.safety.prompt_injection import assess_prompt_injection
 from src.settings import get_settings
 from src.settings_user import (
     require_user_embedding,
@@ -167,6 +168,7 @@ def _run_chat_session(
     cleaned, blocked = sanitize_user_input(last_user_content)
     if blocked:
         raise HTTPException(status_code=400, detail=f"input_blocked: {blocked}")
+    prompt_guard = assess_prompt_injection(cleaned)
 
     full_messages = messages[:-1] + [{"role": "user", "content": cleaned}]
 
@@ -216,9 +218,12 @@ def _run_chat_session(
                 "messages": full_messages,
                 "iterations": 0,
                 "tool_call_log": [],
+                "prompt_injection_risk": prompt_guard.level,
+                "prompt_injection_reasons": prompt_guard.reasons,
+                "rag_suspicious_chunks": 0,
             }
             final_state = await graph.ainvoke(initial_state)
-            report = redact_pii(final_state.get("final_report") or "")
+            report = redact_sensitive_output(final_state.get("final_report") or "")
             await queue.put({"event": "report_start"})
             for piece in _chunks(report, size=8):
                 await queue.put({"event": "token", "text": piece})
