@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 from src.infra.crypto import decrypt
+from src.settings import get_settings
 
 if TYPE_CHECKING:
     from src.auth.models import User
@@ -105,6 +106,31 @@ def resolve_user_llm(user: "User") -> Optional[UserLLMConfig]:
         default_model=user.llm_default_model or "",
         complex_model=user.llm_complex_model or user.llm_default_model or "",
         context_window=int(getattr(user, "llm_context_window", None) or 16_000),
+    )
+
+
+def resolve_system_llm() -> Optional[UserLLMConfig]:
+    """Return env-backed LLM config, or None when the platform fallback is incomplete."""
+    s = get_settings()
+    if s.llm_provider == "deepseek":
+        provider = "openai-compat"
+        base_url = s.deepseek_base_url
+        api_key = s.deepseek_api_key
+    else:
+        provider = s.llm_provider
+        base_url = s.anthropic_base_url
+        api_key = s.anthropic_api_key
+
+    if not (provider and base_url and api_key and s.llm_default_model):
+        return None
+
+    return UserLLMConfig(
+        provider=provider,
+        base_url=base_url.rstrip("/"),
+        api_key=api_key,
+        default_model=s.llm_default_model,
+        complex_model=s.llm_complex_model or s.llm_default_model,
+        context_window=1_000_000,
     )
 
 

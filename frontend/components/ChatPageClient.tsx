@@ -15,6 +15,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import ThemeToggle from "@/components/ThemeToggle";
 import ExportActions from "@/components/ExportActions";
+import ModelSelect from "@/components/Select";
 import {
   ArrowUp,
   BookOpen,
@@ -2083,20 +2084,20 @@ function Composer({
               loading={contextStatusLoading}
             />
             {showModelSelector && (
-              <select
-                className="ak-control h-9 max-w-[190px] rounded-lg border border-white/10 bg-[#111c2b] px-3 text-sm text-slate-200 outline-none transition focus:border-brand/40 disabled:cursor-not-allowed disabled:opacity-50"
+              <ModelSelect
+                aria-label="\u6a21\u578b\u9009\u62e9"
+                className="ak-model-trigger h-9 min-w-[172px] max-w-[220px]"
+                contentAlign="end"
+                contentClassName="ak-model-content"
+                contentPosition="popper"
                 disabled={busy}
-                value={currentModel ?? ""}
-                onChange={(e) => onModelChange(e.target.value || null)}
+                onChange={(event) => onModelChange(event.target.value || null)}
+                options={visibleModelOptions.map((model) => ({ value: model, label: model }))}
+                placeholderOption={{ value: "", label: defaultModelLabel }}
+                size="sm"
                 title="\u6a21\u578b\u9009\u62e9"
-              >
-                <option value="">{defaultModelLabel}</option>
-                {visibleModelOptions.map((model) => (
-                  <option key={model} value={model}>
-                    {model}
-                  </option>
-                ))}
-              </select>
+                value={currentModel ?? ""}
+              />
             )}
           </div>
           {busy ? (

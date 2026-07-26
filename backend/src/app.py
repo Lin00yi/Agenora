@@ -44,6 +44,7 @@ from src.settings_user import (
     resolve_user_embedding,
     resolve_user_llm,
     resolve_user_reranker,
+    resolve_system_llm,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -174,11 +175,10 @@ def _run_chat_session(
     async def emit(evt: dict[str, Any]) -> None:
         await queue.put(evt)
 
-    # v2-M1: per-user LLM / embedding overrides. None = fall back to env.
-    llm_cfg = resolve_user_llm(user) if user is not None else None
-    # v3-M6: per-conversation model override — swap both default + complex on
-    # the resolved cfg so pick_model() / plan_node both pick up the choice
-    # without touching graph code.
+    # Per-user LLM wins; otherwise use the env-backed platform config.
+    llm_cfg = (resolve_user_llm(user) if user is not None else None) or resolve_system_llm()
+    # A per-conversation model override means "force this exact model".
+    # Automatic default/complex routing is used only when no override is set.
     if model_override and llm_cfg is not None:
         llm_cfg = dc_replace(
             llm_cfg, default_model=model_override, complex_model=model_override

@@ -38,6 +38,9 @@ type SelectProps = {
   disabled?: boolean;
   name?: string;
   className?: string;
+  contentClassName?: string;
+  contentAlign?: "start" | "center" | "end";
+  contentPosition?: "item-aligned" | "popper";
   id?: string;
   title?: string;
   "aria-label"?: string;
@@ -51,6 +54,9 @@ const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(
     size = "md",
     placeholderOption,
     className,
+    contentClassName,
+    contentAlign,
+    contentPosition,
     value,
     defaultValue,
     disabled,
@@ -92,7 +98,11 @@ const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(
       >
         <SelectValue placeholder={placeholderOption?.label ?? "请选择"} />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent
+        align={contentAlign}
+        className={contentClassName}
+        position={contentPosition}
+      >
         {allOptions.map((opt) => (
           <SelectItem key={toRadixValue(opt.value)} value={toRadixValue(opt.value)}>
             {opt.prefix ? `${opt.prefix} ${opt.label}` : opt.label}

@@ -409,6 +409,39 @@
     color: var(--chat-ink) !important;
   }
 
+  .ak-chat .ak-workspace .ak-model-trigger {
+    background: var(--chat-soft) !important;
+    border-color: var(--chat-line) !important;
+    color: var(--chat-ink) !important;
+  }
+  .ak-chat .ak-workspace .ak-model-trigger:hover,
+  .ak-chat .ak-workspace .ak-model-trigger[aria-expanded="true"] {
+    background: var(--chat-surface) !important;
+    border-color: color-mix(in srgb, var(--chat-accent) 36%, var(--chat-line)) !important;
+  }
+  .ak-chat .ak-workspace .ak-model-trigger:focus-visible {
+    border-color: color-mix(in srgb, var(--chat-accent) 58%, var(--chat-line)) !important;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--chat-accent) 18%, transparent) !important;
+  }
+
+  .ak-model-content {
+    width: 220px;
+    border-color: oklch(0.42 0.035 270 / 0.52) !important;
+    background: #101a2b !important;
+    color: #eef3ff !important;
+    box-shadow: 0 22px 54px rgb(0 0 0 / 0.34) !important;
+  }
+  .ak-model-content [data-slot="select-item"] {
+    color: #eef3ff !important;
+  }
+  .ak-model-content [data-slot="select-item"]:focus {
+    background: rgb(139 163 255 / 0.14) !important;
+    color: #eef3ff !important;
+  }
+  .ak-model-content [data-slot="select-item"][data-state="checked"] {
+    color: #9fb4ff !important;
+  }
+
   /* Only the sidebar launch area is refreshed. The recent-conversation list
      and account area intentionally remain on the existing sidebar treatment. */
   .ak-chat .ak-sidebar .ak-sidebar-top {
