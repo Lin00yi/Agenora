@@ -2048,7 +2048,7 @@ function Composer({
       : modelOptions;
   const showModelSelector = visibleModelOptions.length > 1;
   const defaultModelLabel = llmReady
-    ? "\u81ea\u52a8\u9009\u62e9\u6a21\u578b"
+    ? "auto"
     : "\u672a\u914d\u7f6e\u6a21\u578b";
 
   return (
