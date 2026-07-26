@@ -300,7 +300,7 @@ async def chat_post(
             require_user_embedding(user)
 
     if conv is not None:
-        user_llm_cfg = resolve_user_llm(user)
+        context_llm_cfg = (resolve_user_llm(user) if user is not None else None) or resolve_system_llm()
         user_memory_embedding_cfg = resolve_user_embedding(user)
         built = await build_context_for_conversation(
             session,
@@ -308,8 +308,8 @@ async def chat_post(
             user_id=user.id,
             model=selected_model,
             kb_id=conv.kb_id,
-            context_window=user_llm_cfg.context_window if user_llm_cfg is not None else None,
-            llm_cfg=user_llm_cfg,
+            context_window=context_llm_cfg.context_window if context_llm_cfg is not None else None,
+            llm_cfg=context_llm_cfg,
             embedding_cfg=user_memory_embedding_cfg,
         )
         messages = built.messages

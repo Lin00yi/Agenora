@@ -24,7 +24,7 @@ from src.conversations.context import (
 from src.conversations.models import Conversation, Message, UserMemory
 from src.infra.database import get_session
 from src.infra.llm import normalize_model_name
-from src.settings_user import resolve_user_embedding, resolve_user_llm
+from src.settings_user import resolve_system_llm, resolve_user_embedding, resolve_user_llm
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
@@ -283,7 +283,7 @@ async def get_conversation(
 ) -> dict:
     conv = await _load_owned_conversation(session, conv_id, user.id)
     payload = conv.to_dict_with_messages()
-    llm_cfg = resolve_user_llm(user)
+    llm_cfg = resolve_user_llm(user) or resolve_system_llm()
     payload["context_status"] = await _build_context_status(
         session, conv, context_window=llm_cfg.context_window if llm_cfg else None
     )
@@ -297,7 +297,7 @@ async def get_conversation_context_status(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     conv = await _load_owned_conversation(session, conv_id, user.id)
-    llm_cfg = resolve_user_llm(user)
+    llm_cfg = resolve_user_llm(user) or resolve_system_llm()
     return await _build_context_status(
         session, conv, context_window=llm_cfg.context_window if llm_cfg else None
     )

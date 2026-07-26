@@ -111,8 +111,21 @@ type ProcessStep = {
 
 type LlmSource = "user" | "system" | "missing";
 
-function estimateContextStatus(messages: Message[], model: string | null): ConversationContextStatus {
-  const window = CONTEXT_WINDOWS[model ?? ""] ?? DEFAULT_CONTEXT_WINDOW;
+function getContextWindowForModel(model: string | null, fallbackModels: string[] = []) {
+  if (model) return CONTEXT_WINDOWS[model] ?? DEFAULT_CONTEXT_WINDOW;
+  const fallbackWindow = Math.max(
+    ...fallbackModels.map((candidate) => CONTEXT_WINDOWS[candidate] ?? DEFAULT_CONTEXT_WINDOW),
+    DEFAULT_CONTEXT_WINDOW
+  );
+  return fallbackWindow;
+}
+
+function estimateContextStatus(
+  messages: Message[],
+  model: string | null,
+  fallbackModels: string[] = []
+): ConversationContextStatus {
+  const window = getContextWindowForModel(model, fallbackModels);
   const available = Math.max(4_000, window - CONTEXT_FIXED_RESERVE);
   const current = messages.reduce((total, message) => {
     const content = message.content ?? "";
@@ -234,12 +247,17 @@ export function ChatPage({
   const cleanupRef = useRef<(() => void) | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const modelOptionsRef = useRef<string[]>([]);
   const streamingRef = useRef<{
     convId: string;
     msgId: string;
     content: string;
     tools: ToolEvent[];
   } | null>(null);
+
+  useEffect(() => {
+    modelOptionsRef.current = modelOptions;
+  }, [modelOptions]);
 
   const sidebarConversations = useMemo(
     () => summaries.map((s) => summaryToConv(s, s.id === currentId ? currentMessages : [])),
@@ -275,7 +293,7 @@ export function ChatPage({
           );
         })
         .catch(() => {
-          setCurrentContextStatus(estimateContextStatus(cached, null));
+          setCurrentContextStatus(estimateContextStatus(cached, null, modelOptionsRef.current));
         })
         .finally(() => {
           setContextStatusLoading(false);
@@ -317,7 +335,9 @@ export function ChatPage({
         })
         .catch(() => {
           if (!detail.context_status) {
-            setCurrentContextStatus(estimateContextStatus(msgs, detail.llm_model));
+            setCurrentContextStatus(
+              estimateContextStatus(msgs, detail.llm_model, modelOptionsRef.current)
+            );
           }
         })
         .finally(() => {
@@ -774,7 +794,9 @@ export function ChatPage({
             })
             .catch(() => {
               const cachedMessages = messagesCache.current.get(snap.convId) ?? [];
-              setCurrentContextStatus(estimateContextStatus(cachedMessages, currentModel));
+              setCurrentContextStatus(
+                estimateContextStatus(cachedMessages, currentModel, modelOptionsRef.current)
+              );
             });
         } catch (e) {
           console.error("persist assistant failed", e);
