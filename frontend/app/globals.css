@@ -322,13 +322,15 @@
   .ak-chat .ak-workspace .ak-answer code { background: color-mix(in srgb, var(--chat-accent) 12%, transparent); color: var(--chat-ink) !important; }
 
   .ak-chat .ak-workspace .ak-message-user {
-    border: 1px solid color-mix(in srgb, var(--chat-accent) 30%, var(--chat-line));
-    background: color-mix(in srgb, var(--chat-accent) 12%, var(--chat-surface));
+    border: 1px solid color-mix(in srgb, var(--chat-accent) 26%, var(--chat-line)) !important;
+    background: color-mix(in srgb, var(--chat-accent) 10%, var(--chat-surface)) !important;
+    box-shadow: 0 8px 20px rgb(36 49 60 / 0.06);
     color: var(--chat-ink) !important;
   }
 
   .dark .ak-chat .ak-workspace .ak-message-user {
-    background: color-mix(in srgb, var(--chat-accent) 16%, var(--chat-surface));
+    background: color-mix(in srgb, var(--chat-accent) 14%, var(--chat-surface)) !important;
+    box-shadow: 0 12px 28px rgb(0 0 0 / 0.18);
   }
 
   .ak-chat .ak-workspace .text-emerald-300,
@@ -338,7 +340,7 @@
 
   .ak-chat .ak-workspace .ak-composer {
     background: color-mix(in srgb, var(--chat-canvas) 86%, transparent) !important;
-    border-top: 1px solid var(--chat-line) !important;
+    border-top: 0 !important;
   }
 
   .ak-chat .ak-workspace .ak-composer.ak-composer-centered {
@@ -467,11 +469,32 @@
     box-shadow: 0 8px 24px rgb(38 52 80 / 0.08) !important;
   }
   .ak-chat .ak-workspace .ak-send-button {
-    box-shadow: 0 10px 24px color-mix(in srgb, var(--chat-accent) 34%, transparent) !important;
+    background: var(--chat-ink) !important;
+    color: var(--chat-canvas) !important;
+    box-shadow: 0 8px 18px rgb(36 49 60 / 0.14) !important;
   }
   .ak-chat .ak-workspace .ak-send-button:not(:disabled):hover {
     transform: translateY(-1px);
-    filter: brightness(0.96);
+    box-shadow: 0 12px 24px rgb(36 49 60 / 0.18) !important;
+    filter: none;
+  }
+  .ak-chat .ak-workspace .ak-send-button:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--chat-accent) 70%, transparent);
+    outline-offset: 3px;
+  }
+  .ak-chat .ak-workspace .ak-send-button:disabled {
+    background: color-mix(in srgb, var(--chat-ink) 10%, var(--chat-surface)) !important;
+    color: var(--chat-muted) !important;
+    box-shadow: none !important;
+  }
+  .dark .ak-chat .ak-workspace .ak-send-button {
+    background: #eef3ff !important;
+    color: #0e1628 !important;
+    box-shadow: 0 12px 26px rgb(0 0 0 / 0.22) !important;
+  }
+  .dark .ak-chat .ak-workspace .ak-send-button:disabled {
+    background: color-mix(in srgb, #eef3ff 10%, var(--chat-surface)) !important;
+    color: var(--chat-muted) !important;
   }
 }
 

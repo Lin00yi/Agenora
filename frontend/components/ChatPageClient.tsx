@@ -16,7 +16,7 @@ import remarkGfm from "remark-gfm";
 import ThemeToggle from "@/components/ThemeToggle";
 import ExportActions from "@/components/ExportActions";
 import {
-  Box,
+  ArrowUp,
   BookOpen,
   Check,
   CheckCircle2,
@@ -33,7 +33,6 @@ import {
   Paperclip,
   Plus,
   Search,
-  Send,
   Settings,
   Shield,
   ShieldCheck,
@@ -149,6 +148,10 @@ function conversationHref(id: string) {
 function conversationIdFromPath(pathname: string) {
   const match = pathname.match(/^\/c\/([^/]+)$/);
   return match ? decodeURIComponent(match[1]) : null;
+}
+
+function uniqueStrings(values: Array<string | null | undefined>) {
+  return Array.from(new Set(values.filter((value): value is string => !!value)));
 }
 
 function serverMsgToLocal(m: MessagePayload): Message {
@@ -433,7 +436,12 @@ export function ChatPage({
           } else if (!cancelled && effectiveReady && effectiveSource === "system") {
             setLlmReady(true);
             setLlmSource("system");
-            setModelOptions(settings.llm.effective_model ? [settings.llm.effective_model] : []);
+            setModelOptions(
+              uniqueStrings([
+                settings.llm.effective_model,
+                settings.llm.effective_complex_model,
+              ])
+            );
           } else if (!cancelled) {
             setLlmReady(false);
             setLlmSource("missing");
@@ -1005,7 +1013,7 @@ export function ChatPage({
                       {currentMessages.length === 0 ? (
                         <EmptyWorkbench currentKbName={currentKb?.name ?? "\u901a\u7528\u5bf9\u8bdd"} onPick={handleSend} />
                       ) : (
-                        currentMessages.map((message) => <DarkMessage key={message.id} message={message} user={user} />)
+                        currentMessages.map((message) => <DarkMessage key={message.id} message={message} />)
                       )}
                     </div>
                   </div>
@@ -1099,9 +1107,9 @@ function ChatLoadingShell({
             </div>
             <div
               aria-hidden="true"
-              className="ak-composer shrink-0 border-t border-white/10 bg-[#08101c]/90 px-5 py-3 backdrop-blur-xl"
+              className="ak-composer shrink-0 bg-[#08101c]/90 px-5 py-3 backdrop-blur-xl"
             >
-              <div className="ak-composer-box mx-auto h-[105px] max-w-[820px] rounded-lg border border-white/12 bg-[#0d1726]/94 shadow-[0_18px_46px_rgba(0,0,0,0.32)]" />
+              <div className="ak-composer-box mx-auto h-[105px] max-w-[860px] rounded-lg border border-white/12 bg-[#0d1726]/94 shadow-[0_18px_46px_rgba(0,0,0,0.32)]" />
               <div className="mx-auto mt-2 h-4 w-48 rounded bg-white/[0.04]" />
             </div>
           </main>
@@ -1617,18 +1625,16 @@ function EmptyStat({ icon, label, value }: { icon: ReactNode; label: string; val
   );
 }
 
-function DarkMessage({ message, user }: { message: Message; user: User | null }) {
+function DarkMessage({ message }: { message: Message }) {
   if (message.role === "user") {
-    const userInitial = (user?.display_name?.[0] || user?.email?.[0] || "U").toUpperCase();
     return (
-      <div className="flex items-start justify-end gap-3">
-        <div className="flex max-w-[72%] flex-col items-end">
-          <div className="ak-message-user rounded-xl px-5 py-3 text-[15px] leading-7 shadow-[0_12px_34px_rgba(0,0,0,0.08)]">
+      <div className="flex items-start justify-end">
+        <div className="flex max-w-[78%] flex-col items-end">
+          <div className="ak-message-user max-w-full whitespace-pre-wrap break-words rounded-lg px-4 py-2.5 text-left text-[15px] leading-7 sm:px-5 sm:py-3">
             {message.content}
           </div>
-          <div className="mt-2 text-xs text-slate-500">{formatMessageTime(message.created_at)}</div>
+          <div className="mt-1.5 text-xs text-slate-500">{formatMessageTime(message.created_at)}</div>
         </div>
-        <Avatar label={userInitial} tone="user" />
       </div>
     );
   }
@@ -1637,10 +1643,9 @@ function DarkMessage({ message, user }: { message: Message; user: User | null })
   const hasContent = message.content.trim().length > 0;
 
   return (
-    <div className="flex items-start gap-4">
-      <Avatar label={<Box className="h-4 w-4" />} tone="assistant" />
+    <div className="flex items-start">
       <div className="min-w-0 flex-1">
-        <div className="ak-card ak-answer rounded-xl px-5 py-4">
+        <div className="ak-answer px-1 py-1 sm:px-2">
           {message.error && (
             <div className="mb-3 rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-200">
               {message.error}
@@ -1660,24 +1665,24 @@ function DarkMessage({ message, user }: { message: Message; user: User | null })
           {!hasContent && !streaming && !message.error && (
             <div className="text-sm text-slate-500">{"\u6682\u65e0\u5185\u5bb9"}</div>
           )}
-          {hasContent && (
-            <>
-              {message.tools.length > 0 && (
-                <div className="mt-4">
-                  <ThinkingChain events={message.tools} />
-                </div>
-              )}
-              <SourceStrip sources={buildMessageSources(message)} />
-              {!streaming && (
-                <ExportActions
-                  markdown={message.content}
-                  cost={message.cost_usd}
-                  reportId={`report-output-${message.id}`}
-                />
-              )}
-            </>
-          )}
         </div>
+        {hasContent && (
+          <>
+            {message.tools.length > 0 && (
+              <div className="mt-4">
+                <ThinkingChain events={message.tools} />
+              </div>
+            )}
+            <SourceStrip sources={buildMessageSources(message)} />
+            {!streaming && (
+              <ExportActions
+                markdown={message.content}
+                cost={message.cost_usd}
+                reportId={`report-output-${message.id}`}
+              />
+            )}
+          </>
+        )}
       </div>
     </div>
   );
@@ -1729,15 +1734,6 @@ function SourceStrip({ sources }: { sources: SourceRow[] }) {
             <div className="min-w-0 flex-1">
               <div className="truncate text-xs text-slate-200">{source.title}</div>
               <div className="truncate text-xs text-slate-500">{source.meta}</div>
-              {source.detail && source.detail.length > 0 && (
-                <div className="mt-1 space-y-0.5">
-                  {source.detail.map((item, index) => (
-                    <div className="truncate text-[11px] text-slate-500" key={`${item}-${index}`}>
-                      {item}
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           </div>
         ))}
@@ -1955,21 +1951,6 @@ function describeToolSummary(tools: ToolEvent[]) {
     .join("\u3001");
 }
 
-function Avatar({ label, tone }: { label: ReactNode; tone: "user" | "assistant" }) {
-  return (
-    <div
-      className={cn(
-        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-semibold shadow-lg",
-        tone === "user"
-          ? "bg-brand text-white"
-          : "border border-brand/30 bg-brand/10 text-brand"
-      )}
-    >
-      {label}
-    </div>
-  );
-}
-
 function SmallAction({
   label,
   icon,
@@ -2038,15 +2019,18 @@ function Composer({
   onModelChange: (model: string | null) => void;
   centered?: boolean;
 }) {
+  const visibleModelOptions =
+    currentModel && !modelOptions.includes(currentModel)
+      ? [currentModel, ...modelOptions]
+      : modelOptions;
+  const showModelSelector = visibleModelOptions.length > 1;
   const defaultModelLabel = llmReady
-    ? llmSource === "system"
-      ? "\u7cfb\u7edf\u9ed8\u8ba4\u6a21\u578b"
-      : "\u9ed8\u8ba4\u6a21\u578b"
+    ? "\u81ea\u52a8\u9009\u62e9\u6a21\u578b"
     : "\u672a\u914d\u7f6e\u6a21\u578b";
 
   return (
-    <div className={cn("ak-composer", centered ? "ak-composer-centered mt-6 px-0 pb-8" : "shrink-0 border-t border-white/10 bg-[#08101c]/90 px-5 py-3 backdrop-blur-xl")}>
-      <div className="ak-composer-box mx-auto max-w-[820px] rounded-lg border border-white/12 bg-[#0d1726]/94 shadow-[0_18px_46px_rgba(0,0,0,0.32)] focus-within:border-brand/40">
+    <div className={cn("ak-composer", centered ? "ak-composer-centered mt-6 px-0 pb-8" : "shrink-0 bg-[#08101c]/90 px-5 py-3 backdrop-blur-xl")}>
+      <div className="ak-composer-box mx-auto max-w-[860px] rounded-lg border border-white/12 bg-[#0d1726]/94 shadow-[0_18px_46px_rgba(0,0,0,0.32)] focus-within:border-brand/40">
         <textarea
           ref={textareaRef}
           value={value}
@@ -2063,7 +2047,7 @@ function Composer({
           placeholder="向当前会话提问，知识库会随会话锁定"
           className={cn("block max-h-[160px] w-full resize-none bg-transparent px-5 py-4 text-[15px] leading-6 text-slate-100 outline-none placeholder:text-slate-500", centered ? "min-h-[112px] text-base" : "min-h-[44px] px-4 py-3")}
         />
-        <div className="flex flex-wrap items-center gap-2 border-t border-white/8 px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2 px-3 pb-3 pt-1">
           <div
             className="ak-control inline-flex h-9 max-w-[240px] items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-slate-300"
             title={kbLocked ? "当前会话已有消息，知识库已锁定" : "选择通用聊天或知识库"}
@@ -2098,20 +2082,22 @@ function Composer({
               contextStatus={contextStatus}
               loading={contextStatusLoading}
             />
-            <select
-              className="ak-control h-9 max-w-[190px] rounded-lg border border-white/10 bg-[#111c2b] px-3 text-sm text-slate-200 outline-none transition focus:border-brand/40 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={busy || modelOptions.length === 0}
-              value={currentModel ?? ""}
-              onChange={(e) => onModelChange(e.target.value || null)}
-              title={modelOptions.length > 0 ? "\u6a21\u578b\u9009\u62e9" : "\u8bf7\u5148\u5728\u8bbe\u7f6e\u4e2d\u914d\u7f6e\u6a21\u578b"}
-            >
-              <option value="">{defaultModelLabel}</option>
-              {modelOptions.map((model) => (
-                <option key={model} value={model}>
-                  {model}
-                </option>
-              ))}
-            </select>
+            {showModelSelector && (
+              <select
+                className="ak-control h-9 max-w-[190px] rounded-lg border border-white/10 bg-[#111c2b] px-3 text-sm text-slate-200 outline-none transition focus:border-brand/40 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={busy}
+                value={currentModel ?? ""}
+                onChange={(e) => onModelChange(e.target.value || null)}
+                title="\u6a21\u578b\u9009\u62e9"
+              >
+                <option value="">{defaultModelLabel}</option>
+                {visibleModelOptions.map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
           {busy ? (
             <button
@@ -2126,7 +2112,7 @@ function Composer({
             </button>
           ) : (
             <button
-              className="ak-control-primary ak-send-button ak-press inline-flex size-10 items-center justify-center rounded-full bg-brand text-white disabled:cursor-not-allowed disabled:opacity-45"
+              className="ak-send-button ak-press inline-flex size-9 items-center justify-center rounded-full transition disabled:cursor-not-allowed"
               aria-label="发送消息"
               data-testid="composer-send"
               disabled={!value.trim()}
@@ -2134,7 +2120,7 @@ function Composer({
               title="发送消息"
               type="button"
             >
-              <Send className="h-4 w-4" />
+              <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
             </button>
           )}
         </div>

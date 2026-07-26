@@ -151,6 +151,13 @@ def _to_public(user: User) -> dict:
                 if effective_llm_source == "system"
                 else None
             ),
+            "effective_complex_model": (
+                normalize_model_name(user.llm_complex_model or user.llm_default_model)
+                if user_llm_configured
+                else normalize_model_name(s.llm_complex_model or s.llm_default_model)
+                if effective_llm_source == "system"
+                else None
+            ),
         },
         "embedding": {
             "provider": user.embedding_provider,

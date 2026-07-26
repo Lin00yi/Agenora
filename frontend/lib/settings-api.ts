@@ -24,6 +24,7 @@ export type MyLLMSettings = {
   effective_configured?: boolean;
   effective_source?: "user" | "system" | "missing";
   effective_model?: string | null;
+  effective_complex_model?: string | null;
 };
 
 export type MyEmbeddingSettings = {
