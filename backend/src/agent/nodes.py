@@ -996,6 +996,10 @@ async def call_tools_node(
     async def _run(tc: dict[str, Any]) -> dict[str, Any]:
         name = tc["name"]
         args = tc.get("input") or {}
+        if name == "generate_travel_report" and "date" in args:
+            from src.tools.weather import normalize_weather_date
+
+            args = {**args, "date": normalize_weather_date(str(args.get("date") or ""))}
         if tc["id"] in blocked_tool_call_ids:
             reason = blocked_tool_call_ids[tc["id"]]
             await emit(

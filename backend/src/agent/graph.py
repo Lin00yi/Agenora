@@ -15,8 +15,8 @@ from src.agent.nodes import (
 )
 from src.agent.prompts import (
     SYSTEM_PROMPT_GENERAL,
-    SYSTEM_PROMPT_TRAVEL,
     build_kb_reason_system_prompt,
+    build_travel_system_prompt,
 )
 from src.agent.state import AgentState
 from src.infra.llm import CostTracker
@@ -79,7 +79,7 @@ def build_graph(
         include_kb_skill = False
         user_kb_mode = False
     elif kb.id == SYSTEM_TRAVEL_KB_ID:
-        system_prompt = SYSTEM_PROMPT_TRAVEL
+        system_prompt = build_travel_system_prompt()
         include_travel_skill = True
         include_kb_skill = False
         user_kb_mode = False

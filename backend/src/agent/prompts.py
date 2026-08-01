@@ -1,4 +1,8 @@
 """System prompts for the agent — general / travel (legacy) / KB modes."""
+from __future__ import annotations
+
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 # v2-M4 (2026-05-17): unbound state used to fall back to travel mode. Now it
 # routes to this neutral assistant prompt — plain chat with no business tools.
@@ -58,6 +62,37 @@ v1 仅 4 城市本地策展数据: 上海、北京、成都、杭州。
 # 输出
 不要解释你在做什么，**直接调用 tool**。文本只在最后总结时输出（不超过 2 句）。
 """
+
+def build_travel_system_prompt(
+    *,
+    now: datetime | None = None,
+    timezone: str = "Asia/Shanghai",
+) -> str:
+    """Append server-side date context so relative travel dates are deterministic."""
+    try:
+        tz = ZoneInfo(timezone)
+    except ZoneInfoNotFoundError:
+        timezone = "Asia/Shanghai"
+        tz = ZoneInfo(timezone)
+
+    current = (now.astimezone(tz) if now else datetime.now(tz)).date()
+
+    def plus(days: int) -> date:
+        return current + timedelta(days=days)
+
+    return f"""{SYSTEM_PROMPT_TRAVEL}
+
+# 当前日期上下文
+- 当前日期: {current.isoformat()}
+- 当前时区: {timezone}
+- 今天 = {plus(0).isoformat()}
+- 明天 = {plus(1).isoformat()}
+- 后天 = {plus(2).isoformat()}
+- 大后天 = {plus(3).isoformat()}
+- 用户说“今天/明天/后天/大后天”等相对日期时，必须先换算成具体 YYYY-MM-DD，再调用 get_weather 或 generate_travel_report。
+- 不要为了判断相对日期对应哪一天调用 web_search；日期由本服务端上下文决定。
+"""
+
 
 # Legacy alias — earlier code imported this as SYSTEM_PROMPT.
 SYSTEM_PROMPT = SYSTEM_PROMPT_TRAVEL

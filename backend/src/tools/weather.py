@@ -1,10 +1,59 @@
 """Weather tool — calls QWeather v7/weather/3d."""
 from __future__ import annotations
 
+import re
+from datetime import date as Date, datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 import httpx
 
 from src.settings import get_settings
 from src.tools.base import Tool, ToolResult
+
+DEFAULT_TRAVEL_TIMEZONE = "Asia/Shanghai"
+
+
+def _today(timezone: str = DEFAULT_TRAVEL_TIMEZONE) -> Date:
+    try:
+        tz = ZoneInfo(timezone)
+    except ZoneInfoNotFoundError:
+        tz = ZoneInfo(DEFAULT_TRAVEL_TIMEZONE)
+    return datetime.now(tz).date()
+
+
+def normalize_weather_date(value: str, *, today: Date | None = None) -> str:
+    """Normalize relative travel dates to YYYY-MM-DD.
+
+    The model is instructed to pass ISO dates, but this keeps get_weather
+    deterministic when it still passes terms like "明天".
+    """
+    raw = (value or "").strip()
+    if not raw:
+        return raw
+
+    iso = re.search(r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})", raw)
+    if iso:
+        year, month, day = (int(part) for part in iso.groups())
+        return Date(year, month, day).isoformat()
+
+    compact = re.sub(r"\s+", "", raw).lower()
+    base = today or _today()
+    offsets = {
+        "today": 0,
+        "今天": 0,
+        "tomorrow": 1,
+        "明天": 1,
+        "后天": 2,
+        "後天": 2,
+        "大后天": 3,
+        "大後天": 3,
+    }
+    for key in ("大后天", "大後天", "tomorrow", "today", "后天", "後天", "明天", "今天"):
+        if key in compact:
+            return (base + timedelta(days=offsets[key])).isoformat()
+
+    return raw
+
 
 # Common city → location ID (QWeather LocationID). Extend as needed.
 CITY_TO_LOCATION = {
@@ -30,6 +79,7 @@ class WeatherTool(Tool):
     }
 
     async def execute(self, city: str, date: str) -> ToolResult:
+        date = normalize_weather_date(date)
         s = get_settings()
         location = CITY_TO_LOCATION.get(city)
         if not location:
