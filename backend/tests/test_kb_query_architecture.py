@@ -343,7 +343,7 @@ async def test_reason_node_can_hide_search_kb_schema(
     fake_client = SimpleNamespace(
         chat=SimpleNamespace(completions=FakeCompletions())
     )
-    monkeypatch.setattr("src.agent.nodes.get_client", lambda cfg=None: fake_client)
+    monkeypatch.setattr("src.infra.llm_adapters.get_client", lambda cfg=None: fake_client)
 
     registry = ToolRegistry()
     registry.register(RecordingKBSearchTool())

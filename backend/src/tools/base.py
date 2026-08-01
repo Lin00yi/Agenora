@@ -4,7 +4,25 @@ from __future__ import annotations
 import abc
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, NotRequired, TypedDict
+
+
+class JsonSchema(TypedDict, total=False):
+    type: str
+    properties: dict[str, Any]
+    required: list[str]
+
+
+class ToolSchema(TypedDict):
+    name: str
+    description: str
+    input_schema: JsonSchema | dict[str, Any]
+
+
+class ToolRuntimeOptions(TypedDict, total=False):
+    final_result: bool
+    skill_name: str
+    metadata: NotRequired[dict[str, Any]]
 
 
 @dataclass
@@ -23,12 +41,16 @@ class Tool(abc.ABC):
     @abc.abstractmethod
     async def execute(self, **kwargs: Any) -> ToolResult: ...
 
-    def to_anthropic(self) -> dict[str, Any]:
+    def to_schema(self) -> ToolSchema:
         return {
             "name": self.name,
             "description": self.description,
             "input_schema": self.input_schema,
         }
+
+    def to_anthropic(self) -> ToolSchema:
+        """Backward-compatible alias for the canonical internal schema."""
+        return self.to_schema()
 
 
 class ToolRegistry:
@@ -44,8 +66,8 @@ class ToolRegistry:
     def get(self, name: str) -> Tool | None:
         return self._tools.get(name)
 
-    def all_schemas(self) -> list[dict[str, Any]]:
-        return [t.to_anthropic() for t in self._tools.values()]
+    def all_schemas(self) -> list[ToolSchema]:
+        return [t.to_schema() for t in self._tools.values()]
 
     async def call(self, name: str, args: dict[str, Any]) -> ToolResult:
         tool = self.get(name)
@@ -68,6 +90,7 @@ def build_default_registry(
     embedding_cfg=None,
     *,
     reranker_cfg=None,
+    llm_cfg=None,
     user_kb_web_search_enabled: bool = False,
 ) -> ToolRegistry:
     """Build the agent's tool set based on which KB (if any) is active.
@@ -112,17 +135,21 @@ def build_default_registry(
     if kb.id == SYSTEM_TRAVEL_KB_ID:
         from src.tools.amap_fallback import AmapFallbackTool
         from src.tools.restaurant_rag import RestaurantRagTool
+        from src.tools.skill_report import make_travel_report_tool
         from src.tools.weather import WeatherTool
 
         reg.register(WeatherTool())
         reg.register(RestaurantRagTool())
         reg.register(AmapFallbackTool())
+        reg.register(make_travel_report_tool(llm_cfg=llm_cfg))
         return reg
 
     # User-created KB — search_kb plus optional tighter web_search fallback.
     from src.tools.kb_search import KBSearchTool
+    from src.tools.skill_report import make_kb_report_tool
 
     reg.register(KBSearchTool(kb=kb, embedding_cfg=embedding_cfg, reranker_cfg=reranker_cfg))
+    reg.register(make_kb_report_tool(llm_cfg=llm_cfg))
     if user_kb_web_search_enabled:
         from src.tools.web_search import WebSearchTool
 

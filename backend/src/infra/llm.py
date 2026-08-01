@@ -1,7 +1,6 @@
 """LLM client wrapper supporting Anthropic and OpenAI-compatible providers."""
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -121,72 +120,3 @@ def with_cache_control(blocks: list[dict], cfg: "UserLLMConfig | None" = None) -
     out[-1]["cache_control"] = {"type": "ephemeral"}
     return out
 
-
-def convert_to_openai_format(messages: list[dict], tools: list[dict]) -> tuple[str, list[dict], list[dict]]:
-    """Convert Anthropic-style messages to OpenAI format."""
-    # Extract system from first message if present
-    system = ""
-    openai_messages = []
-    for msg in messages:
-        role = msg.get("role")
-        content = msg.get("content", "")
-
-        if role == "system":
-            if isinstance(content, list):
-                system = " ".join(b.get("text", "") for b in content if isinstance(b, dict))
-            else:
-                system = content
-            continue
-
-        # Convert content blocks to OpenAI format
-        if isinstance(content, list):
-            text_parts = []
-            tool_calls = []
-            for block in content:
-                if isinstance(block, dict):
-                    if block.get("type") == "text":
-                        text_parts.append(block.get("text", ""))
-                    elif block.get("type") == "tool_use":
-                        tool_calls.append({
-                            "id": block.get("id"),
-                            "type": "function",
-                            "function": {
-                                "name": block.get("name"),
-                                # OpenAI-compatible APIs require this field to
-                                # be a JSON string. ``str(dict)`` produces
-                                # Python single-quoted syntax and makes the
-                                # next model call fail after a tool round-trip.
-                                "arguments": json.dumps(
-                                    block.get("input", {}), ensure_ascii=False
-                                )
-                            }
-                        })
-                    elif block.get("type") == "tool_result":
-                        # Tool result becomes a tool message
-                        openai_messages.append({
-                            "role": "tool",
-                            "tool_call_id": block.get("tool_use_id"),
-                            "content": block.get("content", "")
-                        })
-                        continue
-
-            msg_dict = {"role": role, "content": " ".join(text_parts) if text_parts else ""}
-            if tool_calls:
-                msg_dict["tool_calls"] = tool_calls
-            openai_messages.append(msg_dict)
-        else:
-            openai_messages.append({"role": role, "content": content})
-
-    # Convert tools to OpenAI format
-    openai_tools = []
-    for tool in tools:
-        openai_tools.append({
-            "type": "function",
-            "function": {
-                "name": tool.get("name"),
-                "description": tool.get("description"),
-                "parameters": tool.get("input_schema", {})
-            }
-        })
-
-    return system, openai_messages, openai_tools

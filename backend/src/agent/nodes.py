@@ -15,10 +15,10 @@ from src.conversations.context import (
     estimate_tokens,
     truncate_text_to_token_budget,
 )
-from src.infra.llm import CostTracker, get_client, pick_model, with_cache_control, convert_to_openai_format
+from src.infra.llm import CostTracker, get_client, pick_model, with_cache_control
+from src.infra.llm_adapters import create_tool_adapter
 from src.safety.tool_guard import is_tool_allowed
 from src.safety.prompt_injection import assess_prompt_injection, filter_untrusted_rag_text
-from src.skills.loader import invoke_skill
 from src.tools.base import ToolRegistry
 
 if TYPE_CHECKING:
@@ -683,8 +683,6 @@ async def reason_node(
     system_prompt + the generic `generate_kb_report` skill (v2-M8); travel
     KB gets `generate_travel_report`. Unbound chat mounts neither.
     """
-    from src.settings import get_settings
-
     # Early exit if final_report already set (by skill_report from prev tool wave)
     if state.get("final_report"):
         return {**state, "pending_tool_calls": []}
@@ -727,11 +725,10 @@ async def reason_node(
             f"{kb_context}\n"
             "</kb_context>\n"
         )
-    extra: list[dict[str, Any]] = []
-    if include_travel_skill:
-        extra.append(_skill_tool_schema())
-    if include_kb_skill:
-        extra.append(_kb_skill_tool_schema())
+    # Skill-backed report generators are now first-class registry tools. The
+    # include_* flags remain in the signature for older tests/callers, but the
+    # active tool surface is derived from the registry only.
+    _ = (include_travel_skill, include_kb_skill)
     excluded_tool_names = set(excluded_tool_names or set())
     if prompt_risk == "high":
         excluded_tool_names.add("web_search")
@@ -739,7 +736,7 @@ async def reason_node(
         schema
         for schema in registry.all_schemas()
         if schema.get("name") not in excluded_tool_names
-    ] + extra
+    ]
     model = pick_model(messages, tools_schema, llm_cfg)
     provider_messages = allocate_provider_context(
         model=model,
@@ -750,79 +747,19 @@ async def reason_node(
             getattr(llm_cfg, "context_window", None) if llm_cfg is not None else None
         ),
     )
-    client = get_client(llm_cfg)
+    adapter = create_tool_adapter(llm_cfg)
+    resp = await adapter.chat_with_tools(
+        model=model,
+        system_prompt=effective_system_prompt,
+        messages=provider_messages,
+        tools=tools_schema,
+        max_tokens=2048,
+    )
+    cost.add(model, resp.usage)
 
-    # Decide API shape: anthropic vs openai-compat. User cfg wins; env fallback otherwise.
-    if llm_cfg is not None:
-        is_anthropic = llm_cfg.provider == "anthropic"
-    else:
-        is_anthropic = get_settings().llm_provider == "anthropic"
-
-    if not is_anthropic:
-        # OpenAI-compatible (DeepSeek, OpenAI, vLLM, Together, Groq, LMStudio, etc.)
-        _, openai_messages, openai_tools = convert_to_openai_format(
-            provider_messages, tools_schema
-        )
-        resp = await client.chat.completions.create(
-            model=model,
-            messages=[{"role": "system", "content": effective_system_prompt}] + openai_messages,
-            tools=openai_tools if openai_tools else None,
-            max_tokens=2048,
-        )
-        cost.add(model, resp.usage)
-
-        choice = resp.choices[0]
-        text_parts: list[str] = []
-        tool_calls: list[dict[str, Any]] = []
-
-        if choice.message.content:
-            text_parts.append(choice.message.content)
-
-        if choice.message.tool_calls:
-            for tc in choice.message.tool_calls:
-                import json
-                tool_calls.append({
-                    "id": tc.id,
-                    "name": tc.function.name,
-                    "input": json.loads(tc.function.arguments) if tc.function.arguments else {}
-                })
-
-        # Build assistant message for history
-        assistant_content = []
-        if text_parts:
-            assistant_content.append({"type": "text", "text": " ".join(text_parts)})
-        for tc in tool_calls:
-            assistant_content.append({
-                "type": "tool_use",
-                "id": tc["id"],
-                "name": tc["name"],
-                "input": tc["input"]
-            })
-    else:
-        # Anthropic API
-        system_blocks = with_cache_control(
-            [{"type": "text", "text": effective_system_prompt}], llm_cfg
-        )
-        resp = await client.messages.create(
-            model=model,
-            max_tokens=2048,
-            system=system_blocks,
-            messages=provider_messages,
-            tools=tools_schema,
-        )
-        cost.add(model, resp.usage)
-
-        text_parts: list[str] = []
-        tool_calls: list[dict[str, Any]] = []
-        for block in resp.content:
-            if block.type == "text":
-                text_parts.append(block.text)
-            elif block.type == "tool_use":
-                tool_calls.append({"id": block.id, "name": block.name, "input": block.input})
-
-        assistant_content = [
-            b.model_dump() if hasattr(b, "model_dump") else dict(b) for b in resp.content
-        ]
+    text_parts = resp.text_parts
+    tool_calls = [tc.as_state() for tc in resp.tool_calls]
+    assistant_content = resp.assistant_content
 
     new_messages = messages + [{"role": "assistant", "content": assistant_content}]
     final_report: str | None = state.get("final_report")
@@ -981,6 +918,7 @@ async def call_tools_node(
     pending = state.get("pending_tool_calls", [])
     if not pending:
         return state
+    _ = llm_cfg
 
     blocked_tool_call_ids: dict[str, str] = {}
     search_kb_calls = 0
@@ -996,10 +934,6 @@ async def call_tools_node(
     async def _run(tc: dict[str, Any]) -> dict[str, Any]:
         name = tc["name"]
         args = tc.get("input") or {}
-        if name == "generate_travel_report" and "date" in args:
-            from src.tools.weather import normalize_weather_date
-
-            args = {**args, "date": normalize_weather_date(str(args.get("date") or ""))}
         if tc["id"] in blocked_tool_call_ids:
             reason = blocked_tool_call_ids[tc["id"]]
             await emit(
@@ -1020,7 +954,7 @@ async def call_tools_node(
 
         ok, reason = is_tool_allowed(
             name,
-            registry.names() + ["generate_travel_report", "generate_kb_report"],
+            registry.names(),
         )
         if not ok:
             await emit(
@@ -1040,20 +974,6 @@ async def call_tools_node(
             }
         await emit({"event": "tool_start", "id": tc["id"], "name": name, "input": args})
 
-        if name == "generate_travel_report":
-            text = await invoke_skill("travel_report", args, llm_cfg=llm_cfg)
-            await emit(
-                {"event": "tool_end", "id": tc["id"], "name": name, "latency_ms": 0, "ok": True}
-            )
-            return {"type": "tool_result", "tool_use_id": tc["id"], "content": text}
-
-        if name == "generate_kb_report":
-            text = await invoke_skill("general_report", args, llm_cfg=llm_cfg)
-            await emit(
-                {"event": "tool_end", "id": tc["id"], "name": name, "latency_ms": 0, "ok": True}
-            )
-            return {"type": "tool_result", "tool_use_id": tc["id"], "content": text}
-
         result = await registry.call(name, args)
         await emit(
             {
@@ -1070,6 +990,7 @@ async def call_tools_node(
             "tool_use_id": tc["id"],
             "content": result.text if result.error is None else f"[tool error] {result.error}",
             "is_error": result.error is not None,
+            "raw": result.raw,
         }
 
     results = await asyncio.gather(*[_run(tc) for tc in pending])
@@ -1090,15 +1011,13 @@ async def call_tools_node(
     messages = list(state.get("messages") or [])
     messages.append({"role": "user", "content": results})
 
-    # If a report skill was called, treat its result as final_report.
-    skill_names = {"generate_travel_report", "generate_kb_report"}
-    skill_call = next((p for p in pending if p["name"] in skill_names), None)
     final_report = state.get("final_report")
-    if skill_call:
-        for r in results:
-            if r["tool_use_id"] == skill_call["id"] and not r.get("is_error"):
-                final_report = r["content"]
-                break
+    for r in results:
+        raw = r.get("raw")
+        is_final_tool = isinstance(raw, dict) and bool(raw.get("final_result"))
+        if is_final_tool and not r.get("is_error"):
+            final_report = r["content"]
+            break
 
     return {
         **state,

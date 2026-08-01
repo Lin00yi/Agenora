@@ -70,6 +70,7 @@ def build_graph(
             kb=kb,
             embedding_cfg=embedding_cfg,
             reranker_cfg=reranker_cfg,
+            llm_cfg=llm_cfg,
             user_kb_web_search_enabled=kb_web_search_enabled,
         )
 

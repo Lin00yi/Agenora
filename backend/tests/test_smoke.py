@@ -52,6 +52,35 @@ def test_travel_kb_registry_has_travel_tools():
     assert "get_weather" in names
     assert "search_restaurant_kb" in names
     assert "amap_search" in names
+    assert "generate_travel_report" in names
+
+
+def test_user_kb_registry_has_kb_report_tool():
+    from types import SimpleNamespace
+
+    kb = SimpleNamespace(
+        id="user-kb",
+        name="User KB",
+        description="",
+        collection_name="kb_user",
+        is_system=False,
+        grouping_enabled=False,
+    )
+    names = build_default_registry(kb).names()
+    assert "search_kb" in names
+    assert "generate_kb_report" in names
+
+
+def test_web_search_provider_defaults_to_duckduckgo(monkeypatch):
+    from src.settings import get_settings
+    from src.tools.search_providers import DuckDuckGoSearchProvider, get_search_provider
+
+    monkeypatch.setenv("WEB_SEARCH_PROVIDER", "duckduckgo")
+    get_settings.cache_clear()
+    try:
+        assert isinstance(get_search_provider(), DuckDuckGoSearchProvider)
+    finally:
+        get_settings.cache_clear()
 
 
 def test_weather_date_normalization_handles_relative_dates():

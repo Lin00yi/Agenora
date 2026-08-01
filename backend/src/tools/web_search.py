@@ -1,24 +1,11 @@
-"""web_search — DuckDuckGo (no API key required) general-purpose web search.
-
-Mounted in two places (v2-M6):
-- Unbound chat mode (v2-M5): WebSearchTool() with default=5, cap=10 — agent is
-  the primary information source so web is liberal.
-- KB+web mode (v2-M6, opt-in per user): WebSearchTool(default=3, cap=5) — KB
-  chunks are the primary source so web is just a tighter fallback.
-
-Implementation notes:
-- `ddgs` (formerly `duckduckgo-search`) is a sync iterator-based client. We
-  wrap each call in `asyncio.to_thread` so we don't block the event loop.
-- No retry / cache layers — `ddgs` retries internally, and individual dev
-  workloads don't approach the limit. Add a layer if production usage hits
-  rate limits.
-"""
+"""web_search general-purpose web search tool."""
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
+from src.settings import get_settings
 from src.tools.base import Tool, ToolResult
+from src.tools.search_providers import get_search_provider
 
 
 class WebSearchTool(Tool):
@@ -32,19 +19,20 @@ class WebSearchTool(Tool):
     ) -> None:
         """Per-mount config.
 
-        - max_results_default: value used when LLM omits max_results (also what
-          gets advertised in the schema's `default`).
-        - max_results_cap: hard upper bound; LLM can't ask for more (clamp +
-          schema `maximum`).
+        - max_results_default: used when the LLM omits max_results.
+        - max_results_cap: hard upper bound advertised in schema and enforced
+          again at execution time.
         """
         self._default = max(1, int(max_results_default))
         self._cap = max(self._default, int(max_results_cap))
-        # Recompute per-instance description + input_schema so the LLM sees the
-        # tighter limits in the KB mode mount.
+        self._provider_name = (
+            get_settings().web_search_provider or "duckduckgo"
+        ).strip().lower()
         self.description = (
             "搜索互联网获取实时信息或模型预训练之外的事实。"
             "适合查询：最新新闻、近期数据、长尾事实、模型不掌握的内容。"
-            f"返回最多 {self._cap} 条结果（默认 {self._default}），每条含标题、URL、摘要。"
+            f"当前搜索提供方：{self._provider_name}。"
+            f"返回最大 {self._cap} 条结果（默认 {self._default}），每条含标题、URL、摘要。"
             "回答用户时必须在内容中标注引用的 URL 来源。"
         )
         self.input_schema: dict[str, Any] = {
@@ -66,7 +54,6 @@ class WebSearchTool(Tool):
         }
 
     async def execute(self, query: str, max_results: int | None = None) -> ToolResult:
-        # Clamp max_results defensively; LLMs sometimes pass strings or out-of-range ints.
         if max_results is None:
             n = self._default
         else:
@@ -75,14 +62,9 @@ class WebSearchTool(Tool):
             except (TypeError, ValueError):
                 n = self._default
 
-        def _run() -> list[dict]:
-            from ddgs import DDGS
-
-            with DDGS() as ddgs:
-                return list(ddgs.text(query, max_results=n))
-
         try:
-            results = await asyncio.to_thread(_run)
+            provider = get_search_provider()
+            results = await provider.search(query, max_results=n)
         except Exception as exc:  # noqa: BLE001
             return ToolResult(text="", latency_ms=0, error=f"web_search failed: {exc}")
 
@@ -90,18 +72,22 @@ class WebSearchTool(Tool):
             return ToolResult(
                 text=f"未找到关于 '{query}' 的网络结果。",
                 latency_ms=0,
-                raw={"count": 0, "query": query},
+                raw={"count": 0, "query": query, "provider": self._provider_name},
             )
 
         lines: list[str] = []
-        for i, r in enumerate(results, 1):
-            title = (r.get("title") or "").strip()[:120]
-            url = (r.get("href") or r.get("url") or "").strip()
-            body = (r.get("body") or "").strip()[:240]
+        for i, result in enumerate(results, 1):
+            title = result.title.strip()[:120]
+            url = result.url.strip()
+            body = result.body.strip()[:240]
             lines.append(f"[{i}] {title}\n    URL: {url}\n    摘要: {body}")
 
         return ToolResult(
             text="\n\n".join(lines),
             latency_ms=0,
-            raw={"count": len(results), "query": query},
+            raw={
+                "count": len(results),
+                "query": query,
+                "provider": provider.name,
+            },
         )

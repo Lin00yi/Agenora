@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     # ===== Tools =====
     qweather_api_key: str = ""
     amap_api_key: str = ""
+    web_search_provider: str = "duckduckgo"  # duckduckgo | brave | bing | tavily
+    brave_search_api_key: str = ""
+    bing_search_api_key: str = ""
+    tavily_api_key: str = ""
 
     # ===== Vector store (decoupled: factory picks impl by VECTOR_STORE) =====
     vector_store: str = "qdrant"  # qdrant | milvus | local

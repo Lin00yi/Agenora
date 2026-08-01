@@ -134,7 +134,7 @@ async def test_reason_node_adds_guard_and_hides_web_search(
             )
 
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
-    monkeypatch.setattr("src.agent.nodes.get_client", lambda cfg=None: fake_client)
+    monkeypatch.setattr("src.infra.llm_adapters.get_client", lambda cfg=None: fake_client)
 
     registry = ToolRegistry()
     registry.register(StaticWebTool())

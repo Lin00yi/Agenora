@@ -25,7 +25,8 @@ from src.conversations.context import (
     trim_messages_to_token_budget,
 )
 from src.conversations.models import Conversation, Message, UserMemory
-from src.infra.llm import CostTracker, convert_to_openai_format, normalize_model_name
+from src.infra.llm import CostTracker, normalize_model_name
+from src.infra.llm_adapters import convert_to_openai_format
 
 
 def test_retired_deepseek_chat_alias_is_normalized_before_a_request() -> None:
@@ -97,7 +98,7 @@ def test_client_supplied_system_message_is_not_promoted_to_system_prompt() -> No
 @pytest.mark.asyncio
 async def test_openai_request_receives_merged_context_in_its_only_system_message(monkeypatch) -> None:
     """OpenAI-compatible requests must not silently discard saved context."""
-    from src.agent import nodes
+    from src.infra import llm_adapters
     from src.tools.base import ToolRegistry
 
     captured: dict = {}
@@ -110,7 +111,7 @@ async def test_openai_request_receives_merged_context_in_its_only_system_message
         )
 
     client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
-    monkeypatch.setattr(nodes, "get_client", lambda _cfg: client)
+    monkeypatch.setattr(llm_adapters, "get_client", lambda _cfg: client)
     cfg = SimpleNamespace(provider="openai-compat", default_model="test", complex_model=None)
 
     await plan_node(
@@ -141,7 +142,7 @@ async def test_openai_request_receives_merged_context_in_its_only_system_message
 @pytest.mark.asyncio
 async def test_anthropic_request_keeps_system_content_out_of_messages(monkeypatch) -> None:
     """Anthropic receives one top-level system block and user/assistant turns only."""
-    from src.agent import nodes
+    from src.infra import llm_adapters
     from src.tools.base import ToolRegistry
 
     captured: dict = {}
@@ -154,7 +155,7 @@ async def test_anthropic_request_keeps_system_content_out_of_messages(monkeypatc
         )
 
     client = SimpleNamespace(messages=SimpleNamespace(create=create))
-    monkeypatch.setattr(nodes, "get_client", lambda _cfg: client)
+    monkeypatch.setattr(llm_adapters, "get_client", lambda _cfg: client)
     cfg = SimpleNamespace(provider="anthropic", default_model="test", complex_model=None)
 
     await plan_node(
