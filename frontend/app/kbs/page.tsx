@@ -559,7 +559,7 @@ function CreateKbDialog({
             <p className="text-xs text-muted">
               每个 KB 独立配置 embedding 提供商。第一次填后，后续建 KB 会自动预填上次的设置。
             </p>
-            <div className="grid grid-cols-2 gap-2 pt-1">
+            <div className="grid gap-2 pt-1 sm:grid-cols-2">
               <select
                 value={embedProvider}
                 onChange={(e) => {
@@ -575,6 +575,9 @@ function CreateKbDialog({
                 <option value="ollama">Ollama</option>
               </select>
               <input
+                name="embedding-base-url"
+                autoComplete="off"
+                inputMode="url"
                 placeholder="https://api.siliconflow.cn/v1"
                 value={embedBaseUrl}
                 onChange={(e) => {
@@ -611,6 +614,10 @@ function CreateKbDialog({
                 <KeyRound className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
                 <input
                   type="password"
+                  name="embedding-api-key"
+                  autoComplete="new-password"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
                   placeholder={
                     embedProvider === "ollama"
                       ? "API Key（ollama 可留空）"
@@ -721,7 +728,7 @@ function CreateKbDialog({
 
               {rerankerMode === "custom" && (
                 <div className="space-y-2 rounded-lg border bg-surface/30 p-3">
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid gap-2 sm:grid-cols-2">
                     <select
                       value={rerankerProvider}
                       onChange={(e) => {
@@ -738,6 +745,9 @@ function CreateKbDialog({
                       <option value="openai-compat">OpenAI-compat</option>
                     </select>
                     <input
+                      name="reranker-base-url"
+                      autoComplete="off"
+                      inputMode="url"
                       placeholder="https://api.siliconflow.cn/v1"
                       value={rerankerBaseUrl}
                       onChange={(e) => {
@@ -769,6 +779,10 @@ function CreateKbDialog({
                       <KeyRound className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
                       <input
                         type="password"
+                        name="reranker-api-key"
+                        autoComplete="new-password"
+                        data-lpignore="true"
+                        data-1p-ignore="true"
                         placeholder="API Key（自托管可留空）"
                         value={rerankerApiKey}
                         onChange={(e) => {
@@ -842,7 +856,7 @@ function CreateKbDialog({
             </div>
           </CollapsibleSection>
 
-          <div className="flex items-center justify-between gap-2 border-t pt-4">
+          <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
             {!embedVerified ? (
               <span className="text-xs text-warning">
                 ⚠ 请先点「测试连接 / 拉取模型」验证 Embedding 可用
@@ -854,12 +868,12 @@ function CreateKbDialog({
             ) : (
               <span />
             )}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
               <button
                 type="button"
                 onClick={onClose}
                 disabled={creating}
-                className="btn btn-ghost btn-sm"
+                className="btn btn-ghost btn-sm w-full sm:w-auto"
               >
                 取消
               </button>
@@ -871,7 +885,7 @@ function CreateKbDialog({
                   !embedVerified ||
                   (rerankerMode === "custom" && !rerankerVerified)
                 }
-                className="btn btn-primary btn-sm"
+                className="btn btn-primary btn-sm w-full sm:w-auto"
               >
                 <Plus className="h-4 w-4" />
                 {creating ? "创建中…" : "创建知识库"}

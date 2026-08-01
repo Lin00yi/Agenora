@@ -48,6 +48,7 @@ import { toastApiError } from "@/lib/byok-toast";
 import { cn } from "@/lib/cn";
 import Dialog from "@/components/Dialog";
 import Select from "@/components/Select";
+import { StateView } from "@/components/ui/state-view";
 import {
   AdminPageShell,
   AdminPanel,
@@ -75,6 +76,7 @@ export default function DocumentDetailPage({
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [tableLoading, setTableLoading] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [searchInput, setSearchInput] = useState("");
@@ -132,6 +134,7 @@ export default function DocumentDetailPage({
     ]);
     setKb(kbData);
     setDoc(docData);
+    setLoadError(null);
   }, [kbId, docId]);
 
   const refreshChunks = useCallback(async () => {
@@ -156,7 +159,14 @@ export default function DocumentDetailPage({
       return;
     }
     refresh()
-      .catch((e) => toast.error((e as Error).message))
+      .catch((e) => {
+        const message = (e as Error).message || "document not found";
+        setLoadError(message);
+        setKb(null);
+        setDoc(null);
+        setChunks([]);
+        setTotal(0);
+      })
       .finally(() => setLoading(false));
   }, [kbId, docId, router]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -337,10 +347,33 @@ export default function DocumentDetailPage({
     }
   };
 
-  if (loading || !doc || !kb) {
+  if (loading) {
     return (
       <div className="admin-page flex min-h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-brand" />
+      </div>
+    );
+  }
+
+  if (loadError || !doc || !kb) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center px-4">
+        <StateView
+          variant="error"
+          title="找不到这个文档"
+          description="它可能已被删除、你没有访问权限，或链接已经失效。"
+          className="w-full max-w-md"
+          action={
+            <div className="flex flex-wrap justify-center gap-2">
+              <Link href={`/kbs/${kbId}`} className="btn btn-primary btn-sm">
+                返回文档列表
+              </Link>
+              <Link href="/kbs" className="btn btn-ghost btn-sm">
+                返回知识库列表
+              </Link>
+            </div>
+          }
+        />
       </div>
     );
   }

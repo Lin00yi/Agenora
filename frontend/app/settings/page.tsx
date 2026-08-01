@@ -264,6 +264,9 @@ function LLMCard({
         <Field label="Base URL">
           <input
             type="url"
+            name="llm-base-url"
+            autoComplete="off"
+            inputMode="url"
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
             placeholder={placeholders.url}
@@ -277,6 +280,10 @@ function LLMCard({
               <KeyRound className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
               <input
                 type="password"
+                name="llm-api-key"
+                autoComplete="new-password"
+                data-lpignore="true"
+                data-1p-ignore="true"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder={
@@ -311,7 +318,7 @@ function LLMCard({
                 ? { value: "", label: "请先点击测试连接" }
                 : { value: "", label: "请选择…" }
             }
-            className="min-w-[16rem]"
+            className="min-w-0 sm:min-w-[16rem]"
           />
         </Field>
 
@@ -322,7 +329,7 @@ function LLMCard({
             options={modelOptions}
             disabled={modelOptions.length === 0}
             placeholderOption={{ value: "", label: "与 Default 相同" }}
-            className="min-w-[16rem]"
+            className="min-w-0 sm:min-w-[16rem]"
           />
         </Field>
 

@@ -16,6 +16,7 @@ import remarkGfm from "remark-gfm";
 import ThemeToggle from "@/components/ThemeToggle";
 import ExportActions from "@/components/ExportActions";
 import ModelSelect from "@/components/Select";
+import SystemSettingsDialog from "@/components/SystemSettingsDialog";
 import {
   ArrowUp,
   BookOpen,
@@ -70,7 +71,7 @@ import {
 } from "@/lib/conversationStore";
 import { listKbs, type KB } from "@/lib/kb-api";
 import { connectChat, type ChatEvent, type ChatMessage } from "@/lib/sseClient";
-import { LoadingState } from "@/components/ui/state-view";
+import { LoadingState, StateView } from "@/components/ui/state-view";
 
 const DEFAULT_TITLE = "\u65b0\u5bf9\u8bdd";
 const DEFAULT_CONTEXT_WINDOW = 16_000;
@@ -230,6 +231,7 @@ export function ChatPage({
   const [conversationLoadingMore, setConversationLoadingMore] = useState(false);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [currentMessages, setCurrentMessages] = useState<Message[]>([]);
+  const [missingConversationId, setMissingConversationId] = useState<string | null>(null);
   const [currentKbId, setCurrentKbId] = useState<string | null>(null);
   const [currentModel, setCurrentModel] = useState<string | null>(null);
   const [currentContextStatus, setCurrentContextStatus] =
@@ -240,6 +242,7 @@ export function ChatPage({
   const [llmSource, setLlmSource] = useState<LlmSource>("missing");
   const [kbs, setKbs] = useState<KB[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [systemSettingsOpen, setSystemSettingsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [composerValue, setComposerValue] = useState("");
 
@@ -269,6 +272,7 @@ export function ChatPage({
   const hasConversationMessages = currentMessages.length > 0;
 
   const loadConversation = useCallback(async (id: string) => {
+    setMissingConversationId(null);
     setCurrentId(id);
     setContextStatusLoading(true);
     const cached = messagesCache.current.get(id);
@@ -350,8 +354,8 @@ export function ChatPage({
       setCurrentKbId(null);
       setCurrentModel(null);
       setCurrentContextStatus(null);
+      setMissingConversationId(id);
       setContextStatusLoading(false);
-      toast.error((e as Error)?.message ?? "\u52a0\u8f7d\u4f1a\u8bdd\u5931\u8d25");
       return false;
     }
   }, []);
@@ -494,6 +498,9 @@ export function ChatPage({
           if (ok && !routeConversationId) {
             window.history.replaceState(null, "", conversationHref(targetId));
           } else if (!ok) {
+            if (routeConversationId) {
+              return;
+            }
             const nextId = fallbackId && fallbackId !== targetId ? fallbackId : null;
             if (nextId) {
               window.history.replaceState(null, "", conversationHref(nextId));
@@ -503,6 +510,7 @@ export function ChatPage({
             }
           }
         } else {
+          setMissingConversationId(null);
           setCurrentId(null);
           setCurrentMessages([]);
           setCurrentKbId(null);
@@ -535,6 +543,7 @@ export function ChatPage({
       if (id) {
         void loadConversation(id);
       } else {
+        setMissingConversationId(null);
         setCurrentId(null);
         setCurrentMessages([]);
         setCurrentKbId(null);
@@ -585,6 +594,7 @@ export function ChatPage({
   }, [conversationHasMore, conversationLoadingMore, conversationPage]);
 
   const handleNew = useCallback((kbId: string | null = currentKbId) => {
+    setMissingConversationId(null);
     setCurrentId(null);
     setCurrentMessages([]);
     setCurrentKbId(kbId);
@@ -963,7 +973,8 @@ export function ChatPage({
     <div className="ak-chat ak-page-transition h-dvh w-screen overflow-hidden text-slate-100">
       {sidebarOpen && (
         <button
-          aria-label="关闭侧栏"
+          aria-label="关闭侧栏背景"
+          tabIndex={-1}
           className="fixed inset-0 z-30 bg-black/60 lg:hidden"
           onClick={() => setSidebarOpen(false)}
           type="button"
@@ -986,6 +997,7 @@ export function ChatPage({
           onSelectConversation={handleSelect}
           onDeleteConversation={handleDelete}
           onLoadMoreConversations={loadMoreConversations}
+          onOpenAccountSettings={() => setSystemSettingsOpen(true)}
           onLogout={handleLogout}
         />
 
@@ -997,7 +1009,27 @@ export function ChatPage({
 
           <div className="min-h-0 flex-1">
             <main className="ak-main ak-workspace flex h-full min-h-0 min-w-0 flex-col">
-              {(!currentId && currentMessages.length === 0) ? (
+              {missingConversationId ? (
+                <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+                  <div className="mx-auto flex min-h-full w-full max-w-[860px] items-center justify-center">
+                    <StateView
+                      variant="error"
+                      title="会话不可用"
+                      description="这个会话可能已被删除、你没有访问权限，或链接已经失效。"
+                      className="w-full max-w-md"
+                      action={
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={() => handleNew(null)}
+                        >
+                          新建对话
+                        </button>
+                      }
+                    />
+                  </div>
+                </div>
+              ) : (!currentId && currentMessages.length === 0) ? (
                 <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
                   <div className="mx-auto flex w-full max-w-[920px] flex-col">
                     <EmptyWorkbench
@@ -1065,6 +1097,14 @@ export function ChatPage({
           </div>
         </div>
       </div>
+      {user && (
+        <SystemSettingsDialog
+          open={systemSettingsOpen}
+          onClose={() => setSystemSettingsOpen(false)}
+          user={user}
+          onUserChanged={setUser}
+        />
+      )}
     </div>
   );
 }
@@ -1245,6 +1285,7 @@ function DarkSidebar({
   onSelectConversation,
   onDeleteConversation,
   onLoadMoreConversations,
+  onOpenAccountSettings,
   onLogout,
 }: {
   open: boolean;
@@ -1261,6 +1302,7 @@ function DarkSidebar({
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
   onLoadMoreConversations: () => void;
+  onOpenAccountSettings: () => void;
   onLogout: () => void;
 }) {
   const [searchTerm, setSearchTerm] = useState("");
@@ -1459,12 +1501,23 @@ function DarkSidebar({
       <div ref={userMenuRef} className="relative mt-3 shrink-0">
         {userMenuOpen && (
           <div className="ak-popover absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-lg border border-white/10 bg-[#111c2b] shadow-2xl">
+            <button
+              className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-slate-200 transition hover:bg-white/[0.06]"
+              onClick={() => {
+                setUserMenuOpen(false);
+                onOpenAccountSettings();
+              }}
+              type="button"
+            >
+              <Settings className="h-4 w-4 text-slate-400" />
+              账号设置
+            </button>
             <Link
               className="flex items-center gap-2 px-3 py-2.5 text-sm text-slate-200 transition hover:bg-white/[0.06]"
               href="/settings"
               onClick={() => setUserMenuOpen(false)}
             >
-              <Settings className="h-4 w-4 text-slate-400" />
+              <SlidersHorizontal className="h-4 w-4 text-slate-400" />
               模型设置
             </Link>
             <Link

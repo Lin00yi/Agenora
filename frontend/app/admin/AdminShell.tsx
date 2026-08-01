@@ -7,7 +7,7 @@ import { ChevronLeft, LayoutDashboard, Users, BookOpen } from "lucide-react";
 
 import { getToken, getUser, refreshMe } from "@/lib/auth";
 import { cn } from "@/lib/cn";
-import { LoadingState } from "@/components/ui/state-view";
+import { LoadingState, StateView } from "@/components/ui/state-view";
 import ThemeToggle from "@/components/ThemeToggle";
 
 /**
@@ -27,6 +27,7 @@ export default function AdminShell({
   const router = useRouter();
   const pathname = usePathname();
   const [ready, setReady] = useState(false);
+  const [forbidden, setForbidden] = useState(false);
 
   useEffect(() => {
     if (!getToken()) {
@@ -35,7 +36,7 @@ export default function AdminShell({
     }
     // Fast path off the cached user, then confirm against the server.
     if (getUser()?.is_admin === false) {
-      router.replace("/");
+      setForbidden(true);
       return;
     }
     let active = true;
@@ -45,20 +46,51 @@ export default function AdminShell({
         // Fall back to the cached user when /me is unreachable.
         const isAdmin = (u ?? getUser())?.is_admin;
         if (!isAdmin) {
-          router.replace("/");
+          setForbidden(true);
           return;
         }
         setReady(true);
       })
       .catch(() => {
         if (!active) return;
-        if (!getUser()?.is_admin) router.replace("/");
+        if (!getUser()?.is_admin) setForbidden(true);
         else setReady(true);
       });
     return () => {
       active = false;
     };
   }, [router]);
+
+  if (forbidden) {
+    return (
+      <div className="app-page min-h-dvh text-fg">
+        <header className="app-page-header border-b">
+          <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4 sm:px-6">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-1 text-sm text-muted transition hover:text-fg"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              <span>返回对话</span>
+            </Link>
+            <div className="flex-1" />
+            <ThemeToggle />
+          </div>
+        </header>
+        <main className="app-page-content mx-auto flex min-h-[calc(100dvh-56px)] max-w-5xl items-center justify-center px-4 py-10 sm:px-6">
+          <StateView
+            title="没有后台管理权限"
+            description="当前账号不是管理员，无法访问后台看板、用户管理和全局知识库管理。"
+            action={
+              <Link href="/" className="admin-btn-primary">
+                返回对话
+              </Link>
+            }
+          />
+        </main>
+      </div>
+    );
+  }
 
   if (!ready) {
     return (
