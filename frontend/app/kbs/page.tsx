@@ -504,7 +504,7 @@ function CreateKbDialog({
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-xl rounded-lg border bg-bg shadow-lift"
+        className="relative w-full max-w-2xl overflow-hidden rounded-lg border bg-bg shadow-lift"
         role="dialog"
         aria-modal="true"
       >
@@ -523,7 +523,7 @@ function CreateKbDialog({
 
         <form
           onSubmit={submit}
-          className="max-h-[70vh] overflow-y-auto p-5 space-y-5"
+          className="max-h-[min(76vh,720px)] space-y-4 overflow-y-auto p-5"
         >
           <FormField label="名称" required>
             <input
@@ -547,8 +547,8 @@ function CreateKbDialog({
           </FormField>
 
           {/* v3-M8: embedding always required, no inherit/custom toggle */}
-          <section className="rounded-lg border bg-surface/40 p-4 space-y-2">
-            <div className="flex items-center justify-between">
+          <section className="space-y-3 rounded-lg border bg-surface/40 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-medium">Embedding 配置</h3>
               {embedDim != null && (
                 <span className="chip border-border bg-surface text-xs text-muted">
@@ -559,7 +559,7 @@ function CreateKbDialog({
             <p className="text-xs text-muted">
               每个 KB 独立配置 embedding 提供商。第一次填后，后续建 KB 会自动预填上次的设置。
             </p>
-            <div className="grid gap-2 pt-1 sm:grid-cols-2">
+            <div className="grid gap-2 pt-1 sm:grid-cols-[0.9fr_1.1fr]">
               <select
                 value={embedProvider}
                 onChange={(e) => {
@@ -647,7 +647,10 @@ function CreateKbDialog({
               </div>
             )}
             {/* v3-M8.1: 测试连接 — must succeed before model dropdown populates */}
-            <div className="flex justify-end">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs text-muted">
+                {embedVerified ? "Embedding 已验证。" : "先验证连接，再选择或确认模型。"}
+              </span>
               <button
                 type="button"
                 onClick={onTestEmbedding}
@@ -856,7 +859,7 @@ function CreateKbDialog({
             </div>
           </CollapsibleSection>
 
-          <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="sticky bottom-0 -mx-5 -mb-5 flex flex-col gap-3 border-t bg-bg/95 px-5 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
             {!embedVerified ? (
               <span className="text-xs text-warning">
                 ⚠ 请先点「测试连接 / 拉取模型」验证 Embedding 可用

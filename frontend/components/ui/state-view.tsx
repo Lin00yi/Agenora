@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { AlertCircle, FileQuestion, LoaderCircle, Sparkles } from "lucide-react";
+import { AlertCircle, FileQuestion, Info, LoaderCircle, Sparkles } from "lucide-react";
 
 import { cn } from "@/lib/cn";
 
@@ -8,6 +8,7 @@ type StateViewProps = {
   description?: string;
   action?: ReactNode;
   className?: string;
+  density?: "normal" | "compact";
 };
 
 /** A single, calm visual language for page-level empty, loading, and error states. */
@@ -16,12 +17,19 @@ export function StateView({
   description,
   action,
   className,
+  density = "normal",
   variant = "empty",
-}: StateViewProps & { variant?: "empty" | "error" }) {
-  const Icon = variant === "error" ? AlertCircle : FileQuestion;
+}: StateViewProps & { variant?: "empty" | "error" | "notice" }) {
+  const Icon = variant === "error" ? AlertCircle : variant === "notice" ? Info : FileQuestion;
   return (
     <section
-      className={cn("ak-state-view", variant === "error" && "ak-state-view-error", className)}
+      className={cn(
+        "ak-state-view",
+        density === "compact" && "ak-state-view-compact",
+        variant === "error" && "ak-state-view-error",
+        variant === "notice" && "ak-state-view-notice",
+        className
+      )}
       role={variant === "error" ? "alert" : undefined}
     >
       <span className="ak-state-icon" aria-hidden>

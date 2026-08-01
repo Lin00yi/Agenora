@@ -451,7 +451,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
         )}
 
         {/* Meta + stats */}
-        <div className="card mb-6 p-4">
+        <div className="card mb-4 p-4">
           <div className="flex items-center gap-2">
             {kb.is_system && <Lock className="h-4 w-4 text-warning" />}
             <span className="text-base font-medium">{kb.name}</span>
@@ -473,16 +473,13 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
         </div>
 
         {kb.is_system ? (
-          <div className="card mb-6 border-warning/40 bg-warning/10 p-4 text-sm">
-            <div className="flex items-center gap-2 font-medium text-warning">
-              <Lock className="h-4 w-4" />
-              系统内置示例库
-            </div>
-            <p className="mt-1 text-xs text-warning/90">
-              这是 KnowFlow 内置的旅行演示知识库（4 城本地餐厅策展数据）。所有用户都能在对话中选中它，体验完整的旅行 Agent 工具链（天气 + POI + 报告生成）。
-              本演示库 <strong>只读</strong>：不能上传 / 删除内容。要管理你自己的内容，请回到列表新建一个属于你的 KB。
-            </p>
-          </div>
+          <StateView
+            variant="notice"
+            density="compact"
+            title="系统内置示例库"
+            description="这是 KnowFlow 内置的旅行演示知识库。所有用户都能在对话中选中它；内容只读，不能上传或删除。"
+            className="mb-4"
+          />
         ) : canWrite ? (
           <form
             onSubmit={onSubmitUrl}
@@ -575,18 +572,27 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
           }
         >
           {kb.documents.length === 0 ? (
-            <div className="px-4 py-16 text-center text-sm text-muted">
-              {kb.is_system ? (
-                <>示例库文档不在此列表展示</>
-              ) : (
-                <div className="inline-flex flex-col items-center gap-2">
-                  <FileText className="h-8 w-8 text-muted/40" />
-                  <div>还没有文档，点击右上角上传</div>
-                </div>
-              )}
+            <div className="px-4 py-6">
+              <StateView
+                density="compact"
+                title={kb.is_system ? "示例库文档不在此列表展示" : "还没有文档"}
+                description={
+                  kb.is_system
+                    ? "这个内置库用于对话演示，不作为可管理文档开放。"
+                    : "上传文档后，可在这里筛选、启停和进入分块管理。"
+                }
+                className="bg-surface/60"
+              />
             </div>
           ) : filteredDocuments.length === 0 ? (
-            <div className="py-16 text-center text-sm text-muted">没有匹配的文档</div>
+            <div className="px-4 py-6">
+              <StateView
+                density="compact"
+                title="没有匹配的文档"
+                description="调整搜索关键词或状态筛选后再试。"
+                className="bg-surface/60"
+              />
+            </div>
           ) : (
             <table className="admin-table">
               <thead>

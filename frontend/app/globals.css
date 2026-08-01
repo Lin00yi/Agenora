@@ -854,11 +854,17 @@ body {
   .ak-loading-state {
     @apply flex min-h-56 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-card px-6 py-10 text-center shadow-soft;
   }
+  .ak-state-view-compact {
+    @apply min-h-0 flex-row items-start justify-start gap-3 rounded-lg px-4 py-4 text-left shadow-none;
+  }
   .ak-state-view-error { @apply border-danger/30 bg-danger/5; }
+  .ak-state-view-notice { @apply border-warning/30 bg-warning/5; }
   .ak-state-icon {
     @apply mb-1 inline-flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground;
   }
+  .ak-state-view-compact .ak-state-icon { @apply mb-0 size-9 flex-none; }
   .ak-state-view-error .ak-state-icon { @apply bg-danger/10 text-danger; }
+  .ak-state-view-notice .ak-state-icon { @apply bg-warning/10 text-warning; }
   .ak-inline-loading { @apply inline-flex items-center gap-2 text-sm text-muted-foreground; }
   .ak-loading-state { @apply border-solid border-border; }
   .ak-loading-orbit { @apply relative mb-1 flex size-11 items-center justify-center rounded-xl bg-brand/10; }

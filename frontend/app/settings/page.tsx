@@ -27,7 +27,7 @@ import {
   type MyLLMSettings,
   type MySettings,
 } from "@/lib/settings-api";
-import { LoadingState } from "@/components/ui/state-view";
+import { LoadingState, StateView } from "@/components/ui/state-view";
 import ThemeToggle from "@/components/ThemeToggle";
 
 /**
@@ -349,11 +349,14 @@ function LLMCard({
         </Field>
       </div>
 
-      <div className="mt-4 flex justify-end">
+      <div className="-mx-5 -mb-5 mt-5 flex items-center justify-between gap-3 border-t bg-card/95 px-5 py-3 backdrop-blur">
+        <span className="min-w-0 flex-1 text-xs text-muted">
+          {canSave ? "配置校验通过，可以保存。" : "补全 Base URL、API Key、模型和上下文窗口后保存。"}
+        </span>
         <button
           onClick={handleSave}
           disabled={!canSave}
-          className="btn btn-primary"
+          className="btn btn-primary shrink-0"
           type="button"
         >
           {saving ? "保存中…" : "保存"}
@@ -424,12 +427,15 @@ function KbOptionsCard({
         </div>
       </label>
 
-      <div className="mt-4 flex justify-end">
+      <div className="-mx-5 -mb-5 mt-5 flex items-center justify-between gap-3 border-t bg-card/95 px-5 py-3 backdrop-blur">
+        <span className="min-w-0 flex-1 text-xs text-muted">
+          {dirty ? "选项已变更，保存后会影响后续 KB 对话。" : "当前选项与服务器配置一致。"}
+        </span>
         <button
           type="button"
           onClick={onSave}
           disabled={saving || !dirty}
-          className="btn btn-primary btn-sm"
+          className="btn btn-primary btn-sm shrink-0"
         >
           {saving ? (
             <>
@@ -515,9 +521,12 @@ function MemoryCard() {
           <Loader2 className="h-4 w-4 animate-spin" /> 读取记忆…
         </div>
       ) : memories.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-4 text-sm text-muted">
-          暂无长期记忆。系统只会在识别到稳定偏好或项目约束时静默保存。
-        </div>
+        <StateView
+          density="compact"
+          title="暂无长期记忆"
+          description="系统只会在识别到稳定偏好或项目约束时静默保存。"
+          className="bg-surface/60"
+        />
       ) : (
         <div className="space-y-2">
           {memories.map((memory) => {
