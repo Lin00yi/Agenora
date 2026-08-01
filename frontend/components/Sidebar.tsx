@@ -17,6 +17,7 @@ import {
   Shield,
 } from "lucide-react";
 import Brand from "@/components/Brand";
+import Dialog from "@/components/Dialog";
 import SystemSettingsDialog from "@/components/SystemSettingsDialog";
 import type { Conversation } from "@/lib/conversationStore";
 import type { User } from "@/lib/auth";
@@ -54,6 +55,7 @@ export default function Sidebar({
 }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
 
   const commitRename = (id: string, currentTitle: string, value: string) => {
     const v = value.trim();
@@ -62,10 +64,10 @@ export default function Sidebar({
     void onRename(id, v);
   };
 
-  const requestDelete = (id: string, title: string) => {
-    if (window.confirm(`删除对话「${title}」？此操作不可恢复。`)) {
-      onDelete(id);
-    }
+  const confirmDelete = () => {
+    if (!deleteTarget) return;
+    onDelete(deleteTarget.id);
+    setDeleteTarget(null);
   };
 
   return (
@@ -176,7 +178,7 @@ export default function Sidebar({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        requestDelete(c.id, c.title);
+                        setDeleteTarget(c);
                       }}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-lg opacity-100 transition hover:bg-danger/15 hover:text-danger sm:opacity-0 sm:group-hover:opacity-100"
                       aria-label="删除对话"
@@ -209,6 +211,17 @@ export default function Sidebar({
           onUserChanged={(u) => onUserChanged?.(u)}
         />
       )}
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(next) => {
+          if (!next) setDeleteTarget(null);
+        }}
+        title={`删除对话「${deleteTarget?.title ?? ""}」？`}
+        description="此操作不可恢复。"
+        confirmLabel="删除"
+        variant="danger"
+        onConfirm={confirmDelete}
+      />
     </>
   );
 }

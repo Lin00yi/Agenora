@@ -14,6 +14,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import ThemeToggle from "@/components/ThemeToggle";
+import Dialog from "@/components/Dialog";
 import ExportActions from "@/components/ExportActions";
 import ModelSelect from "@/components/Select";
 import SystemSettingsDialog from "@/components/SystemSettingsDialog";
@@ -1307,6 +1308,7 @@ function DarkSidebar({
 }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const filteredConversations = conversations.filter((conversation) =>
@@ -1462,9 +1464,7 @@ function DarkSidebar({
                 aria-label="删除会话"
                 className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-500 hover:bg-red-400/10 hover:text-red-300 group-hover:flex"
                 onClick={() => {
-                  if (window.confirm(`\u5220\u9664\u5bf9\u8bdd\u300c${conversation.title}\u300d\uff1f\u6b64\u64cd\u4f5c\u4e0d\u53ef\u6062\u590d\u3002`)) {
-                    onDeleteConversation(conversation.id);
-                  }
+                  setDeleteTarget(conversation);
                 }}
                 type="button"
               >
@@ -1577,6 +1577,21 @@ function DarkSidebar({
           <ChevronDown className={cn("h-4 w-4 shrink-0 text-slate-500 transition", userMenuOpen && "rotate-180")} />
         </button>
       </div>
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(next) => {
+          if (!next) setDeleteTarget(null);
+        }}
+        title={`删除对话「${deleteTarget?.title ?? ""}」？`}
+        description="此操作不可恢复。"
+        confirmLabel="删除"
+        variant="danger"
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          onDeleteConversation(deleteTarget.id);
+          setDeleteTarget(null);
+        }}
+      />
     </aside>
   );
 }

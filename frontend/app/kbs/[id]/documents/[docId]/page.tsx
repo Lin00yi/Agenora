@@ -86,6 +86,11 @@ export default function DocumentDetailPage({
   );
   const [editingChunk, setEditingChunk] = useState<Chunk | null>(null);
   const [splittingChunk, setSplittingChunk] = useState<Chunk | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Chunk | null>(null);
+  const [mergeTarget, setMergeTarget] = useState<{
+    chunk: Chunk;
+    next: Chunk;
+  } | null>(null);
   const [splitOffset, setSplitOffset] = useState("");
   const [editText, setEditText] = useState("");
   /** Granular action key, e.g. `refresh`, `batch`, `toggle:uuid`, `merge:uuid`. */
@@ -246,14 +251,15 @@ export default function DocumentDetailPage({
     }
   };
 
-  const onDeleteChunk = async (chunk: Chunk) => {
-    if (!confirm(`删除 chunk #${chunk.chunk_idx + 1}？`)) return;
-    const key = `delete:${chunk.id}`;
+  const confirmDeleteChunk = async () => {
+    if (!deleteTarget) return;
+    const key = `delete:${deleteTarget.id}`;
     setPendingKey(key);
     try {
-      await deleteChunk(kbId, docId, chunk.id);
+      await deleteChunk(kbId, docId, deleteTarget.id);
       toast.success("已删除");
-      setSelected((s) => s.filter((id) => id !== chunk.id));
+      setSelected((s) => s.filter((id) => id !== deleteTarget.id));
+      setDeleteTarget(null);
       await refresh();
     } catch (e) {
       toast.error((e as Error).message);
@@ -325,7 +331,6 @@ export default function DocumentDetailPage({
   };
 
   const onMergeWithNext = async (chunk: Chunk) => {
-    setPendingKey(`merge:${chunk.id}`);
     try {
       let next = chunks.find((c) => c.chunk_idx === chunk.chunk_idx + 1);
       if (!next) {
@@ -336,9 +341,19 @@ export default function DocumentDetailPage({
         toast.error("只能与相邻的下一个 chunk 合并");
         return;
       }
-      if (!confirm(`合并 chunk #${chunk.chunk_idx} 与 #${next.chunk_idx}？`)) return;
-      await mergeChunks(kbId, docId, [chunk.id, next.id]);
+      setMergeTarget({ chunk, next });
+    } catch (err) {
+      toastApiError(err, (p) => router.push(p));
+    }
+  };
+
+  const confirmMergeChunks = async () => {
+    if (!mergeTarget) return;
+    setPendingKey(`merge:${mergeTarget.chunk.id}`);
+    try {
+      await mergeChunks(kbId, docId, [mergeTarget.chunk.id, mergeTarget.next.id]);
       toast.success("已合并");
+      setMergeTarget(null);
       await refresh();
     } catch (err) {
       toastApiError(err, (p) => router.push(p));
@@ -663,7 +678,7 @@ export default function DocumentDetailPage({
                           variant="danger"
                           loading={isPending(`delete:${c.id}`)}
                           disabled={anyPending && !isPending(`delete:${c.id}`)}
-                          onClick={() => void onDeleteChunk(c)}
+                          onClick={() => setDeleteTarget(c)}
                         />
                       </div>
                     </td>
@@ -756,6 +771,35 @@ export default function DocumentDetailPage({
           </div>
         </form>
       </Dialog>
+
+      <Dialog
+        open={deleteTarget != null}
+        onOpenChange={(open) => {
+          if (!open && !isPending(`delete:${deleteTarget?.id ?? ""}`)) {
+            setDeleteTarget(null);
+          }
+        }}
+        title={`删除 chunk #${(deleteTarget?.chunk_idx ?? 0) + 1}？`}
+        description="删除后会从该文档的分块列表和向量检索中移除。"
+        confirmLabel="删除"
+        variant="danger"
+        busy={deleteTarget != null && isPending(`delete:${deleteTarget.id}`)}
+        onConfirm={confirmDeleteChunk}
+      />
+
+      <Dialog
+        open={mergeTarget != null}
+        onOpenChange={(open) => {
+          if (!open && !isPending(`merge:${mergeTarget?.chunk.id ?? ""}`)) {
+            setMergeTarget(null);
+          }
+        }}
+        title={`合并 chunk #${mergeTarget?.chunk.chunk_idx ?? ""} 与 #${mergeTarget?.next.chunk_idx ?? ""}？`}
+        description="合并后会重新生成该段内容的向量，并移除被合并的相邻 chunk。"
+        confirmLabel="合并"
+        busy={mergeTarget != null && isPending(`merge:${mergeTarget.chunk.id}`)}
+        onConfirm={confirmMergeChunks}
+      />
     </AdminPageShell>
   );
 }

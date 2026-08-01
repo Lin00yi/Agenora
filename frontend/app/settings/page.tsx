@@ -129,6 +129,8 @@ function LLMCard({
   const [contextWindow, setContextWindow] = useState(initial?.context_window ?? 16000);
   const [probing, setProbing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const hasSavedKey = initial?.has_key ?? false;
 
   const placeholders = useMemo(() => {
@@ -194,7 +196,7 @@ function LLMCard({
   }
 
   async function handleClear() {
-    if (!confirm("清除 LLM 配置 → 回落到系统默认。继续？")) return;
+    setClearing(true);
     try {
       await clearLLMSettings();
       toast.success("已清除");
@@ -206,6 +208,8 @@ function LLMCard({
       await onChanged();
     } catch (e) {
       toast.error((e as Error).message);
+    } finally {
+      setClearing(false);
     }
   }
 
@@ -236,7 +240,7 @@ function LLMCard({
         </div>
         {initial?.configured && (
           <button
-            onClick={handleClear}
+            onClick={() => setClearOpen(true)}
             className="btn btn-ghost btn-sm text-muted"
             type="button"
           >
@@ -362,6 +366,19 @@ function LLMCard({
           {saving ? "保存中…" : "保存"}
         </button>
       </div>
+      <Dialog
+        open={clearOpen}
+        onOpenChange={setClearOpen}
+        title="清除 LLM 配置？"
+        description="清除后会回落到系统默认配置。"
+        confirmLabel="清除"
+        variant="danger"
+        busy={clearing}
+        onConfirm={async () => {
+          await handleClear();
+          setClearOpen(false);
+        }}
+      />
     </section>
   );
 }
