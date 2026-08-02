@@ -14,9 +14,9 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
-from typing import TYPE_CHECKING, Iterable, Literal
+from typing import TYPE_CHECKING, Any, Iterable, Literal
 
-from sqlalchemy import desc, or_, select
+from sqlalchemy import desc, or_, select, update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,8 +58,11 @@ SYSTEM_AND_TOOL_RESERVE = 6_000
 RAG_RESERVE = 8_000
 SAFETY_RESERVE = 2_000
 MAX_MEMORY_CONTEXT_TOKENS = 1_200
+MAX_PROFILE_CONTEXT_TOKENS = 700
 MAX_SUMMARY_CONTEXT_TOKENS = 2_600
 MAX_SUMMARY_SOURCE_CHARS = 12_000
+MAX_MEMORY_EXTRACTION_SOURCE_CHARS = 16_000
+MAX_PROFILE_MEMORY_ROWS = 40
 PREPARE_SUMMARY_RATIO = 0.60
 SUMMARY_TRIGGER_RATIO = 0.72
 FORCE_SUMMARY_RATIO = 0.85
@@ -94,6 +97,7 @@ class BuiltContext:
     budget: ContextBudget
     summary: ConversationSummary | None
     injected_memory_count: int
+    memory_trace: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -473,6 +477,38 @@ async def get_latest_summary(
     return result.scalar_one_or_none()
 
 
+async def _cas_update_summary(
+    session: AsyncSession,
+    *,
+    row: ConversationSummary,
+    text: str,
+    covered: Message,
+    covered_message_count: int,
+    expected_updated_at: datetime,
+) -> ConversationSummary | None:
+    now = datetime.now(timezone.utc)
+    result = await session.execute(
+        update(ConversationSummary)
+        .where(
+            ConversationSummary.id == row.id,
+            ConversationSummary.updated_at == expected_updated_at,
+        )
+        .values(
+            summary=text,
+            covered_message_id=covered.id,
+            covered_message_count=covered_message_count,
+            token_count=estimate_tokens(text),
+            updated_at=now,
+        )
+    )
+    if not result.rowcount:
+        await session.rollback()
+        return None
+    await session.commit()
+    await session.refresh(row)
+    return row
+
+
 async def ensure_summary_if_needed(
     session: AsyncSession,
     *,
@@ -501,6 +537,24 @@ async def ensure_summary_if_needed(
     if text is None:
         text = build_extractive_summary(older)
     if summary is None:
+        # Another worker may have produced the first rolling summary while this
+        # process was spending an LLM call. Prefer that row and CAS-update it
+        # instead of creating a second rolling row.
+        summary = await get_latest_summary(session, conversation_id)
+        if summary is not None:
+            if summary.covered_message_id == covered.id:
+                return summary
+            updated = await _cas_update_summary(
+                session,
+                row=summary,
+                text=text,
+                covered=covered,
+                covered_message_count=len(older),
+                expected_updated_at=summary.updated_at,
+            )
+            return updated or await get_latest_summary(session, conversation_id)
+
+        now = datetime.now(timezone.utc)
         row = ConversationSummary(
             id=str(uuid.uuid4()),
             conversation_id=conversation_id,
@@ -508,19 +562,22 @@ async def ensure_summary_if_needed(
             covered_message_id=covered.id,
             covered_message_count=len(older),
             token_count=estimate_tokens(text),
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=now,
+            updated_at=now,
         )
         session.add(row)
     else:
         # One rolling row per conversation avoids an unbounded pile of stale
         # summaries while retaining the latest coverage checkpoint.
-        row = summary
-        row.summary = text
-        row.covered_message_id = covered.id
-        row.covered_message_count = len(older)
-        row.token_count = estimate_tokens(text)
-        row.updated_at = datetime.now(timezone.utc)
+        updated = await _cas_update_summary(
+            session,
+            row=summary,
+            text=text,
+            covered=covered,
+            covered_message_count=len(older),
+            expected_updated_at=summary.updated_at,
+        )
+        return updated or await get_latest_summary(session, conversation_id)
     await session.commit()
     return row
 
@@ -930,6 +987,171 @@ def extract_memory_candidates(text: str) -> list[MemoryCandidate]:
     return list(unique.values())
 
 
+def _memory_extraction_source(
+    messages: list[Message], *, max_chars: int = MAX_MEMORY_EXTRACTION_SOURCE_CHARS
+) -> str:
+    lines: list[str] = []
+    for message in messages:
+        if message.role != "user":
+            continue
+        text = " ".join((message.content or "").split())
+        if not text:
+            continue
+        lines.append(f"[message_id={message.id}] {text[:1200]}")
+    source = "\n".join(lines)
+    if len(source) <= max_chars:
+        return source
+    head = source[: max_chars // 2].rsplit("\n", 1)[0]
+    tail = source[-(max_chars // 2) :].split("\n", 1)[-1]
+    return f"{head}\n[older messages omitted]\n{tail}"
+
+
+def _parse_json_array_from_text(text: str) -> list[Any]:
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return []
+    try:
+        parsed = json.loads(cleaned)
+    except ValueError:
+        start = cleaned.find("[")
+        end = cleaned.rfind("]")
+        if start < 0 or end <= start:
+            return []
+        try:
+            parsed = json.loads(cleaned[start : end + 1])
+        except ValueError:
+            return []
+    return parsed if isinstance(parsed, list) else []
+
+
+def _coerce_llm_memory_candidate(item: Any) -> MemoryCandidate | None:
+    if not isinstance(item, dict):
+        return None
+    memory_type = str(item.get("type") or "explicit").strip().lower()
+    if memory_type not in {"explicit", "preference", "constraint", "fact"}:
+        return None
+    value = " ".join(str(item.get("value") or "").split())
+    content = " ".join(str(item.get("content") or value).split())
+    if len(value) < 2 or len(content) < 4 or len(content) > 500:
+        return None
+    if contains_sensitive_memory_content(value) or contains_sensitive_memory_content(content):
+        return None
+    try:
+        confidence = float(item.get("confidence", 0.0))
+        importance = float(item.get("importance", 0.5))
+    except (TypeError, ValueError):
+        return None
+    if confidence < 0.72:
+        return None
+    key = " ".join(str(item.get("key") or "").split())[:128]
+    if not key:
+        key = _stable_key(memory_type, value)
+    scope = str(item.get("scope") or "personal").strip().lower()
+    if scope not in {"personal", "kb"}:
+        scope = "personal"
+    expires_in_days = item.get("expires_in_days")
+    try:
+        expires = int(expires_in_days) if expires_in_days is not None else None
+    except (TypeError, ValueError):
+        expires = None
+    return MemoryCandidate(
+        type=memory_type,
+        key=key,
+        value=value[:500],
+        content=content,
+        confidence=max(0.0, min(1.0, confidence)),
+        importance=max(0.0, min(1.0, importance)),
+        source="auto_session",
+        scope=scope,
+        expires_in_days=expires if expires and expires > 0 else None,
+    )
+
+
+async def extract_conversation_memory_candidates_with_llm(
+    messages: list[Message],
+    *,
+    llm_cfg: "UserLLMConfig | None" = None,
+) -> list[MemoryCandidate]:
+    """Best-effort whole-conversation memory extraction.
+
+    The realtime path stays conservative and rule-based. This lower-frequency
+    pass can spend a small no-tool LLM call to improve recall after a
+    conversation is done or idle.
+    """
+    from src.infra.llm import get_client, pick_model, with_cache_control
+    from src.settings import get_settings
+
+    source = _memory_extraction_source(messages)
+    if not source:
+        return []
+
+    settings = get_settings()
+    if llm_cfg is None:
+        has_system_key = bool(
+            settings.deepseek_api_key
+            if settings.llm_provider == "deepseek"
+            else settings.anthropic_api_key
+        )
+        if not has_system_key:
+            return []
+
+    system_prompt = (
+        "Extract durable user memory candidates from the transcript. "
+        "Keep only stable preferences, explicit remember requests, profile facts, "
+        "or project constraints that will still matter in future conversations. "
+        "Do not store passwords, tokens, API keys, payment data, government IDs, "
+        "medical/legal/financial advice, transient questions, or assistant claims. "
+        "Return only a JSON array. Each item must have: type, key, value, content, "
+        "confidence, importance, scope. Optional: expires_in_days. "
+        "Use type one of explicit, preference, constraint, fact. "
+        "Use scope personal unless the memory is clearly tied to the current KB/project."
+    )
+    user_prompt = (
+        "<transcript>\n"
+        f"{source}\n"
+        "</transcript>\n\n"
+        "Return JSON only. Example: "
+        '[{"type":"preference","key":"response_language","value":"zh-CN",'
+        '"content":"User prefers Chinese responses.","confidence":0.86,'
+        '"importance":0.9,"scope":"personal","expires_in_days":180}]'
+    )
+    try:
+        client = get_client(llm_cfg)
+        model = pick_model([], [], llm_cfg)
+        is_anthropic = (
+            llm_cfg.provider == "anthropic" if llm_cfg else settings.llm_provider == "anthropic"
+        )
+        if not is_anthropic:
+            response = await client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                max_tokens=900,
+            )
+            text = response.choices[0].message.content or ""
+        else:
+            response = await client.messages.create(
+                model=model,
+                max_tokens=900,
+                system=with_cache_control([{"type": "text", "text": system_prompt}], llm_cfg),
+                messages=[{"role": "user", "content": user_prompt}],
+            )
+            text = "".join(
+                block.text for block in response.content if getattr(block, "type", None) == "text"
+            )
+    except Exception:  # noqa: BLE001 - extraction must not block chat/maintenance
+        return []
+
+    unique: dict[str, MemoryCandidate] = {}
+    for item in _parse_json_array_from_text(text):
+        candidate = _coerce_llm_memory_candidate(item)
+        if candidate:
+            unique[candidate.key] = candidate
+    return list(unique.values())[:12]
+
+
 def _source_message_ids(row: UserMemory) -> list[str]:
     if not row.source_message_ids:
         return []
@@ -949,6 +1171,21 @@ def _merge_memory_sources(survivor: UserMemory, redundant: UserMemory) -> None:
 
 def _newer_memory(rows: list[UserMemory]) -> UserMemory:
     return max(rows, key=lambda row: (row.updated_at or row.created_at, row.id))
+
+
+def _memory_trace_item(row: UserMemory) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "scope": row.scope,
+        "scope_id": row.scope_id,
+        "type": row.type,
+        "key": row.memory_key,
+        "content": row.content,
+        "source": row.source,
+        "confidence": round(float(row.confidence or 0.0), 3),
+        "importance": round(float(row.importance or 0.0), 3),
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
 
 
 async def consolidate_user_memories(
@@ -1040,23 +1277,27 @@ async def consolidate_user_memories(
     return {"expired": len(expired), "superseded": superseded, "deduplicated": deduplicated}
 
 
-async def store_user_memories(
+async def store_memory_candidates(
     session: AsyncSession,
     *,
     user_id: str,
-    message_id: str,
-    content: str,
+    source_message_ids: list[str],
+    candidates: list[MemoryCandidate],
     kb_id: str | None = None,
     embedding_cfg=None,
 ) -> list[UserMemory]:
-    """Persist high-confidence explicit or implicit memories without UI friction.
+    """Persist extracted memories through the shared structured write path.
 
     A new value for the same ``scope + type + key`` automatically supersedes
     the older active row. This prevents conflicting preferences from being
     injected together on later turns.
     """
     stored: list[UserMemory] = []
-    for candidate in extract_memory_candidates(content):
+    source_ids = [str(item) for item in dict.fromkeys(source_message_ids) if item]
+    if not source_ids:
+        return stored
+    unique_candidates = list({candidate.key: candidate for candidate in candidates}.values())
+    for candidate in unique_candidates:
         scope = candidate.scope if candidate.scope != "kb" or kb_id else "personal"
         scope_id = kb_id if scope == "kb" else None
         result = await session.execute(
@@ -1072,8 +1313,7 @@ async def store_user_memories(
         existing = result.scalar_one_or_none()
         if existing and existing.memory_value == candidate.value:
             ids = _source_message_ids(existing)
-            if message_id not in ids:
-                ids.append(message_id)
+            ids = list(dict.fromkeys([*ids, *source_ids]))
             existing.source_message_ids = json.dumps(ids, ensure_ascii=False)
             existing.confidence = max(existing.confidence, candidate.confidence)
             existing.importance = max(existing.importance, candidate.importance)
@@ -1098,7 +1338,7 @@ async def store_user_memories(
             memory_key=candidate.key,
             memory_value=candidate.value,
             content=candidate.content,
-            source_message_ids=json.dumps([message_id], ensure_ascii=False),
+            source_message_ids=json.dumps(source_ids, ensure_ascii=False),
             source=candidate.source,
             confidence=candidate.confidence,
             importance=candidate.importance,
@@ -1124,6 +1364,84 @@ async def store_user_memories(
     return stored
 
 
+async def store_user_memories(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    message_id: str,
+    content: str,
+    kb_id: str | None = None,
+    embedding_cfg=None,
+) -> list[UserMemory]:
+    """Persist high-confidence explicit or implicit memories without UI friction."""
+    return await store_memory_candidates(
+        session,
+        user_id=user_id,
+        source_message_ids=[message_id],
+        candidates=extract_memory_candidates(content),
+        kb_id=kb_id,
+        embedding_cfg=embedding_cfg,
+    )
+
+
+async def extract_conversation_memories(
+    session: AsyncSession,
+    *,
+    conversation_id: str,
+    user_id: str,
+    kb_id: str | None = None,
+    llm_cfg: "UserLLMConfig | None" = None,
+    embedding_cfg=None,
+) -> dict[str, int]:
+    """Run the lower-frequency whole-conversation memory extraction pass."""
+    result = await session.execute(
+        select(Message)
+        .where(Message.conversation_id == conversation_id)
+        .order_by(Message.created_at)
+    )
+    messages = list(result.scalars().all())
+    user_messages = [message for message in messages if message.role == "user" and message.content]
+    if not user_messages:
+        return {"messages_scanned": 0, "rule_candidates": 0, "llm_candidates": 0, "stored": 0}
+
+    stored_by_id: dict[str, UserMemory] = {}
+    rule_candidate_count = 0
+    for message in user_messages:
+        candidates = extract_memory_candidates(message.content or "")
+        rule_candidate_count += len(candidates)
+        rows = await store_memory_candidates(
+            session,
+            user_id=user_id,
+            source_message_ids=[message.id],
+            candidates=candidates,
+            kb_id=kb_id,
+            embedding_cfg=embedding_cfg,
+        )
+        for row in rows:
+            stored_by_id[row.id] = row
+
+    llm_candidates = await extract_conversation_memory_candidates_with_llm(
+        messages, llm_cfg=llm_cfg
+    )
+    rows = await store_memory_candidates(
+        session,
+        user_id=user_id,
+        source_message_ids=[message.id for message in user_messages],
+        candidates=llm_candidates,
+        kb_id=kb_id,
+        embedding_cfg=embedding_cfg,
+    )
+    for row in rows:
+        stored_by_id[row.id] = row
+
+    return {
+        "messages_scanned": len(user_messages),
+        "rule_candidates": rule_candidate_count,
+        "llm_candidates": len(llm_candidates),
+        "stored": len(stored_by_id),
+    }
+
+
 async def store_explicit_user_memory(
     session: AsyncSession,
     *,
@@ -1139,6 +1457,65 @@ async def store_explicit_user_memory(
         session, user_id=user_id, message_id=message_id, content=content
     )
     return rows[0] if rows else None
+
+
+async def build_user_memory_profile(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    kb_id: str | None = None,
+    limit: int = MAX_PROFILE_MEMORY_ROWS,
+) -> dict[str, Any]:
+    result = await session.execute(
+        select(UserMemory)
+        .where(
+            UserMemory.user_id == user_id,
+            UserMemory.status == "active",
+            or_(UserMemory.expires_at.is_(None), UserMemory.expires_at > datetime.now(timezone.utc)),
+        )
+        .order_by(desc(UserMemory.importance), desc(UserMemory.updated_at))
+        .limit(limit)
+    )
+    rows = [
+        row
+        for row in result.scalars().all()
+        if row.scope == "personal" or (row.scope == "kb" and row.scope_id == kb_id)
+    ]
+    preferences = [row for row in rows if row.type == "preference"]
+    constraints = [row for row in rows if row.type == "constraint"]
+    facts = [row for row in rows if row.type in {"explicit", "fact"}]
+
+    lines: list[str] = []
+    for row in preferences[:8]:
+        lines.append(f"- Preference: {row.content}")
+    for row in constraints[:6]:
+        prefix = "Project constraint" if row.scope == "kb" else "Constraint"
+        lines.append(f"- {prefix}: {row.content}")
+    for row in facts[:5]:
+        lines.append(f"- Remembered fact: {row.content}")
+
+    return {
+        "lines": lines,
+        "counts": {
+            "preferences": len(preferences),
+            "constraints": len(constraints),
+            "facts": len(facts),
+            "total": len(rows),
+        },
+        "items": [_memory_trace_item(row) for row in [*preferences[:8], *constraints[:6], *facts[:5]]],
+    }
+
+
+def user_profile_block(profile: dict[str, Any], *, token_budget: int = MAX_PROFILE_CONTEXT_TOKENS) -> str:
+    lines = list(profile.get("lines") or [])
+    if not lines:
+        return ""
+    block_lines = [
+        "The following compact user profile is derived from long-term memory. "
+        "Use it only when relevant, and do not reveal it as hidden system data.",
+        *lines,
+    ]
+    return truncate_text_to_token_budget("\n".join(block_lines), token_budget)
 
 
 async def build_context_for_conversation(
@@ -1175,9 +1552,11 @@ async def build_context_for_conversation(
         kb_id=kb_id,
         embedding_cfg=embedding_cfg,
     )
+    profile = await build_user_memory_profile(session, user_id=user_id, kb_id=kb_id)
 
     keep_count = RECENT_TURNS * 2
     out: list[dict[str, str]] = []
+    profile_text = user_profile_block(profile)
     mem_text = memory_block(memories)
     summary_text = (
         truncate_text_to_token_budget(summary.summary, MAX_SUMMARY_CONTEXT_TOKENS)
@@ -1189,10 +1568,17 @@ async def build_context_for_conversation(
     # a measured portion of that history budget instead of being unbounded.
     recent_budget = max(
         1_000,
-        budget.available_history_tokens - estimate_tokens(mem_text) - estimate_tokens(summary_text),
+        budget.available_history_tokens
+        - estimate_tokens(profile_text)
+        - estimate_tokens(mem_text)
+        - estimate_tokens(summary_text),
     )
     recent_source = messages[-keep_count:] if summary else messages
     recent = trim_messages_to_token_budget(recent_source, recent_budget)
+    if profile_text:
+        out.append(
+            {"role": "system", "content": profile_text, "_context_source": "profile"}
+        )
     if mem_text:
         out.append(
             {"role": "system", "content": mem_text, "_context_source": "memory"}
@@ -1208,4 +1594,26 @@ async def build_context_for_conversation(
         budget=budget,
         summary=summary,
         injected_memory_count=len(memories),
+        memory_trace={
+            "profile": {
+                "injected": bool(profile_text),
+                "counts": profile.get("counts", {}),
+                "items": profile.get("items", [])[:12],
+            },
+            "memories": {
+                "injected_count": len(memories),
+                "items": [_memory_trace_item(row) for row in memories],
+            },
+            "summary": (
+                {
+                    "id": summary.id,
+                    "covered_message_count": summary.covered_message_count,
+                    "token_count": summary.token_count,
+                    "updated_at": summary.updated_at.isoformat() if summary.updated_at else None,
+                }
+                if summary
+                else None
+            ),
+            "recent_message_count": len(recent),
+        },
     )

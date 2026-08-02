@@ -31,7 +31,7 @@ MAX_KB_REWRITE_QUERIES = 3
 DEFAULT_KB_SEARCH_LIMIT = 5
 MAX_AUTO_CONTINUATIONS = 2
 
-_TRUSTED_CONTEXT_SOURCES = {"memory", "summary"}
+_TRUSTED_CONTEXT_SOURCES = {"profile", "memory", "summary"}
 _QUERY_POLICY_ACTIONS = {"direct", "normalize", "expand", "skip_kb"}
 _QUERY_POLICY_MODES = {"always_direct", "rule_only", "llm_fallback", "always_llm"}
 _RULE_SKIP_KEYWORDS = (

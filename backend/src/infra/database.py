@@ -257,6 +257,10 @@ def _migrate_additive_columns(sync_conn) -> None:
             sync_conn.execute(
                 text("ALTER TABLE conversations ADD COLUMN llm_model VARCHAR(128)")
             )
+        if "finalized_at" not in conv_cols:
+            sync_conn.execute(
+                text("ALTER TABLE conversations ADD COLUMN finalized_at TIMESTAMP")
+            )
 
     # Stop generation is a client-side cancellation state, not a model error
     # worth preserving on completed/partial assistant messages.

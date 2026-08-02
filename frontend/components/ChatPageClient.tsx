@@ -25,6 +25,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
+  BrainCircuit,
   Circle,
   Copy,
   Database,
@@ -54,6 +55,7 @@ import {
   appendUserMessage,
   createConversation,
   deleteConversation,
+  finalizeConversation,
   getConversation,
   getConversationContextStatus,
   listConversations,
@@ -70,7 +72,13 @@ import {
   type Message,
 } from "@/lib/conversationStore";
 import { listKbs, type KB } from "@/lib/kb-api";
-import { connectChat, type ChatEvent, type ChatMessage } from "@/lib/sseClient";
+import {
+  connectChat,
+  type ChatEvent,
+  type ChatMessage,
+  type MemoryTrace,
+  type MemoryTraceItem,
+} from "@/lib/sseClient";
 import { LoadingState, StateView } from "@/components/ui/state-view";
 
 const DEFAULT_TITLE = "\u65b0\u5bf9\u8bdd";
@@ -204,6 +212,7 @@ function serverMsgToLocal(m: MessagePayload): Message {
 function summaryToConv(s: ConversationSummary, messages: Message[] = []): Conversation {
   const createdMs = s.created_at ? new Date(s.created_at).getTime() : Date.now();
   const updatedMs = s.updated_at ? new Date(s.updated_at).getTime() : createdMs;
+  const finalizedMs = s.finalized_at ? new Date(s.finalized_at).getTime() : null;
   return {
     id: s.id,
     title: s.title,
@@ -213,6 +222,7 @@ function summaryToConv(s: ConversationSummary, messages: Message[] = []): Conver
     message_count: s.message_count,
     created_at: createdMs,
     updated_at: updatedMs,
+    finalized_at: finalizedMs,
   };
 }
 
@@ -252,6 +262,7 @@ export function ChatPage({
   const [currentModel, setCurrentModel] = useState<string | null>(null);
   const [currentContextStatus, setCurrentContextStatus] =
     useState<ConversationContextStatus | null>(null);
+  const [currentMemoryTrace, setCurrentMemoryTrace] = useState<MemoryTrace | null>(null);
   const [contextStatusLoading, setContextStatusLoading] = useState(false);
   const [modelOptions, setModelOptions] = useState<string[]>([]);
   const [llmReady, setLlmReady] = useState(false);
@@ -288,10 +299,15 @@ export function ChatPage({
   const currentConversation = sidebarConversations.find((c) => c.id === currentId) ?? null;
   const currentKb = kbs.find((kb) => kb.id === currentKbId) ?? null;
   const hasConversationMessages = visibleMessages.length > 0;
+  const currentTools = useMemo(() => {
+    const lastAssistant = [...visibleMessages].reverse().find((message) => message.role === "assistant");
+    return lastAssistant?.role === "assistant" ? lastAssistant.tools : [];
+  }, [visibleMessages]);
 
   const loadConversation = useCallback(async (id: string) => {
     setMissingConversationId(null);
     setCurrentId(id);
+    setCurrentMemoryTrace(null);
     setContextStatusLoading(true);
     const cached = messagesCache.current.get(id);
     if (cached) {
@@ -341,6 +357,7 @@ export function ChatPage({
           message_count: detail.message_count,
           created_at: detail.created_at,
           updated_at: detail.updated_at,
+          finalized_at: detail.finalized_at,
           context_status: detail.context_status ?? null,
         };
         if (prev.some((item) => item.id === detail.id)) {
@@ -374,6 +391,7 @@ export function ChatPage({
       setCurrentKbId(null);
       setCurrentModel(null);
       setCurrentContextStatus(null);
+      setCurrentMemoryTrace(null);
       setMissingConversationId(id);
       setContextStatusLoading(false);
       return false;
@@ -434,6 +452,23 @@ export function ChatPage({
     },
     []
   );
+
+  const finalizeSilently = useCallback((id: string | null) => {
+    if (!id) return;
+    void finalizeConversation(id)
+      .then((result) => {
+        setSummaries((prev) =>
+          prev.map((item) =>
+            item.id === result.conversation.id
+              ? { ...item, ...result.conversation }
+              : item
+          )
+        );
+      })
+      .catch(() => {
+        /* best effort: idle maintenance will retry later */
+      });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -536,6 +571,7 @@ export function ChatPage({
           setCurrentKbId(null);
           setCurrentModel(null);
           setCurrentContextStatus(null);
+          setCurrentMemoryTrace(null);
         }
       } catch (e) {
         if (!cancelled) {
@@ -569,6 +605,7 @@ export function ChatPage({
         setCurrentKbId(null);
         setCurrentModel(null);
         setCurrentContextStatus(null);
+        setCurrentMemoryTrace(null);
       }
     };
     window.addEventListener("popstate", handlePopState);
@@ -614,24 +651,31 @@ export function ChatPage({
   }, [conversationHasMore, conversationLoadingMore, conversationPage]);
 
   const handleNew = useCallback((kbId: string | null = currentKbId) => {
+    if (currentId && hasConversationMessages && !busy) {
+      finalizeSilently(currentId);
+    }
     setMissingConversationId(null);
     setCurrentId(null);
     setCurrentMessages([]);
     setCurrentKbId(kbId);
     setCurrentModel(null);
     setCurrentContextStatus(null);
+    setCurrentMemoryTrace(null);
     setComposerValue("");
     setSidebarOpen(false);
     window.history.pushState(null, "", "/c");
-  }, [currentKbId]);
+  }, [busy, currentId, currentKbId, finalizeSilently, hasConversationMessages]);
 
   const handleSelect = useCallback(
     async (id: string) => {
       setSidebarOpen(false);
+      if (currentId && currentId !== id && hasConversationMessages && !busy) {
+        finalizeSilently(currentId);
+      }
       const ok = await loadConversation(id);
       if (ok) window.history.pushState(null, "", conversationHref(id));
     },
-    [loadConversation, router]
+    [busy, currentId, finalizeSilently, hasConversationMessages, loadConversation, router]
   );
 
   const handleKbChange = useCallback(
@@ -695,6 +739,7 @@ export function ChatPage({
           setCurrentKbId(null);
           setCurrentModel(null);
           setCurrentContextStatus(null);
+          setCurrentMemoryTrace(null);
           window.history.replaceState(null, "", "/c");
         }
       }
@@ -727,9 +772,10 @@ export function ChatPage({
             llm_model: created.llm_model,
             message_count: 0,
             created_at: created.created_at,
-          updated_at: created.updated_at,
-          context_status: created.context_status ?? null,
-        };
+            updated_at: created.updated_at,
+            finalized_at: created.finalized_at,
+            context_status: created.context_status ?? null,
+          };
           setSummaries((prev) => [summary, ...prev]);
           setConversationTotal((total) => total + 1);
           setCurrentId(created.id);
@@ -738,6 +784,7 @@ export function ChatPage({
           setCurrentKbId(created.kb_id);
           setCurrentModel(created.llm_model ?? null);
           setCurrentContextStatus(created.context_status ?? null);
+          setCurrentMemoryTrace(null);
           window.history.replaceState(null, "", conversationHref(created.id));
         } catch (e) {
           toast.error((e as Error)?.message ?? "\u521b\u5efa\u4f1a\u8bdd\u5931\u8d25");
@@ -795,6 +842,7 @@ export function ChatPage({
         true
       );
 
+      setCurrentMemoryTrace(null);
       setBusy(true);
       setComposerValue("");
 
@@ -924,6 +972,7 @@ export function ChatPage({
             }
             case "done": {
               const costUsd = typeof evt.cost_usd === "number" ? evt.cost_usd : undefined;
+              if (evt.memory_trace) setCurrentMemoryTrace(evt.memory_trace);
               const snap = streamingRef.current;
               const emptyResponse = !snap?.content.trim();
               if (emptyResponse) {
@@ -1027,7 +1076,7 @@ export function ChatPage({
         />
       )}
 
-      <div className="grid h-full grid-cols-1 lg:grid-cols-[286px_minmax(0,1fr)]">
+      <div className="grid h-full grid-cols-1 lg:grid-cols-[286px_minmax(0,1fr)_320px]">
         <DarkSidebar
           open={sidebarOpen}
           conversations={sidebarConversations}
@@ -1142,6 +1191,16 @@ export function ChatPage({
             </main>
           </div>
         </div>
+        <RightInsightPanel
+          currentKbName={currentKb?.name ?? "\u901a\u7528\u5bf9\u8bdd"}
+          currentConversation={currentConversation}
+          currentModel={currentModel}
+          llmSource={llmSource}
+          memoryTrace={currentMemoryTrace}
+          messages={visibleMessages}
+          tools={currentTools}
+          busy={busy}
+        />
       </div>
       {user && (
         <SystemSettingsDialog
@@ -2416,6 +2475,7 @@ function RightInsightPanel({
   currentConversation,
   currentModel,
   llmSource,
+  memoryTrace,
   messages,
   tools,
   busy,
@@ -2424,6 +2484,7 @@ function RightInsightPanel({
   currentConversation: Conversation | null;
   currentModel: string | null;
   llmSource: LlmSource;
+  memoryTrace: MemoryTrace | null;
   messages: Message[];
   tools: ToolEvent[];
   busy: boolean;
@@ -2521,6 +2582,56 @@ function RightInsightPanel({
         )}
       </section>
 
+      <section className="border-b border-white/10 p-5">
+        <div className="flex items-center gap-2">
+          <BrainCircuit className="h-4 w-4 text-emerald-300" />
+          <h2 className="text-base font-semibold text-slate-100">记忆注入</h2>
+          <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-slate-400">
+            {memoryTrace?.memories?.injected_count ?? 0}
+          </span>
+        </div>
+        {memoryTrace ? (
+          <div className="mt-4 space-y-4">
+            <div className="grid grid-cols-3 gap-2 text-center text-xs">
+              <TraceStat
+                label="画像"
+                value={memoryTrace.profile?.injected ? "已注入" : "未注入"}
+              />
+              <TraceStat
+                label="记忆"
+                value={String(memoryTrace.memories?.injected_count ?? 0)}
+              />
+              <TraceStat
+                label="摘要"
+                value={memoryTrace.summary ? "已注入" : "无"}
+              />
+            </div>
+            {memoryTrace.profile?.items && memoryTrace.profile.items.length > 0 && (
+              <TraceList
+                title="画像聚合"
+                items={memoryTrace.profile.items.slice(0, 3)}
+              />
+            )}
+            {memoryTrace.memories?.items && memoryTrace.memories.items.length > 0 && (
+              <TraceList
+                title="本轮召回"
+                items={memoryTrace.memories.items.slice(0, 4)}
+              />
+            )}
+            {memoryTrace.summary && (
+              <p className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs leading-5 text-slate-400">
+                摘要覆盖 {memoryTrace.summary.covered_message_count} 条早期消息 ·
+                约 {formatTokenCount(memoryTrace.summary.token_count)}
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="mt-4 rounded-lg border border-dashed border-white/10 px-3 py-5 text-sm leading-6 text-slate-500">
+            完成一轮对话后，这里会显示画像、长期记忆和摘要的注入 Trace。
+          </div>
+        )}
+      </section>
+
       <section className="flex-1 p-5">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold text-slate-100">{"\u4f1a\u8bdd\u4fe1\u606f"}</h2>
@@ -2578,6 +2689,53 @@ function RightInsightPanel({
       </section>
     </aside>
   );
+}
+
+function TraceStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.03] px-2 py-2">
+      <div className="text-[11px] text-slate-500">{label}</div>
+      <div className="mt-1 truncate font-medium text-slate-200" title={value}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function TraceList({ title, items }: { title: string; items: MemoryTraceItem[] }) {
+  return (
+    <div>
+      <div className="mb-2 text-xs font-medium text-slate-400">{title}</div>
+      <div className="space-y-2">
+        {items.map((item) => (
+          <div
+            className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2"
+            key={item.id}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="truncate text-xs font-medium text-emerald-200">
+                {memoryTraceTypeLabel(item.type)}
+              </span>
+              <span className="shrink-0 text-[11px] text-slate-500">
+                {Math.round((item.importance ?? 0) * 100)}%
+              </span>
+            </div>
+            <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-400">
+              {item.content}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function memoryTraceTypeLabel(type: string) {
+  if (type === "preference") return "偏好";
+  if (type === "constraint") return "约束";
+  if (type === "fact") return "事实";
+  if (type === "explicit") return "显式";
+  return type;
 }
 
 function deriveStepsClean(tools: ToolEvent[], busy: boolean, messages: Message[]): ProcessStep[] {

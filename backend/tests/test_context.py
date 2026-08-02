@@ -10,6 +10,7 @@ import pytest
 from src.agent.nodes import allocate_provider_context, build_effective_system_prompt, plan_node
 from src.conversations.context import (
     MAX_MEMORY_CONTEXT_TOKENS,
+    build_context_for_conversation,
     build_extractive_summary,
     compute_budget,
     consolidate_user_memories,
@@ -25,7 +26,7 @@ from src.conversations.context import (
     store_user_memories,
     trim_messages_to_token_budget,
 )
-from src.conversations.models import Conversation, Message, UserMemory
+from src.conversations.models import Conversation, ConversationSummary, Message, UserMemory
 from src.infra.llm import CostTracker, normalize_model_name
 from src.infra.llm_adapters import convert_to_openai_format
 
@@ -288,6 +289,53 @@ async def test_global_preferences_are_injected_for_normal_questions(db, create_u
         )
 
     assert [memory.memory_key for memory in memories] == ["response_language"]
+
+
+@pytest.mark.asyncio
+async def test_user_profile_is_injected_and_traced(db, create_user):
+    from src.infra.database import get_session_factory
+
+    user = await create_user("profile-trace@example.com")
+    conv_id = str(uuid.uuid4())
+    factory = get_session_factory()
+    async with factory() as session:
+        session.add(
+            Conversation(id=conv_id, user_id=user.id, title="profile trace")
+        )
+        session.add_all(
+            [
+                Message(
+                    id=str(uuid.uuid4()),
+                    conversation_id=conv_id,
+                    role="user",
+                    content="Please help with this implementation.",
+                ),
+                UserMemory(
+                    id=str(uuid.uuid4()),
+                    user_id=user.id,
+                    type="preference",
+                    memory_key="response_style",
+                    memory_value="concise",
+                    content="User prefers concise implementation notes.",
+                    status="active",
+                    confidence=0.9,
+                    importance=0.8,
+                ),
+            ]
+        )
+        await session.commit()
+
+        built = await build_context_for_conversation(
+            session,
+            conversation_id=conv_id,
+            user_id=user.id,
+            model="deepseek-v4-flash",
+        )
+
+    assert built.messages[0]["_context_source"] == "profile"
+    assert "User prefers concise implementation notes." in built.messages[0]["content"]
+    assert built.memory_trace["profile"]["injected"] is True
+    assert built.memory_trace["profile"]["counts"]["preferences"] == 1
 
 
 @pytest.mark.asyncio
@@ -572,6 +620,80 @@ async def test_summary_is_updated_in_place_when_coverage_advances(db, create_use
         )
         assert second is not None
         assert second.id == first.id
+
+
+@pytest.mark.asyncio
+async def test_summary_write_uses_cas_when_another_worker_wins(db, create_user, monkeypatch):
+    from sqlalchemy import select, update
+
+    from src.conversations import context as context_module
+    from src.infra.database import get_session_factory
+
+    user = await create_user("summary-cas@example.com")
+    conv = Conversation(id=str(uuid.uuid4()), user_id=user.id, title="summary cas")
+    rows = [
+        Message(
+            id=str(uuid.uuid4()),
+            conversation_id=conv.id,
+            role="user" if index % 2 == 0 else "assistant",
+            content=f"message {index} " + "x" * 8_000,
+        )
+        for index in range(26)
+    ]
+    old_updated_at = datetime.now(timezone.utc) - timedelta(minutes=10)
+    summary_id = str(uuid.uuid4())
+    summary = ConversationSummary(
+        id=summary_id,
+        conversation_id=conv.id,
+        summary="old",
+        covered_message_id=rows[3].id,
+        covered_message_count=4,
+        token_count=1,
+        created_at=old_updated_at,
+        updated_at=old_updated_at,
+    )
+    factory = get_session_factory()
+
+    async def competing_summarizer(previous_summary, new_messages, *, llm_cfg=None):  # noqa: ARG001
+        async with factory() as other:
+            await other.execute(
+                update(ConversationSummary)
+                .where(ConversationSummary.id == summary_id)
+                .values(
+                    summary="winner",
+                    covered_message_id=rows[5].id,
+                    covered_message_count=6,
+                    token_count=1,
+                    updated_at=datetime.now(timezone.utc),
+                )
+            )
+            await other.commit()
+        return "loser"
+
+    monkeypatch.setattr(context_module, "summarize_messages_with_llm", competing_summarizer)
+
+    async with factory() as session:
+        session.add(conv)
+        session.add_all(rows)
+        session.add(summary)
+        await session.commit()
+
+        result = await ensure_summary_if_needed(
+            session,
+            conversation_id=conv.id,
+            messages=rows,
+            budget=compute_budget(rows, "deepseek-chat"),
+        )
+        stored = (
+            await session.execute(
+                select(ConversationSummary).where(ConversationSummary.id == summary_id)
+            )
+        ).scalar_one()
+
+    assert result is not None
+    assert result.summary == "winner"
+    assert stored.summary == "winner"
+    assert stored.covered_message_count == 6
 
 
 @pytest.mark.asyncio

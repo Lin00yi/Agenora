@@ -26,6 +26,7 @@ export type ConversationSummary = {
   message_count: number;
   created_at: string | null;
   updated_at: string | null;
+  finalized_at: string | null;
   context_status?: ConversationContextStatus | null;
 };
 
@@ -91,6 +92,17 @@ export type UserMemory = {
   has_embedding: boolean;
   created_at: string | null;
   updated_at: string | null;
+};
+
+export type FinalizeConversationResult = {
+  already_finalized: boolean;
+  conversation: ConversationSummary;
+  memory: {
+    messages_scanned: number;
+    rule_candidates: number;
+    llm_candidates: number;
+    stored: number;
+  };
 };
 
 /** Structured error mirror of KbApiError. */
@@ -188,6 +200,10 @@ export async function patchConversation(
 
 export async function deleteConversation(id: string): Promise<void> {
   await unwrap(await authFetch(`/api/conversations/${id}`, { method: "DELETE" }));
+}
+
+export async function finalizeConversation(id: string): Promise<FinalizeConversationResult> {
+  return unwrap(await authFetch(`/api/conversations/${id}/finalize`, { method: "POST" }));
 }
 
 // ---------------------------------------------------------------------------

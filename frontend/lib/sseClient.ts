@@ -1,3 +1,40 @@
+export type MemoryTraceItem = {
+  id: string;
+  scope: string;
+  scope_id: string | null;
+  type: string;
+  key: string | null;
+  content: string;
+  source: string;
+  confidence: number;
+  importance: number;
+  updated_at: string | null;
+};
+
+export type MemoryTrace = {
+  profile?: {
+    injected: boolean;
+    counts?: {
+      preferences?: number;
+      constraints?: number;
+      facts?: number;
+      total?: number;
+    };
+    items?: MemoryTraceItem[];
+  };
+  memories?: {
+    injected_count: number;
+    items: MemoryTraceItem[];
+  };
+  summary?: {
+    id: string;
+    covered_message_count: number;
+    token_count: number;
+    updated_at: string | null;
+  } | null;
+  recent_message_count?: number;
+};
+
 export type ChatEvent = {
   event:
     | "tool_start"
@@ -16,6 +53,7 @@ export type ChatEvent = {
   error?: string;
   reason?: string;
   cost_usd?: number;
+  memory_trace?: MemoryTrace | null;
   message?: string;
   kb_id?: string | null;
   /** v2-M2 BYOK gate: `llm_not_configured` | `embedding_not_configured` */

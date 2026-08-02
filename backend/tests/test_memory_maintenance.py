@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from sqlalchemy import select
 
-from src.conversations.models import UserMemory
+from src.conversations.models import Conversation, UserMemory
 
 
 @pytest.mark.asyncio
@@ -57,3 +57,48 @@ async def test_maintenance_expires_and_backfills_memories(db, create_user, monke
     active = next(row for row in rows if row.status == "active")
     assert active.embedding_fingerprint == "worker-space"
     assert active.embedding_json == "[1.0,0.0]"
+
+
+@pytest.mark.asyncio
+async def test_maintenance_finalizes_idle_conversations(db, create_user, monkeypatch):
+    from src.infra import memory_maintenance
+    from src.infra.database import get_session_factory
+
+    user = await create_user("idle-memory-worker@example.com")
+    conv_id = str(uuid.uuid4())
+    old_time = datetime.now(timezone.utc) - timedelta(hours=25)
+
+    async def fake_extract(*args, **kwargs):  # noqa: ANN002, ANN003
+        return {"messages_scanned": 2, "rule_candidates": 0, "llm_candidates": 1, "stored": 1}
+
+    monkeypatch.setattr(memory_maintenance, "extract_conversation_memories", fake_extract)
+    monkeypatch.setattr(memory_maintenance, "resolve_user_embedding", lambda _user: None)
+    monkeypatch.setattr(memory_maintenance, "resolve_user_llm", lambda _user: None)
+    monkeypatch.setattr(memory_maintenance, "resolve_system_llm", lambda: None)
+
+    factory = get_session_factory()
+    async with factory() as session:
+        session.add(
+            Conversation(
+                id=conv_id,
+                user_id=user.id,
+                title="idle",
+                created_at=old_time,
+                updated_at=old_time,
+            )
+        )
+        await session.commit()
+
+        result = await memory_maintenance.run_memory_maintenance(
+            session,
+            user_limit=10,
+            embedding_limit_per_user=0,
+            idle_hours=24,
+            idle_limit_per_user=10,
+        )
+        conv = (await session.execute(select(Conversation).where(Conversation.id == conv_id))).scalar_one()
+
+    assert result.idle_conversations_scanned == 1
+    assert result.idle_conversations_finalized == 1
+    assert result.idle_memories_extracted == 1
+    assert conv.finalized_at is not None

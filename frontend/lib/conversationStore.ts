@@ -40,6 +40,7 @@ export type Conversation = {
   message_count?: number;
   created_at: number;
   updated_at: number;
+  finalized_at?: number | null;
 };
 
 export function deriveTitle(msg: string): string {

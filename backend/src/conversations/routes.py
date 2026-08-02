@@ -9,7 +9,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, desc, func, select
+from sqlalchemy import delete, desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.middleware import CurrentUser
@@ -17,6 +17,7 @@ from src.conversations.context import (
     compute_budget,
     consolidate_user_memories,
     context_status_payload,
+    extract_conversation_memories,
     get_latest_summary,
     refresh_memory_embedding,
     store_user_memories,
@@ -309,6 +310,62 @@ async def get_conversation_context_status(
     )
 
 
+@router.post("/{conv_id}/finalize")
+async def finalize_conversation(
+    conv_id: str,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    conv = await _load_owned_conversation(session, conv_id, user.id)
+    if conv.finalized_at is not None:
+        return {
+            "already_finalized": True,
+            "conversation": conv.to_summary_dict(),
+            "memory": {
+                "messages_scanned": 0,
+                "rule_candidates": 0,
+                "llm_candidates": 0,
+                "stored": 0,
+            },
+        }
+
+    now = datetime.now(timezone.utc)
+    result = await session.execute(
+        update(Conversation)
+        .where(
+            Conversation.id == conv.id,
+            Conversation.user_id == user.id,
+            Conversation.finalized_at.is_(None),
+        )
+        .values(finalized_at=now, updated_at=now)
+    )
+    if not result.rowcount:
+        await session.rollback()
+        await session.refresh(conv)
+        return {
+            "already_finalized": True,
+            "conversation": conv.to_summary_dict(),
+            "memory": {
+                "messages_scanned": 0,
+                "rule_candidates": 0,
+                "llm_candidates": 0,
+                "stored": 0,
+            },
+        }
+
+    memory = await extract_conversation_memories(
+        session,
+        conversation_id=conv.id,
+        user_id=user.id,
+        kb_id=conv.kb_id,
+        llm_cfg=resolve_user_llm(user) or resolve_system_llm(),
+        embedding_cfg=resolve_user_embedding(user),
+    )
+    await session.commit()
+    await session.refresh(conv)
+    return {"already_finalized": False, "conversation": conv.to_summary_dict(), "memory": memory}
+
+
 @router.patch("/{conv_id}")
 async def patch_conversation(
     conv_id: str,
@@ -385,6 +442,7 @@ async def append_message(
             conv.title = _derive_title(req.content)
 
     conv.updated_at = datetime.now(timezone.utc)
+    conv.finalized_at = None
 
     await session.commit()
     await session.refresh(msg)

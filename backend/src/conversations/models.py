@@ -31,6 +31,9 @@ class Conversation(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )
+    finalized_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
 
     messages: Mapped[list["Message"]] = relationship(
         back_populates="conversation",
@@ -48,6 +51,7 @@ class Conversation(Base):
             "message_count": len(self.messages) if self.messages is not None else 0,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "finalized_at": self.finalized_at.isoformat() if self.finalized_at else None,
         }
 
     def to_dict_with_messages(self) -> dict:

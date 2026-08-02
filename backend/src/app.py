@@ -152,6 +152,7 @@ def _run_chat_session(
     kb: KB | None = None,
     user: User | None = None,
     model_override: str | None = None,
+    memory_trace: dict[str, Any] | None = None,
 ) -> EventSourceResponse:
     settings = get_settings()
     allowed, remaining = rate_check(rate_key, settings.rate_limit_per_hour)
@@ -234,6 +235,7 @@ def _run_chat_session(
                     "cost_usd": round(final_state.get("cost_usd", 0.0), 6),
                     "rate_remaining": remaining,
                     "kb_id": kb.id if kb else None,
+                    "memory_trace": memory_trace,
                 }
             )
         except Exception as exc:  # noqa: BLE001
@@ -305,6 +307,7 @@ async def chat_post(
             require_user_embedding(user)
 
     if conv is not None:
+        memory_trace: dict[str, Any] | None = None
         context_llm_cfg = (resolve_user_llm(user) if user is not None else None) or resolve_system_llm()
         user_memory_embedding_cfg = resolve_user_embedding(user)
         built = await build_context_for_conversation(
@@ -312,14 +315,16 @@ async def chat_post(
             conversation_id=conv.id,
             user_id=user.id,
             model=selected_model,
-            kb_id=conv.kb_id,
+            kb_id=effective_kb_id,
             context_window=context_llm_cfg.context_window if context_llm_cfg is not None else None,
             llm_cfg=context_llm_cfg,
             embedding_cfg=user_memory_embedding_cfg,
         )
         messages = built.messages
+        memory_trace = built.memory_trace
     elif req.messages:
         messages = [{"role": m.role, "content": m.content} for m in req.messages]
+        memory_trace = None
     else:
         raise HTTPException(
             status_code=400,
@@ -333,6 +338,7 @@ async def chat_post(
         kb=kb,
         user=user,
         model_override=selected_model,
+        memory_trace=memory_trace,
     )
 
 
