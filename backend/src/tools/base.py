@@ -96,8 +96,8 @@ def build_default_registry(
     """Build the agent's tool set based on which KB (if any) is active.
 
     Three cases (v2-M4):
-      1. kb=None — general chat mode. Web search tool (v2-M5) so the LLM can
-         pull real-time facts.
+      1. kb=None — general chat mode. Current time + web search tools so the LLM
+         can answer date/time deterministically and pull real-time facts.
       2. kb=<system travel demo KB> — travel four-tool kit (weather + restaurant_kb
          + amap + the `generate_travel_report` skill that's wired in `graph.py`).
          Travel behavior is reachable only via this explicit selection.
@@ -121,13 +121,13 @@ def build_default_registry(
 
     reg = ToolRegistry()
 
-    # General chat mode — only web_search (v2-M5). LLM can answer from
-    # pretraining knowledge, or call web_search for real-time facts. Keeps the
-    # toolset minimal so the agent doesn't drift toward travel / KB tools when
-    # no KB is selected.
+    # General chat mode. Keep the toolset minimal so the agent doesn't drift
+    # toward travel / KB tools when no KB is selected.
     if kb is None:
+        from src.tools.current_time import CurrentTimeTool
         from src.tools.web_search import WebSearchTool
 
+        reg.register(CurrentTimeTool())
         reg.register(WebSearchTool())
         return reg
 
