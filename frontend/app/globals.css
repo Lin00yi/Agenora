@@ -781,6 +781,12 @@ body {
   .admin-table {
     @apply w-full min-w-[960px] border-collapse text-left text-sm;
   }
+  .admin-table-documents {
+    @apply min-w-[760px];
+  }
+  .admin-table-chunks {
+    @apply min-w-[860px];
+  }
   .admin-table thead {
     @apply bg-surface-2/70 dark:bg-surface-2/40;
   }
@@ -798,13 +804,13 @@ body {
     @apply inline-flex items-center justify-center gap-1.5 rounded-lg
            border border-transparent bg-brand px-4 py-2 text-sm font-medium text-white
            shadow-sm transition hover:bg-brand-dark
-           disabled:cursor-not-allowed disabled:opacity-50;
+           cursor-pointer disabled:cursor-not-allowed disabled:opacity-50;
   }
   .admin-btn-secondary {
     @apply inline-flex items-center justify-center gap-1.5 rounded-lg
            border border-surface-border bg-surface px-4 py-2 text-sm font-medium text-fg
            transition hover:bg-surface-2
-           disabled:cursor-not-allowed disabled:opacity-50;
+           cursor-pointer disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .admin-toolbar-btn {
@@ -812,7 +818,7 @@ body {
            border border-surface-border/80 bg-surface px-3 py-1.5 text-xs font-medium text-fg
            shadow-sm transition-[background-color,border-color,color,box-shadow,transform] duration-150 ease-ui-out
            hover:border-surface-border hover:bg-surface-2 hover:shadow
-           disabled:cursor-not-allowed disabled:opacity-50;
+           cursor-pointer disabled:cursor-not-allowed disabled:opacity-50;
   }
   .dark .admin-toolbar-btn {
     @apply border-surface-border bg-surface-2/80 hover:bg-surface-2;
@@ -823,7 +829,7 @@ body {
            px-2 py-1.5 text-xs font-medium text-muted
            transition-[background-color,border-color,color,box-shadow,transform] duration-150 ease-ui-out
            hover:border-surface-border/80 hover:bg-surface-2 hover:text-fg hover:shadow-sm
-           disabled:cursor-not-allowed disabled:opacity-50;
+           cursor-pointer disabled:cursor-not-allowed disabled:opacity-50;
   }
   .admin-row-action-brand {
     @apply hover:border-brand/30 hover:bg-brand/10 hover:text-brand;
@@ -848,6 +854,17 @@ body {
   }
   .status-tag-disabled {
     @apply bg-surface-2 text-muted;
+  }
+
+  .admin-section-nav {
+    @apply sticky top-0 z-10 mb-6 flex gap-1 overflow-x-auto rounded-lg border border-surface-border/70 bg-surface/95 p-1 shadow-sm backdrop-blur;
+  }
+  .admin-section-nav-item {
+    @apply inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-3 text-xs font-medium text-muted
+           transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30;
+  }
+  .admin-section {
+    @apply space-y-3;
   }
 
   .ak-state-view,

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -9,6 +10,13 @@ import ThemeToggle from "@/components/ThemeToggle";
 export type BreadcrumbItem = {
   label: string;
   href?: string;
+};
+
+export type AdminSectionNavItem = {
+  label: string;
+  href: string;
+  icon?: LucideIcon;
+  muted?: boolean;
 };
 
 export function AdminPageShell({
@@ -75,19 +83,32 @@ export function AdminPanel({
   subtitle,
   toolbar,
   footer,
+  selectionBar,
   children,
   className,
+  headerClassName,
+  toolbarClassName,
+  bodyClassName,
 }: {
   title: string;
   subtitle?: string;
   toolbar?: ReactNode;
   footer?: ReactNode;
+  selectionBar?: ReactNode;
   children: ReactNode;
   className?: string;
+  headerClassName?: string;
+  toolbarClassName?: string;
+  bodyClassName?: string;
 }) {
   return (
     <section className={cn("admin-panel overflow-hidden", className)}>
-      <div className="flex flex-col gap-3 border-b border-surface-border/60 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <div
+        className={cn(
+          "flex flex-col gap-3 border-b border-surface-border/60 px-5 py-4 sm:flex-row sm:items-center sm:justify-between",
+          headerClassName
+        )}
+      >
         <div>
           <h2 className="text-base font-semibold">{title}</h2>
           {subtitle && (
@@ -95,15 +116,75 @@ export function AdminPanel({
           )}
         </div>
         {toolbar && (
-          <div className="flex flex-wrap items-center gap-2">{toolbar}</div>
+          <div className={cn("flex flex-wrap items-center gap-2", toolbarClassName)}>
+            {toolbar}
+          </div>
         )}
       </div>
-      <div className="overflow-x-auto">{children}</div>
+      {selectionBar && (
+        <div className="border-b border-surface-border/60 bg-brand/5 px-5 py-3">
+          {selectionBar}
+        </div>
+      )}
+      <div className={cn("overflow-x-auto", bodyClassName)}>{children}</div>
       {footer && (
         <div className="border-t border-surface-border/60 px-5 py-3">
           {footer}
         </div>
       )}
+    </section>
+  );
+}
+
+export function AdminSectionNav({ items }: { items: AdminSectionNavItem[] }) {
+  return (
+    <nav className="admin-section-nav" aria-label="页面分区">
+      {items.map((item) => {
+        const Icon = item.icon;
+        return (
+          <a
+            key={item.href}
+            href={item.href}
+            className={cn("admin-section-nav-item", item.muted && "opacity-70")}
+          >
+            {Icon ? <Icon className="h-3.5 w-3.5" aria-hidden /> : null}
+            <span>{item.label}</span>
+          </a>
+        );
+      })}
+    </nav>
+  );
+}
+
+export function AdminSection({
+  id,
+  icon: Icon,
+  title,
+  description,
+  children,
+  className,
+}: {
+  id?: string;
+  icon?: LucideIcon;
+  title: string;
+  description?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section id={id} className={cn("admin-section scroll-mt-24", className)}>
+      <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-semibold text-fg">
+            {Icon ? <Icon className="h-4 w-4 text-brand" aria-hidden /> : null}
+            <h2>{title}</h2>
+          </div>
+          {description ? (
+            <p className="mt-1 text-xs leading-relaxed text-muted">{description}</p>
+          ) : null}
+        </div>
+      </div>
+      {children}
     </section>
   );
 }

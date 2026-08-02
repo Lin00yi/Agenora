@@ -30,6 +30,7 @@ import {
   Search,
   Plus,
   Play,
+  MoreHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -66,8 +67,17 @@ import Select from "@/components/Select";
 import { LoadingState, StateView } from "@/components/ui/state-view";
 import { Switch } from "@/components/ui/switch";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   AdminPageShell,
   AdminPanel,
+  AdminSection,
+  AdminSectionNav,
 } from "@/components/kb/AdminPageShell";
 import {
   AdminRowAction,
@@ -335,6 +345,19 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
     }
   };
 
+  const onReingestDoc = async (doc: Document) => {
+    setReingestingDocId(doc.id);
+    try {
+      await reingestDocument(id, doc.id);
+      toast.success("已提交重新 ingest");
+      await refresh();
+    } catch (e) {
+      toastApiError(e, (p) => router.push(p));
+    } finally {
+      setReingestingDocId(null);
+    }
+  };
+
   const filteredDocuments = useMemo(() => {
     if (!kb) return [];
     const q = docSearch.trim().toLowerCase();
@@ -472,6 +495,28 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
           </div>
         </div>
 
+        <AdminSectionNav
+          items={[
+            { label: "文档", href: "#documents", icon: FileText },
+            ...(!kb.is_system
+              ? [{ label: "成员", href: "#members", icon: Users }]
+              : []),
+            ...(isOwner && !kb.is_system
+              ? [
+                  { label: "检索设置", href: "#retrieval", icon: Sparkles },
+                  { label: "危险操作", href: "#danger", icon: AlertCircle, muted: true },
+                ]
+              : []),
+          ]}
+        />
+
+        <AdminSection
+          id="documents"
+          icon={FileText}
+          title="文档"
+          description="上传、筛选、启停文档，并进入单篇文档的分块管理。"
+          className="mt-6"
+        >
         {kb.is_system ? (
           <StateView
             variant="notice"
@@ -594,18 +639,122 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
               />
             </div>
           ) : (
-            <table className="admin-table">
+            <>
+            <div className="space-y-3 p-3 md:hidden">
+              {pagedDocuments.map((d) => {
+                const st = DOC_STATUS_UI[d.status];
+                return (
+                  <article
+                    key={d.id}
+                    className="rounded-lg border border-surface-border/70 bg-surface px-3 py-3"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <Link
+                          href={`/kbs/${id}/documents/${d.id}`}
+                          className="inline-flex max-w-full items-center gap-2 font-medium text-brand"
+                        >
+                          <FileText className="h-4 w-4 shrink-0 text-muted" />
+                          <span className="truncate">{d.filename}</span>
+                        </Link>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+                          <span>{d.source_type === "url" ? "URL" : "Local File"}</span>
+                          <span>{fileExtension(d.filename)}</span>
+                          <span>{formatFileSize(d.size_bytes)}</span>
+                        </div>
+                      </div>
+                      <span className="inline-flex shrink-0 items-center gap-1.5 text-xs">
+                        <span className={cn("h-2 w-2 rounded-full", st.dot)} />
+                        {st.label}
+                      </span>
+                    </div>
+
+                    <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <dt className="text-muted">分块数</dt>
+                        <dd className="mt-0.5 tabular-nums">{d.chunks_count}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted">更新时间</dt>
+                        <dd className="mt-0.5">{formatAdminDate(d.updated_at ?? d.created_at)}</dd>
+                      </div>
+                    </dl>
+
+                    <div className="mt-3 flex items-center justify-between gap-2 border-t border-surface-border/60 pt-3">
+                      <Switch
+                        size="sm"
+                        checked={d.enabled !== false}
+                        loading={docToggleBusy === d.id}
+                        disabled={!canWrite || d.status !== "done"}
+                        onCheckedChange={(checked) => onToggleDocEnabled(d, checked)}
+                        title={
+                          docToggleBusy === d.id
+                            ? "更新中…"
+                            : d.status !== "done"
+                              ? "ingest 完成后才可启用检索"
+                              : d.enabled !== false
+                                ? "禁用后整篇文档不参与检索"
+                                : "启用后文档 chunks 可参与检索"
+                        }
+                      />
+                      <div className="flex items-center gap-0.5">
+                        <AdminRowAction
+                          icon={Layers}
+                          title="分块管理"
+                          label="分块"
+                          variant="brand"
+                          href={`/kbs/${id}/documents/${d.id}`}
+                        />
+                        {canWrite && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                className="admin-row-action"
+                                title="更多操作"
+                                aria-label={`${d.filename} 更多操作`}
+                              >
+                                <MoreHorizontal className="h-3.5 w-3.5" aria-hidden />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-40">
+                              {d.status === "done" && (
+                                <DropdownMenuItem
+                                  className="cursor-pointer"
+                                  disabled={reingestingDocId != null}
+                                  onSelect={() => void onReingestDoc(d)}
+                                >
+                                  <Play className="h-4 w-4" />
+                                  重新 ingest
+                                </DropdownMenuItem>
+                              )}
+                              {d.status === "done" && <DropdownMenuSeparator />}
+                              <DropdownMenuItem
+                                className="cursor-pointer"
+                                variant="destructive"
+                                onSelect={() => setPendingDelete(d)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                删除
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+
+            <div className="hidden md:block">
+            <table className="admin-table admin-table-documents">
               <thead>
                 <tr>
                   <th>文档</th>
-                  <th className="w-24">来源</th>
-                  <th className="w-20">处理模式</th>
                   <th className="w-28">状态</th>
                   <th className="w-16">启用</th>
                   <th className="w-16">分块数</th>
-                  <th className="w-20">类型</th>
-                  <th className="w-24">大小</th>
-                  <th className="w-36">创建时间</th>
                   <th className="w-36">更新时间</th>
                   <th className="w-32">操作</th>
                 </tr>
@@ -616,18 +765,22 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                   return (
                     <tr key={d.id}>
                       <td>
-                        <Link
-                          href={`/kbs/${id}/documents/${d.id}`}
-                          className="inline-flex max-w-xs items-center gap-2 truncate font-medium text-brand hover:underline"
-                        >
-                          <FileText className="h-4 w-4 shrink-0 text-muted" />
-                          <span className="truncate">{d.filename}</span>
-                        </Link>
+                        <div className="min-w-0">
+                          <Link
+                            href={`/kbs/${id}/documents/${d.id}`}
+                            className="inline-flex max-w-sm items-center gap-2 truncate font-medium text-brand hover:underline"
+                          >
+                            <FileText className="h-4 w-4 shrink-0 text-muted" />
+                            <span className="truncate">{d.filename}</span>
+                          </Link>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+                            <span>{d.source_type === "url" ? "URL" : "Local File"}</span>
+                            <span>{fileExtension(d.filename)}</span>
+                            <span>{formatFileSize(d.size_bytes)}</span>
+                            <span>创建 {formatAdminDate(d.created_at)}</span>
+                          </div>
+                        </div>
                       </td>
-                      <td className="text-xs text-muted">
-                        {d.source_type === "url" ? "URL" : "Local File"}
-                      </td>
-                      <td className="text-xs text-muted">chunk</td>
                       <td>
                         <span className="inline-flex items-center gap-1.5 text-xs">
                           <span className={cn("h-2 w-2 rounded-full", st.dot)} />
@@ -656,53 +809,51 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                       </td>
                       <td className="tabular-nums">{d.chunks_count}</td>
                       <td className="text-xs text-muted">
-                        {fileExtension(d.filename)}
-                      </td>
-                      <td className="text-xs text-muted">
-                        {formatFileSize(d.size_bytes)}
-                      </td>
-                      <td className="text-xs text-muted">
-                        {formatAdminDate(d.created_at)}
-                      </td>
-                      <td className="text-xs text-muted">
                         {formatAdminDate(d.updated_at ?? d.created_at)}
                       </td>
                       <td>
                         <div className="flex items-center gap-0.5">
-                          {canWrite && d.status === "done" && (
-                            <AdminRowAction
-                              icon={Play}
-                              title="重新 ingest"
-                              variant="brand"
-                              loading={reingestingDocId === d.id}
-                              disabled={reingestingDocId != null}
-                              onClick={async () => {
-                                setReingestingDocId(d.id);
-                                try {
-                                  await reingestDocument(id, d.id);
-                                  toast.success("已提交重新 ingest");
-                                  await refresh();
-                                } catch (e) {
-                                  toastApiError(e, (p) => router.push(p));
-                                } finally {
-                                  setReingestingDocId(null);
-                                }
-                              }}
-                            />
-                          )}
                           <AdminRowAction
                             icon={Layers}
                             title="分块管理"
+                            label="分块"
                             variant="brand"
                             href={`/kbs/${id}/documents/${d.id}`}
                           />
                           {canWrite && (
-                            <AdminRowAction
-                              icon={Trash2}
-                              title="删除"
-                              variant="danger"
-                              onClick={() => setPendingDelete(d)}
-                            />
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="admin-row-action"
+                                  title="更多操作"
+                                  aria-label={`${d.filename} 更多操作`}
+                                >
+                                  <MoreHorizontal className="h-3.5 w-3.5" aria-hidden />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-40">
+                                {d.status === "done" && (
+                                  <DropdownMenuItem
+                                    className="cursor-pointer"
+                                    disabled={reingestingDocId != null}
+                                    onSelect={() => void onReingestDoc(d)}
+                                  >
+                                    <Play className="h-4 w-4" />
+                                    重新 ingest
+                                  </DropdownMenuItem>
+                                )}
+                                {d.status === "done" && <DropdownMenuSeparator />}
+                                <DropdownMenuItem
+                                  className="cursor-pointer"
+                                  variant="destructive"
+                                  onSelect={() => setPendingDelete(d)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                  删除
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           )}
                         </div>
                       </td>
@@ -711,17 +862,34 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                 })}
               </tbody>
             </table>
+            </div>
+            </>
           )}
         </AdminPanel>
+        </AdminSection>
 
-        <div className="mt-6 space-y-6">
         {!kb.is_system && (
-          <MembersSection kbId={kb.id} isOwner={isOwner} />
+          <AdminSection
+            id="members"
+            icon={Users}
+            title="成员"
+            description="管理谁可以查看或维护这个知识库。"
+            className="mt-8"
+          >
+            <MembersSection kbId={kb.id} isOwner={isOwner} />
+          </AdminSection>
         )}
 
         {/* v3-M3: owner-only advanced settings — grouping toggle + hybrid rebuild. */}
         {isOwner && !kb.is_system && (
-          <section className="card mt-6 p-4">
+          <AdminSection
+            id="retrieval"
+            icon={Sparkles}
+            title="检索设置"
+            description="统一管理 KB 默认分块参数、grouping search 和索引重建。"
+            className="mt-8"
+          >
+          <section className="card p-4">
             <div className="flex items-center gap-2 text-sm font-medium">
               <Sparkles className="h-4 w-4 text-brand" />
               高级设置
@@ -803,11 +971,19 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
               </button>
             </div>
           </section>
+          </AdminSection>
         )}
 
         {/* v3-M1: owner-only danger zone for KB deletion. */}
         {isOwner && !kb.is_system && (
-          <div className="card mt-6 border-danger/30 p-4">
+          <AdminSection
+            id="danger"
+            icon={AlertCircle}
+            title="危险操作"
+            description="高风险操作集中在这里，避免和日常文档维护混在一起。"
+            className="mt-8"
+          >
+          <div className="card border-danger/30 p-4">
             <div className="flex items-center gap-2 text-sm font-medium text-danger">
               <AlertCircle className="h-4 w-4" />
               危险操作
@@ -825,8 +1001,8 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
               删除整个知识库
             </button>
           </div>
+          </AdminSection>
         )}
-        </div>
 
       <Dialog
         open={pendingDelete != null}
@@ -937,7 +1113,7 @@ function MembersSection({ kbId, isOwner }: { kbId: string; isOwner: boolean }) {
   };
 
   return (
-    <div className="card mt-6 overflow-hidden">
+    <div className="card overflow-hidden">
       <div className="flex items-center justify-between border-b px-4 py-2">
         <div className="text-sm font-medium">
           成员（{(data?.members?.length ?? 0) + (data?.owner ? 1 : 0)}）

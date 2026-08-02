@@ -97,6 +97,79 @@ export async function authFetch(input: RequestInfo, init: RequestInit = {}): Pro
 // ---------------------------------------------------------------------------
 type AuthResponse = { token: string; user: User };
 
+function localizeApiMessage(message: string): string {
+  const text = message.trim();
+  const lower = text.toLowerCase();
+  if (lower.includes("email already registered")) {
+    return "这个邮箱已经注册过，请直接登录。";
+  }
+  if (lower.includes("invalid email or password")) {
+    return "邮箱或密码不正确。";
+  }
+  if (lower.includes("account disabled")) {
+    return "该账号已被禁用。";
+  }
+  if (
+    lower.includes("not a valid email address") ||
+    lower.includes("valid email")
+  ) {
+    return "请输入有效的邮箱地址。";
+  }
+  if (lower.includes("special-use") || lower.includes("reserved name")) {
+    return "邮箱域名不能使用保留域名，请换一个常用邮箱。";
+  }
+  if (lower.includes("string should have at least 8 characters")) {
+    return "密码至少需要 8 位。";
+  }
+  return text;
+}
+
+function localizeApiField(value: unknown): string {
+  const key = String(value ?? "");
+  if (key === "email") return "邮箱";
+  if (key === "password") return "密码";
+  if (key === "display_name") return "昵称";
+  return key;
+}
+
+function stringifyApiDetail(value: unknown, fallback: string): string {
+  if (typeof value === "string") return localizeApiMessage(value);
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((item) => stringifyApiDetail(item, ""))
+      .filter(Boolean);
+    return parts.length > 0 ? parts.join("；") : fallback;
+  }
+  if (value && typeof value === "object") {
+    const obj = value as {
+      detail?: unknown;
+      message?: unknown;
+      msg?: unknown;
+      loc?: unknown;
+    };
+    if (obj.detail !== undefined) return stringifyApiDetail(obj.detail, fallback);
+    if (obj.message !== undefined) return stringifyApiDetail(obj.message, fallback);
+    if (obj.msg !== undefined) {
+      const msg = stringifyApiDetail(obj.msg, fallback);
+      if (Array.isArray(obj.loc) && obj.loc.length > 0) {
+        return `${localizeApiField(obj.loc[obj.loc.length - 1])}: ${msg}`;
+      }
+      return msg;
+    }
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
+async function readApiError(response: Response, fallback: string): Promise<string> {
+  const detail = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }));
+  return stringifyApiDetail(detail, fallback);
+}
+
 export async function login(email: string, password: string): Promise<AuthResponse> {
   const r = await fetch("/api/auth/login", {
     method: "POST",
@@ -104,8 +177,7 @@ export async function login(email: string, password: string): Promise<AuthRespon
     body: JSON.stringify({ email, password }),
   });
   if (!r.ok) {
-    const detail = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }));
-    throw new Error(detail.detail ?? "login failed");
+    throw new Error(await readApiError(r, "login failed"));
   }
   const data = (await r.json()) as AuthResponse;
   setToken(data.token);
@@ -124,8 +196,7 @@ export async function register(
     body: JSON.stringify({ email, password, display_name }),
   });
   if (!r.ok) {
-    const detail = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }));
-    throw new Error(detail.detail ?? "register failed");
+    throw new Error(await readApiError(r, "register failed"));
   }
   const data = (await r.json()) as AuthResponse;
   setToken(data.token);

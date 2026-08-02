@@ -46,12 +46,12 @@ export const DOC_STATUS_UI: Record<
     badge: "border-info/30 bg-info/10 text-info",
   },
   done: {
-    label: "success",
+    label: "完成",
     dot: "bg-success",
     badge: "border-success/30 bg-success/10 text-success",
   },
   failed: {
-    label: "failed",
+    label: "失败",
     dot: "bg-danger",
     badge: "border-danger/30 bg-danger/10 text-danger",
   },

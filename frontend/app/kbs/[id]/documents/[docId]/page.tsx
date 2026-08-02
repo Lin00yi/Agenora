@@ -8,6 +8,7 @@ import {
   useState,
   FormEvent,
   ChangeEvent,
+  type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -21,9 +22,13 @@ import {
   Loader2,
   Search,
   Plus,
-  ChevronLeft,
   Split,
   Merge,
+  FileText,
+  Hash,
+  Clock,
+  Type,
+  MoreHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -50,6 +55,13 @@ import Dialog from "@/components/Dialog";
 import Select from "@/components/Select";
 import { StateView } from "@/components/ui/state-view";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   AdminPageShell,
   AdminPanel,
 } from "@/components/kb/AdminPageShell";
@@ -58,8 +70,10 @@ import {
   AdminToolbarButton,
 } from "@/components/kb/AdminTableActions";
 import {
+  DOC_STATUS_UI,
   estimateTokens,
   formatAdminDate,
+  formatFileSize,
 } from "@/components/kb/admin-utils";
 
 export default function DocumentDetailPage({
@@ -393,6 +407,11 @@ export default function DocumentDetailPage({
     );
   }
 
+  const docStatus = DOC_STATUS_UI[doc.status];
+  const enabledOnPage = chunks.filter((c) => c.enabled).length;
+  const selectedText =
+    selected.length > 0 ? `已选择 ${selected.length} 个 chunk` : "";
+
   return (
     <AdminPageShell
       breadcrumbs={[
@@ -444,11 +463,51 @@ export default function DocumentDetailPage({
         </>
       }
     >
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <DocContextStat
+          icon={FileText}
+          label="文档状态"
+          value={
+            <span className="inline-flex items-center gap-1.5">
+              <span className={cn("h-2 w-2 rounded-full", docStatus.dot)} />
+              {docStatus.label}
+            </span>
+          }
+        />
+        <DocContextStat
+          icon={Hash}
+          label="分块总数"
+          value={`${doc.chunks_count.toLocaleString()} chunks`}
+        />
+        <DocContextStat
+          icon={Type}
+          label="文本规模"
+          value={`${doc.parsed_text_length.toLocaleString()} 字符`}
+          detail={formatFileSize(doc.size_bytes)}
+        />
+        <DocContextStat
+          icon={Clock}
+          label="最近更新"
+          value={formatAdminDate(doc.updated_at ?? doc.created_at)}
+        />
+      </div>
+
       <AdminPanel
         title="Chunk 列表"
-        subtitle="支持编辑、启用、批量操作"
+        subtitle={`当前页 ${chunks.length} 条，启用 ${enabledOnPage} 条`}
+        toolbarClassName="w-full sm:w-auto"
         toolbar={
           <>
+            <div className="input-shell flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 sm:w-64 sm:flex-none">
+              <Search className="h-3.5 w-3.5 shrink-0 text-muted" />
+              <input
+                type="search"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="搜索 chunk 内容…"
+                className="min-w-0 flex-1 bg-transparent text-xs outline-none"
+              />
+            </div>
             <Select
               size="sm"
               className="w-[120px] admin-select-trigger"
@@ -473,30 +532,6 @@ export default function DocumentDetailPage({
             {canWrite && (
               <>
                 <AdminToolbarButton
-                  icon={Eye}
-                  loading={isPending("batch")}
-                  disabled={
-                    anyPending ||
-                    selected.length === 0 ||
-                    (pendingKey != null && pendingKey !== "batch")
-                  }
-                  onClick={() => void onBatchEnable(true)}
-                >
-                  批量启用
-                </AdminToolbarButton>
-                <AdminToolbarButton
-                  icon={EyeOff}
-                  loading={isPending("batch")}
-                  disabled={
-                    anyPending ||
-                    selected.length === 0 ||
-                    (pendingKey != null && pendingKey !== "batch")
-                  }
-                  onClick={() => void onBatchEnable(false)}
-                >
-                  批量禁用
-                </AdminToolbarButton>
-                <AdminToolbarButton
                   loading={isPending("batch-all-on")}
                   disabled={anyPending && !isPending("batch-all-on")}
                   onClick={() => void onBatchEnable(true, true)}
@@ -513,6 +548,44 @@ export default function DocumentDetailPage({
               </>
             )}
           </>
+        }
+        selectionBar={
+          canWrite && selected.length > 0 ? (
+            <div className="flex flex-col gap-2 text-xs sm:flex-row sm:items-center sm:justify-between">
+              <span className="font-medium text-brand">{selectedText}</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <AdminToolbarButton
+                  icon={Eye}
+                  loading={isPending("batch")}
+                  disabled={
+                    anyPending ||
+                    (pendingKey != null && pendingKey !== "batch")
+                  }
+                  onClick={() => void onBatchEnable(true)}
+                >
+                  批量启用
+                </AdminToolbarButton>
+                <AdminToolbarButton
+                  icon={EyeOff}
+                  loading={isPending("batch")}
+                  disabled={
+                    anyPending ||
+                    (pendingKey != null && pendingKey !== "batch")
+                  }
+                  onClick={() => void onBatchEnable(false)}
+                >
+                  批量禁用
+                </AdminToolbarButton>
+                <button
+                  type="button"
+                  className="admin-btn-secondary !px-2 !py-1 text-xs"
+                  onClick={() => setSelected([])}
+                >
+                  清空选择
+                </button>
+              </div>
+            </div>
+          ) : null
         }
         footer={
           <div className="flex items-center justify-between text-xs text-muted">
@@ -543,19 +616,6 @@ export default function DocumentDetailPage({
           </div>
         }
       >
-        <div className="border-b border-surface-border/50 px-5 py-3">
-          <div className="input-shell flex max-w-md items-center gap-2 px-3 py-2">
-            <Search className="h-4 w-4 shrink-0 text-muted" />
-            <input
-              type="search"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="搜索 chunk 内容…"
-              className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-            />
-          </div>
-        </div>
-
         {tableLoading && chunks.length === 0 ? (
           <div className="flex justify-center py-16">
             <Loader2 className="h-7 w-7 animate-spin text-brand" />
@@ -563,7 +623,126 @@ export default function DocumentDetailPage({
         ) : chunks.length === 0 ? (
           <div className="py-16 text-center text-sm text-muted">暂无数据</div>
         ) : (
-          <table className="admin-table">
+          <>
+          <div className="space-y-3 p-3 md:hidden">
+            {chunks.map((c) => (
+              <article
+                key={c.id}
+                className="rounded-lg border border-surface-border/70 bg-surface px-3 py-3"
+              >
+                <div className="flex items-start gap-3">
+                  {canWrite && (
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(c.id)}
+                      onChange={() => toggleSelect(c.id)}
+                      aria-label={`选择 chunk #${c.chunk_idx + 1}`}
+                      className="mt-1 h-4 w-4 cursor-pointer accent-brand"
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium text-muted">
+                        Chunk #{c.chunk_idx + 1}
+                      </span>
+                      <span
+                        className={cn(
+                          "status-tag",
+                          c.enabled ? "status-tag-enabled" : "status-tag-disabled"
+                        )}
+                      >
+                        {c.enabled ? "启用" : "禁用"}
+                      </span>
+                    </div>
+                    <p className="mt-2 line-clamp-4 text-sm leading-relaxed text-fg/90">
+                      {c.text}
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+                      <span>{c.char_count.toLocaleString()} 字符</span>
+                      <span>≈ {estimateTokens(c.char_count).toLocaleString()} tokens</span>
+                      <span>{formatAdminDate(c.updated_at ?? c.created_at)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {canWrite && (
+                  <div className="mt-3 flex items-center justify-end gap-0.5 border-t border-surface-border/60 pt-3">
+                    <AdminRowAction
+                      icon={Pencil}
+                      label="编辑"
+                      title="编辑内容"
+                      variant="brand"
+                      loading={isPending(`edit:${c.id}`)}
+                      disabled={anyPending && !isPending(`edit:${c.id}`)}
+                      onClick={() => {
+                        setEditingChunk(c);
+                        setEditText(c.text);
+                      }}
+                    />
+                    <AdminRowAction
+                      icon={c.enabled ? EyeOff : Eye}
+                      label={c.enabled ? "禁用" : "启用"}
+                      title={c.enabled ? "禁用此 chunk" : "启用此 chunk"}
+                      loading={isPending(`toggle:${c.id}`)}
+                      disabled={anyPending && !isPending(`toggle:${c.id}`)}
+                      onClick={() => void onToggleChunk(c)}
+                    />
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="admin-row-action"
+                          title="更多操作"
+                          aria-label={`chunk #${c.chunk_idx + 1} 更多操作`}
+                          disabled={anyPending}
+                        >
+                          <MoreHorizontal className="h-3.5 w-3.5" aria-hidden />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-36">
+                        <DropdownMenuItem
+                          className="cursor-pointer"
+                          disabled={
+                            anyPending ||
+                            c.text.length < 2 ||
+                            (pendingKey != null && !isPending(`split:${c.id}`))
+                          }
+                          onSelect={() => {
+                            setSplittingChunk(c);
+                            setSplitOffset(String(Math.floor(c.text.length / 2)));
+                          }}
+                        >
+                          <Split className="h-4 w-4" />
+                          切分
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="cursor-pointer"
+                          disabled={anyPending && !isPending(`merge:${c.id}`)}
+                          onSelect={() => void onMergeWithNext(c)}
+                        >
+                          <Merge className="h-4 w-4" />
+                          合并
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="cursor-pointer"
+                          variant="destructive"
+                          disabled={anyPending && !isPending(`delete:${c.id}`)}
+                          onSelect={() => setDeleteTarget(c)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          删除
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+
+          <div className="hidden md:block">
+          <table className="admin-table admin-table-chunks">
             <thead>
               <tr>
                 {canWrite && (
@@ -572,18 +751,17 @@ export default function DocumentDetailPage({
                       type="checkbox"
                       checked={allPageSelected}
                       onChange={toggleSelectAllPage}
-                      className="h-4 w-4 accent-brand"
+                      aria-label="选择当前页全部 chunk"
+                      className="h-4 w-4 cursor-pointer accent-brand"
                     />
                   </th>
                 )}
                 <th className="w-16">序号</th>
                 <th>内容</th>
                 <th className="w-20">状态</th>
-                <th className="w-24">字符数</th>
-                <th className="w-24">Token数</th>
-                <th className="w-36">创建时间</th>
+                <th className="w-28">规模</th>
                 <th className="w-36">更新时间</th>
-                {canWrite && <th className="w-56">操作</th>}
+                {canWrite && <th className="w-36">操作</th>}
               </tr>
             </thead>
             <tbody className={cn(tableLoading && "opacity-60")}>
@@ -595,13 +773,14 @@ export default function DocumentDetailPage({
                         type="checkbox"
                         checked={selected.includes(c.id)}
                         onChange={() => toggleSelect(c.id)}
-                        className="h-4 w-4 accent-brand"
+                        aria-label={`选择 chunk #${c.chunk_idx + 1}`}
+                        className="h-4 w-4 cursor-pointer accent-brand"
                       />
                     </td>
                   )}
                   <td className="tabular-nums text-muted">{c.chunk_idx}</td>
                   <td>
-                    <p className="line-clamp-2 max-w-xl text-sm leading-relaxed text-fg/90">
+                    <p className="line-clamp-3 max-w-3xl text-sm leading-relaxed text-fg/90">
                       {c.text}
                     </p>
                   </td>
@@ -615,19 +794,18 @@ export default function DocumentDetailPage({
                       {c.enabled ? "启用" : "禁用"}
                     </span>
                   </td>
-                  <td className="tabular-nums">{c.char_count.toLocaleString()}</td>
-                  <td className="tabular-nums text-muted">
-                    {estimateTokens(c.char_count).toLocaleString()}
-                  </td>
-                  <td className="text-xs text-muted">
-                    {formatAdminDate(c.created_at)}
+                  <td className="text-xs">
+                    <div className="tabular-nums">{c.char_count.toLocaleString()} 字符</div>
+                    <div className="tabular-nums text-muted">
+                      ≈ {estimateTokens(c.char_count).toLocaleString()} tokens
+                    </div>
                   </td>
                   <td className="text-xs text-muted">
                     {formatAdminDate(c.updated_at ?? c.created_at)}
                   </td>
                   {canWrite && (
                     <td>
-                      <div className="flex flex-wrap items-center gap-0.5">
+                      <div className="flex items-center gap-0.5">
                         <AdminRowAction
                           icon={Pencil}
                           label="编辑"
@@ -648,38 +826,54 @@ export default function DocumentDetailPage({
                           disabled={anyPending && !isPending(`toggle:${c.id}`)}
                           onClick={() => void onToggleChunk(c)}
                         />
-                        <AdminRowAction
-                          icon={Split}
-                          label="切分"
-                          title="按字符位置切分"
-                          loading={isPending(`split:${c.id}`)}
-                          disabled={
-                            anyPending ||
-                            c.text.length < 2 ||
-                            (pendingKey != null && !isPending(`split:${c.id}`))
-                          }
-                          onClick={() => {
-                            setSplittingChunk(c);
-                            setSplitOffset(String(Math.floor(c.text.length / 2)));
-                          }}
-                        />
-                        <AdminRowAction
-                          icon={Merge}
-                          label="合并"
-                          title="与下一个相邻 chunk 合并"
-                          loading={isPending(`merge:${c.id}`)}
-                          disabled={anyPending && !isPending(`merge:${c.id}`)}
-                          onClick={() => void onMergeWithNext(c)}
-                        />
-                        <AdminRowAction
-                          icon={Trash2}
-                          label="删除"
-                          title="删除此 chunk"
-                          variant="danger"
-                          loading={isPending(`delete:${c.id}`)}
-                          disabled={anyPending && !isPending(`delete:${c.id}`)}
-                          onClick={() => setDeleteTarget(c)}
-                        />
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="admin-row-action"
+                              title="更多操作"
+                              aria-label={`chunk #${c.chunk_idx + 1} 更多操作`}
+                              disabled={anyPending}
+                            >
+                              <MoreHorizontal className="h-3.5 w-3.5" aria-hidden />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-36">
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              disabled={
+                                anyPending ||
+                                c.text.length < 2 ||
+                                (pendingKey != null && !isPending(`split:${c.id}`))
+                              }
+                              onSelect={() => {
+                                setSplittingChunk(c);
+                                setSplitOffset(String(Math.floor(c.text.length / 2)));
+                              }}
+                            >
+                              <Split className="h-4 w-4" />
+                              切分
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              disabled={anyPending && !isPending(`merge:${c.id}`)}
+                              onSelect={() => void onMergeWithNext(c)}
+                            >
+                              <Merge className="h-4 w-4" />
+                              合并
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              variant="destructive"
+                              disabled={anyPending && !isPending(`delete:${c.id}`)}
+                              onSelect={() => setDeleteTarget(c)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              删除
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </td>
                   )}
@@ -687,6 +881,8 @@ export default function DocumentDetailPage({
               ))}
             </tbody>
           </table>
+          </div>
+          </>
         )}
       </AdminPanel>
 
@@ -801,5 +997,34 @@ export default function DocumentDetailPage({
         onConfirm={confirmMergeChunks}
       />
     </AdminPageShell>
+  );
+}
+
+function DocContextStat({
+  icon: Icon,
+  label,
+  value,
+  detail,
+}: {
+  icon: typeof FileText;
+  label: string;
+  value: ReactNode;
+  detail?: ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border border-surface-border/70 bg-surface px-4 py-3 shadow-sm">
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 inline-flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-surface-2 text-muted">
+          <Icon className="h-4 w-4" aria-hidden />
+        </span>
+        <div className="min-w-0">
+          <div className="text-[10px] font-medium uppercase tracking-wide text-muted">
+            {label}
+          </div>
+          <div className="mt-0.5 truncate text-sm font-medium text-fg">{value}</div>
+          {detail ? <div className="mt-0.5 text-xs text-muted">{detail}</div> : null}
+        </div>
+      </div>
+    </div>
   );
 }
