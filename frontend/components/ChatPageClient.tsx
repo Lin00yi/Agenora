@@ -1622,6 +1622,14 @@ function DarkSidebar({
               <BookOpen className="h-4 w-4 text-slate-400" />
               我的知识库
             </Link>
+            <Link
+              className="flex items-center gap-2 px-3 py-2.5 text-sm text-slate-200 transition hover:bg-white/[0.06]"
+              href="/memories"
+              onClick={() => setUserMenuOpen(false)}
+            >
+              <BrainCircuit className="h-4 w-4 text-slate-400" />
+              记忆系统
+            </Link>
             {user?.is_admin && (
               <Link
                 className="flex items-center gap-2 px-3 py-2.5 text-sm text-slate-200 transition hover:bg-white/[0.06]"
