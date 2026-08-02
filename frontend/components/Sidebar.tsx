@@ -15,6 +15,7 @@ import {
   ChevronUp,
   LogOut,
   Shield,
+  BrainCircuit,
 } from "lucide-react";
 import Brand from "@/components/Brand";
 import Dialog from "@/components/Dialog";
@@ -300,6 +301,14 @@ function UserMenu({
           >
             <BookOpen className="h-4 w-4 opacity-70" />
             我的知识库
+          </Link>
+          <Link
+            href="/memories"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 px-3 py-2 text-sm text-fg/90 transition hover:bg-surface-2"
+          >
+            <BrainCircuit className="h-4 w-4 opacity-70" />
+            我的记忆
           </Link>
           {user.is_admin && (
             <Link

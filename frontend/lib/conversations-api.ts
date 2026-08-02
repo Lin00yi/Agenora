@@ -88,6 +88,7 @@ export type UserMemory = {
   status: "active" | "superseded" | "deleted" | string;
   expires_at: string | null;
   supersedes_memory_id: string | null;
+  has_embedding: boolean;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -193,8 +194,11 @@ export async function deleteConversation(id: string): Promise<void> {
 // Long-term memory (captured silently in the backend; these helpers support
 // future settings/audit UI without putting a confirmation step in chat).
 // ---------------------------------------------------------------------------
-export async function listMemories(): Promise<UserMemory[]> {
-  return unwrap(await authFetch("/api/conversations/memories"));
+export async function listMemories(opts: { status?: string } = {}): Promise<UserMemory[]> {
+  const q = new URLSearchParams();
+  if (opts.status) q.set("status", opts.status);
+  const suffix = q.toString() ? `?${q.toString()}` : "";
+  return unwrap(await authFetch(`/api/conversations/memories${suffix}`));
 }
 
 export async function patchMemory(

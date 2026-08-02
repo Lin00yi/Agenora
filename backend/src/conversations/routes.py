@@ -200,11 +200,17 @@ async def export_conversations(
 @router.get("/memories")
 async def list_memories(
     user: CurrentUser,
+    status_filter: Literal["active", "superseded", "deleted", "expired", "all"] = Query(
+        default="active", alias="status"
+    ),
     session: AsyncSession = Depends(get_session),
 ) -> list[dict]:
+    where = [UserMemory.user_id == user.id]
+    if status_filter != "all":
+        where.append(UserMemory.status == status_filter)
     result = await session.execute(
         select(UserMemory)
-        .where(UserMemory.user_id == user.id, UserMemory.status == "active")
+        .where(*where)
         .order_by(desc(UserMemory.updated_at))
     )
     return [m.to_public_dict() for m in result.scalars().all()]
