@@ -13,6 +13,7 @@ from src.conversations.context import (
     SAFETY_RESERVE,
     context_window_for_model,
     estimate_tokens,
+    resolve_output_token_budget,
     truncate_text_to_token_budget,
 )
 from src.infra.llm import CostTracker, get_client, pick_model, with_cache_control
@@ -28,6 +29,7 @@ MAX_ITERATIONS = 10
 MAX_SEARCH_KB_CALLS_PER_STEP = 3
 MAX_KB_REWRITE_QUERIES = 3
 DEFAULT_KB_SEARCH_LIMIT = 5
+MAX_AUTO_CONTINUATIONS = 2
 
 _TRUSTED_CONTEXT_SOURCES = {"memory", "summary"}
 _QUERY_POLICY_ACTIONS = {"direct", "normalize", "expand", "skip_kb"}
@@ -430,6 +432,7 @@ def allocate_provider_context(
     tools_schema: list[dict[str, Any]],
     conversation_messages: list[dict[str, Any]],
     configured_context_window: int | None = None,
+    output_token_budget: int | None = None,
 ) -> list[dict[str, Any]]:
     """Fit actual prompt components into the selected model's context window.
 
@@ -440,13 +443,47 @@ def allocate_provider_context(
     context_window = context_window_for_model(model, configured_context_window)
     system_tokens = estimate_tokens(system_prompt)
     tool_tokens = estimate_tokens(json.dumps(tools_schema, ensure_ascii=False, default=str))
-    conversation_budget = context_window - MAX_OUTPUT_TOKENS - SAFETY_RESERVE
+    output_budget = output_token_budget or MAX_OUTPUT_TOKENS
+    conversation_budget = context_window - output_budget - SAFETY_RESERVE
     conversation_budget -= system_tokens + tool_tokens
     # All configured models have a large context window. Keep a small minimum
     # so the latest user instruction can still be represented if configuration
     # text unexpectedly grows.
     conversation_budget = max(1_000, conversation_budget)
     return _trim_provider_messages(conversation_messages, conversation_budget)
+
+
+def _prompt_reserve_tokens(system_prompt: str, tools_schema: list[dict[str, Any]]) -> int:
+    return (
+        estimate_tokens(system_prompt)
+        + estimate_tokens(json.dumps(tools_schema, ensure_ascii=False, default=str))
+        + 1_000
+    )
+
+
+def _infer_output_task(messages: list[dict[str, Any]], kb_context: str) -> str:
+    latest = _latest_user_text(messages).lower()
+    report_keywords = (
+        "报告",
+        "文档",
+        "完整",
+        "详细",
+        "对比",
+        "表格",
+        "一览",
+        "清单",
+        "总结",
+        "report",
+        "table",
+        "compare",
+        "summary",
+    )
+    long_keywords = ("区别", "列出", "全部", "所有", "分析", "方案", "步骤", "为什么")
+    if any(keyword in latest for keyword in report_keywords):
+        return "report"
+    if kb_context and any(keyword in latest for keyword in long_keywords):
+        return "long_answer"
+    return "answer"
 
 
 async def query_policy_node(
@@ -738,22 +775,32 @@ async def reason_node(
         if schema.get("name") not in excluded_tool_names
     ]
     model = pick_model(messages, tools_schema, llm_cfg)
+    configured_context_window = (
+        getattr(llm_cfg, "context_window", None) if llm_cfg is not None else None
+    )
+    output_task = _infer_output_task(messages, kb_context)
+    output_token_budget = resolve_output_token_budget(
+        model=model,
+        configured_window=configured_context_window,
+        task=output_task,  # type: ignore[arg-type]
+        reserved_prompt_tokens=_prompt_reserve_tokens(effective_system_prompt, tools_schema),
+    )
     provider_messages = allocate_provider_context(
         model=model,
         system_prompt=effective_system_prompt,
         tools_schema=tools_schema,
         conversation_messages=conversation_messages,
-        configured_context_window=(
-            getattr(llm_cfg, "context_window", None) if llm_cfg is not None else None
-        ),
+        configured_context_window=configured_context_window,
+        output_token_budget=output_token_budget,
     )
     adapter = create_tool_adapter(llm_cfg)
-    resp = await adapter.chat_with_tools(
+    resp = await _chat_with_budget_retry(
+        adapter,
         model=model,
         system_prompt=effective_system_prompt,
         messages=provider_messages,
         tools=tools_schema,
-        max_tokens=MAX_OUTPUT_TOKENS,
+        max_tokens=output_token_budget,
     )
     cost.add(model, resp.usage)
 
@@ -768,7 +815,15 @@ async def reason_node(
     if not tool_calls and text_parts and not final_report:
         final_report = "\n".join(text_parts)
         if _response_hit_output_limit(resp.stop_reason):
-            final_report = _append_output_limit_notice(final_report)
+            final_report = await _auto_continue_report(
+                adapter,
+                cost=cost,
+                model=model,
+                system_prompt=effective_system_prompt,
+                provider_messages=provider_messages,
+                initial_text=final_report,
+                max_tokens=output_token_budget,
+            )
 
     return {
         **state,
@@ -806,11 +861,107 @@ def _response_hit_output_limit(stop_reason: str | None) -> bool:
     return (stop_reason or "").lower() in {"length", "max_tokens"}
 
 
+def _looks_like_output_budget_rejection(exc: BaseException) -> bool:
+    text = str(exc).lower()
+    return any(
+        marker in text
+        for marker in (
+            "max_tokens",
+            "maximum",
+            "context_length",
+            "too many tokens",
+            "token limit",
+            "requested tokens",
+        )
+    )
+
+
+async def _chat_with_budget_retry(
+    adapter: Any,
+    *,
+    model: str,
+    system_prompt: str,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    max_tokens: int,
+):
+    try:
+        return await adapter.chat_with_tools(
+            model=model,
+            system_prompt=system_prompt,
+            messages=messages,
+            tools=tools,
+            max_tokens=max_tokens,
+        )
+    except Exception as exc:  # noqa: BLE001
+        if max_tokens > MAX_OUTPUT_TOKENS and _looks_like_output_budget_rejection(exc):
+            return await adapter.chat_with_tools(
+                model=model,
+                system_prompt=system_prompt,
+                messages=messages,
+                tools=tools,
+                max_tokens=MAX_OUTPUT_TOKENS,
+            )
+        raise
+
+
+async def _auto_continue_report(
+    adapter: Any,
+    *,
+    cost: CostTracker,
+    model: str,
+    system_prompt: str,
+    provider_messages: list[dict[str, Any]],
+    initial_text: str,
+    max_tokens: int,
+) -> str:
+    parts = [initial_text.rstrip()]
+    continuation_messages = [
+        *provider_messages,
+        {"role": "assistant", "content": parts[-1]},
+        {"role": "user", "content": _continuation_prompt()},
+    ]
+
+    for _ in range(MAX_AUTO_CONTINUATIONS):
+        resp = await _chat_with_budget_retry(
+            adapter,
+            model=model,
+            system_prompt=system_prompt,
+            messages=continuation_messages,
+            tools=[],
+            max_tokens=max_tokens,
+        )
+        cost.add(model, resp.usage)
+        text = "\n".join(resp.text_parts).strip()
+        if not text:
+            break
+        parts.append(text)
+        if not _response_hit_output_limit(resp.stop_reason):
+            return "\n\n".join(part for part in parts if part)
+        continuation_messages.extend(
+            [
+                {"role": "assistant", "content": text},
+                {"role": "user", "content": _continuation_prompt()},
+            ]
+        )
+
+    return _append_output_limit_notice("\n\n".join(part for part in parts if part))
+
+
+def _continuation_prompt() -> str:
+    return (
+        "上一段回答因为输出长度限制中断。请从断点继续补全，"
+        "不要重复已经输出过的内容，不要重新开头，只输出后续内容。"
+    )
+
+
 def _append_output_limit_notice(text: str) -> str:
     notice = (
         "\n\n> 回答可能因输出长度限制被截断。"
         "请继续追问“继续”，我会从上次中断处补全。"
     )
+    if notice.strip() in text:
+        return text
     return text.rstrip() + notice
 
 

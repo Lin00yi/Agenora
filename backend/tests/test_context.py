@@ -21,6 +21,7 @@ from src.conversations.context import (
     extract_memory_candidates,
     memory_block,
     retrieve_user_memories,
+    resolve_output_token_budget,
     store_user_memories,
     trim_messages_to_token_budget,
 )
@@ -455,6 +456,36 @@ def test_provider_allocator_honours_byok_context_window() -> None:
     )
 
     assert estimate_tokens(kept[-1]["content"]) + 6 <= 8_192 - 2_048 - 2_000
+
+
+def test_output_budget_resolver_uses_task_and_context_window() -> None:
+    assert (
+        resolve_output_token_budget(
+            model="unknown-small",
+            configured_window=16_000,
+            task="report",
+            reserved_prompt_tokens=2_000,
+        )
+        == 4_096
+    )
+    assert (
+        resolve_output_token_budget(
+            model="deepseek-v4-flash",
+            configured_window=1_000_000,
+            task="report",
+            reserved_prompt_tokens=4_000,
+        )
+        == 8_192
+    )
+    assert (
+        resolve_output_token_budget(
+            model="deepseek-v4-flash",
+            configured_window=1_000_000,
+            task="answer",
+            reserved_prompt_tokens=4_000,
+        )
+        == 2_048
+    )
 
 
 @pytest.mark.asyncio

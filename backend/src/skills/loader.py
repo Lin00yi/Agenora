@@ -5,7 +5,11 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from src.conversations.context import MAX_OUTPUT_TOKENS
+from src.conversations.context import (
+    MAX_OUTPUT_TOKENS,
+    estimate_tokens,
+    resolve_output_token_budget,
+)
 from src.infra.llm import get_client, pick_model, with_cache_control
 from src.settings import get_settings
 
@@ -69,30 +73,204 @@ async def invoke_skill(
         is_anthropic = llm_cfg.provider == "anthropic"
     else:
         is_anthropic = s.llm_provider == "anthropic"
+    output_budget = resolve_output_token_budget(
+        model=model,
+        configured_window=getattr(llm_cfg, "context_window", None) if llm_cfg else None,
+        task="report",
+        reserved_prompt_tokens=estimate_tokens(system_msg) + estimate_tokens(user_prompt),
+    )
 
     if not is_anthropic:
+        messages = [
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": user_prompt},
+        ]
+        text, hit_limit = await _openai_text_completion(
+            client,
+            model=model,
+            messages=messages,
+            max_tokens=output_budget,
+        )
+        if hit_limit:
+            text = await _auto_continue_openai_text(
+                client,
+                model=model,
+                messages=messages,
+                initial_text=text,
+                max_tokens=output_budget,
+            )
+        return text
+
+    system_blocks = with_cache_control([{"type": "text", "text": system_msg}], llm_cfg)
+    messages = [{"role": "user", "content": user_prompt}]
+    text, hit_limit = await _anthropic_text_completion(
+        client,
+        model=model,
+        system=system_blocks,
+        messages=messages,
+        max_tokens=output_budget,
+    )
+    if hit_limit:
+        text = await _auto_continue_anthropic_text(
+            client,
+            model=model,
+            system=system_blocks,
+            messages=messages,
+            initial_text=text,
+            max_tokens=output_budget,
+        )
+    return text
+
+
+async def _openai_text_completion(
+    client: Any,
+    *,
+    model: str,
+    messages: list[dict[str, str]],
+    max_tokens: int,
+) -> tuple[str, bool]:
+    try:
         resp = await client.chat.completions.create(
             model=model,
-            messages=[
-                {"role": "system", "content": system_msg},
-                {"role": "user", "content": user_prompt},
-            ],
-            max_tokens=MAX_OUTPUT_TOKENS,
+            messages=messages,
+            max_tokens=max_tokens,
         )
-        text = resp.choices[0].message.content or ""
-        if getattr(resp.choices[0], "finish_reason", None) == "length":
-            text = _append_output_limit_notice(text)
-        return text
-    resp = await client.messages.create(
-        model=model,
-        max_tokens=MAX_OUTPUT_TOKENS,
-        system=with_cache_control([{"type": "text", "text": system_msg}], llm_cfg),
-        messages=[{"role": "user", "content": user_prompt}],
+    except Exception as exc:  # noqa: BLE001
+        if max_tokens > MAX_OUTPUT_TOKENS and _looks_like_output_budget_rejection(exc):
+            resp = await client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=MAX_OUTPUT_TOKENS,
+            )
+        else:
+            raise
+    choice = resp.choices[0]
+    return choice.message.content or "", getattr(choice, "finish_reason", None) == "length"
+
+
+async def _anthropic_text_completion(
+    client: Any,
+    *,
+    model: str,
+    system: list[dict[str, Any]],
+    messages: list[dict[str, str]],
+    max_tokens: int,
+) -> tuple[str, bool]:
+    try:
+        resp = await client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            system=system,
+            messages=messages,
+        )
+    except Exception as exc:  # noqa: BLE001
+        if max_tokens > MAX_OUTPUT_TOKENS and _looks_like_output_budget_rejection(exc):
+            resp = await client.messages.create(
+                model=model,
+                max_tokens=MAX_OUTPUT_TOKENS,
+                system=system,
+                messages=messages,
+            )
+        else:
+            raise
+    text = "".join(block.text for block in resp.content if getattr(block, "type", "") == "text")
+    return text, getattr(resp, "stop_reason", None) == "max_tokens"
+
+
+async def _auto_continue_openai_text(
+    client: Any,
+    *,
+    model: str,
+    messages: list[dict[str, str]],
+    initial_text: str,
+    max_tokens: int,
+) -> str:
+    parts = [initial_text.rstrip()]
+    continuation_messages = [
+        *messages,
+        {"role": "assistant", "content": parts[-1]},
+        {"role": "user", "content": _continuation_prompt()},
+    ]
+    for _ in range(2):
+        text, hit_limit = await _openai_text_completion(
+            client,
+            model=model,
+            messages=continuation_messages,
+            max_tokens=max_tokens,
+        )
+        text = text.strip()
+        if not text:
+            break
+        parts.append(text)
+        if not hit_limit:
+            return "\n\n".join(part for part in parts if part)
+        continuation_messages.extend(
+            [
+                {"role": "assistant", "content": text},
+                {"role": "user", "content": _continuation_prompt()},
+            ]
+        )
+    return _append_output_limit_notice("\n\n".join(part for part in parts if part))
+
+
+async def _auto_continue_anthropic_text(
+    client: Any,
+    *,
+    model: str,
+    system: list[dict[str, Any]],
+    messages: list[dict[str, str]],
+    initial_text: str,
+    max_tokens: int,
+) -> str:
+    parts = [initial_text.rstrip()]
+    continuation_messages = [
+        *messages,
+        {"role": "assistant", "content": parts[-1]},
+        {"role": "user", "content": _continuation_prompt()},
+    ]
+    for _ in range(2):
+        text, hit_limit = await _anthropic_text_completion(
+            client,
+            model=model,
+            system=system,
+            messages=continuation_messages,
+            max_tokens=max_tokens,
+        )
+        text = text.strip()
+        if not text:
+            break
+        parts.append(text)
+        if not hit_limit:
+            return "\n\n".join(part for part in parts if part)
+        continuation_messages.extend(
+            [
+                {"role": "assistant", "content": text},
+                {"role": "user", "content": _continuation_prompt()},
+            ]
+        )
+    return _append_output_limit_notice("\n\n".join(part for part in parts if part))
+
+
+def _looks_like_output_budget_rejection(exc: BaseException) -> bool:
+    text = str(exc).lower()
+    return any(
+        marker in text
+        for marker in (
+            "max_tokens",
+            "maximum",
+            "context_length",
+            "too many tokens",
+            "token limit",
+            "requested tokens",
+        )
     )
-    text = resp.content[0].text if resp.content else ""
-    if getattr(resp, "stop_reason", None) == "max_tokens":
-        text = _append_output_limit_notice(text)
-    return text
+
+
+def _continuation_prompt() -> str:
+    return (
+        "上一段回答因为输出长度限制中断。请从断点继续补全，"
+        "不要重复已经输出过的内容，不要重新开头，只输出后续内容。"
+    )
 
 
 def _append_output_limit_notice(text: str) -> str:
@@ -100,4 +278,6 @@ def _append_output_limit_notice(text: str) -> str:
         "\n\n> 回答可能因输出长度限制被截断。"
         "请继续追问“继续”，我会从上次中断处补全。"
     )
+    if notice.strip() in text:
+        return text
     return text.rstrip() + notice

@@ -365,3 +365,50 @@ async def test_reason_node_can_hide_search_kb_schema(
 
     assert captured_tools == ["web_search"]
     assert next_state["final_report"] == "answer"
+
+
+@pytest.mark.asyncio
+async def test_reason_node_auto_continues_truncated_final_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, Any]] = []
+
+    class FakeCompletions:
+        async def create(self, **kwargs: Any) -> Any:
+            calls.append(kwargs)
+            if len(calls) == 1:
+                return SimpleNamespace(
+                    usage=None,
+                    choices=[
+                        SimpleNamespace(
+                            finish_reason="length",
+                            message=SimpleNamespace(content="第一段", tool_calls=None),
+                        )
+                    ],
+                )
+            return SimpleNamespace(
+                usage=None,
+                choices=[
+                    SimpleNamespace(
+                        finish_reason="stop",
+                        message=SimpleNamespace(content="第二段", tool_calls=None),
+                    )
+                ],
+            )
+
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
+    monkeypatch.setattr("src.infra.llm_adapters.get_client", lambda cfg=None: fake_client)
+
+    next_state = await reason_node(
+        {"messages": [{"role": "user", "content": "请输出完整报告"}]},
+        registry=ToolRegistry(),
+        cost=CostTracker(),
+        system_prompt="answer fully",
+        include_travel_skill=False,
+        llm_cfg=_llm_cfg(),
+    )
+
+    assert next_state["final_report"] == "第一段\n\n第二段"
+    assert len(calls) == 2
+    assert calls[0]["max_tokens"] == 8_192
+    assert "从断点继续" in calls[1]["messages"][-1]["content"]

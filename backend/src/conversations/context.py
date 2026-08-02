@@ -14,7 +14,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING, Iterable, Literal
 
 from sqlalchemy import desc, or_, select
 from sqlalchemy.exc import OperationalError
@@ -45,7 +45,15 @@ MODEL_CONTEXT_WINDOWS: dict[str, int] = {
 # conservatively instead of assuming DeepSeek's 64k window and overflowing a
 # smaller OpenAI-compatible deployment.
 DEFAULT_CONTEXT_WINDOW = 16_000
-MAX_OUTPUT_TOKENS = 4_096
+DEFAULT_OUTPUT_TOKENS = 4_096
+MAX_OUTPUT_TOKENS = DEFAULT_OUTPUT_TOKENS
+MIN_OUTPUT_TOKENS = 512
+OUTPUT_TOKEN_HARD_CAP = 16_384
+OUTPUT_TASK_TARGETS: dict[str, int] = {
+    "answer": 2_048,
+    "long_answer": 4_096,
+    "report": 8_192,
+}
 SYSTEM_AND_TOOL_RESERVE = 6_000
 RAG_RESERVE = 8_000
 SAFETY_RESERVE = 2_000
@@ -198,6 +206,31 @@ def context_window_for_model(model: str | None, configured_window: int | None = 
     if normalized.startswith(("gpt-3.5", "gpt-4-0613", "gpt-4-32k")):
         return 16_000
     return DEFAULT_CONTEXT_WINDOW
+
+
+OutputTask = Literal["answer", "long_answer", "report"]
+
+
+def resolve_output_token_budget(
+    *,
+    model: str | None,
+    configured_window: int | None = None,
+    task: OutputTask = "answer",
+    reserved_prompt_tokens: int = 0,
+) -> int:
+    """Pick a safe per-call output budget without needing a complete model table.
+
+    Known context windows and BYOK user configuration tell us the total request
+    budget. The task decides the desired verbosity; the context window and a
+    hard application cap keep unknown OpenAI-compatible models from receiving
+    unbounded `max_tokens`.
+    """
+    window = context_window_for_model(model, configured_window)
+    target = OUTPUT_TASK_TARGETS.get(task, DEFAULT_OUTPUT_TOKENS)
+    inferred_cap = min(OUTPUT_TOKEN_HARD_CAP, max(DEFAULT_OUTPUT_TOKENS, window // 4))
+    max_by_context = window - SAFETY_RESERVE - max(0, reserved_prompt_tokens)
+    budget = min(target, inferred_cap, max_by_context)
+    return max(MIN_OUTPUT_TOKENS, int(budget))
 
 
 def compute_budget(
