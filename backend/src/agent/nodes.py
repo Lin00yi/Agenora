@@ -753,7 +753,7 @@ async def reason_node(
         system_prompt=effective_system_prompt,
         messages=provider_messages,
         tools=tools_schema,
-        max_tokens=2048,
+        max_tokens=MAX_OUTPUT_TOKENS,
     )
     cost.add(model, resp.usage)
 
@@ -767,6 +767,8 @@ async def reason_node(
     # Stop condition: model returns text only AND no pending tools.
     if not tool_calls and text_parts and not final_report:
         final_report = "\n".join(text_parts)
+        if _response_hit_output_limit(resp.stop_reason):
+            final_report = _append_output_limit_notice(final_report)
 
     return {
         **state,
@@ -798,6 +800,18 @@ async def plan_node(
         include_kb_skill=include_kb_skill,
         llm_cfg=llm_cfg,
     )
+
+
+def _response_hit_output_limit(stop_reason: str | None) -> bool:
+    return (stop_reason or "").lower() in {"length", "max_tokens"}
+
+
+def _append_output_limit_notice(text: str) -> str:
+    notice = (
+        "\n\n> 回答可能因输出长度限制被截断。"
+        "请继续追问“继续”，我会从上次中断处补全。"
+    )
+    return text.rstrip() + notice
 
 
 async def kb_search_node(

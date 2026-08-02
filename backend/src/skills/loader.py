@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from src.conversations.context import MAX_OUTPUT_TOKENS
 from src.infra.llm import get_client, pick_model, with_cache_control
 from src.settings import get_settings
 
@@ -76,13 +77,27 @@ async def invoke_skill(
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": user_prompt},
             ],
-            max_tokens=1500,
+            max_tokens=MAX_OUTPUT_TOKENS,
         )
-        return resp.choices[0].message.content or ""
+        text = resp.choices[0].message.content or ""
+        if getattr(resp.choices[0], "finish_reason", None) == "length":
+            text = _append_output_limit_notice(text)
+        return text
     resp = await client.messages.create(
         model=model,
-        max_tokens=1500,
+        max_tokens=MAX_OUTPUT_TOKENS,
         system=with_cache_control([{"type": "text", "text": system_msg}], llm_cfg),
         messages=[{"role": "user", "content": user_prompt}],
     )
-    return resp.content[0].text if resp.content else ""
+    text = resp.content[0].text if resp.content else ""
+    if getattr(resp, "stop_reason", None) == "max_tokens":
+        text = _append_output_limit_notice(text)
+    return text
+
+
+def _append_output_limit_notice(text: str) -> str:
+    notice = (
+        "\n\n> 回答可能因输出长度限制被截断。"
+        "请继续追问“继续”，我会从上次中断处补全。"
+    )
+    return text.rstrip() + notice

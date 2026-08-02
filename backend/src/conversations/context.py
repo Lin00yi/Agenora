@@ -45,7 +45,7 @@ MODEL_CONTEXT_WINDOWS: dict[str, int] = {
 # conservatively instead of assuming DeepSeek's 64k window and overflowing a
 # smaller OpenAI-compatible deployment.
 DEFAULT_CONTEXT_WINDOW = 16_000
-MAX_OUTPUT_TOKENS = 2_048
+MAX_OUTPUT_TOKENS = 4_096
 SYSTEM_AND_TOOL_RESERVE = 6_000
 RAG_RESERVE = 8_000
 SAFETY_RESERVE = 2_000

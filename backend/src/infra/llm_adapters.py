@@ -29,6 +29,7 @@ class LLMToolChatResponse:
     tool_calls: list[LLMToolCall]
     assistant_content: list[dict[str, Any]]
     usage: Any = None
+    stop_reason: str | None = None
 
 
 class LLMToolAdapter(Protocol):
@@ -161,6 +162,7 @@ class AnthropicToolAdapter:
                 for b in resp.content
             ],
             usage=resp.usage,
+            stop_reason=getattr(resp, "stop_reason", None),
         )
 
 
@@ -221,6 +223,7 @@ class OpenAICompatToolAdapter:
             tool_calls=tool_calls,
             assistant_content=assistant_content,
             usage=resp.usage,
+            stop_reason=getattr(choice, "finish_reason", None),
         )
 
 
