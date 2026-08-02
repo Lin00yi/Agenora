@@ -482,10 +482,6 @@
   }
   .ak-chat .ak-sidebar .ak-sidebar-search:focus-within { border-color: #4863db !important; }
 
-  .ak-chat .ak-sidebar .ak-sidebar-all { color: #263450 !important; }
-  .dark .ak-chat .ak-sidebar .ak-sidebar-all { color: #eef3ff !important; }
-  .ak-chat .ak-sidebar .ak-sidebar-all:hover { background: rgb(91 124 240 / 0.10) !important; }
-
   .ak-chat .ak-workspace .ak-empty-workbench { background: transparent; }
   .ak-chat .ak-workspace .ak-empty-heading { color: var(--chat-ink); }
   .ak-chat .ak-workspace .ak-empty-heading span {

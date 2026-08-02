@@ -32,7 +32,6 @@ import {
   LoaderCircle,
   LockKeyhole,
   LogOut,
-  MessageCircle,
   Paperclip,
   Plus,
   Search,
@@ -1145,7 +1144,6 @@ function ChatLoadingShell({
             <Brand className="ak-sidebar-brand text-slate-950 dark:text-white" size="md" />
             <div className="ak-sidebar-new mt-5 h-11 rounded-lg border border-emerald-300/20 bg-emerald-400 shadow-[0_10px_30px_rgba(16,185,129,0.22)]" />
             <div className="ak-sidebar-search mt-4 h-9 rounded-lg border border-white/10 bg-black/20" />
-            <div className="ak-sidebar-all mt-2 h-10 rounded-lg bg-white/[0.06]" />
           </div>
           <div className="my-4 h-px bg-white/10" />
           <div className="space-y-2 px-1">
@@ -1398,15 +1396,6 @@ function DarkSidebar({
         </kbd>
       </div>
 
-        <button
-        className="ak-sidebar-all mt-2 flex h-10 w-full items-center gap-3 rounded-lg bg-white/[0.06] px-3 text-sm text-slate-100"
-        onClick={() => setSearchTerm("")}
-        type="button"
-      >
-        <MessageCircle className="h-4 w-4" />
-        <span className="flex-1 text-left">{"\u5168\u90e8\u5bf9\u8bdd"}</span>
-        <span className="tabular-nums text-slate-500">{conversationTotal}</span>
-      </button>
       </div>
 
       <div className="my-4 h-px bg-white/10" />
