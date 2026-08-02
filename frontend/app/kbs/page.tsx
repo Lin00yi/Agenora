@@ -36,6 +36,7 @@ import {
 import { toastApiError } from "@/lib/byok-toast";
 import { cn } from "@/lib/cn";
 import Dialog from "@/components/Dialog";
+import Select from "@/components/Select";
 import ThemeToggle from "@/components/ThemeToggle";
 import { LoadingState, StateView } from "@/components/ui/state-view";
 
@@ -560,7 +561,7 @@ function CreateKbDialog({
               每个 KB 独立配置 embedding 提供商。第一次填后，后续建 KB 会自动预填上次的设置。
             </p>
             <div className="grid gap-2 pt-1 sm:grid-cols-[0.9fr_1.1fr]">
-              <select
+              <Select
                 value={embedProvider}
                 onChange={(e) => {
                   setEmbedProvider(e.target.value as EmbeddingProvider);
@@ -569,11 +570,14 @@ function CreateKbDialog({
                   // applies, force the user to re-enter (or keep typing) a key.
                   setEmbedKeyEditing(true);
                 }}
+                options={[
+                  { value: "openai-compat", label: "OpenAI-compat" },
+                  { value: "ollama", label: "Ollama" },
+                ]}
                 className={inputClass}
-              >
-                <option value="openai-compat">OpenAI-compat</option>
-                <option value="ollama">Ollama</option>
-              </select>
+                contentAlign="start"
+                contentPosition="popper"
+              />
               <input
                 name="embedding-base-url"
                 autoComplete="off"
@@ -663,25 +667,23 @@ function CreateKbDialog({
             <div>
               <label className="mb-1 block text-xs text-muted">模型</label>
               {embedModels.length > 0 ? (
-                <select
+                <Select
                   value={embedModel}
                   onChange={(e) => {
                     setEmbedModel(e.target.value);
                     setEmbedDim(null);  // model changed → invalidate dim, re-test
                     setEmbedVerified(false);
                   }}
+                  options={[
+                    ...(!embedModels.includes(embedModel) && embedModel
+                      ? [{ value: embedModel, label: `${embedModel}（自定义）` }]
+                      : []),
+                    ...embedModels.map((m) => ({ value: m, label: m })),
+                  ]}
                   className={inputClass}
-                >
-                  {/* Allow current value even if not in returned list */}
-                  {!embedModels.includes(embedModel) && embedModel && (
-                    <option value={embedModel}>{embedModel}（自定义）</option>
-                  )}
-                  {embedModels.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
+                  contentAlign="start"
+                  contentPosition="popper"
+                />
               ) : (
                 <input
                   placeholder="先点「测试连接」拉模型列表 — 或手输 model id"
@@ -732,7 +734,7 @@ function CreateKbDialog({
               {rerankerMode === "custom" && (
                 <div className="space-y-2 rounded-lg border bg-surface/30 p-3">
                   <div className="grid gap-2 sm:grid-cols-2">
-                    <select
+                    <Select
                       value={rerankerProvider}
                       onChange={(e) => {
                         setRerankerProvider(
@@ -741,12 +743,15 @@ function CreateKbDialog({
                         setRerankerVerified(false);
                         setRerankerKeyEditing(true);
                       }}
+                      options={[
+                        { value: "siliconflow", label: "SiliconFlow" },
+                        { value: "cohere", label: "Cohere" },
+                        { value: "openai-compat", label: "OpenAI-compat" },
+                      ]}
                       className={inputClass}
-                    >
-                      <option value="siliconflow">SiliconFlow</option>
-                      <option value="cohere">Cohere</option>
-                      <option value="openai-compat">OpenAI-compat</option>
-                    </select>
+                      contentAlign="start"
+                      contentPosition="popper"
+                    />
                     <input
                       name="reranker-base-url"
                       autoComplete="off"
@@ -823,25 +828,22 @@ function CreateKbDialog({
                   <div>
                     <label className="mb-1 block text-xs text-muted">模型</label>
                     {rerankerModels.length > 0 ? (
-                      <select
+                      <Select
                         value={rerankerModel}
                         onChange={(e) => {
                           setRerankerModel(e.target.value);
                           setRerankerVerified(false);
                         }}
+                        options={[
+                          ...(!rerankerModels.includes(rerankerModel) && rerankerModel
+                            ? [{ value: rerankerModel, label: `${rerankerModel}（自定义）` }]
+                            : []),
+                          ...rerankerModels.map((m) => ({ value: m, label: m })),
+                        ]}
                         className={inputClass}
-                      >
-                        {!rerankerModels.includes(rerankerModel) && rerankerModel && (
-                          <option value={rerankerModel}>
-                            {rerankerModel}（自定义）
-                          </option>
-                        )}
-                        {rerankerModels.map((m) => (
-                          <option key={m} value={m}>
-                            {m}
-                          </option>
-                        ))}
-                      </select>
+                        contentAlign="start"
+                        contentPosition="popper"
+                      />
                     ) : (
                       <input
                         placeholder="先点「测试连接」拉模型列表 — 或手输 model id"

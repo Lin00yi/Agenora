@@ -55,6 +55,7 @@ import {
   type KBDetail,
   type Document,
   type DocStatus,
+  type ChunkStrategy,
   type KbMemberListResponse,
   type KbInvitation,
   type MemberRole,
@@ -90,6 +91,15 @@ import {
   formatFileSize,
 } from "@/components/kb/admin-utils";
 
+const CHUNK_STRATEGY_OPTIONS: { value: ChunkStrategy; label: string }[] = [
+  { value: "recursive", label: "递归文本切分" },
+  { value: "markdown_heading", label: "Markdown 标题切分" },
+  { value: "semantic", label: "轻量语义切分" },
+  { value: "table_aware", label: "表格感知切分" },
+  { value: "code", label: "代码感知切分" },
+  { value: "parent_child", label: "轻量父子切分" },
+];
+
 export default function KbDetailPage({ params }: { params: { id: string } }) {
   const { id } = params;
   const router = useRouter();
@@ -112,6 +122,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
   // v3-M3: advanced settings + index rebuild
   const [groupingBusy, setGroupingBusy] = useState(false);
   const [chunkBusy, setChunkBusy] = useState(false);
+  const [chunkStrategy, setChunkStrategy] = useState<ChunkStrategy>("recursive");
   const [chunkTarget, setChunkTarget] = useState("1500");
   const [chunkMaxSize, setChunkMaxSize] = useState("1800");
   const [chunkOverlap, setChunkOverlap] = useState("150");
@@ -147,16 +158,18 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
 
   useEffect(() => {
     if (!kb) return;
+    setChunkStrategy(kb.chunk_strategy ?? "recursive");
     setChunkTarget(String(kb.chunk_target ?? 1500));
     setChunkMaxSize(String(kb.chunk_max_size ?? 1800));
     setChunkOverlap(String(kb.chunk_overlap ?? 150));
-  }, [kb?.chunk_target, kb?.chunk_max_size, kb?.chunk_overlap, kb?.id]);
+  }, [kb?.chunk_strategy, kb?.chunk_target, kb?.chunk_max_size, kb?.chunk_overlap, kb?.id]);
 
   const onSaveChunkSettings = async (e: FormEvent) => {
     e.preventDefault();
     setChunkBusy(true);
     try {
       const updated = await patchKb(id, {
+        chunk_strategy: chunkStrategy,
         chunk_target: parseInt(chunkTarget, 10),
         chunk_max_size: parseInt(chunkMaxSize, 10),
         chunk_overlap: parseInt(chunkOverlap, 10),
@@ -165,6 +178,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
         cur
           ? {
               ...cur,
+              chunk_strategy: updated.chunk_strategy,
               chunk_target: updated.chunk_target,
               chunk_max_size: updated.chunk_max_size,
               chunk_overlap: updated.chunk_overlap,
@@ -916,9 +930,21 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
               <p className="mt-1 text-xs text-muted">
                 单位：字符。仅对新上传 / 重新 ingest 的文档生效；单篇文档可在详情页覆盖。
               </p>
-              <div className="mt-2 grid grid-cols-3 gap-2">
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-4">
                 <label className="text-xs">
-                  <span className="text-muted">target</span>
+                  <span className="text-muted">切分策略</span>
+                  <Select
+                    size="sm"
+                    value={chunkStrategy}
+                    onChange={(e) => setChunkStrategy(e.target.value as ChunkStrategy)}
+                    options={CHUNK_STRATEGY_OPTIONS}
+                    className="mt-1 admin-select-trigger"
+                    contentAlign="start"
+                    contentPosition="popper"
+                  />
+                </label>
+                <label className="text-xs">
+                  <span className="text-muted">目标长度</span>
                   <input
                     type="number"
                     value={chunkTarget}
@@ -927,7 +953,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                   />
                 </label>
                 <label className="text-xs">
-                  <span className="text-muted">max_size</span>
+                  <span className="text-muted">最大长度</span>
                   <input
                     type="number"
                     value={chunkMaxSize}
@@ -936,7 +962,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                   />
                 </label>
                 <label className="text-xs">
-                  <span className="text-muted">overlap</span>
+                  <span className="text-muted">重叠长度</span>
                   <input
                     type="number"
                     value={chunkOverlap}
@@ -1007,8 +1033,20 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
       <Dialog
         open={pendingDelete != null}
         onOpenChange={(o) => !o && setPendingDelete(null)}
-        title={`删除文档「${pendingDelete?.filename ?? ""}」？`}
-        description="该文档及其所有 chunks 都会从 Qdrant 中清除。该操作不可逆。"
+        title="删除文档？"
+        description={
+          <div className="space-y-3">
+            <p>该文档及其所有 chunks 都会从 Qdrant 中清除。该操作不可逆。</p>
+            {pendingDelete ? (
+              <div className="rounded-lg border border-surface-border/70 bg-surface-2 px-3 py-2">
+                <div className="text-xs font-medium text-muted">文档</div>
+                <div className="mt-1 max-h-24 overflow-y-auto break-all text-sm text-fg">
+                  {pendingDelete.filename}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        }
         variant="danger"
         confirmLabel="确认删除"
         onConfirm={confirmDeleteDoc}

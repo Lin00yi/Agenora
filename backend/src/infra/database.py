@@ -28,6 +28,7 @@ _session_factory: async_sessionmaker[AsyncSession] | None = None
 
 _LEGACY_DEEPSEEK_CHAT = "deepseek-chat"
 _DEEPSEEK_V4_FLASH = "deepseek-v4-flash"
+_STOPPED_GENERATION_MESSAGE = "用户已停止生成"
 
 
 def get_engine():
@@ -129,6 +130,13 @@ def _migrate_additive_columns(sync_conn) -> None:
                 )
             )
         # v4: per-KB chunking defaults
+        if "chunk_strategy" not in cols:
+            sync_conn.execute(
+                text(
+                    "ALTER TABLE kbs ADD COLUMN chunk_strategy "
+                    "VARCHAR(32) NOT NULL DEFAULT 'recursive'"
+                )
+            )
         if "chunk_target" not in cols:
             sync_conn.execute(
                 text(
@@ -159,6 +167,7 @@ def _migrate_additive_columns(sync_conn) -> None:
                 text("ALTER TABLE documents ADD COLUMN parsed_text TEXT NOT NULL DEFAULT ''")
             )
         for col_name, col_type in [
+            ("chunk_strategy", "VARCHAR(32)"),
             ("chunk_target", "INTEGER"),
             ("chunk_max_size", "INTEGER"),
             ("chunk_overlap", "INTEGER"),
@@ -248,6 +257,14 @@ def _migrate_additive_columns(sync_conn) -> None:
             sync_conn.execute(
                 text("ALTER TABLE conversations ADD COLUMN llm_model VARCHAR(128)")
             )
+
+    # Stop generation is a client-side cancellation state, not a model error
+    # worth preserving on completed/partial assistant messages.
+    if "messages" in tables:
+        sync_conn.execute(
+            text("UPDATE messages SET error = NULL WHERE error = :stopped"),
+            {"stopped": _STOPPED_GENERATION_MESSAGE},
+        )
 
     # 2026-07: DeepSeek retired `deepseek-chat`. Migrate all persisted model
     # selections on every startup so existing users and conversations do not

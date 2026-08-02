@@ -346,15 +346,23 @@ async def append_message(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     conv = await _load_owned_conversation(session, conv_id, user.id)
+    content = req.content or ""
+    tools = req.tools or []
+    error = req.error or None
+    if req.role == "assistant" and not content.strip() and not tools and not error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="assistant message must include content, tools, or error",
+        )
 
     msg = Message(
         id=str(uuid.uuid4()),
         conversation_id=conv.id,
         role=req.role,
-        content=req.content or "",
-        tool_call_log=json.dumps(req.tools, ensure_ascii=False) if req.tools else None,
+        content=content,
+        tool_call_log=json.dumps(tools, ensure_ascii=False) if tools else None,
         cost_usd=req.cost_usd,
-        error=req.error or None,
+        error=error,
     )
     session.add(msg)
 
@@ -363,7 +371,7 @@ async def append_message(
             session,
             user_id=user.id,
             message_id=msg.id,
-            content=req.content or "",
+            content=content,
             kb_id=conv.kb_id,
             embedding_cfg=resolve_user_embedding(user),
         )
@@ -406,6 +414,13 @@ async def import_conversations(
         await session.flush()
 
         for m in c.messages:
+            if (
+                m.role == "assistant"
+                and not (m.content or "").strip()
+                and not (m.tools or [])
+                and not (m.error or None)
+            ):
+                continue
             m_created = _ms_to_dt(m.created_at) or c_created
             session.add(
                 Message(

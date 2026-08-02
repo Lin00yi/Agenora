@@ -573,20 +573,24 @@ function MemoryCard() {
                 </div>
                 <div className="mt-3 flex items-center gap-2 text-xs">
                   <span className="text-muted">重要度</span>
-                  <select
+                  <Select
                     value={String(memory.importance)}
                     onChange={(e) => void updateImportance(memory, Number(e.target.value))}
                     disabled={busy}
-                    className="rounded border bg-bg px-2 py-1 text-xs"
+                    options={[
+                      { value: "0.2", label: "低" },
+                      { value: "0.5", label: "普通" },
+                      { value: "0.75", label: "较高" },
+                      { value: "0.8", label: "高" },
+                      { value: "0.9", label: "很高" },
+                      { value: "1", label: "最高" },
+                    ]}
+                    size="sm"
+                    className="h-7 min-w-[5.5rem] text-xs"
+                    contentAlign="start"
+                    contentPosition="popper"
                     aria-label={`调整记忆重要度：${memory.content}`}
-                  >
-                    <option value="0.2">低</option>
-                    <option value="0.5">普通</option>
-                    <option value="0.75">较高</option>
-                    <option value="0.8">高</option>
-                    <option value="0.9">很高</option>
-                    <option value="1">最高</option>
-                  </select>
+                  />
                   <span className="text-muted">置信度 {Math.round(memory.confidence * 100)}%</span>
                 </div>
               </article>

@@ -32,6 +32,7 @@ export default function MessageBubble({
   const hasContent = message.content && message.content.length > 0;
   const hasTools = message.tools && message.tools.length > 0;
   const streaming = !!message.streaming;
+  if (!hasContent && !streaming && !message.error && !hasTools) return null;
 
   const showInitialThinking = streaming && !hasTools && !hasContent && !message.error;
   const showWritingHint =
@@ -50,7 +51,7 @@ export default function MessageBubble({
         <div className="min-w-0 flex-1 space-y-3">
           {showInitialThinking && <ThinkingPlaceholder label="正在思考" />}
           {hasTools && <ThinkingChain events={message.tools} />}
-          {showWritingHint && <ThinkingPlaceholder label="正在撰写报告" />}
+          {showWritingHint && <ThinkingPlaceholder label="正在撰写回答" />}
 
           {message.error && (
             <div className="rounded-lg border border-red-300/40 bg-red-50/80 p-3.5 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
@@ -62,10 +63,6 @@ export default function MessageBubble({
             <div className="rounded-lg rounded-tl-sm border border-surface-border/70 bg-surface px-4 py-3 shadow-soft">
               <ReportView markdown={message.content} streaming={streaming} />
             </div>
-          )}
-
-          {!hasContent && !streaming && !message.error && (
-            <div className="text-sm text-muted">（无内容）</div>
           )}
 
           {hasContent && !streaming && (

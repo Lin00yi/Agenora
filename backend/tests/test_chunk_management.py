@@ -6,7 +6,7 @@ import uuid
 
 import pytest
 
-from src.kb.chunk_service import chunk_document_text, resolve_chunk_params
+from src.kb.chunk_service import chunk_document_text, resolve_chunk_params, resolve_chunk_strategy
 from src.kb.models import Chunk, Document, KB
 
 
@@ -37,6 +37,18 @@ def test_resolve_chunk_params_document_override():
     assert (target, max_size, overlap) == (800, 1000, 50)
 
 
+def test_resolve_chunk_strategy_document_override():
+    kb = KB(id="kb1", user_id="u1", name="t", chunk_strategy="recursive")
+    doc = Document(
+        id="d1",
+        kb_id="kb1",
+        filename="a.md",
+        chunk_strategy="markdown_heading",
+    )
+
+    assert resolve_chunk_strategy(kb, doc) == "markdown_heading"
+
+
 def test_chunk_document_text_respects_target():
     kb = KB(id="kb1", user_id="u1", name="t", chunk_target=50, chunk_max_size=80, chunk_overlap=10)
     doc = Document(id="d1", kb_id="kb1", filename="a.md")
@@ -54,6 +66,67 @@ def test_chunk_document_text_never_exceeds_max_when_target_is_larger():
 
     assert len(chunks) == 3
     assert all(len(chunk) <= 80 for chunk in chunks)
+
+
+def test_markdown_heading_strategy_repeats_section_context():
+    kb = KB(
+        id="kb1",
+        user_id="u1",
+        name="t",
+        chunk_strategy="markdown_heading",
+        chunk_target=90,
+        chunk_max_size=120,
+        chunk_overlap=0,
+    )
+    doc = Document(id="d1", kb_id="kb1", filename="guide.md")
+    text = "# Product\n\nIntro text.\n\n## Install\n\nStep one.\n\nStep two."
+
+    chunks = chunk_document_text(kb, doc, text)
+
+    assert any(chunk.startswith("Section: Product > Install") for chunk in chunks)
+
+
+def test_table_aware_strategy_repeats_table_header():
+    kb = KB(
+        id="kb1",
+        user_id="u1",
+        name="t",
+        chunk_strategy="table_aware",
+        chunk_target=70,
+        chunk_max_size=120,
+        chunk_overlap=0,
+    )
+    doc = Document(id="d1", kb_id="kb1", filename="table.md")
+    text = (
+        "| Field | Type | Required |\n"
+        "| --- | --- | --- |\n"
+        "| user_id | string | yes |\n"
+        "| display_name | string | no |\n"
+        "| created_at | datetime | yes |"
+    )
+
+    chunks = chunk_document_text(kb, doc, text)
+
+    assert len(chunks) >= 2
+    assert all(chunk.startswith("| Field | Type | Required |") for chunk in chunks)
+
+
+def test_code_strategy_keeps_fenced_code_together_when_small_enough():
+    kb = KB(
+        id="kb1",
+        user_id="u1",
+        name="t",
+        chunk_strategy="code",
+        chunk_target=120,
+        chunk_max_size=200,
+        chunk_overlap=0,
+    )
+    doc = Document(id="d1", kb_id="kb1", filename="snippet.md")
+    text = "Example:\n\n```python\ndef hello():\n    return 'world'\n```"
+
+    chunks = chunk_document_text(kb, doc, text)
+
+    assert any("```python\ndef hello()" in chunk for chunk in chunks)
 
 
 @pytest.mark.asyncio
@@ -343,3 +416,58 @@ async def test_patch_document_enabled_without_embedding(client, create_user, cre
     )
     assert r.status_code == 200
     assert r.json()["enabled"] is False
+
+
+@pytest.mark.asyncio
+async def test_patch_document_chunk_strategy_override_and_clear(client, create_user, create_kb, db):
+    owner = await create_user("docstrategy@x.com")
+    kb = await create_kb(owner.id, name="DocStrategy KB")
+
+    from src.infra.database import get_session_factory
+
+    doc_id = str(uuid.uuid4())
+    factory = get_session_factory()
+    async with factory() as session:
+        kb_row = await session.get(KB, kb.id)
+        kb_row.chunk_strategy = "markdown_heading"
+        kb_row.chunk_target = 1400
+        session.add(
+            Document(
+                id=doc_id,
+                kb_id=kb.id,
+                filename="strategy.md",
+                status="done",
+                chunks_count=0,
+            )
+        )
+        await session.commit()
+
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": "docstrategy@x.com", "password": "password123"},
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    r = await client.patch(
+        f"/api/kbs/{kb.id}/documents/{doc_id}",
+        headers=headers,
+        json={"chunk_strategy": "code", "chunk_target": 900},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["chunk_strategy"] == "code"
+    assert body["chunk_target"] == 900
+    assert body["effective_chunk_strategy"] == "code"
+    assert body["effective_chunk_target"] == 900
+
+    r = await client.patch(
+        f"/api/kbs/{kb.id}/documents/{doc_id}",
+        headers=headers,
+        json={"chunk_strategy": None, "chunk_target": None},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["chunk_strategy"] is None
+    assert body["chunk_target"] is None
+    assert body["effective_chunk_strategy"] == "markdown_heading"
+    assert body["effective_chunk_target"] == 1400

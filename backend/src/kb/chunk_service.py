@@ -13,7 +13,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.infra.embedding import embed, embed_batch
-from src.kb.chunker import chunk_text
+from src.kb.chunker import chunk_text_by_strategy, normalize_chunk_strategy
 from src.kb.models import Chunk, Document, KB
 
 if TYPE_CHECKING:
@@ -24,6 +24,7 @@ log = structlog.get_logger()
 DEFAULT_CHUNK_TARGET = 1500
 DEFAULT_CHUNK_MAX_SIZE = 1800
 DEFAULT_CHUNK_OVERLAP = 150
+DEFAULT_CHUNK_STRATEGY = "recursive"
 
 
 def chunk_uuid(doc_id: str, idx: int) -> str:
@@ -51,12 +52,30 @@ def resolve_chunk_params(kb: KB, doc: Document | None = None) -> tuple[int, int,
     return int(target), int(max_size), int(overlap)
 
 
+def resolve_chunk_strategy(kb: KB, doc: Document | None = None) -> str:
+    """Document strategy override wins; else KB default; else recursive."""
+    strategy = (
+        (doc.chunk_strategy if doc and doc.chunk_strategy else None)
+        or kb.chunk_strategy
+        or DEFAULT_CHUNK_STRATEGY
+    )
+    return normalize_chunk_strategy(strategy)
+
+
 def chunk_document_text(kb: KB, doc: Document, text: str) -> list[str]:
     target, max_size, overlap = resolve_chunk_params(kb, doc)
-    return chunk_text(text, target=target, max_size=max_size, overlap=overlap)
+    strategy = resolve_chunk_strategy(kb, doc)
+    return chunk_text_by_strategy(
+        text,
+        strategy=strategy,
+        target=target,
+        max_size=max_size,
+        overlap=overlap,
+    )
 
 
-def _chunk_payload(doc: Document, chunk: Chunk) -> dict:
+def _chunk_payload(kb: KB, doc: Document, chunk: Chunk) -> dict:
+    target, max_size, overlap = resolve_chunk_params(kb, doc)
     return {
         "doc_id": doc.id,
         "kb_id": doc.kb_id,
@@ -65,6 +84,10 @@ def _chunk_payload(doc: Document, chunk: Chunk) -> dict:
         "filename": doc.filename,
         "source_type": doc.source_type,
         "source_url": doc.source_url or "",
+        "chunk_strategy": resolve_chunk_strategy(kb, doc),
+        "chunk_target": target,
+        "chunk_max_size": max_size,
+        "chunk_overlap": overlap,
         "enabled": chunk.enabled,
         "doc_enabled": bool(getattr(doc, "enabled", True)),
     }
@@ -126,7 +149,7 @@ async def sync_vectors_for_chunks(
         {
             "id": ch.id,
             "vector": vec,
-            "payload": _chunk_payload(doc, ch),
+            "payload": _chunk_payload(kb, doc, ch),
         }
         for ch, vec in zip(chunks, vectors, strict=True)
     ]
@@ -168,7 +191,7 @@ async def sync_chunk_payloads_only(
                 {
                     "id": ch.id,
                     "vector": vec,
-                    "payload": _chunk_payload(doc, ch),
+                    "payload": _chunk_payload(kb, doc, ch),
                 }
             )
         else:
@@ -232,11 +255,11 @@ async def upsert_single_chunk_vector(
     await store.upsert(
         [
             {
-                "id": chunk.id,
-                "vector": vec,
-                "payload": _chunk_payload(doc, chunk),
-            }
-        ],
+            "id": chunk.id,
+            "vector": vec,
+            "payload": _chunk_payload(kb, doc, chunk),
+        }
+    ],
         collection_name=kb.collection_name,
     )
 

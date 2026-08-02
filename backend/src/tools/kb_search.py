@@ -20,6 +20,8 @@ from __future__ import annotations
 import logging
 from typing import Any, TYPE_CHECKING
 
+import httpx
+
 from src.infra.embedding import embed
 from src.infra.reranker import rerank
 from src.conversations.context import RAG_RESERVE, estimate_tokens, truncate_text_to_token_budget
@@ -52,6 +54,20 @@ def _chunk_enabled(hit: dict) -> bool:
         return False
     doc_on = payload.get("doc_enabled", True)
     return doc_on is not False and doc_on != "false" and doc_on != 0
+
+
+def _describe_error(exc: BaseException) -> str:
+    detail = str(exc).strip()
+    if isinstance(exc, httpx.HTTPStatusError):
+        try:
+            body = (exc.response.text or "").strip()
+        except Exception:  # noqa: BLE001
+            body = ""
+        if body and body not in detail:
+            detail = f"{detail}; response={body[:300]}" if detail else body[:300]
+    if not detail:
+        detail = exc.__class__.__name__
+    return detail
 
 
 class KBSearchTool(Tool):
@@ -108,7 +124,12 @@ class KBSearchTool(Tool):
         try:
             vec = await embed(query.strip(), cfg=self.embedding_cfg)
         except Exception as exc:  # noqa: BLE001
-            return ToolResult(text="", latency_ms=0, error=f"embed failed: {exc}")
+            log.warning("kb_search.embed_failed kb_id=%s err=%r", self.kb_id, exc)
+            return ToolResult(
+                text="",
+                latency_ms=0,
+                error=f"embedding 调用失败: {_describe_error(exc)}",
+            )
 
         try:
             store = get_store()
@@ -149,7 +170,12 @@ class KBSearchTool(Tool):
                     limit=fetch_limit,
                 )
         except Exception as exc:  # noqa: BLE001
-            return ToolResult(text="", latency_ms=0, error=f"vector search failed: {exc}")
+            log.warning("kb_search.vector_failed kb_id=%s err=%r", self.kb_id, exc)
+            return ToolResult(
+                text="",
+                latency_ms=0,
+                error=f"向量检索失败: {_describe_error(exc)}",
+            )
 
         # v3-M4: cross-encoder rerank pass. Reorders top-N candidates; on
         # failure, fall back to first-stage order so chat doesn't break.

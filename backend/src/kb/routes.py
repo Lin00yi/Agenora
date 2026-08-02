@@ -53,7 +53,7 @@ from src.kb.ingest import (
     save_uploaded_file,
     upload_path,
 )
-from src.kb.models import KB, Chunk, Document, KBInvitation, KBMember
+from src.kb.models import KB, Chunk, ChunkStrategy, Document, KBInvitation, KBMember
 from src.kb.parsers import SUPPORTED_EXTS
 from src.settings_user import require_user_embedding, resolve_user_embedding
 from src.settings_user.kb_resolvers import resolve_kb_embedding
@@ -95,6 +95,7 @@ class CreateKBRequest(BaseModel):
     reranker_api_key: str = Field(default="", max_length=512)
     reranker_model: Optional[str] = Field(default=None, max_length=128)
     reranker_enabled: bool = False
+    chunk_strategy: ChunkStrategy = "recursive"
 
 
 class PatchKBRequest(BaseModel):
@@ -102,6 +103,7 @@ class PatchKBRequest(BaseModel):
     for now — name/description editing is intentionally not in this round."""
 
     grouping_enabled: Optional[bool] = None
+    chunk_strategy: Optional[ChunkStrategy] = None
     chunk_target: Optional[int] = Field(default=None, ge=200, le=8000)
     chunk_max_size: Optional[int] = Field(default=None, ge=200, le=10000)
     chunk_overlap: Optional[int] = Field(default=None, ge=0, le=2000)
@@ -109,6 +111,7 @@ class PatchKBRequest(BaseModel):
 
 class PatchDocumentRequest(BaseModel):
     filename: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    chunk_strategy: Optional[ChunkStrategy] = None
     chunk_target: Optional[int] = Field(default=None, ge=200, le=8000)
     chunk_max_size: Optional[int] = Field(default=None, ge=200, le=10000)
     chunk_overlap: Optional[int] = Field(default=None, ge=0, le=2000)
@@ -389,6 +392,7 @@ async def create_kb(
         reranker_api_key_enc=enc_reranker_key,
         reranker_model=req.reranker_model,
         reranker_enabled=bool(req.reranker_enabled and req.reranker_provider),
+        chunk_strategy=req.chunk_strategy,
     )
     session.add(kb)
     await session.commit()
@@ -459,7 +463,7 @@ async def get_kb(
     docs_sorted = sorted(kb.documents, key=lambda d: d.created_at)
     return {
         **kb.to_public_dict(my_role=role),
-        "documents": [d.to_public_dict() for d in docs_sorted],
+        "documents": [d.to_public_dict(kb=kb) for d in docs_sorted],
     }
 
 
@@ -518,6 +522,8 @@ async def patch_kb(
         )
     if body.grouping_enabled is not None:
         kb.grouping_enabled = body.grouping_enabled
+    if body.chunk_strategy is not None:
+        kb.chunk_strategy = body.chunk_strategy
     if body.chunk_target is not None:
         kb.chunk_target = body.chunk_target
     if body.chunk_max_size is not None:
@@ -700,7 +706,7 @@ async def upload_document(
         )
     background.add_task(ingest_document, doc_id, ecfg)
 
-    return doc.to_public_dict()
+    return doc.to_public_dict(kb=kb)
 
 
 @router.get("/{kb_id}/documents")
@@ -711,7 +717,7 @@ async def list_documents(
 ) -> list[dict]:
     kb = await _load_readable_kb(session, kb_id, user.id)
     docs_sorted = sorted(kb.documents, key=lambda d: d.created_at)
-    return [d.to_public_dict() for d in docs_sorted]
+    return [d.to_public_dict(kb=kb) for d in docs_sorted]
 
 
 @router.delete(
@@ -749,9 +755,9 @@ async def get_document(
     session: AsyncSession = Depends(get_session),
     include_parsed_text: bool = Query(default=False),
 ) -> dict:
-    await _load_readable_kb(session, kb_id, user.id)
+    kb = await _load_readable_kb(session, kb_id, user.id)
     doc = await _load_document(session, kb_id, doc_id)
-    return doc.to_public_dict(include_parsed_text=include_parsed_text)
+    return doc.to_public_dict(include_parsed_text=include_parsed_text, kb=kb)
 
 
 @router.patch("/{kb_id}/documents/{doc_id}")
@@ -765,13 +771,16 @@ async def patch_document(
     kb = await _load_writable_kb(session, kb_id, user.id)
     doc = await _load_document(session, kb_id, doc_id)
     enabled_changed = False
+    fields_set = body.model_fields_set
     if body.filename is not None:
         doc.filename = body.filename.strip()
-    if body.chunk_target is not None:
+    if "chunk_strategy" in fields_set:
+        doc.chunk_strategy = body.chunk_strategy
+    if "chunk_target" in fields_set:
         doc.chunk_target = body.chunk_target
-    if body.chunk_max_size is not None:
+    if "chunk_max_size" in fields_set:
         doc.chunk_max_size = body.chunk_max_size
-    if body.chunk_overlap is not None:
+    if "chunk_overlap" in fields_set:
         doc.chunk_overlap = body.chunk_overlap
     if body.enabled is not None and doc.enabled != body.enabled:
         doc.enabled = body.enabled
@@ -785,7 +794,7 @@ async def patch_document(
             await sync_document_vector_payloads(session, store, kb, doc, ecfg)
     await session.commit()
     await session.refresh(doc)
-    return doc.to_public_dict()
+    return doc.to_public_dict(kb=kb)
 
 
 @router.get("/{kb_id}/documents/{doc_id}/download")
@@ -830,7 +839,7 @@ async def reingest_document(
 
     ecfg = await _resolve_doc_embedding_cfg(session, kb, user)
     background.add_task(ingest_document, doc.id, ecfg)
-    return doc.to_public_dict()
+    return doc.to_public_dict(kb=kb)
 
 
 @router.get("/{kb_id}/documents/{doc_id}/chunks")

@@ -74,6 +74,8 @@ import { connectChat, type ChatEvent, type ChatMessage } from "@/lib/sseClient";
 import { LoadingState, StateView } from "@/components/ui/state-view";
 
 const DEFAULT_TITLE = "\u65b0\u5bf9\u8bdd";
+const EMPTY_ASSISTANT_RESPONSE = "\u672c\u8f6e\u6ca1\u6709\u751f\u6210\u53ef\u5c55\u793a\u5185\u5bb9\uff0c\u8bf7\u91cd\u8bd5\u3002";
+const STOPPED_GENERATION_MESSAGE = "\u7528\u6237\u5df2\u505c\u6b62\u751f\u6210";
 const DEFAULT_CONTEXT_WINDOW = 16_000;
 const CONTEXT_WINDOWS: Record<string, number> = {
   // Kept temporarily for conversations that have not yet been opened since
@@ -169,6 +171,20 @@ function uniqueStrings(values: Array<string | null | undefined>) {
   return Array.from(new Set(values.filter((value): value is string => !!value)));
 }
 
+function isRenderableMessage(message: Message) {
+  if (message.role === "user") return true;
+  return Boolean(
+    message.streaming ||
+      message.error ||
+      message.content.trim().length > 0 ||
+      message.tools.length > 0
+  );
+}
+
+function normalizeMessages(messages: Message[]) {
+  return messages.filter(isRenderableMessage);
+}
+
 function serverMsgToLocal(m: MessagePayload): Message {
   const ts = m.created_at ? new Date(m.created_at).getTime() : Date.now();
   if (m.role === "user") {
@@ -180,7 +196,7 @@ function serverMsgToLocal(m: MessagePayload): Message {
     content: m.content,
     tools: m.tools ?? [],
     cost_usd: m.cost_usd ?? undefined,
-    error: m.error ?? undefined,
+    error: m.error === STOPPED_GENERATION_MESSAGE ? undefined : m.error ?? undefined,
     created_at: ts,
   };
 }
@@ -262,14 +278,16 @@ export function ChatPage({
     modelOptionsRef.current = modelOptions;
   }, [modelOptions]);
 
+  const visibleMessages = useMemo(() => normalizeMessages(currentMessages), [currentMessages]);
+
   const sidebarConversations = useMemo(
-    () => summaries.map((s) => summaryToConv(s, s.id === currentId ? currentMessages : [])),
-    [summaries, currentId, currentMessages]
+    () => summaries.map((s) => summaryToConv(s, s.id === currentId ? visibleMessages : [])),
+    [summaries, currentId, visibleMessages]
   );
 
   const currentConversation = sidebarConversations.find((c) => c.id === currentId) ?? null;
   const currentKb = kbs.find((kb) => kb.id === currentKbId) ?? null;
-  const hasConversationMessages = currentMessages.length > 0;
+  const hasConversationMessages = visibleMessages.length > 0;
 
   const loadConversation = useCallback(async (id: string) => {
     setMissingConversationId(null);
@@ -277,7 +295,9 @@ export function ChatPage({
     setContextStatusLoading(true);
     const cached = messagesCache.current.get(id);
     if (cached) {
-      setCurrentMessages(cached);
+      const msgs = normalizeMessages(cached);
+      messagesCache.current.set(id, msgs);
+      setCurrentMessages(msgs);
       setSummaries((cur) => {
         const found = cur.find((c) => c.id === id);
         if (found) {
@@ -306,7 +326,7 @@ export function ChatPage({
     }
     try {
       const detail = await getConversation(id);
-      const msgs = detail.messages.map(serverMsgToLocal);
+      const msgs = normalizeMessages(detail.messages.map(serverMsgToLocal));
       messagesCache.current.set(id, msgs);
       setCurrentMessages(msgs);
       setCurrentKbId(detail.kb_id);
@@ -559,9 +579,9 @@ export function ChatPage({
     if (!scrollRef.current) return;
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [
-    currentMessages.length,
-    currentMessages[currentMessages.length - 1]?.role === "assistant"
-      ? (currentMessages[currentMessages.length - 1] as Message & { content: string })?.content
+    visibleMessages.length,
+    visibleMessages[visibleMessages.length - 1]?.role === "assistant"
+      ? (visibleMessages[visibleMessages.length - 1] as Message & { content: string })?.content
           ?.length
       : 0,
   ]);
@@ -616,7 +636,7 @@ export function ChatPage({
 
   const handleKbChange = useCallback(
     async (kbId: string | null) => {
-      if (currentId && currentMessages.length > 0) {
+      if (currentId && hasConversationMessages) {
         toast.info("\u5f53\u524d\u4f1a\u8bdd\u7684\u77e5\u8bc6\u5e93\u5df2\u9501\u5b9a\uff0c\u8bf7\u65b0\u5efa\u5bf9\u8bdd\u540e\u518d\u5207\u6362\u3002");
         return;
       }
@@ -631,7 +651,7 @@ export function ChatPage({
         toast.error((e as Error)?.message ?? "\u4fdd\u5b58\u77e5\u8bc6\u5e93\u7ed1\u5b9a\u5931\u8d25");
       }
     },
-    [currentId, currentMessages.length]
+    [currentId, hasConversationMessages]
   );
 
   const handleModelChange = useCallback(
@@ -782,6 +802,12 @@ export function ChatPage({
         const snap = streamingRef.current;
         streamingRef.current = null;
         if (!snap || snap.convId !== convId) return;
+        const hasContent = snap.content.trim().length > 0;
+        const hasTools = snap.tools.length > 0;
+        if (!hasContent && !hasTools && !opts.error) {
+          setMessagesForCurrent((prev) => prev.filter((m) => m.id !== snap.msgId));
+          return;
+        }
         try {
           const result = await appendAssistantMessage(snap.convId, {
             content: snap.content,
@@ -898,6 +924,24 @@ export function ChatPage({
             }
             case "done": {
               const costUsd = typeof evt.cost_usd === "number" ? evt.cost_usd : undefined;
+              const snap = streamingRef.current;
+              const emptyResponse = !snap?.content.trim();
+              if (emptyResponse) {
+                updateLastAssistant((m) =>
+                  m.role === "assistant"
+                    ? {
+                        ...m,
+                        error: EMPTY_ASSISTANT_RESPONSE,
+                        streaming: false,
+                        cost_usd: costUsd,
+                      }
+                    : m
+                );
+                void persistFinal({ error: EMPTY_ASSISTANT_RESPONSE, costUsd });
+                setBusy(false);
+                cleanupRef.current = null;
+                break;
+              }
               updateLastAssistant((m) =>
                 m.role === "assistant" ? { ...m, streaming: false, cost_usd: costUsd } : m
               );
@@ -933,18 +977,20 @@ export function ChatPage({
     cleanupRef.current?.();
     cleanupRef.current = null;
     setBusy(false);
-    updateLastAssistant((m) =>
-      m.role === "assistant" && m.streaming
-        ? { ...m, streaming: false, error: m.error ?? "\u7528\u6237\u5df2\u505c\u6b62\u751f\u6210" }
-        : m
-    );
     const snap = streamingRef.current;
     if (snap) {
       streamingRef.current = null;
+      const hasContent = snap.content.trim().length > 0;
+      if (!hasContent) {
+        setMessagesForCurrent((prev) => prev.filter((m) => m.id !== snap.msgId));
+        return;
+      }
+      updateLastAssistant((m) =>
+        m.role === "assistant" && m.id === snap.msgId ? { ...m, streaming: false } : m
+      );
       void appendAssistantMessage(snap.convId, {
         content: snap.content,
         tools: snap.tools,
-        error: "\u7528\u6237\u5df2\u505c\u6b62\u751f\u6210",
       })
         .then((result) => {
           setMessagesForCurrent((prev) =>
@@ -1029,7 +1075,7 @@ export function ChatPage({
                     />
                   </div>
                 </div>
-              ) : (!currentId && currentMessages.length === 0) ? (
+              ) : (!currentId && visibleMessages.length === 0) ? (
                 <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
                   <div className="mx-auto flex w-full max-w-[920px] flex-col">
                     <EmptyWorkbench
@@ -1065,10 +1111,10 @@ export function ChatPage({
                   <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
                     <div className="mx-auto flex w-full max-w-[860px] flex-col gap-7">
                       <ContextCompressionNotice contextStatus={currentContextStatus} />
-                      {currentMessages.length === 0 ? (
+                      {visibleMessages.length === 0 ? (
                         <EmptyWorkbench currentKbName={currentKb?.name ?? "\u901a\u7528\u5bf9\u8bdd"} onPick={handleSend} />
                       ) : (
-                        currentMessages.map((message) => <DarkMessage key={message.id} message={message} />)
+                        visibleMessages.map((message) => <DarkMessage key={message.id} message={message} />)
                       )}
                     </div>
                   </div>
@@ -1719,8 +1765,16 @@ function DarkMessage({ message }: { message: Message }) {
     );
   }
 
+  return <DarkAssistantMessage message={message} />;
+}
+
+function DarkAssistantMessage({ message }: { message: Extract<Message, { role: "assistant" }> }) {
   const streaming = !!message.streaming;
   const hasContent = message.content.trim().length > 0;
+  const hasTools = message.tools.length > 0;
+  const elapsedMs = useLiveElapsed(streaming, message.created_at);
+  const status = getAssistantStreamingStatus(message, elapsedMs);
+  if (!hasContent && !streaming && !message.error && !hasTools) return null;
 
   return (
     <div className="flex items-start">
@@ -1732,9 +1786,12 @@ function DarkMessage({ message }: { message: Message }) {
             </div>
           )}
           {!hasContent && streaming && (
-            <div className="flex items-center gap-2 text-sm text-slate-400">
+            <div className="flex flex-wrap items-center gap-2 text-sm text-slate-400">
               <LoaderCircle className="h-4 w-4 animate-spin text-emerald-400" />
-              {"\u6b63\u5728\u68c0\u7d22\u5e76\u751f\u6210\u56de\u7b54"}
+              <span>{status.label}</span>
+              <span className="rounded-full bg-emerald-400/10 px-2 py-0.5 text-xs tabular-nums text-emerald-200">
+                {status.elapsed}
+              </span>
             </div>
           )}
           {hasContent && (
@@ -1742,17 +1799,21 @@ function DarkMessage({ message }: { message: Message }) {
               <AnswerMarkdown markdown={message.content} streaming={streaming} />
             </div>
           )}
-          {!hasContent && !streaming && !message.error && (
-            <div className="text-sm text-slate-500">{"\u6682\u65e0\u5185\u5bb9"}</div>
+          {hasContent && streaming && (
+            <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-400/10 px-2.5 py-1 text-xs tabular-nums text-emerald-200">
+              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+              <span>{status.label}</span>
+              <span>{status.elapsed}</span>
+            </div>
           )}
         </div>
+        {hasTools && (
+          <div className="mt-4">
+            <ThinkingChain events={message.tools} />
+          </div>
+        )}
         {hasContent && (
           <>
-            {message.tools.length > 0 && (
-              <div className="mt-4">
-                <ThinkingChain events={message.tools} />
-              </div>
-            )}
             <SourceStrip sources={buildMessageSources(message)} />
             {!streaming && (
               <ExportActions
@@ -1766,6 +1827,57 @@ function DarkMessage({ message }: { message: Message }) {
       </div>
     </div>
   );
+}
+
+function useLiveElapsed(active: boolean, startedAt: number) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!active) return;
+    setNow(Date.now());
+    const id = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(id);
+  }, [active, startedAt]);
+
+  return Math.max(0, (active ? now : Date.now()) - startedAt);
+}
+
+function getAssistantStreamingStatus(
+  message: Extract<Message, { role: "assistant" }>,
+  elapsedMs: number
+) {
+  const hasContent = message.content.trim().length > 0;
+  const hasTools = message.tools.length > 0;
+  const toolsRunning = message.tools.some((tool) => tool.status === "running");
+  const allToolsSettled = hasTools && !toolsRunning;
+  const latestToolDoneAt = getLatestToolDoneAt(message.tools);
+  const waitAfterToolsMs =
+    allToolsSettled && latestToolDoneAt != null ? Math.max(0, Date.now() - latestToolDoneAt) : null;
+
+  if (hasContent) {
+    return { label: "正在输出回答", elapsed: `本轮 ${formatDuration(elapsedMs)}` };
+  }
+  if (allToolsSettled) {
+    return {
+      label: "检索完成，正在生成回答",
+      elapsed:
+        waitAfterToolsMs == null
+          ? `本轮 ${formatDuration(elapsedMs)}`
+          : `等待 ${formatDuration(waitAfterToolsMs)} · 本轮 ${formatDuration(elapsedMs)}`,
+    };
+  }
+  if (hasTools) {
+    return { label: "正在检索知识库", elapsed: `本轮 ${formatDuration(elapsedMs)}` };
+  }
+  return { label: "正在检索并生成回答", elapsed: `本轮 ${formatDuration(elapsedMs)}` };
+}
+
+function getLatestToolDoneAt(tools: ToolEvent[]) {
+  return tools.reduce<number | null>((latest, tool) => {
+    if (tool.status === "running" || tool.t0 == null || tool.latency_ms == null) return latest;
+    const doneAt = tool.t0 + tool.latency_ms;
+    return latest == null ? doneAt : Math.max(latest, doneAt);
+  }, null);
 }
 
 function AnswerMarkdown({ markdown, streaming }: { markdown: string; streaming: boolean }) {
@@ -2133,20 +2245,22 @@ function Composer({
             title={kbLocked ? "当前会话已有消息，知识库已锁定" : "选择通用聊天或知识库"}
           >
             <Database className="h-4 w-4 text-brand" />
-            <select
+            <ModelSelect
               aria-label="选择知识库"
-              className="min-w-0 flex-1 bg-transparent text-sm text-slate-200 outline-none disabled:cursor-not-allowed disabled:text-slate-500"
+              className="h-7 min-w-[120px] flex-1 border-0 bg-transparent px-0 py-0 text-sm text-slate-200 shadow-none hover:bg-transparent focus-visible:ring-0 dark:bg-transparent dark:hover:bg-transparent disabled:cursor-not-allowed disabled:text-slate-500"
+              contentAlign="start"
+              contentClassName="ak-model-content"
+              contentPosition="popper"
               disabled={kbLocked || busy}
               onChange={(e) => onSelectKb(e.target.value || null)}
+              options={[
+                { value: "", label: "通用聊天" },
+                ...kbs.map((kb) => ({ value: kb.id, label: kb.name })),
+              ]}
+              size="sm"
+              title={kbLocked ? "当前会话已有消息，知识库已锁定" : "选择通用聊天或知识库"}
               value={currentKbId ?? ""}
-            >
-              <option value="">通用聊天</option>
-              {kbs.map((kb) => (
-                <option key={kb.id} value={kb.id}>
-                  {kb.name}
-                </option>
-              ))}
-            </select>
+            />
             {kbLocked && <LockKeyhole className="h-3.5 w-3.5 text-slate-500" />}
           </div>
           <Link

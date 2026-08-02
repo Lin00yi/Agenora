@@ -37,6 +37,7 @@ import {
   getKb,
   getDocument,
   listDocumentChunks,
+  patchDocument,
   patchChunk,
   deleteChunk,
   batchPatchChunks,
@@ -48,6 +49,7 @@ import {
   type DocumentDetail,
   type Chunk,
   type KbRole,
+  type ChunkStrategy,
 } from "@/lib/kb-api";
 import { toastApiError } from "@/lib/byok-toast";
 import { cn } from "@/lib/cn";
@@ -75,6 +77,15 @@ import {
   formatAdminDate,
   formatFileSize,
 } from "@/components/kb/admin-utils";
+
+const CHUNK_STRATEGY_OPTIONS: { value: ChunkStrategy; label: string }[] = [
+  { value: "recursive", label: "递归文本切分" },
+  { value: "markdown_heading", label: "Markdown 标题切分" },
+  { value: "semantic", label: "轻量语义切分" },
+  { value: "table_aware", label: "表格感知切分" },
+  { value: "code", label: "代码感知切分" },
+  { value: "parent_child", label: "轻量父子切分" },
+];
 
 export default function DocumentDetailPage({
   params,
@@ -107,6 +118,10 @@ export default function DocumentDetailPage({
   } | null>(null);
   const [splitOffset, setSplitOffset] = useState("");
   const [editText, setEditText] = useState("");
+  const [docChunkStrategy, setDocChunkStrategy] = useState<ChunkStrategy | "">("");
+  const [docChunkTarget, setDocChunkTarget] = useState("");
+  const [docChunkMaxSize, setDocChunkMaxSize] = useState("");
+  const [docChunkOverlap, setDocChunkOverlap] = useState("");
   /** Granular action key, e.g. `refresh`, `batch`, `toggle:uuid`, `merge:uuid`. */
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const chunksLoadedOnce = useRef(false);
@@ -208,6 +223,20 @@ export default function DocumentDetailPage({
     return () => clearInterval(t);
   }, [doc, refresh]);
 
+  useEffect(() => {
+    if (!doc) return;
+    setDocChunkStrategy(doc.chunk_strategy ?? "");
+    setDocChunkTarget(doc.chunk_target == null ? "" : String(doc.chunk_target));
+    setDocChunkMaxSize(doc.chunk_max_size == null ? "" : String(doc.chunk_max_size));
+    setDocChunkOverlap(doc.chunk_overlap == null ? "" : String(doc.chunk_overlap));
+  }, [
+    doc?.id,
+    doc?.chunk_strategy,
+    doc?.chunk_target,
+    doc?.chunk_max_size,
+    doc?.chunk_overlap,
+  ]);
+
   const myRole: KbRole = kb?.my_role ?? (kb?.is_system ? "viewer" : "owner");
   const canWrite = (myRole === "owner" || myRole === "editor") && !kb?.is_system;
 
@@ -304,6 +333,31 @@ export default function DocumentDetailPage({
       await reingestDocument(kbId, docId);
       toast.success("已提交重建向量");
       await refresh();
+    } catch (e) {
+      toastApiError(e, (p) => router.push(p));
+    } finally {
+      setPendingKey(null);
+    }
+  };
+
+  const onSaveDocChunkSettings = async (e: FormEvent) => {
+    e.preventDefault();
+    const parseOptionalInt = (value: string) => {
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+      const parsed = parseInt(trimmed, 10);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+    setPendingKey("doc-chunk-settings");
+    try {
+      const updated = await patchDocument(kbId, docId, {
+        chunk_strategy: docChunkStrategy || null,
+        chunk_target: parseOptionalInt(docChunkTarget),
+        chunk_max_size: parseOptionalInt(docChunkMaxSize),
+        chunk_overlap: parseOptionalInt(docChunkOverlap),
+      });
+      setDoc((cur) => (cur ? { ...cur, ...updated } : cur));
+      toast.success("分块策略已保存，重新 ingest 后对现有 chunks 生效");
     } catch (e) {
       toastApiError(e, (p) => router.push(p));
     } finally {
@@ -412,6 +466,16 @@ export default function DocumentDetailPage({
   const selectedText =
     selected.length > 0 ? `已选择 ${selected.length} 个 chunk` : "";
 
+  const effectiveStrategy = doc.effective_chunk_strategy ?? kb.chunk_strategy;
+  const effectiveStrategyLabel =
+    CHUNK_STRATEGY_OPTIONS.find((option) => option.value === effectiveStrategy)?.label ??
+    effectiveStrategy;
+  const hasDocChunkOverride =
+    doc.chunk_strategy != null ||
+    doc.chunk_target != null ||
+    doc.chunk_max_size != null ||
+    doc.chunk_overlap != null;
+
   return (
     <AdminPageShell
       breadcrumbs={[
@@ -491,6 +555,94 @@ export default function DocumentDetailPage({
           value={formatAdminDate(doc.updated_at ?? doc.created_at)}
         />
       </div>
+
+      {canWrite && (
+        <AdminPanel
+          title="入库切分设置"
+          subtitle={`当前生效：${effectiveStrategyLabel} · 目标 ${
+            doc.effective_chunk_target ?? kb.chunk_target
+          } · 最大 ${doc.effective_chunk_max_size ?? kb.chunk_max_size} · 重叠 ${
+            doc.effective_chunk_overlap ?? kb.chunk_overlap
+          }${hasDocChunkOverride ? " · 文档级覆盖" : " · 继承 KB 默认"}`}
+          className="mb-4"
+        >
+          <form onSubmit={onSaveDocChunkSettings} className="grid gap-3 p-4 md:grid-cols-5">
+            <label className="text-xs">
+              <span className="text-muted">切分策略</span>
+              <Select
+                size="sm"
+                value={docChunkStrategy}
+                onChange={(e) => setDocChunkStrategy(e.target.value as ChunkStrategy | "")}
+                placeholderOption={{ value: "", label: "继承 KB 默认" }}
+                options={CHUNK_STRATEGY_OPTIONS}
+                className="mt-1 admin-select-trigger"
+                contentAlign="start"
+                contentPosition="popper"
+              />
+            </label>
+            <label className="text-xs">
+              <span className="text-muted">目标长度</span>
+              <input
+                type="number"
+                min={200}
+                max={8000}
+                placeholder={String(kb.chunk_target)}
+                value={docChunkTarget}
+                onChange={(e) => setDocChunkTarget(e.target.value)}
+                className="mt-1 block w-full rounded-md border bg-bg px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="text-xs">
+              <span className="text-muted">最大长度</span>
+              <input
+                type="number"
+                min={200}
+                max={10000}
+                placeholder={String(kb.chunk_max_size)}
+                value={docChunkMaxSize}
+                onChange={(e) => setDocChunkMaxSize(e.target.value)}
+                className="mt-1 block w-full rounded-md border bg-bg px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="text-xs">
+              <span className="text-muted">重叠长度</span>
+              <input
+                type="number"
+                min={0}
+                max={2000}
+                placeholder={String(kb.chunk_overlap)}
+                value={docChunkOverlap}
+                onChange={(e) => setDocChunkOverlap(e.target.value)}
+                className="mt-1 block w-full rounded-md border bg-bg px-2 py-1.5 text-sm"
+              />
+            </label>
+            <div className="flex items-end gap-2">
+              <button
+                type="submit"
+                className="admin-btn-secondary btn-sm"
+                disabled={anyPending}
+              >
+                {isPending("doc-chunk-settings") ? "保存中..." : "保存"}
+              </button>
+              <button
+                type="button"
+                className="admin-btn-primary btn-sm"
+                disabled={anyPending}
+                onClick={() => void onReingest()}
+                title="重新 ingest 后，已保存的切分策略才会应用到现有 chunks。"
+              >
+                <RotateCcw
+                  className={cn("h-4 w-4", isPending("reingest") && "animate-spin")}
+                />
+                重新 ingest
+              </button>
+            </div>
+          </form>
+          <p className="px-4 pb-4 text-xs text-muted">
+            留空表示继承 KB 默认。保存后仅影响新的 ingest；已有 chunks 需要重新 ingest 或重建整个 KB 后才会变化。
+          </p>
+        </AdminPanel>
+      )}
 
       <AdminPanel
         title="Chunk 列表"

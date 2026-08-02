@@ -12,6 +12,13 @@ import { authFetch } from "./auth";
 
 export type DocStatus = "pending" | "ingesting" | "done" | "failed";
 export type SourceType = "file" | "url";
+export type ChunkStrategy =
+  | "recursive"
+  | "markdown_heading"
+  | "semantic"
+  | "table_aware"
+  | "code"
+  | "parent_child";
 /** v2-M9: caller's effective role for a KB. system KB is "viewer" for everyone. */
 export type KbRole = "owner" | "editor" | "viewer";
 export type MemberRole = "editor" | "viewer";
@@ -35,6 +42,7 @@ export type KB = {
    *  document via Milvus group_by_field. */
   grouping_enabled: boolean;
   /** v4: KB-level chunking defaults (chars). Document can override. */
+  chunk_strategy: ChunkStrategy;
   chunk_target: number;
   chunk_max_size: number;
   chunk_overlap: number;
@@ -54,9 +62,14 @@ export type Document = {
   status: DocStatus;
   chunks_count: number;
   error: string | null;
+  chunk_strategy: ChunkStrategy | null;
   chunk_target: number | null;
   chunk_max_size: number | null;
   chunk_overlap: number | null;
+  effective_chunk_strategy: ChunkStrategy | null;
+  effective_chunk_target: number | null;
+  effective_chunk_max_size: number | null;
+  effective_chunk_overlap: number | null;
   parsed_text_length: number;
   enabled: boolean;
   created_at: string | null;
@@ -194,6 +207,7 @@ export type CreateKbBody = {
   reranker_api_key?: string;
   reranker_model?: string | null;
   reranker_enabled?: boolean;
+  chunk_strategy?: ChunkStrategy;
 };
 
 export async function createKb(
@@ -224,6 +238,7 @@ export async function patchKb(
   id: string,
   body: {
     grouping_enabled?: boolean;
+    chunk_strategy?: ChunkStrategy;
     chunk_target?: number;
     chunk_max_size?: number;
     chunk_overlap?: number;
@@ -299,6 +314,7 @@ export async function patchDocument(
   docId: string,
   body: {
     filename?: string;
+    chunk_strategy?: ChunkStrategy | null;
     chunk_target?: number | null;
     chunk_max_size?: number | null;
     chunk_overlap?: number | null;

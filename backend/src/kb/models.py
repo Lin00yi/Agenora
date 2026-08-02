@@ -40,6 +40,14 @@ DocStatus = Literal["pending", "ingesting", "done", "failed"]
 SourceType = Literal["file", "url"]
 Role = Literal["owner", "editor", "viewer"]
 MemberRole = Literal["editor", "viewer"]
+ChunkStrategy = Literal[
+    "recursive",
+    "markdown_heading",
+    "semantic",
+    "table_aware",
+    "code",
+    "parent_child",
+]
 
 # ---------------------------------------------------------------------------
 # System KBs — well-known UUIDs that map to pre-existing Qdrant collections.
@@ -105,6 +113,9 @@ class KB(Base):
     )
 
     # v4: per-KB chunking defaults (chars). Document-level overrides win when set.
+    chunk_strategy: Mapped[str] = mapped_column(
+        String(32), default="recursive", nullable=False
+    )
     chunk_target: Mapped[int] = mapped_column(Integer, default=1500, nullable=False)
     chunk_max_size: Mapped[int] = mapped_column(Integer, default=1800, nullable=False)
     chunk_overlap: Mapped[int] = mapped_column(Integer, default=150, nullable=False)
@@ -187,6 +198,7 @@ class KB(Base):
             "document_status_counts": status_counts,
             "is_system": bool(self.is_system),
             "grouping_enabled": bool(self.grouping_enabled),
+            "chunk_strategy": self.chunk_strategy or "recursive",
             "chunk_target": self.chunk_target,
             "chunk_max_size": self.chunk_max_size,
             "chunk_overlap": self.chunk_overlap,
@@ -222,6 +234,9 @@ class Document(Base):
 
     # v4: parsed full text (post-extraction) + optional chunk-param overrides.
     parsed_text: Mapped[str] = mapped_column(Text, default="")
+    chunk_strategy: Mapped[Optional[str]] = mapped_column(
+        String(32), nullable=True, default=None
+    )
     chunk_target: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
     chunk_max_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
     chunk_overlap: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
@@ -242,7 +257,18 @@ class Document(Base):
         order_by="Chunk.chunk_idx",
     )
 
-    def to_public_dict(self, *, include_parsed_text: bool = False) -> dict:
+    def to_public_dict(
+        self,
+        *,
+        include_parsed_text: bool = False,
+        kb: "KB | None" = None,
+    ) -> dict:
+        effective_strategy = self.chunk_strategy or (kb.chunk_strategy if kb else None)
+        effective_target = self.chunk_target or (kb.chunk_target if kb else None)
+        effective_max_size = self.chunk_max_size or (kb.chunk_max_size if kb else None)
+        effective_overlap = self.chunk_overlap if self.chunk_overlap is not None else (
+            kb.chunk_overlap if kb else None
+        )
         out = {
             "id": self.id,
             "kb_id": self.kb_id,
@@ -254,9 +280,14 @@ class Document(Base):
             "status": self.status,
             "chunks_count": self.chunks_count,
             "error": self.error or None,
+            "chunk_strategy": self.chunk_strategy,
             "chunk_target": self.chunk_target,
             "chunk_max_size": self.chunk_max_size,
             "chunk_overlap": self.chunk_overlap,
+            "effective_chunk_strategy": effective_strategy,
+            "effective_chunk_target": effective_target,
+            "effective_chunk_max_size": effective_max_size,
+            "effective_chunk_overlap": effective_overlap,
             "parsed_text_length": len(self.parsed_text or ""),
             "enabled": bool(self.enabled),
             "created_at": self.created_at.isoformat() if self.created_at else None,
