@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "@/components/ThemeProvider";
@@ -21,19 +21,20 @@ export default function ThemeToggle({ className }: { className?: string }) {
       onValueChange={(value) => {
         if (value) setTheme(value as typeof theme);
       }}
-      className={cn("ak-theme-toggle rounded-full border border-surface-border/80 bg-surface/80 p-1 shadow-soft", className)}
+      className={cn("ak-theme-toggle gap-0.5 rounded-md border border-surface-border/80 bg-surface/85 p-0.5 shadow-soft", className)}
       aria-label="主题切换"
+      spacing={0}
     >
       {OPTIONS.map(({ value, Icon, label }) => (
         <ToggleGroupItem
           key={value}
           value={value}
           size="sm"
-          className="h-7 w-7 rounded-full p-0 text-muted transition-[background-color,color,box-shadow,transform] duration-press data-[state=on]:bg-brand data-[state=on]:text-white data-[state=on]:shadow-sm hover:bg-surface-2 hover:text-fg"
+          className="app-theme-toggle-item h-7 min-h-7 w-7 min-w-7 rounded border p-0"
           title={label}
           aria-label={label}
         >
-          <Icon className="h-3.5 w-3.5" />
+          <Icon className="size-3.5" />
         </ToggleGroupItem>
       ))}
     </ToggleGroup>

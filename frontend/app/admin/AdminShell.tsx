@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
-import { ChevronLeft, LayoutDashboard, Users, BookOpen } from "lucide-react";
+import { BookOpen, ChevronLeft, Home, LayoutDashboard, Users } from "lucide-react";
 
 import { getToken, getUser, refreshMe } from "@/lib/auth";
 import { cn } from "@/lib/cn";
@@ -109,19 +109,21 @@ export default function AdminShell({
   return (
     <div className="app-page min-h-dvh text-fg">
       <header className="app-page-header border-b">
-        <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4 sm:px-6">
+        <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 sm:px-6">
           <Link
             href="/"
-            className="inline-flex items-center gap-1 text-sm text-muted transition hover:text-fg"
+            className="admin-icon-action admin-icon-action-surface"
+            aria-label="返回对话"
           >
-            <ChevronLeft className="h-4 w-4" />
-            <span>返回对话</span>
+            <Home className="h-4 w-4" />
           </Link>
-          <div className="flex-1" />
-          <h1 className="text-sm font-medium">{title}</h1>
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-sm font-semibold">{title}</h1>
+            <p className="hidden text-xs text-muted sm:block">平台管理</p>
+          </div>
           <ThemeToggle />
         </div>
-        <nav className="mx-auto flex max-w-5xl items-center gap-1 px-4 pb-2 sm:px-6">
+        <nav className="mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto px-4 pb-3 sm:px-6">
           {tabs.map((t) => {
             const active = pathname === t.href;
             const Icon = t.icon;
@@ -129,11 +131,12 @@ export default function AdminShell({
               <Link
                 key={t.href}
                 href={t.href}
+                aria-current={active ? "page" : undefined}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition",
+                  "inline-flex min-h-[40px] shrink-0 items-center gap-2 rounded-md border border-transparent px-3.5 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30",
                   active
-                    ? "bg-brand/15 text-fg"
-                    : "text-muted hover:bg-surface hover:text-fg"
+                    ? "border-brand/25 bg-brand/10 text-fg shadow-sm"
+                    : "text-muted hover:border-surface-border/80 hover:bg-surface hover:text-fg"
                 )}
               >
                 <Icon className="h-4 w-4" />
@@ -144,7 +147,7 @@ export default function AdminShell({
         </nav>
       </header>
 
-      <main className="app-page-content mx-auto max-w-5xl px-4 py-7 sm:px-6 sm:py-10">{children}</main>
+      <main className="app-page-content mx-auto max-w-7xl px-4 py-7 sm:px-6 sm:py-10">{children}</main>
     </div>
   );
 }

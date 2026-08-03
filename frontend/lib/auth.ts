@@ -109,6 +109,12 @@ function localizeApiMessage(message: string): string {
   if (lower.includes("account disabled")) {
     return "该账号已被禁用。";
   }
+  if (lower.includes("user not found")) {
+    return "未找到当前账号，请重新登录。";
+  }
+  if (lower.includes("incorrect old password")) {
+    return "旧密码不正确。";
+  }
   if (
     lower.includes("not a valid email address") ||
     lower.includes("valid email")
@@ -230,8 +236,7 @@ export async function updateProfile(displayName: string): Promise<User> {
     body: JSON.stringify({ display_name: displayName }),
   });
   if (!r.ok) {
-    const detail = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }));
-    throw new Error(detail.detail ?? "update profile failed");
+    throw new Error(await readApiError(r, "保存个人资料失败"));
   }
   const user = (await r.json()) as User;
   setUser(user);
@@ -248,16 +253,14 @@ export async function changePassword(
     body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
   });
   if (!r.ok) {
-    const detail = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }));
-    throw new Error(detail.detail ?? "change password failed");
+    throw new Error(await readApiError(r, "修改密码失败"));
   }
 }
 
 export async function deleteAccount(): Promise<void> {
   const r = await authFetch("/api/auth/me", { method: "DELETE" });
   if (!r.ok) {
-    const detail = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }));
-    throw new Error(detail.detail ?? "delete account failed");
+    throw new Error(await readApiError(r, "删除账号失败"));
   }
   clearAuth();
 }

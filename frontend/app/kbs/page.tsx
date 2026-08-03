@@ -18,6 +18,7 @@ import {
   ChevronDown,
   ChevronRight,
   KeyRound,
+  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -84,10 +85,10 @@ export default function KbsPage() {
   return (
     <div className="app-page min-h-dvh text-fg">
       <header className="app-page-header border-b">
-        <div className="mx-auto flex h-14 max-w-4xl items-center gap-3 px-4 sm:px-6">
+        <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4 sm:px-6">
           <Link
             href="/"
-            className="inline-flex items-center gap-1 text-sm text-muted transition hover:text-fg"
+            className="app-nav-link app-nav-link-compact"
           >
             <ChevronLeft className="h-4 w-4" />
             <span>返回对话</span>
@@ -101,18 +102,18 @@ export default function KbsPage() {
         </div>
       </header>
 
-      <main className="app-page-content mx-auto max-w-4xl px-4 py-7 sm:px-6 sm:py-10">
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand">Knowledge workspace</p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight">管理你的知识库</h2>
-            <p className="mt-2 text-sm text-muted">
+      <main className="app-page-content mx-auto max-w-5xl px-4 py-7 sm:px-6 sm:py-10">
+        <div className="mb-7 flex flex-col gap-4 border-b border-surface-border/70 pb-6 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold tracking-[0.16em] text-brand">知识工作区</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-fg">管理你的知识库</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
               创建新知识库时可选择此 KB 使用的 embedding / reranker 配置。
             </p>
           </div>
           <button
             onClick={() => setCreateOpen(true)}
-            className="btn btn-primary"
+            className="admin-btn-primary w-full sm:w-auto"
             type="button"
           >
             <Plus className="h-4 w-4" />
@@ -126,19 +127,26 @@ export default function KbsPage() {
           <StateView
             title="还没有知识库"
             description="从一个资料库开始，把文档变成可追问、可引用的答案。"
-            action={<button onClick={() => setCreateOpen(true)} className="btn btn-primary" type="button"><Plus className="size-4" />新建知识库</button>}
+            action={
+              <button onClick={() => setCreateOpen(true)} className="admin-btn-primary" type="button">
+                <Plus className="h-4 w-4" />
+                新建知识库
+              </button>
+            }
           />
         ) : (
-          <ul className="space-y-2">
+          <ul className="grid min-w-0 gap-3">
             {kbs.map((kb) => {
               const isOwner = kb.my_role === "owner";
               const isEditor = kb.my_role === "editor";
               const isViewer = kb.my_role === "viewer" && !kb.is_system;
               return (
-                <li key={kb.id} className="card card-hover group">
-                  <div className="flex items-center gap-3 px-4 py-3">
-                    <Link href={`/kbs/${kb.id}`} className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
+                <li
+                  key={kb.id}
+                  className="group min-w-0 overflow-hidden rounded-lg border border-surface-border/80 bg-surface shadow-sm transition-[background-color,border-color,box-shadow] hover:border-brand/30 hover:bg-surface-2/50 hover:shadow-md"
+                >
+                  <div className="flex min-w-0 items-start gap-3 px-4 py-4 sm:gap-4 sm:px-5">
+                    <span className="admin-icon-tile admin-icon-tile-muted mt-0.5 shrink-0 transition group-hover:border-brand/25 group-hover:bg-brand/10 group-hover:text-brand">
                         {kb.is_system ? (
                           <Lock className="h-4 w-4 text-warning" />
                         ) : isEditor ? (
@@ -148,38 +156,41 @@ export default function KbsPage() {
                         ) : (
                           <BookOpen className="h-4 w-4 opacity-60" />
                         )}
-                        <span className="truncate font-medium">{kb.name}</span>
+                    </span>
+                    <Link href={`/kbs/${kb.id}`} className="min-w-0 flex-1 overflow-hidden rounded-md outline-none focus-visible:ring-2 focus-visible:ring-brand/25">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <span className="min-w-0 break-words font-medium">{kb.name}</span>
                         {kb.is_system && (
-                          <span className="chip border-warning/30 bg-warning/10 text-warning">
+                          <span className="chip chip-warning">
                             示例 · 只读
                           </span>
                         )}
                         {isEditor && (
-                          <span className="chip border-info/30 bg-info/10 text-info">
+                          <span className="chip chip-info">
                             协作
                           </span>
                         )}
                         {isViewer && (
-                          <span className="chip border-border bg-surface text-muted">
+                          <span className="chip chip-muted">
                             只读
                           </span>
                         )}
                       </div>
-                      <div className="mt-1 truncate text-xs text-muted">
+                      <div className="mt-1.5 line-clamp-2 break-words text-xs text-muted">
                         {kb.description || (
                           <span className="italic opacity-60">无描述</span>
                         )}
                       </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-                        <span className="inline-flex items-center gap-1">
+                      <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted">
+                        <span className="stat-pill min-h-8 py-1">
                           <FileText className="h-3 w-3" />
                           {kb.documents_count} 文档
                         </span>
-                        <span className="inline-flex items-center gap-1">
+                        <span className="stat-pill min-h-8 py-1">
                           <Hash className="h-3 w-3" />
-                          {kb.chunks_count} chunks
+                          {kb.chunks_count} 分块
                         </span>
-                        <span className="truncate">
+                        <span className="stat-pill min-h-8 max-w-full min-w-0 truncate py-1">
                           {kb.embedding_model || "—"}
                         </span>
                       </div>
@@ -188,8 +199,8 @@ export default function KbsPage() {
                       <button
                         onClick={() => setPendingDelete(kb)}
                         className={cn(
-                          "rounded-md p-2 text-muted/70 transition",
-                          "hover:bg-danger/15 hover:text-danger"
+                          "admin-icon-action admin-icon-action-lg admin-icon-action-danger shrink-0 text-muted/70",
+                          "hover:bg-danger/15"
                         )}
                         aria-label="删除知识库"
                         title="删除知识库"
@@ -502,19 +513,19 @@ function CreateKbDialog({
       role="presentation"
       onClick={() => !creating && onClose()}
     >
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+      <div className="app-modal-overlay absolute inset-0" />
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-2xl overflow-hidden rounded-lg border bg-bg shadow-lift"
+        className="relative flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-surface-border/80 bg-surface shadow-[0_24px_70px_rgb(15_23_42/0.22)]"
         role="dialog"
         aria-modal="true"
       >
-        <header className="flex h-12 items-center justify-between border-b px-5">
+        <header className="flex min-h-14 shrink-0 items-center justify-between border-b border-surface-border/70 bg-surface px-5">
           <h2 className="text-base font-semibold">新建知识库</h2>
           <button
             onClick={onClose}
             disabled={creating}
-            className="rounded-md p-1 text-muted hover:bg-surface hover:text-fg"
+            className="admin-icon-action admin-icon-action-lg"
             aria-label="关闭"
             type="button"
           >
@@ -524,7 +535,7 @@ function CreateKbDialog({
 
         <form
           onSubmit={submit}
-          className="max-h-[min(76vh,720px)] space-y-4 overflow-y-auto p-5"
+          className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-surface px-5 py-5"
         >
           <FormField label="名称" required>
             <input
@@ -548,11 +559,11 @@ function CreateKbDialog({
           </FormField>
 
           {/* v3-M8: embedding always required, no inherit/custom toggle */}
-          <section className="space-y-3 rounded-lg border bg-surface/40 p-4">
+          <section className="space-y-3 rounded-lg border border-surface-border/80 bg-surface-2/35 p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-medium">Embedding 配置</h3>
               {embedDim != null && (
-                <span className="chip border-border bg-surface text-xs text-muted">
+                <span className="chip chip-muted text-xs">
                   {embedModel} · {embedDim}d
                 </span>
               )}
@@ -599,16 +610,16 @@ function CreateKbDialog({
                 "已保存（留空保持现有）" placeholder was misleading. Click
                 "修改" to swap to input mode for a new key. */}
             {embedKeySaved && !embedKeyEditing ? (
-              <div className="flex items-center gap-2 rounded-lg border bg-surface/50 px-3 py-2 text-sm">
+              <div className="flex min-h-[44px] items-center gap-3 rounded-lg border border-surface-border/80 bg-surface-2/45 px-3 py-2 text-sm shadow-sm">
                 <KeyRound className="h-4 w-4 text-success" />
-                <span className="flex-1">已使用保存的 API Key</span>
+                <span className="min-w-0 flex-1">已使用保存的 API Key</span>
                 <button
                   type="button"
                   onClick={() => {
                     setEmbedKeyEditing(true);
                     setEmbedVerified(false);
                   }}
-                  className="text-xs text-brand hover:underline"
+                  className="app-mini-link app-mini-link-brand"
                 >
                   修改
                 </button>
@@ -632,7 +643,7 @@ function CreateKbDialog({
                     setEmbedApiKey(e.target.value);
                     setEmbedVerified(false);
                   }}
-                  className={cn(inputClass, "pl-8")}
+                  className={cn(inputClass, "pl-8 pr-16")}
                   autoFocus={embedKeyEditing && embedKeySaved}
                 />
                 {embedKeySaved && (
@@ -643,7 +654,7 @@ function CreateKbDialog({
                       setEmbedApiKey("");
                       setEmbedVerified(true);  // back to using saved key
                     }}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted hover:text-fg"
+                    className="app-mini-link app-mini-link-muted absolute right-2 top-1/2 -translate-y-1/2"
                   >
                     取消
                   </button>
@@ -651,7 +662,7 @@ function CreateKbDialog({
               </div>
             )}
             {/* v3-M8.1: 测试连接 — must succeed before model dropdown populates */}
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-xs text-muted">
                 {embedVerified ? "Embedding 已验证。" : "先验证连接，再选择或确认模型。"}
               </span>
@@ -659,7 +670,7 @@ function CreateKbDialog({
                 type="button"
                 onClick={onTestEmbedding}
                 disabled={embedProbing || !embedBaseUrl}
-                className="btn btn-ghost btn-sm"
+                className={secondaryActionClass}
               >
                 {embedProbing ? "测试中…" : "测试连接 / 拉取模型"}
               </button>
@@ -732,7 +743,7 @@ function CreateKbDialog({
               />
 
               {rerankerMode === "custom" && (
-                <div className="space-y-2 rounded-lg border bg-surface/30 p-3">
+                <div className="space-y-2 rounded-lg border border-surface-border/80 bg-surface/50 p-3 shadow-sm">
                   <div className="grid gap-2 sm:grid-cols-2">
                     <Select
                       value={rerankerProvider}
@@ -768,16 +779,16 @@ function CreateKbDialog({
                   </div>
                   {/* v3-M8.3: same saved-key chip vs input pattern as embedding. */}
                   {rerankerKeySaved && !rerankerKeyEditing ? (
-                    <div className="flex items-center gap-2 rounded-lg border bg-surface/50 px-3 py-2 text-sm">
+                    <div className="flex min-h-[44px] items-center gap-3 rounded-lg border border-surface-border/80 bg-surface-2/45 px-3 py-2 text-sm shadow-sm">
                       <KeyRound className="h-4 w-4 text-success" />
-                      <span className="flex-1">已使用保存的 API Key</span>
+                      <span className="min-w-0 flex-1">已使用保存的 API Key</span>
                       <button
                         type="button"
                         onClick={() => {
                           setRerankerKeyEditing(true);
                           setRerankerVerified(false);
                         }}
-                        className="text-xs text-brand hover:underline"
+                        className="app-mini-link app-mini-link-brand"
                       >
                         修改
                       </button>
@@ -797,7 +808,7 @@ function CreateKbDialog({
                           setRerankerApiKey(e.target.value);
                           setRerankerVerified(false);
                         }}
-                        className={cn(inputClass, "pl-8")}
+                        className={cn(inputClass, "pl-8 pr-16")}
                         autoFocus={rerankerKeyEditing && rerankerKeySaved}
                       />
                       {rerankerKeySaved && (
@@ -808,7 +819,7 @@ function CreateKbDialog({
                             setRerankerApiKey("");
                             setRerankerVerified(true);
                           }}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted hover:text-fg"
+                          className="app-mini-link app-mini-link-muted absolute right-2 top-1/2 -translate-y-1/2"
                         >
                           取消
                         </button>
@@ -820,7 +831,7 @@ function CreateKbDialog({
                       type="button"
                       onClick={onTestReranker}
                       disabled={rerankerProbing || !rerankerBaseUrl}
-                      className="btn btn-ghost btn-sm"
+                      className={secondaryActionClass}
                     >
                       {rerankerProbing ? "测试中…" : "测试连接 / 拉取模型"}
                     </button>
@@ -861,14 +872,16 @@ function CreateKbDialog({
             </div>
           </CollapsibleSection>
 
-          <div className="sticky bottom-0 -mx-5 -mb-5 flex flex-col gap-3 border-t bg-bg/95 px-5 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+          <div className="sticky bottom-0 -mx-5 -mb-5 flex flex-col gap-3 border-t border-surface-border/70 bg-surface/95 px-5 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
             {!embedVerified ? (
-              <span className="text-xs text-warning">
-                ⚠ 请先点「测试连接 / 拉取模型」验证 Embedding 可用
+              <span className="inline-flex items-center gap-1.5 text-xs text-warning">
+                <AlertCircle className="h-3.5 w-3.5" />
+                请先点「测试连接 / 拉取模型」验证 Embedding 可用
               </span>
             ) : rerankerMode === "custom" && !rerankerVerified ? (
-              <span className="text-xs text-warning">
-                ⚠ 请先验证 Reranker 连接
+              <span className="inline-flex items-center gap-1.5 text-xs text-warning">
+                <AlertCircle className="h-3.5 w-3.5" />
+                请先验证 Reranker 连接
               </span>
             ) : (
               <span />
@@ -878,7 +891,7 @@ function CreateKbDialog({
                 type="button"
                 onClick={onClose}
                 disabled={creating}
-                className="btn btn-ghost btn-sm w-full sm:w-auto"
+                className={secondaryActionClass}
               >
                 取消
               </button>
@@ -890,7 +903,7 @@ function CreateKbDialog({
                   !embedVerified ||
                   (rerankerMode === "custom" && !rerankerVerified)
                 }
-                className="btn btn-primary btn-sm w-full sm:w-auto"
+                className={primaryActionClass}
               >
                 <Plus className="h-4 w-4" />
                 {creating ? "创建中…" : "创建知识库"}
@@ -907,7 +920,13 @@ function CreateKbDialog({
 // Small UI helpers
 // ---------------------------------------------------------------------------
 const inputClass =
-  "block w-full rounded-lg border bg-bg px-3 py-2 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20";
+  "admin-input";
+
+const primaryActionClass =
+  "admin-btn-primary w-full shrink-0 sm:w-auto";
+
+const secondaryActionClass =
+  "admin-btn-secondary w-full shrink-0 sm:w-auto";
 
 function FormField({
   label,
@@ -919,8 +938,8 @@ function FormField({
   children: React.ReactNode;
 }) {
   return (
-    <div>
-      <label className="mb-1.5 block text-xs font-medium text-fg/80">
+    <div className="min-w-0">
+      <label className="mb-1.5 block text-xs font-medium text-muted">
         {label}
         {required && <span className="ml-1 text-danger">*</span>}
       </label>
@@ -945,11 +964,11 @@ function CollapsibleSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-lg border bg-surface/40">
+    <section className="rounded-lg border border-surface-border/80 bg-surface/60 shadow-sm">
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left"
+        className="flex min-h-[44px] w-full cursor-pointer items-center justify-between gap-2 px-4 py-3 text-left outline-none transition hover:bg-surface-2/60 focus-visible:ring-2 focus-visible:ring-brand/20"
       >
         <span className="text-sm font-medium">{title}</span>
         <span className="flex items-center gap-2">
@@ -958,8 +977,8 @@ function CollapsibleSection({
               className={cn(
                 "chip text-xs",
                 badgeVariant === "warning"
-                  ? "border-warning/30 bg-warning/10 text-warning"
-                  : "border-border bg-surface text-muted"
+                  ? "chip-warning"
+                  : "chip-muted"
               )}
             >
               {badge}
@@ -972,7 +991,7 @@ function CollapsibleSection({
           )}
         </span>
       </button>
-      {expanded && <div className="border-t px-4 py-3">{children}</div>}
+      {expanded && <div className="border-t border-surface-border/70 px-4 py-3">{children}</div>}
     </section>
   );
 }
@@ -993,8 +1012,8 @@ function RadioRow({
   return (
     <label
       className={cn(
-        "flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 transition",
-        checked ? "bg-brand/10" : "hover:bg-surface-2",
+        "flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition-[background-color,border-color,box-shadow]",
+        checked ? "border-brand/30 bg-brand/10 shadow-sm" : "border-transparent hover:border-surface-border hover:bg-surface-2",
         disabled && "cursor-not-allowed opacity-50"
       )}
     >
@@ -1003,7 +1022,7 @@ function RadioRow({
         checked={checked}
         onChange={onChange}
         disabled={disabled}
-        className="mt-0.5"
+        className="mt-1"
       />
       <div className="flex-1 text-sm">
         <div>{label}</div>

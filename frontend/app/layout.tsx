@@ -29,7 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             closeButton
             toastOptions={{
               classNames: {
-                toast: "rounded-xl border shadow-lift",
+                toast: "rounded-lg border shadow-lift",
               },
             }}
           />

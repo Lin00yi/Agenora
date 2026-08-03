@@ -37,15 +37,15 @@ export default function WelcomePage() {
       <header className="app-page-header sticky top-0 z-30 border-b">
         <div className="mx-auto flex h-14 max-w-7xl items-center px-4 sm:px-6 lg:px-8">
           <Brand size="sm" showWordmark />
-          <nav className="ml-8 hidden items-center gap-6 text-sm text-muted md:flex">
-            <a href="#features" className="transition hover:text-fg">能力</a>
-            <a href="#workflow" className="transition hover:text-fg">流程</a>
-            <a href="#scenarios" className="transition hover:text-fg">场景</a>
+          <nav className="ml-8 hidden items-center gap-1 text-sm text-muted md:flex">
+            <a href="#features" className="app-nav-link">能力</a>
+            <a href="#workflow" className="app-nav-link">流程</a>
+            <a href="#scenarios" className="app-nav-link">场景</a>
             <a
               href="https://github.com/GU-Cryptography/anykb"
               target="_blank"
               rel="noreferrer"
-              className="transition hover:text-fg"
+              className="app-nav-link"
             >
               开源
             </a>
@@ -53,16 +53,16 @@ export default function WelcomePage() {
           <div className="ml-auto flex items-center gap-2">
             <ThemeToggle />
             {signedIn ? (
-              <Link href="/" className="btn btn-primary btn-sm">
+              <Link href="/" className="admin-btn-primary px-4">
                 进入工作台
                 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             ) : (
               <>
-                <Link href="/login" className="btn btn-ghost btn-sm hidden sm:inline-flex">
+                <Link href="/login" className="admin-btn-secondary hidden px-4 sm:inline-flex">
                   登录
                 </Link>
-                <Link href="/register" className="btn btn-primary btn-sm">
+                <Link href="/register" className="admin-btn-primary px-4">
                   免费开始
                   <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
@@ -73,10 +73,10 @@ export default function WelcomePage() {
       </header>
 
       <main>
-        <section className="border-b border-surface-border/70 bg-surface/35">
+        <section className="border-b border-surface-border/70 bg-surface-2/25">
           <div className="mx-auto grid max-w-7xl items-center gap-10 px-4 py-14 sm:px-6 lg:grid-cols-[0.92fr_1.08fr] lg:px-8">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-lg border border-surface-border/70 bg-surface px-3 py-1.5 text-xs font-medium text-muted shadow-soft">
+              <div className="inline-flex min-h-[36px] items-center gap-2 rounded-lg border border-surface-border/80 bg-surface px-3 text-xs font-medium text-muted shadow-sm">
                 <Database className="h-3.5 w-3.5 text-brand" />
                 私有知识库 · BYOK · 可自托管
               </div>
@@ -87,12 +87,12 @@ export default function WelcomePage() {
                 上传文档、抓取网页、选择知识库后直接提问。{APP_NAME} 会展示检索过程、引用来源和生成状态，方便排查答案质量。
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <Link href={signedIn ? "/" : "/register"} className="btn btn-primary h-11 px-5 text-sm">
+                <Link href={signedIn ? "/" : "/register"} className="admin-btn-primary min-h-[40px] px-5">
                   {signedIn ? "进入工作台" : "免费开始"}
                   <ArrowRight className="h-4 w-4" />
                 </Link>
                 {!signedIn && (
-                  <Link href="/login" className="btn btn-ghost h-11 px-5 text-sm">
+                  <Link href="/login" className="admin-btn-secondary min-h-[40px] px-5">
                     已有账号，去登录
                   </Link>
                 )}
@@ -111,7 +111,7 @@ export default function WelcomePage() {
         <section id="features" className="border-b border-surface-border/70">
           <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
             <SectionHeading
-              eyebrow="Core"
+              eyebrow="能力"
               title="不是普通聊天页，是可控的知识检索工作台"
               desc="从知识库隔离、混合检索、重排到工具调用记录，关键过程都能被查看和排查。"
             />
@@ -126,11 +126,11 @@ export default function WelcomePage() {
           </div>
         </section>
 
-        <section id="workflow" className="border-b border-surface-border/70 bg-surface/35">
+        <section id="workflow" className="border-b border-surface-border/70 bg-surface-2/25">
           <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
             <SectionHeading
-              eyebrow="Workflow"
-              title="三步把资料接入问答流程"
+              eyebrow="流程"
+              title="三步把资料接入问答流"
               desc="配置模型、创建知识库、在会话中选择知识库后开始追问。"
             />
             <div className="mt-10 grid gap-4 md:grid-cols-3">
@@ -143,7 +143,7 @@ export default function WelcomePage() {
 
         <section id="scenarios" className="border-b border-surface-border/70">
           <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-            <SectionHeading eyebrow="Use cases" title="适合需要可信答案的团队和个人" />
+            <SectionHeading eyebrow="场景" title="适合需要可信答案的团队和个人" />
             <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <ScenarioCard icon={<NotebookText className="h-5 w-5" />} title="研究笔记" desc="把论文、访谈和笔记沉淀成可检索资料库。" />
               <ScenarioCard icon={<UsersRound className="h-5 w-5" />} title="团队 Wiki" desc="统一查询流程说明、技术文档和设计记录。" />
@@ -162,11 +162,19 @@ export default function WelcomePage() {
               © {new Date().getFullYear()} {APP_NAME} · MIT License
             </span>
           </div>
-          <div className="flex items-center gap-5 text-sm text-muted">
-            <a href="https://github.com/GU-Cryptography/anykb" target="_blank" rel="noreferrer" className="transition hover:text-fg">
+          <div className="flex items-center gap-1 text-sm text-muted">
+            <a
+              href="https://github.com/GU-Cryptography/anykb"
+              target="_blank"
+              rel="noreferrer"
+              className="app-nav-link"
+            >
               GitHub
             </a>
-            <Link href={signedIn ? "/" : "/login"} className="transition hover:text-fg">
+            <Link
+              href={signedIn ? "/" : "/login"}
+              className="app-nav-link"
+            >
               {signedIn ? "工作台" : "登录"}
             </Link>
           </div>
@@ -178,43 +186,53 @@ export default function WelcomePage() {
 
 function ProductPreview() {
   return (
-    <div className="rounded-lg border border-surface-border/80 bg-surface shadow-lift">
-      <div className="flex h-10 items-center justify-between border-b border-surface-border/70 bg-surface-2 px-4">
-        <div className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-danger/60" />
-          <span className="h-2.5 w-2.5 rounded-full bg-warning/60" />
-          <span className="h-2.5 w-2.5 rounded-full bg-success/60" />
+    <div className="overflow-hidden rounded-lg border border-surface-border/80 bg-surface shadow-[0_18px_50px_rgb(15_23_42/0.14)]">
+      <div className="flex min-h-14 items-center justify-between gap-3 border-b border-surface-border/70 bg-surface px-4">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold">企业知识工作台</div>
+          <div className="text-[11px] text-muted">knowflow.local / product-security</div>
         </div>
-        <div className="text-[11px] text-muted">knowflow.local · 产品资料库</div>
+        <span className="chip chip-success min-h-7 shrink-0 px-2.5 text-[11px]">
+          运行正常
+        </span>
       </div>
       <div className="grid gap-0 md:grid-cols-[240px_1fr]">
-        <aside className="border-b border-surface-border/70 bg-bg/60 p-4 md:border-b-0 md:border-r">
-          <div className="mb-3 text-xs font-semibold uppercase text-muted">知识库</div>
+        <aside className="border-b border-surface-border/70 bg-surface-2/45 p-4 md:border-b-0 md:border-r">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="text-xs font-semibold tracking-wide text-muted">知识库</div>
+            <span className="chip chip-brand px-2 text-[11px]">3 活跃</span>
+          </div>
           <div className="space-y-2">
             <PreviewKbItem icon={<Database className="h-3.5 w-3.5" />} label="产品资料库" count={42} active />
             <PreviewKbItem icon={<BookOpen className="h-3.5 w-3.5" />} label="研发规范" count={18} />
             <PreviewKbItem icon={<UsersRound className="h-3.5 w-3.5" />} label="团队 Wiki" count={147} />
           </div>
-          <div className="mt-4 rounded-lg border border-surface-border/70 bg-surface p-3 text-xs text-muted">
+          <div className="mt-4 rounded-lg border border-surface-border/80 bg-surface p-3 text-xs text-muted shadow-sm">
             <div className="mb-2 flex items-center gap-2 font-medium text-fg">
               <Search className="h-3.5 w-3.5 text-brand" />
               检索配置
             </div>
-            Hybrid search · reranker on
+            混合检索 · 重排已开启
           </div>
         </aside>
-        <section className="p-4 sm:p-5">
-          <div className="rounded-lg border border-surface-border/70 bg-bg px-4 py-3 text-sm">
-            <span className="text-muted">你：</span>
-            KnowFlow 如何保证企业数据安全？
+        <section className="bg-surface p-4 sm:p-5">
+          <div className="grid gap-2 sm:grid-cols-3">
+            <PreviewStat label="文档" value="42" />
+            <PreviewStat label="分块" value="1,284" />
+            <PreviewStat label="来源" value="3" />
           </div>
-          <div className="mt-3 rounded-lg border border-brand/25 bg-brand/5 p-4 text-sm leading-7">
+
+          <div className="mt-3 rounded-lg border border-surface-border/80 bg-surface-2/45 px-4 py-3 text-sm shadow-sm">
+            <span className="font-medium text-fg">问题</span>
+            <div className="mt-1 text-muted">KnowFlow 如何保证企业数据安全？</div>
+          </div>
+          <div className="mt-3 rounded-lg border border-brand/25 bg-brand/5 p-4 text-sm leading-7 shadow-sm">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-xs font-medium text-brand">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 命中 3 个来源
               </div>
-              <span className="rounded-md border border-brand/25 bg-surface px-2 py-0.5 text-[11px] text-muted">
+              <span className="chip chip-muted px-2 text-[11px] tabular-nums">
                 1.2s
               </span>
             </div>
@@ -224,10 +242,16 @@ function ProductPreview() {
               <SourceChip title="权限管理说明" meta="MD · §2.1" />
             </div>
           </div>
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
-            <PreviewStat label="Documents" value="42" />
-            <PreviewStat label="Chunks" value="1,284" />
-            <PreviewStat label="Sources" value="3" />
+
+          <div className="mt-3 overflow-hidden rounded-lg border border-surface-border/80 bg-surface shadow-sm">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-3 bg-surface-2/70 px-3 py-2 text-[11px] font-semibold tracking-wide text-muted">
+              <span>流水线</span>
+              <span>耗时</span>
+              <span>状态</span>
+            </div>
+            <PreviewPipeline name="混合检索" latency="420ms" status="完成" />
+            <PreviewPipeline name="重排 Top 12" latency="310ms" status="完成" />
+            <PreviewPipeline name="答案生成" latency="1.2s" status="完成" />
           </div>
         </section>
       </div>
@@ -237,7 +261,7 @@ function ProductPreview() {
 
 function TrustPill({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-surface-border/70 bg-surface px-3 py-2 shadow-soft">
+    <div className="flex min-h-[40px] items-center gap-2 rounded-lg border border-surface-border/80 bg-surface px-3 py-2 shadow-sm">
       <span className="text-brand">{icon}</span>
       <span>{text}</span>
     </div>
@@ -247,7 +271,7 @@ function TrustPill({ icon, text }: { icon: React.ReactNode; text: string }) {
 function SectionHeading({ eyebrow, title, desc }: { eyebrow: string; title: string; desc?: string }) {
   return (
     <div className="max-w-2xl">
-      <div className="text-xs font-semibold uppercase tracking-wide text-brand">{eyebrow}</div>
+      <div className="text-xs font-semibold tracking-wide text-brand">{eyebrow}</div>
       <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h2>
       {desc && <p className="mt-3 text-sm leading-7 text-muted">{desc}</p>}
     </div>
@@ -256,8 +280,8 @@ function SectionHeading({ eyebrow, title, desc }: { eyebrow: string; title: stri
 
 function FeatureCard({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
   return (
-    <div className="rounded-lg border border-surface-border/80 bg-surface p-5 shadow-soft transition hover:border-brand/35 hover:shadow-lift">
-      <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-brand/10 text-brand">
+    <div className="rounded-lg border border-surface-border/80 bg-surface p-5 shadow-sm transition-[background-color,border-color,box-shadow] hover:border-brand/35 hover:bg-surface-2/35 hover:shadow-md">
+      <div className="admin-icon-tile admin-icon-tile-brand mb-4">
         {icon}
       </div>
       <h3 className="font-semibold">{title}</h3>
@@ -268,9 +292,9 @@ function FeatureCard({ icon, title, desc }: { icon: React.ReactNode; title: stri
 
 function StepCard({ n, icon, title, desc }: { n: number; icon: React.ReactNode; title: string; desc: string }) {
   return (
-    <div className="rounded-lg border border-surface-border/80 bg-surface p-5 shadow-soft">
+    <div className="rounded-lg border border-surface-border/80 bg-surface p-5 shadow-sm">
       <div className="mb-4 flex items-center gap-3">
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-sm font-semibold text-white">
+        <span className="flex h-[40px] w-[40px] items-center justify-center rounded-lg bg-brand text-sm font-semibold text-white shadow-sm">
           {n}
         </span>
         <span className="text-brand">{icon}</span>
@@ -283,8 +307,8 @@ function StepCard({ n, icon, title, desc }: { n: number; icon: React.ReactNode; 
 
 function ScenarioCard({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
   return (
-    <div className="rounded-lg border border-surface-border/80 bg-surface p-5 shadow-soft transition hover:border-brand/35 hover:shadow-lift">
-      <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-surface-2 text-brand">
+    <div className="rounded-lg border border-surface-border/80 bg-surface p-5 shadow-sm transition-[background-color,border-color,box-shadow] hover:border-brand/35 hover:bg-surface-2/35 hover:shadow-md">
+      <div className="admin-icon-tile admin-icon-tile-muted mb-4 text-brand">
         {icon}
       </div>
       <h3 className="font-semibold">{title}</h3>
@@ -306,22 +330,22 @@ function PreviewKbItem({
 }) {
   return (
     <div
-      className={`flex items-center justify-between rounded-lg border px-3 py-2 text-xs ${
+      className={`flex min-h-[40px] items-center justify-between gap-3 rounded-lg border px-3 py-2 text-xs shadow-sm ${
         active ? "border-brand/45 bg-brand/10 text-fg" : "border-surface-border/70 bg-surface text-muted"
       }`}
     >
-      <span className="flex items-center gap-2">
+      <span className="flex min-w-0 items-center gap-2">
         <span className={active ? "text-brand" : "text-muted"}>{icon}</span>
-        {label}
+        <span className="truncate">{label}</span>
       </span>
-      <span>{count}</span>
+      <span className="tabular-nums">{count}</span>
     </div>
   );
 }
 
 function SourceChip({ title, meta }: { title: string; meta: string }) {
   return (
-    <div className="rounded-lg border border-surface-border/70 bg-surface px-3 py-2 text-xs">
+    <div className="rounded-lg border border-surface-border/80 bg-surface px-3 py-2 text-xs shadow-sm">
       <div className="flex items-center gap-1.5 font-medium text-fg">
         <CheckCircle2 className="h-3.5 w-3.5 text-brand" />
         {title}
@@ -333,9 +357,19 @@ function SourceChip({ title, meta }: { title: string; meta: string }) {
 
 function PreviewStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-surface-border/70 bg-bg px-3 py-2">
+    <div className="min-h-[64px] rounded-lg border border-surface-border/80 bg-surface-2/45 px-3 py-2 shadow-sm">
       <div className="text-[11px] uppercase text-muted">{label}</div>
       <div className="mt-1 text-sm font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function PreviewPipeline({ name, latency, status }: { name: string; latency: string; status: string }) {
+  return (
+    <div className="grid min-h-[40px] grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-t border-surface-border/60 px-3 py-2 text-xs">
+      <span className="min-w-0 truncate font-medium">{name}</span>
+      <span className="tabular-nums text-muted">{latency}</span>
+      <span className="chip chip-success px-2">{status}</span>
     </div>
   );
 }

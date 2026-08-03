@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Users, Eye, CheckCircle, BookOpen } from "lucide-react";
+import { Users, Eye, CheckCircle, BookOpen, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import Brand, { APP_NAME } from "@/components/Brand";
 import { getToken } from "@/lib/auth";
 import {
   acceptInvitation,
+  formatKbRole,
   peekInvitation,
   type InvitationPreview,
 } from "@/lib/kb-api";
@@ -72,69 +73,118 @@ export default function InvitePage({
   };
 
   return (
-    <div className="app-page flex min-h-dvh items-center justify-center px-4 text-fg">
-      <div className="w-full max-w-md">
+    <div className="app-page flex min-h-dvh items-center justify-center bg-surface-2/25 px-4 py-10 text-fg">
+      <div className="w-full max-w-xl">
         <div className="mb-6 flex flex-col items-center gap-3">
           <Brand size="md" showWordmark={false} />
-          <h1 className="text-lg font-semibold">{APP_NAME} 知识库邀请</h1>
+          <div className="text-center">
+            <p className="text-xs font-semibold tracking-[0.16em] text-brand">协作邀请</p>
+            <h1 className="mt-2 text-xl font-semibold tracking-tight">{APP_NAME} 知识库邀请</h1>
+            <p className="mt-2 text-sm leading-6 text-muted">确认权限后即可加入协作知识库。</p>
+          </div>
         </div>
 
-        <div className="rounded-2xl border bg-surface p-6">
-          {loading ? (
-            <LoadingState label="正在验证邀请" description="正在确认知识库和权限信息。" className="min-h-52 border-0 shadow-none" />
-          ) : error ? (
-            <StateView variant="error" title="链接无法使用" description={error} action={<Link href="/kbs" className="btn btn-ghost btn-sm">返回知识库列表</Link>} className="min-h-52 border-0 shadow-none" />
-          ) : preview ? (
-            <div className="flex flex-col items-center gap-3 py-2 text-center">
-              <BookOpen className="h-8 w-8 text-brand" />
-              <div className="text-base font-medium">
-                邀请你加入「{preview.kb_name}」
-              </div>
-              <div className="flex items-center gap-2 text-sm text-muted">
-                你将获得
-                {preview.role === "editor" ? (
-                  <span className="chip border-info/30 bg-info/10 text-info">
-                    <Users className="h-3 w-3" />
-                    editor（读 + 写文档）
-                  </span>
-                ) : (
-                  <span className="chip border-border bg-surface text-muted">
-                    <Eye className="h-3 w-3" />
-                    viewer（只读）
-                  </span>
-                )}
-                权限
-              </div>
-              {preview.max_uses != null && (
-                <div className="text-xs text-muted">
-                  本链接已被使用 {preview.uses_count}/{preview.max_uses} 次
-                </div>
-              )}
-              {preview.expires_at && (
-                <div className="text-xs text-muted">
-                  有效期至 {new Date(preview.expires_at).toLocaleString()}
-                </div>
-              )}
-
-              <div className="mt-4 flex w-full gap-2">
-                <Link
-                  href="/kbs"
-                  className="btn btn-ghost flex-1 justify-center"
-                >
-                  取消
-                </Link>
-                <button
-                  onClick={onAccept}
-                  disabled={accepting}
-                  className="btn btn-primary flex-1 justify-center"
-                  type="button"
-                >
-                  <CheckCircle className="h-4 w-4" />
-                  {accepting ? "处理中…" : "接受邀请"}
-                </button>
+        <div className="overflow-hidden rounded-lg border border-surface-border/80 bg-surface shadow-[0_18px_50px_rgb(15_23_42/0.14)]">
+          <div className="border-b border-surface-border/70 bg-surface px-5 py-4 sm:px-6">
+            <div className="flex items-center gap-3">
+              <span className="admin-icon-tile admin-icon-tile-brand">
+                <ShieldCheck className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold">邀请验证</div>
+                <div className="mt-0.5 text-xs text-muted">验证知识库、角色和邀请有效期</div>
               </div>
             </div>
-          ) : null}
+          </div>
+          <div className="bg-surface px-5 py-6 sm:px-6">
+            {loading ? (
+              <LoadingState
+                label="正在验证邀请"
+                description="正在确认知识库和权限信息。"
+                className="min-h-56 border-0 bg-surface shadow-none"
+              />
+            ) : error ? (
+              <StateView
+                variant="error"
+                title="链接无法使用"
+                description={error}
+                action={
+                  <Link href="/kbs" className="admin-btn-primary min-h-[40px] px-4 text-sm">
+                    返回知识库列表
+                  </Link>
+                }
+                className="min-h-56 border-0 bg-surface shadow-none"
+              />
+            ) : preview ? (
+              <div className="flex flex-col items-center gap-4 py-1 text-center">
+                <span className="admin-icon-tile admin-icon-tile-lg admin-icon-tile-brand">
+                  <BookOpen className="h-6 w-6" />
+                </span>
+                <div className="min-w-0">
+                  <div className="text-lg font-semibold tracking-tight">
+                    邀请你加入「{preview.kb_name}」
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-muted">
+                    加入后即可在当前账号下访问这个协作知识库。
+                  </p>
+                </div>
+
+                <div className="flex w-full flex-col gap-3 rounded-lg border border-surface-border/80 bg-surface-2/35 p-4 text-left shadow-sm">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <span className="text-xs font-semibold tracking-wide text-muted">授予角色</span>
+                    {preview.role === "editor" ? (
+                      <span className="chip chip-info min-h-8">
+                        <Users className="h-3.5 w-3.5" />
+                        {formatKbRole("editor")}（读 + 写文档）
+                      </span>
+                    ) : (
+                      <span className="chip chip-muted min-h-8">
+                        <Eye className="h-3.5 w-3.5" />
+                        {formatKbRole("viewer")}
+                      </span>
+                    )}
+                  </div>
+
+                  {(preview.max_uses != null || preview.expires_at) && (
+                    <div className="grid gap-2 border-t border-surface-border/70 pt-3 text-xs text-muted sm:grid-cols-2">
+                      {preview.max_uses != null && (
+                        <div className="rounded-lg border border-surface-border/70 bg-surface px-3 py-2">
+                          <div className="font-medium text-fg">使用次数</div>
+                          <div className="mt-1 tabular-nums">
+                            {preview.uses_count}/{preview.max_uses} 次
+                          </div>
+                        </div>
+                      )}
+                      {preview.expires_at && (
+                        <div className="rounded-lg border border-surface-border/70 bg-surface px-3 py-2">
+                          <div className="font-medium text-fg">有效期</div>
+                          <div className="mt-1">{new Date(preview.expires_at).toLocaleString()}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-2 flex w-full flex-col-reverse gap-2 sm:flex-row">
+                  <Link href="/kbs" className="admin-btn-secondary min-h-[44px] flex-1 justify-center px-4 text-sm">
+                    取消
+                  </Link>
+                  <button
+                    onClick={onAccept}
+                    disabled={accepting}
+                    className="admin-btn-primary min-h-[44px] flex-1 justify-center px-4 text-sm"
+                    type="button"
+                  >
+                    <CheckCircle className="h-4 w-4" />
+                    {accepting ? "处理中…" : "接受邀请"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+          <div className="border-t border-surface-border/70 bg-surface-2/35 px-5 py-3 text-center text-xs text-muted sm:px-6">
+            只会授予邀请中声明的知识库权限。
+          </div>
         </div>
       </div>
     </div>

@@ -1,16 +1,16 @@
 "use client";
 
 /**
- * v3-M5: System Settings Dialog — multi-tab modal mirrored after DeepSeek.
+ * v3-M5: System Settings Dialog - multi-tab modal mirrored after DeepSeek.
  *
  * Tabs:
- *   1. 通用     — edit display_name + theme toggle
- *   2. 账号     — email (read-only) + change password
- *   3. 数据     — export conversations / clear conversations / delete account
- *   4. 关于     — version + project links + MIT license
+ *   1. 通用 - edit display_name + theme toggle
+ *   2. 账号 - email (read-only) + change password
+ *   3. 数据 - export conversations / clear conversations / delete account
+ *   4. 关于 - version + project links + MIT license
  *
  * The original /settings page (LLM / embedding / reranker provider credentials)
- * stays untouched — this dialog is purely the account-level UX surface.
+ * stays untouched - this dialog is purely the account-level UX surface.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -29,6 +29,7 @@ import { toast } from "sonner";
 
 import Dialog from "@/components/Dialog";
 import ThemeToggle from "@/components/ThemeToggle";
+import { Button } from "@/components/ui/button";
 import {
   changePassword,
   deleteAccount,
@@ -90,18 +91,18 @@ export default function SystemSettingsDialog({
       onClick={onClose}
       role="presentation"
     >
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+      <div className="app-modal-overlay absolute inset-0" />
       <div
         ref={panelRef}
         onClick={(e) => e.stopPropagation()}
-        className="relative flex h-[560px] w-full max-w-2xl overflow-hidden rounded-2xl border bg-bg shadow-lift"
+        className="relative flex h-[min(680px,calc(100dvh-2rem))] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-surface-border/80 bg-surface shadow-[0_24px_70px_rgb(15_23_42/0.22)] sm:flex-row"
         role="dialog"
         aria-modal="true"
         aria-labelledby="syssettings-title"
       >
         {/* Left tab nav */}
-        <nav className="w-44 shrink-0 border-r bg-surface/40 p-2">
-          <div className="px-2 py-2 text-xs font-semibold uppercase tracking-wider text-muted">
+        <nav className="flex w-full shrink-0 gap-1 overflow-x-auto border-b border-surface-border/70 bg-surface-2/50 p-2 sm:block sm:w-44 sm:border-b-0 sm:border-r">
+          <div className="hidden px-2 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted sm:block">
             系统设置
           </div>
           {TABS.map(({ key, label, Icon }) => {
@@ -111,14 +112,15 @@ export default function SystemSettingsDialog({
                 key={key}
                 onClick={() => setTab(key)}
                 className={cn(
-                  "flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm transition",
+                  "flex h-[40px] shrink-0 cursor-pointer items-center gap-2 rounded-md border border-transparent px-3 text-sm font-medium transition-[background-color,border-color,color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 sm:w-full sm:px-2",
                   active
-                    ? "bg-brand/15 text-fg"
-                    : "text-fg/80 hover:bg-surface-2"
+                    ? "border-brand/25 bg-surface text-fg shadow-sm"
+                    : "text-muted hover:border-surface-border/80 hover:bg-surface/75 hover:text-fg"
                 )}
+                aria-pressed={active}
                 type="button"
               >
-                <Icon className="h-4 w-4 opacity-70" />
+                <Icon className={cn("h-4 w-4", active ? "text-brand" : "text-muted")} />
                 {label}
               </button>
             );
@@ -126,14 +128,14 @@ export default function SystemSettingsDialog({
         </nav>
 
         {/* Right content */}
-        <div className="flex flex-1 flex-col">
-          <header className="flex h-12 shrink-0 items-center justify-between border-b px-5">
+        <div className="flex min-h-0 flex-1 flex-col">
+          <header className="flex h-14 shrink-0 items-center justify-between border-b border-surface-border/70 bg-surface px-5">
             <h2 id="syssettings-title" className="text-base font-semibold">
               {TABS.find((t) => t.key === tab)?.label}
             </h2>
             <button
               onClick={onClose}
-              className="rounded-md p-1 text-muted hover:bg-surface hover:text-fg"
+              className="admin-icon-action"
               aria-label="关闭"
               type="button"
             >
@@ -202,21 +204,20 @@ function GeneralTab({
           className={inputClass}
         />
         <div className="mt-2 flex justify-end">
-          <button
+          <Button
             onClick={save}
             disabled={!dirty || saving}
-            className="btn btn-primary btn-sm"
             type="button"
           >
-            {saving ? "保存中…" : "保存"}
-          </button>
+            {saving ? "保存中..." : "保存"}
+          </Button>
         </div>
       </Field>
 
       <Field label="主题">
         <ThemeToggle />
         <p className="mt-2 text-xs text-muted">
-          跟随系统会自动切换 — 也可以手动指定亮色 / 暗色。
+          跟随系统会自动切换，也可以手动指定亮色 / 暗色。
         </p>
       </Field>
     </div>
@@ -267,8 +268,8 @@ function AccountTab({ user }: { user: User }) {
         <p className="mt-2 text-xs text-muted">邮箱目前不支持修改。</p>
       </Field>
 
-      <div className="border-t pt-5">
-        <h3 className="mb-3 text-sm font-medium">修改密码</h3>
+      <div className="rounded-lg border border-surface-border/75 bg-surface p-4 shadow-sm">
+        <h3 className="mb-3 text-sm font-semibold">修改密码</h3>
         <div className="space-y-3">
           <Field label="当前密码">
             <input
@@ -299,14 +300,13 @@ function AccountTab({ user }: { user: User }) {
             />
           </Field>
           <div className="flex justify-end pt-1">
-            <button
+            <Button
               onClick={submit}
               disabled={!oldPw || !newPw || saving}
-              className="btn btn-primary btn-sm"
               type="button"
             >
-              {saving ? "提交中…" : "更新密码"}
-            </button>
+              {saving ? "提交中..." : "更新密码"}
+            </Button>
           </div>
         </div>
       </div>
@@ -368,17 +368,17 @@ function DataTab({ onClose }: { onClose: () => void }) {
     <div className="space-y-5">
       <DataRow
         title="导出对话历史"
-        description="下载所有对话 + 消息为 JSON，方便迁移或本地备份。"
+        description="下载所有对话和消息为 JSON，方便迁移或本地备份。"
         action={
-          <button
+          <Button
             onClick={doExport}
             disabled={exporting}
-            className="btn btn-ghost btn-sm"
+            variant="ghost"
             type="button"
           >
-            <Download className="h-3.5 w-3.5" />
-            {exporting ? "导出中…" : "导出 JSON"}
-          </button>
+            <Download className="h-4 w-4" />
+            {exporting ? "导出中..." : "导出 JSON"}
+          </Button>
         }
       />
 
@@ -386,32 +386,35 @@ function DataTab({ onClose }: { onClose: () => void }) {
         title="清空所有对话"
         description="不可恢复，但 KB / 账号配置不受影响。"
         action={
-          <button
+          <Button
             onClick={() => setConfirmClear(true)}
-            className="btn btn-ghost btn-sm text-danger hover:bg-danger/10"
+            variant="destructive"
             type="button"
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <Trash2 className="h-4 w-4" />
             清空对话
-          </button>
+          </Button>
         }
       />
 
-      <div className="rounded-xl border border-danger/30 bg-danger/5 p-4">
+      <div className="rounded-lg border border-danger/30 bg-danger/5 p-4 shadow-sm">
         <div className="flex items-start gap-3">
-          <AlertTriangle className="mt-0.5 h-5 w-5 flex-none text-danger" />
+          <span className="admin-icon-tile admin-icon-tile-danger">
+            <AlertTriangle className="h-4 w-4" />
+          </span>
           <div className="flex-1">
-            <h3 className="text-sm font-medium text-danger">删除账号</h3>
-            <p className="mt-1 text-xs text-muted">
+            <h3 className="text-sm font-semibold text-danger">删除账号</h3>
+            <p className="mt-1 text-xs leading-5 text-muted">
               永久删除账号、所有对话、所拥有的知识库以及上传的文档。<strong>不可恢复。</strong>
             </p>
-            <button
+            <Button
               onClick={() => setConfirmDelete(true)}
-              className="btn btn-danger btn-sm mt-3"
+              className="mt-4"
+              variant="destructive"
               type="button"
             >
               删除我的账号
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -431,7 +434,7 @@ function DataTab({ onClose }: { onClose: () => void }) {
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
         title="删除账号？"
-        description="账号 + 对话 + 我所拥有的 KB + 上传文档都会被永久删除。此操作不可恢复。"
+        description="账号、对话、我所拥有的 KB 和上传文档都会被永久删除。此操作不可恢复。"
         variant="danger"
         confirmLabel="确认删除账号"
         onConfirm={doDelete}
@@ -472,7 +475,7 @@ function AboutTab() {
         </dd>
       </dl>
 
-      <div className="rounded-xl border bg-surface/40 p-4 text-xs text-muted">
+      <div className="rounded-lg border border-surface-border/70 bg-surface p-4 text-xs leading-5 text-muted shadow-sm">
         <p>
           KnowFlow 是一个本地优先的 RAG 平台，所有数据保存在你自己的数据库中。
           使用本服务即表示你了解：LLM 输出可能不准确；上传到知识库的文档会经过
@@ -487,7 +490,7 @@ function AboutTab() {
 // Shared bits
 // ---------------------------------------------------------------------------
 const inputClass =
-  "block w-full rounded-lg border bg-bg px-3 py-2 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20";
+  "admin-input";
 
 function Field({
   label,
@@ -499,8 +502,8 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div>
-      <label className="block text-xs font-medium text-fg/80 mb-1.5">
+    <div className="min-w-0">
+      <label className="mb-1.5 block text-xs font-medium text-muted">
         {label}
       </label>
       {children}
@@ -519,12 +522,12 @@ function DataRow({
   action: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-xl border bg-surface/40 p-4">
-      <div className="flex-1">
+    <div className="flex flex-col gap-3 rounded-lg border border-surface-border/80 bg-surface p-4 shadow-sm transition-[background-color,border-color,box-shadow] duration-200 hover:border-brand/25 hover:bg-surface-2/45 hover:shadow-[0_10px_24px_rgb(15_23_42/0.07)] sm:flex-row sm:items-start sm:justify-between">
+      <div className="min-w-0 flex-1">
         <h3 className="text-sm font-medium">{title}</h3>
-        <p className="mt-1 text-xs text-muted">{description}</p>
+        <p className="mt-1 text-xs leading-5 text-muted">{description}</p>
       </div>
-      <div className="shrink-0">{action}</div>
+      <div className="flex shrink-0 justify-end">{action}</div>
     </div>
   );
 }

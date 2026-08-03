@@ -1,6 +1,6 @@
 "use client";
 
-import { User, Bot } from "lucide-react";
+import { Bot, LoaderCircle, User } from "lucide-react";
 import ThinkingChain, { type ToolEvent } from "@/components/ThinkingChain";
 import ReportView from "@/components/ReportView";
 import ExportActions from "@/components/ExportActions";
@@ -18,10 +18,10 @@ export default function MessageBubble({
     return (
       <div className="flex justify-end">
         <div className="flex max-w-[85%] items-end gap-2.5">
-          <div className="rounded-lg rounded-br-sm bg-brand px-4 py-2.5 text-[15px] leading-relaxed text-white shadow-soft whitespace-pre-wrap break-words">
+          <div className="app-message-user whitespace-pre-wrap break-words rounded-lg rounded-br-sm px-4 py-2.5 text-[15px] leading-relaxed">
             {message.content}
           </div>
-          <div className="mb-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-full bg-brand/15 text-brand ring-1 ring-brand/20">
+          <div className="admin-icon-tile admin-icon-tile-brand mb-0.5 flex-none rounded-md">
             <User className="h-4 w-4" />
           </div>
         </div>
@@ -45,7 +45,7 @@ export default function MessageBubble({
   return (
     <div className="flex justify-start">
       <div className="flex w-full max-w-full items-start gap-2.5">
-        <div className="mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-full bg-surface-2 text-fg/70 ring-1 ring-surface-border/80">
+        <div className="admin-icon-tile admin-icon-tile-muted mt-0.5 flex-none rounded-md">
           <Bot className="h-4 w-4" />
         </div>
         <div className="min-w-0 flex-1 space-y-3">
@@ -54,7 +54,7 @@ export default function MessageBubble({
           {showWritingHint && <ThinkingPlaceholder label="正在撰写回答" />}
 
           {message.error && (
-            <div className="rounded-lg border border-red-300/40 bg-red-50/80 p-3.5 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
+            <div className="app-error-panel rounded-lg border p-3.5 text-sm">
               {message.error}
             </div>
           )}
@@ -80,10 +80,9 @@ export default function MessageBubble({
 
 function ThinkingPlaceholder({ label }: { label: string }) {
   return (
-    <div className="inline-flex items-center gap-2.5 rounded-lg border border-surface-border/70 bg-surface px-3.5 py-2.5 text-sm text-muted shadow-soft">
-      <span className="relative inline-flex h-2 w-2">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-50" />
-        <span className="relative inline-flex h-2 w-2 rounded-full bg-brand" />
+    <div className="inline-flex min-h-[40px] items-center gap-2.5 rounded-lg border border-surface-border/80 bg-surface px-3.5 py-2 text-sm text-muted shadow-soft">
+      <span className="admin-icon-tile admin-icon-tile-sm admin-icon-tile-brand">
+        <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
       </span>
       <span>{label}</span>
       <span className="inline-flex gap-0.5">
@@ -91,7 +90,7 @@ function ThinkingPlaceholder({ label }: { label: string }) {
           <span
             key={i}
             className={cn(
-              "h-1 w-1 animate-bounce rounded-full bg-subtle/60",
+              "h-1 w-1 animate-bounce rounded-sm bg-subtle/60",
               i === 0 && "[animation-delay:-0.3s]",
               i === 1 && "[animation-delay:-0.15s]"
             )}

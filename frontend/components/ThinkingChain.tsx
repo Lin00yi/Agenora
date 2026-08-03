@@ -73,34 +73,36 @@ export default function ThinkingChain({ events }: { events: ToolEvent[] }) {
   const summary = formatChainSummary(groups, hasRunning);
 
   return (
-    <div className="rounded-lg border border-fg/10 bg-surface/90">
+    <div className="overflow-hidden rounded-lg border border-surface-border/80 bg-surface shadow-soft">
       <button
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="flex min-h-11 w-full cursor-pointer items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-fg/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
+        className="flex min-h-11 w-full cursor-pointer items-center justify-between gap-3 bg-surface-2/45 px-3.5 py-2 text-sm transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
         type="button"
       >
         <span className="flex min-w-0 items-center gap-2 text-muted">
           {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-          {hasRunning ? (
-            <LoaderCircle className="h-3.5 w-3.5 animate-spin text-brand" />
-          ) : (
-            <Search className="h-3.5 w-3.5 text-brand" />
-          )}
+          <span className="admin-icon-tile admin-icon-tile-brand size-7 rounded-md shadow-none">
+            {hasRunning ? (
+              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Search className="h-3.5 w-3.5" />
+            )}
+          </span>
           <span className="truncate">{summary.text}</span>
         </span>
         {summary.duration && (
-          <span className="shrink-0 rounded-full bg-fg/7 px-2 py-0.5 text-xs tabular-nums text-muted">
+          <span className="shrink-0 rounded-md border border-surface-border/70 bg-surface px-2 py-1 text-xs tabular-nums text-muted shadow-sm">
             {summary.duration}
           </span>
         )}
       </button>
 
       {open && (
-        <ul className="space-y-2 border-t border-fg/10 p-3 text-sm">
+        <ul className="space-y-2 border-t border-surface-border/70 p-3 text-sm">
           {groups.map((group) => (
             <li
-              className="rounded-lg border border-fg/10 bg-fg/[0.025] px-3 py-2.5"
+              className="rounded-lg border border-surface-border/70 bg-surface-2/45 px-3 py-2.5 shadow-[inset_0_1px_0_rgb(255_255_255/0.32)] dark:shadow-none"
               key={group.name}
             >
               <div className="flex items-start gap-2">
@@ -111,7 +113,7 @@ export default function ThinkingChain({ events }: { events: ToolEvent[] }) {
                       {formatGroupTitle(group)}
                     </span>
                     {group.latencyMs != null && (
-                      <span className="shrink-0 rounded-full bg-fg/7 px-2 py-0.5 text-xs tabular-nums text-muted">
+                      <span className="shrink-0 rounded-md border border-surface-border/70 bg-surface px-2 py-0.5 text-xs tabular-nums text-muted">
                         {formatDuration(group.latencyMs)}
                       </span>
                     )}
@@ -121,7 +123,7 @@ export default function ThinkingChain({ events }: { events: ToolEvent[] }) {
               </div>
 
               {group.detailRows.length > 0 && (
-                <ul className="mt-2.5 space-y-1.5 border-l border-fg/10 pl-3 text-xs text-muted">
+                <ul className="mt-2.5 space-y-1.5 border-l border-surface-border/80 pl-3 text-xs text-muted">
                   {group.detailRows.map((row, index) => (
                     <li className="flex items-start gap-3" key={`${row.text}-${index}`}>
                       <span className="mt-[0.45rem] h-1 w-1 shrink-0 rounded-full bg-brand/70" />
@@ -280,11 +282,11 @@ function getStatusText(status: ToolEvent["status"]): string {
 
 function detailDurationClass(status: ToolEvent["status"]): string {
   const base =
-    "shrink-0 rounded-full px-2 py-0.5 text-[11px] tabular-nums leading-4";
-  if (status === "ok") return `${base} bg-brand/10 text-brand`;
-  if (status === "running") return `${base} bg-brand/10 text-brand`;
-  if (status === "blocked") return `${base} bg-amber-500/10 text-amber-500`;
-  return `${base} bg-red-500/10 text-red-500`;
+    "chip shrink-0 py-0 text-[11px] tabular-nums leading-4";
+  if (status === "ok") return `${base} chip-brand`;
+  if (status === "running") return `${base} chip-brand`;
+  if (status === "blocked") return `${base} chip-warning`;
+  return `${base} chip-danger`;
 }
 
 function formatToolInput(input?: Record<string, unknown>): { label: string; value: string }[] {

@@ -21,7 +21,7 @@ import {
   Hash,
   Layers,
   BookOpen,
-  Sparkles,
+  SlidersHorizontal,
   Users,
   Eye,
   UserPlus,
@@ -60,6 +60,7 @@ import {
   type KbInvitation,
   type MemberRole,
   type KbRole,
+  formatKbRole,
 } from "@/lib/kb-api";
 import { toastApiError } from "@/lib/byok-toast";
 import { cn } from "@/lib/cn";
@@ -99,6 +100,9 @@ const CHUNK_STRATEGY_OPTIONS: { value: ChunkStrategy; label: string }[] = [
   { value: "code", label: "代码感知切分" },
   { value: "parent_child", label: "轻量父子切分" },
 ];
+
+const kbDetailInputClass =
+  "admin-input";
 
 export default function KbDetailPage({ params }: { params: { id: string } }) {
   const { id } = params;
@@ -258,7 +262,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
     setDeletingKb(true);
     try {
       await deleteKb(id);
-      toast.success(`已删除知识库：${kb?.name ?? ""}`);
+      toast.success(`已删除知识库 ${kb?.name ?? ""}`);
       router.replace("/kbs");
     } catch (err) {
       toast.error((err as Error).message);
@@ -267,15 +271,14 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
   };
 
   // v3-M3: toggle grouping_enabled. Optimistic: update UI immediately, revert on error.
-  const onToggleGrouping = async (e: ChangeEvent<HTMLInputElement>) => {
+  const onToggleGrouping = async (next: boolean) => {
     if (!kb) return;
-    const next = e.target.checked;
     setGroupingBusy(true);
     // Optimistic local update so the checkbox doesn't lag while PATCH runs.
     setKb({ ...kb, grouping_enabled: next });
     try {
       const updated = await patchKb(id, { grouping_enabled: next });
-      // Server is source of truth — splice in only the toggleable field to
+      // Server is source of truth - splice in only the toggleable field to
       // avoid clobbering documents[] (PATCH response is bare KB without docs).
       setKb((cur) =>
         cur ? { ...cur, grouping_enabled: updated.grouping_enabled } : cur
@@ -298,7 +301,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
       toast.success(`已开始重建：${res.doc_count} 篇文档正在重新 ingest`);
       setPendingRebuild(false);
       // Trigger an immediate refresh so the doc-list polling picks up
-      // the pending → ingesting transition without waiting for the timer.
+      // the pending -> ingesting transition without waiting for the timer.
       await refresh();
     } catch (err) {
       toast.error((err as Error).message);
@@ -404,7 +407,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
           variant="error"
           title="找不到这个知识库"
           description="它可能已被删除、你没有访问权限，或链接已失效。"
-          action={<Link href="/kbs" className="btn btn-ghost btn-sm">返回知识库列表</Link>}
+          action={<Link href="/kbs" className="admin-btn-secondary min-h-[40px] px-4 text-sm">返回知识库列表</Link>}
           className="w-full max-w-md"
         />
       </div>
@@ -465,59 +468,78 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
     >
         {/* v2-M9: role banner for non-owner / non-system access */}
         {!kb.is_system && myRole === "editor" && (
-          <div className="card mb-4 border-info/30 bg-info/10 p-3 text-sm">
-            <div className="flex items-center gap-2 text-info">
-              <Users className="h-4 w-4" />
-              <span className="font-medium">你是协作者（editor）</span>
+          <div className="mb-4 rounded-lg border border-info/25 bg-info/10 px-4 py-3 text-sm shadow-sm">
+            <div className="flex items-start gap-3">
+              <span className="admin-icon-tile admin-icon-tile-info rounded-md">
+                <Users className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <div className="font-medium text-info">你是协作者（编辑者）</div>
+                <p className="mt-1 text-xs leading-5 text-info/90">
+                  可以上传 / 删除文档；不能删除 KB 或管理成员。
+                </p>
+              </div>
             </div>
-            <p className="mt-1 text-xs text-info/90">
-              可以上传 / 删除文档；不能删除 KB 或管理成员。
-            </p>
           </div>
         )}
         {!kb.is_system && myRole === "viewer" && (
-          <div className="card mb-4 border-border bg-surface p-3 text-sm">
-            <div className="flex items-center gap-2 text-muted">
-              <Eye className="h-4 w-4" />
-              <span className="font-medium">你是只读访问者（viewer）</span>
+          <div className="mb-4 rounded-lg border border-surface-border/75 bg-surface px-4 py-3 text-sm shadow-sm">
+            <div className="flex items-start gap-3">
+              <span className="admin-icon-tile admin-icon-tile-muted rounded-md shadow-none">
+                <Eye className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <div className="font-medium">你是只读访问者</div>
+                <p className="mt-1 text-xs leading-5 text-muted">
+                  可以在对话中选用这个 KB，但不能上传 / 删除内容。
+                </p>
+              </div>
             </div>
-            <p className="mt-1 text-xs text-muted">
-              可以在对话中选用这个 KB，但不能上传 / 删除内容。
-            </p>
           </div>
         )}
 
         {/* Meta + stats */}
-        <div className="card mb-4 p-4">
-          <div className="flex items-center gap-2">
-            {kb.is_system && <Lock className="h-4 w-4 text-warning" />}
-            <span className="text-base font-medium">{kb.name}</span>
-            {kb.is_system && (
-              <span className="chip border-warning/30 bg-warning/10 text-warning">
-                示例 · 只读
+        <section className="admin-panel mb-4 overflow-hidden">
+          <div className="flex flex-col gap-4 border-b border-surface-border/70 bg-surface-2/35 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="admin-icon-tile admin-icon-tile-brand">
+                {kb.is_system ? <Lock className="h-4 w-4" /> : <BookOpen className="h-4 w-4" />}
               </span>
-            )}
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="truncate text-base font-semibold">{kb.name}</h2>
+                  {kb.is_system && (
+                    <span className="chip chip-warning">
+                      示例 · 只读
+                    </span>
+                  )}
+                </div>
+                {kb.description && (
+                  <p className="mt-1 text-sm leading-6 text-muted">{kb.description}</p>
+                )}
+              </div>
+            </div>
+            <span className="chip chip-muted">
+              {formatKbRole(myRole)}
+            </span>
           </div>
-          {kb.description && (
-            <div className="mt-1 text-sm text-muted">{kb.description}</div>
-          )}
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 bg-surface/35 p-4 sm:grid-cols-4">
             <Stat icon={FileText} label="文档" value={kb.documents.length} />
-            <Stat icon={Hash} label="chunks" value={kb.chunks_count} />
-            <Stat icon={Layers} label="embedding" value={kb.embedding_model || "—"} />
+            <Stat icon={Hash} label="分块" value={kb.chunks_count} />
+            <Stat icon={Layers} label="向量模型" value={kb.embedding_model || "-"} />
             <Stat icon={BookOpen} label="维度" value={kb.vector_size} />
           </div>
-        </div>
+        </section>
 
         <AdminSectionNav
           items={[
-            { label: "文档", href: "#documents", icon: FileText },
+            { label: kb.is_system ? "示例说明" : "文档", href: "#documents", icon: FileText },
             ...(!kb.is_system
               ? [{ label: "成员", href: "#members", icon: Users }]
               : []),
             ...(isOwner && !kb.is_system
               ? [
-                  { label: "检索设置", href: "#retrieval", icon: Sparkles },
+                  { label: "检索设置", href: "#retrieval", icon: SlidersHorizontal },
                   { label: "危险操作", href: "#danger", icon: AlertCircle, muted: true },
                 ]
               : []),
@@ -527,8 +549,12 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
         <AdminSection
           id="documents"
           icon={FileText}
-          title="文档"
-          description="上传、筛选、启停文档，并进入单篇文档的分块管理。"
+          title={kb.is_system ? "示例说明" : "文档"}
+          description={
+            kb.is_system
+              ? "内置示例库仅供对话演示，内容只读，不开放文档管理。"
+              : "上传、筛选、启停文档，并进入单篇文档的分块管理。"
+          }
           className="mt-6"
         >
         {kb.is_system ? (
@@ -536,62 +562,46 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
             variant="notice"
             density="compact"
             title="系统内置示例库"
-            description="这是 KnowFlow 内置的旅行演示知识库。所有用户都能在对话中选中它；内容只读，不能上传或删除。"
+            description={
+              kb.documents.length === 0
+                ? "这是 KnowFlow 内置的旅行演示知识库，可在对话中直接选用。文档清单不在此页开放管理；下方无文档列表属预期表现。"
+                : "这是 KnowFlow 内置的旅行演示知识库。所有用户都能在对话中选中它；内容只读，不能上传或删除。"
+            }
             className="mb-4"
           />
         ) : canWrite ? (
           <form
             onSubmit={onSubmitUrl}
-            className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-surface-border/60 bg-surface px-4 py-3"
+            className="mb-4 rounded-lg border border-surface-border/75 bg-surface px-4 py-3 shadow-sm"
           >
-            <Link2 className="h-4 w-4 text-muted" />
-            <input
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="从 URL 抓取并 ingest…"
-              className="min-w-[200px] flex-1 bg-transparent text-sm outline-none"
-            />
-            <button
-              type="submit"
-              disabled={!url.trim() || submittingUrl}
-              className="admin-btn-secondary btn-sm !py-1.5 text-xs"
-            >
-              {submittingUrl ? "提交中…" : "抓取"}
-            </button>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <span className="admin-icon-tile admin-icon-tile-brand">
+                <Link2 className="h-4 w-4" />
+              </span>
+              <input
+                type="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="从 URL 抓取并 ingest..."
+                className={cn(kbDetailInputClass, "min-w-0 flex-1")}
+              />
+              <button
+                type="submit"
+                disabled={!url.trim() || submittingUrl}
+                className="admin-btn-secondary min-h-[40px] shrink-0 px-4 text-sm"
+              >
+                {submittingUrl ? "提交中..." : "抓取"}
+              </button>
+            </div>
           </form>
         ) : null}
 
+        {!(kb.is_system && kb.documents.length === 0) && (
         <AdminPanel
-          title="文档列表"
-          subtitle="支持筛选与分块管理"
+          title={kb.is_system ? "示例文档" : "文档列表"}
+          subtitle={kb.is_system ? "只读浏览，不可上传或删除" : "支持筛选与分块管理"}
           toolbar={
-            <>
-              <div className="input-shell flex items-center gap-2 px-3 py-1.5">
-                <Search className="h-3.5 w-3.5 text-muted" />
-                <input
-                  type="search"
-                  value={docSearch}
-                  onChange={(e) => setDocSearch(e.target.value)}
-                  placeholder="搜索文档名称"
-                  className="w-36 bg-transparent text-xs outline-none sm:w-44"
-                />
-              </div>
-              <Select
-                size="sm"
-                className="w-[110px] admin-select-trigger"
-                value={docStatusFilter}
-                onChange={(e) =>
-                  setDocStatusFilter(e.target.value as typeof docStatusFilter)
-                }
-                options={[
-                  { value: "all", label: "全部状态" },
-                  { value: "done", label: "完成" },
-                  { value: "ingesting", label: "处理中" },
-                  { value: "pending", label: "排队" },
-                  { value: "failed", label: "失败" },
-                ]}
-              />
+            kb.is_system ? (
               <AdminToolbarButton
                 icon={RefreshCw}
                 loading={listRefreshing}
@@ -599,7 +609,42 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
               >
                 刷新
               </AdminToolbarButton>
-            </>
+            ) : (
+              <>
+                <div className="input-shell flex items-center gap-2 px-3 py-1.5">
+                  <Search className="h-3.5 w-3.5 text-muted" />
+                  <input
+                    type="search"
+                    value={docSearch}
+                    onChange={(e) => setDocSearch(e.target.value)}
+                    placeholder="搜索文档名称"
+                    className="w-36 bg-transparent text-xs outline-none sm:w-44"
+                  />
+                </div>
+                <Select
+                  size="sm"
+                  className="w-[110px] admin-select-trigger"
+                  value={docStatusFilter}
+                  onChange={(e) =>
+                    setDocStatusFilter(e.target.value as typeof docStatusFilter)
+                  }
+                  options={[
+                    { value: "all", label: "全部状态" },
+                    { value: "done", label: "完成" },
+                    { value: "ingesting", label: "处理中" },
+                    { value: "pending", label: "排队" },
+                    { value: "failed", label: "失败" },
+                  ]}
+                />
+                <AdminToolbarButton
+                  icon={RefreshCw}
+                  loading={listRefreshing}
+                  onClick={() => void onRefreshList()}
+                >
+                  刷新
+                </AdminToolbarButton>
+              </>
+            )
           }
           footer={
             <div className="flex items-center justify-between text-xs text-muted">
@@ -634,12 +679,8 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
             <div className="px-4 py-6">
               <StateView
                 density="compact"
-                title={kb.is_system ? "示例库文档不在此列表展示" : "还没有文档"}
-                description={
-                  kb.is_system
-                    ? "这个内置库用于对话演示，不作为可管理文档开放。"
-                    : "上传文档后，可在这里筛选、启停和进入分块管理。"
-                }
+                title="还没有文档"
+                description="上传文档后，可在这里筛选、启停和进入分块管理。"
                 className="bg-surface/60"
               />
             </div>
@@ -672,13 +713,13 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                           <span className="truncate">{d.filename}</span>
                         </Link>
                         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
-                          <span>{d.source_type === "url" ? "URL" : "Local File"}</span>
+                          <span>{d.source_type === "url" ? "URL" : "本地文件"}</span>
                           <span>{fileExtension(d.filename)}</span>
                           <span>{formatFileSize(d.size_bytes)}</span>
                         </div>
                       </div>
                       <span className="inline-flex shrink-0 items-center gap-1.5 text-xs">
-                        <span className={cn("h-2 w-2 rounded-full", st.dot)} />
+                        <span className={cn("h-2 w-2 rounded-sm", st.dot)} />
                         {st.label}
                       </span>
                     </div>
@@ -703,12 +744,12 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                         onCheckedChange={(checked) => onToggleDocEnabled(d, checked)}
                         title={
                           docToggleBusy === d.id
-                            ? "更新中…"
+                            ? "更新中..."
                             : d.status !== "done"
                               ? "ingest 完成后才可启用检索"
                               : d.enabled !== false
                                 ? "禁用后整篇文档不参与检索"
-                                : "启用后文档 chunks 可参与检索"
+                                : "启用后文档分块可参与检索"
                         }
                       />
                       <div className="flex items-center gap-0.5">
@@ -788,7 +829,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                             <span className="truncate">{d.filename}</span>
                           </Link>
                           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
-                            <span>{d.source_type === "url" ? "URL" : "Local File"}</span>
+                            <span>{d.source_type === "url" ? "URL" : "本地文件"}</span>
                             <span>{fileExtension(d.filename)}</span>
                             <span>{formatFileSize(d.size_bytes)}</span>
                             <span>创建 {formatAdminDate(d.created_at)}</span>
@@ -797,7 +838,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                       </td>
                       <td>
                         <span className="inline-flex items-center gap-1.5 text-xs">
-                          <span className={cn("h-2 w-2 rounded-full", st.dot)} />
+                          <span className={cn("h-2 w-2 rounded-sm", st.dot)} />
                           {st.label}
                         </span>
                       </td>
@@ -812,12 +853,12 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                           }
                           title={
                             docToggleBusy === d.id
-                              ? "更新中…"
+                              ? "更新中..."
                               : d.status !== "done"
                                 ? "ingest 完成后才可启用检索"
                                 : d.enabled !== false
                                   ? "禁用后整篇文档不参与检索"
-                                  : "启用后文档 chunks 可参与检索"
+                                  : "启用后文档分块可参与检索"
                           }
                         />
                       </td>
@@ -880,6 +921,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
             </>
           )}
         </AdminPanel>
+        )}
         </AdminSection>
 
         {!kb.is_system && (
@@ -894,28 +936,35 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
           </AdminSection>
         )}
 
-        {/* v3-M3: owner-only advanced settings — grouping toggle + hybrid rebuild. */}
+        {/* v3-M3: owner-only advanced settings - grouping toggle + hybrid rebuild. */}
         {isOwner && !kb.is_system && (
           <AdminSection
             id="retrieval"
-            icon={Sparkles}
+            icon={SlidersHorizontal}
             title="检索设置"
             description="统一管理 KB 默认分块参数、grouping search 和索引重建。"
             className="mt-8"
           >
-          <section className="card p-4">
-            <div className="flex items-center gap-2 text-sm font-medium">
-              <Sparkles className="h-4 w-4 text-brand" />
-              高级设置
+          <section className="admin-panel overflow-hidden">
+            <div className="flex items-start gap-3 border-b border-surface-border/70 bg-surface-2/35 px-4 py-4">
+              <span className="admin-icon-tile admin-icon-tile-brand">
+                <SlidersHorizontal className="h-4 w-4" />
+              </span>
+              <div>
+                <div className="text-sm font-semibold">高级设置</div>
+                <p className="mt-1 text-xs text-muted">
+                  配置默认分块参数和索引重建策略，改动会影响后续 ingest 和检索召回。
+                </p>
+              </div>
             </div>
 
-            <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm">
-              <input
-                type="checkbox"
+            <div className="m-4 flex items-start gap-3 rounded-lg border border-surface-border/80 bg-surface p-4 text-sm shadow-sm transition hover:border-brand/25 hover:bg-surface-2/60">
+              <Switch
                 checked={kb.grouping_enabled}
                 disabled={groupingBusy}
-                onChange={onToggleGrouping}
-                className="mt-0.5 h-4 w-4 cursor-pointer accent-accent"
+                onCheckedChange={(checked) => void onToggleGrouping(checked)}
+                className="mt-1"
+                aria-label="切换 grouping search"
               />
               <span>
                 <span className="font-medium">Grouping search</span>
@@ -923,14 +972,14 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                   每篇文档至多返回 1 个最相关 chunk，避免长文档独占 top-k。
                 </span>
               </span>
-            </label>
+            </div>
 
-            <form onSubmit={onSaveChunkSettings} className="mt-4 border-t border-border pt-3">
+            <form onSubmit={onSaveChunkSettings} className="border-t border-surface-border/70 px-4 py-4">
               <div className="text-sm font-medium">分块参数（KB 默认）</div>
               <p className="mt-1 text-xs text-muted">
                 单位：字符。仅对新上传 / 重新 ingest 的文档生效；单篇文档可在详情页覆盖。
               </p>
-              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-4">
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-4">
                 <label className="text-xs">
                   <span className="text-muted">切分策略</span>
                   <Select
@@ -949,7 +998,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                     type="number"
                     value={chunkTarget}
                     onChange={(e) => setChunkTarget(e.target.value)}
-                    className="mt-1 block w-full rounded-md border bg-bg px-2 py-1.5 text-sm"
+                    className={cn(kbDetailInputClass, "mt-1")}
                   />
                 </label>
                 <label className="text-xs">
@@ -958,7 +1007,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                     type="number"
                     value={chunkMaxSize}
                     onChange={(e) => setChunkMaxSize(e.target.value)}
-                    className="mt-1 block w-full rounded-md border bg-bg px-2 py-1.5 text-sm"
+                    className={cn(kbDetailInputClass, "mt-1")}
                   />
                 </label>
                 <label className="text-xs">
@@ -967,29 +1016,29 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                     type="number"
                     value={chunkOverlap}
                     onChange={(e) => setChunkOverlap(e.target.value)}
-                    className="mt-1 block w-full rounded-md border bg-bg px-2 py-1.5 text-sm"
+                    className={cn(kbDetailInputClass, "mt-1")}
                   />
                 </label>
               </div>
               <button
                 type="submit"
                 disabled={chunkBusy}
-                className="btn btn-secondary btn-sm mt-2"
+                className="admin-btn-secondary mt-3 min-h-[40px] px-4 text-sm"
               >
                 保存分块参数
               </button>
             </form>
 
-            <div className="mt-4 border-t border-border pt-3">
+            <div className="border-t border-surface-border/70 bg-surface-2/25 px-4 py-4">
               <div className="text-sm font-medium">混合检索索引</div>
               <p className="mt-1 text-xs text-muted">
                 启用后会用 BM25 + 向量两路融合检索，关键词查询命中明显改善。
-                重建会丢弃当前 chunks 并重新 ingest 所有文档（约 30-90 秒），期间该 KB 临时无召回。
+                重建会丢弃当前分块并重新入库所有文档（约 30-90 秒），期间该知识库临时无召回。
               </p>
               <button
                 onClick={() => setPendingRebuild(true)}
                 disabled={rebuildingKb}
-                className="btn btn-secondary btn-sm mt-2"
+                className="admin-btn-secondary mt-3 min-h-[40px] px-4 text-sm"
                 type="button"
               >
                 <RefreshCw className={cn("h-4 w-4", rebuildingKb && "animate-spin")} />
@@ -1009,18 +1058,22 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
             description="高风险操作集中在这里，避免和日常文档维护混在一起。"
             className="mt-8"
           >
-          <div className="card border-danger/30 p-4">
-            <div className="flex items-center gap-2 text-sm font-medium text-danger">
-              <AlertCircle className="h-4 w-4" />
-              危险操作
+          <div className="rounded-lg border border-danger/30 bg-danger/5 p-4 shadow-sm">
+            <div className="flex items-start gap-3">
+              <span className="admin-icon-tile admin-icon-tile-danger">
+                <AlertCircle className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold text-danger">危险操作</div>
+                <p className="mt-1 text-xs leading-5 text-muted">
+                  删除知识库会清除所有文档、分块、成员关系和邀请链接。该操作不可逆。
+                </p>
+              </div>
             </div>
-            <p className="mt-1 text-xs text-muted">
-              删除知识库会清除所有文档、chunks、成员关系和邀请链接。该操作不可逆。
-            </p>
             <button
               onClick={() => setPendingDeleteKb(true)}
               disabled={deletingKb}
-              className="btn btn-danger btn-sm mt-3"
+              className="admin-btn-danger mt-4 min-h-[40px] px-4 text-sm"
               type="button"
             >
               <Trash2 className="h-4 w-4" />
@@ -1036,7 +1089,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
         title="删除文档？"
         description={
           <div className="space-y-3">
-            <p>该文档及其所有 chunks 都会从 Qdrant 中清除。该操作不可逆。</p>
+            <p>该文档及其所有分块都会从向量库中清除。该操作不可逆。</p>
             {pendingDelete ? (
               <div className="rounded-lg border border-surface-border/70 bg-surface-2 px-3 py-2">
                 <div className="text-xs font-medium text-muted">文档</div>
@@ -1057,7 +1110,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
         open={pendingDeleteKb}
         onOpenChange={(o) => !o && setPendingDeleteKb(false)}
         title={`删除知识库「${kb.name}」？`}
-        description="所有文档、chunks、成员关系和邀请链接都会一并清除。该操作不可逆。"
+        description="所有文档、分块、成员关系和邀请链接都会一并清除。该操作不可逆。"
         variant="danger"
         confirmLabel="确认删除整个 KB"
         onConfirm={confirmDeleteKb}
@@ -1068,7 +1121,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
         open={pendingRebuild}
         onOpenChange={(o) => !o && setPendingRebuild(false)}
         title={`重建索引「${kb.name}」？`}
-        description="所有文档会被重新 ingest 以启用混合检索 (BM25 + 向量)。约 30-90 秒，期间该 KB 聊天会临时无召回；文档原始文件保留。"
+        description="所有文档会被重新 ingest 以启用混合检索（BM25 + 向量）。约 30-90 秒，期间该 KB 聊天会临时无召回；文档原始文件保留。"
         confirmLabel="确认重建"
         onConfirm={confirmRebuildKb}
         busy={rebuildingKb}
@@ -1150,52 +1203,76 @@ function MembersSection({ kbId, isOwner }: { kbId: string; isOwner: boolean }) {
     }
   };
 
+  const memberCount = (data?.members?.length ?? 0) + (data?.owner ? 1 : 0);
+
   return (
-    <div className="card overflow-hidden">
-      <div className="flex items-center justify-between border-b px-4 py-2">
-        <div className="text-sm font-medium">
-          成员（{(data?.members?.length ?? 0) + (data?.owner ? 1 : 0)}）
-        </div>
-        {isOwner && (
+    <AdminPanel
+      title={`成员（${memberCount}）`}
+      subtitle="按角色管理知识库访问权限，owner 固定拥有完整控制权。"
+      bodyClassName="bg-surface/35"
+      toolbar={
+        isOwner ? (
           <button
             onClick={() => setInviteOpen(true)}
-            className="btn btn-primary btn-sm"
+            className="admin-btn-primary min-h-[40px] px-3 text-sm"
             type="button"
           >
-            <UserPlus className="h-3 w-3" />
+            <UserPlus className="h-4 w-4" />
             邀请
           </button>
-        )}
-      </div>
+        ) : null
+      }
+    >
       {loading ? (
-        <div className="px-4 py-6 text-center text-sm text-muted">加载中…</div>
+        <div className="space-y-2 p-4">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div
+              key={index}
+              className="h-16 animate-pulse rounded-lg border border-surface-border/60 bg-surface-2/45"
+            />
+          ))}
+        </div>
       ) : (
-        <ul className="divide-y">
+        <ul className="space-y-2 p-4">
           {data?.owner && (
-            <li className="flex items-center gap-3 px-4 py-3">
-              <BookOpen className="h-4 w-4 flex-none text-brand" />
+            <li className="flex min-h-16 items-center gap-3 rounded-lg border border-brand/20 bg-brand/5 px-3 py-2.5 shadow-sm">
+              <span className="admin-icon-tile admin-icon-tile-brand">
+                <BookOpen className="h-4 w-4" />
+              </span>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm">{data.owner.email}</div>
-                <div className="text-xs text-muted">
-                  {data.owner.display_name || "—"}
+                <div className="truncate text-sm font-medium">{data.owner.email}</div>
+                <div className="mt-0.5 text-xs text-muted">
+                  {data.owner.display_name || "-"}
                 </div>
               </div>
-              <span className="chip border-brand/30 bg-brand/10 text-brand">
-                owner
+              <span className="chip chip-brand shadow-sm">
+                {formatKbRole("owner")}
               </span>
             </li>
           )}
           {data?.members.map((m) => (
-            <li key={m.user_id} className="flex items-center gap-3 px-4 py-3">
-              {m.role === "editor" ? (
-                <Users className="h-4 w-4 flex-none text-info" />
-              ) : (
-                <Eye className="h-4 w-4 flex-none text-muted" />
-              )}
+            <li
+              key={m.user_id}
+              className="flex min-h-16 items-center gap-3 rounded-lg border border-surface-border/70 bg-surface px-3 py-2.5 shadow-sm transition hover:border-brand/25 hover:bg-surface-2/55"
+            >
+              <span
+                className={cn(
+                  "admin-icon-tile",
+                  m.role === "editor"
+                    ? "admin-icon-tile-info"
+                    : "admin-icon-tile-muted"
+                )}
+              >
+                {m.role === "editor" ? (
+                  <Users className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </span>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm">{m.email}</div>
-                <div className="text-xs text-muted">
-                  {m.display_name || "—"}
+                <div className="truncate text-sm font-medium">{m.email}</div>
+                <div className="mt-0.5 truncate text-xs text-muted">
+                  {m.display_name || "-"}
                   {m.invited_by_email && (
                     <> · 由 {m.invited_by_email} 邀请</>
                   )}
@@ -1210,16 +1287,16 @@ function MembersSection({ kbId, isOwner }: { kbId: string; isOwner: boolean }) {
                       onChangeRole(m.user_id, e.target.value as MemberRole)
                     }
                     options={[
-                      { value: "editor", label: "editor" },
-                      { value: "viewer", label: "viewer" },
+                      { value: "editor", label: formatKbRole("editor") },
+                      { value: "viewer", label: formatKbRole("viewer") },
                     ]}
-                    className="w-[100px]"
+                    className="h-[40px] w-[112px] admin-select-trigger"
                   />
                   <button
                     onClick={() =>
                       setPendingRemove({ user_id: m.user_id, email: m.email })
                     }
-                    className="rounded-md p-1.5 text-muted transition hover:bg-danger/15 hover:text-danger"
+                    className="admin-icon-action admin-icon-action-danger"
                     aria-label="移除成员"
                     type="button"
                   >
@@ -1231,18 +1308,18 @@ function MembersSection({ kbId, isOwner }: { kbId: string; isOwner: boolean }) {
                   className={cn(
                     "chip",
                     m.role === "editor"
-                      ? "border-info/30 bg-info/10 text-info"
-                      : "border-border bg-surface text-muted"
+                      ? "chip-info"
+                      : "chip-muted"
                   )}
                 >
-                  {m.role}
+                  {formatKbRole(m.role)}
                 </span>
               )}
             </li>
           ))}
           {data?.members.length === 0 && !data?.owner && (
-            <li className="px-4 py-6 text-center text-sm text-muted">
-              暂无成员
+            <li className="rounded-lg border border-dashed border-surface-border/80 bg-surface px-4 py-8 text-center text-sm text-muted">
+              暂无成员。所有者可以通过邮箱或邀请链接添加协作者。
             </li>
           )}
         </ul>
@@ -1267,12 +1344,12 @@ function MembersSection({ kbId, isOwner }: { kbId: string; isOwner: boolean }) {
         onConfirm={confirmRemove}
         busy={removing}
       />
-    </div>
+    </AdminPanel>
   );
 }
 
 // ---------------------------------------------------------------------------
-// v2-M9: Invite dialog — two tabs (by email, by link)
+// v2-M9: Invite dialog - two tabs (by email, by link)
 // ---------------------------------------------------------------------------
 function InviteDialog({
   kbId,
@@ -1384,139 +1461,154 @@ function InviteDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="app-modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4"
       onClick={onClose}
     >
       <div
-        className="card w-full max-w-lg overflow-hidden"
+        className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-surface-border/80 bg-surface shadow-[0_24px_70px_rgb(15_23_42/0.22)]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b px-4 py-3">
-          <div className="text-sm font-medium">邀请协作者</div>
+        <div className="flex min-h-16 items-center justify-between gap-3 border-b border-surface-border/70 bg-surface px-5 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="admin-icon-tile admin-icon-tile-brand">
+              <UserPlus className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <div className="truncate text-base font-semibold">邀请协作者</div>
+              <p className="mt-0.5 text-xs text-muted">通过邮箱添加成员，或生成可撤销的分享邀请链接。</p>
+            </div>
+          </div>
           <button
             onClick={onClose}
-            className="rounded-md p-1 text-muted hover:bg-surface-2"
-            aria-label="关闭"
+            className="admin-icon-action"
+            aria-label="关闭邀请弹窗"
             type="button"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="flex border-b">
+        <div className="grid grid-cols-2 gap-1 border-b border-surface-border/70 bg-surface-2/45 p-1">
           <button
             type="button"
             onClick={() => setTab("email")}
             className={cn(
-              "flex-1 px-4 py-2 text-sm transition",
+              "inline-flex min-h-[40px] cursor-pointer items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-[background-color,color,box-shadow]",
               tab === "email"
-                ? "border-b-2 border-brand text-fg"
-                : "text-muted hover:text-fg"
+                ? "bg-surface text-fg shadow-sm"
+                : "text-muted hover:bg-surface/70 hover:text-fg"
             )}
           >
+            <UserPlus className="h-3.5 w-3.5" />
             按邮箱邀请
           </button>
           <button
             type="button"
             onClick={() => setTab("link")}
             className={cn(
-              "flex-1 px-4 py-2 text-sm transition",
+              "inline-flex min-h-[40px] cursor-pointer items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-[background-color,color,box-shadow]",
               tab === "link"
-                ? "border-b-2 border-brand text-fg"
-                : "text-muted hover:text-fg"
+                ? "bg-surface text-fg shadow-sm"
+                : "text-muted hover:bg-surface/70 hover:text-fg"
             )}
           >
+            <Link2 className="h-3.5 w-3.5" />
             生成分享链接
           </button>
         </div>
 
-        <div className="p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5">
           {tab === "email" ? (
-            <form onSubmit={onInviteEmail} className="space-y-3">
-              <div className="text-xs text-muted">
+            <form onSubmit={onInviteEmail} className="space-y-4">
+              <div className="rounded-lg border border-surface-border/70 bg-surface-2/45 px-3 py-2 text-xs leading-5 text-muted">
                 被邀请者必须先在 KnowFlow 注册一个账号，再用该邮箱邀请。
               </div>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="bob@example.com"
-                className="block w-full rounded-md border bg-bg px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-              />
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-muted">角色</label>
-                <Select
-                  size="sm"
-                  value={emailRole}
-                  onChange={(e) => setEmailRole(e.target.value as MemberRole)}
-                  options={[
-                    { value: "editor", label: "editor（读+写文档）" },
-                    { value: "viewer", label: "viewer（只读）" },
-                  ]}
-                  className="flex-1"
-                />
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
+                <label className="space-y-1.5 text-xs font-medium text-muted">
+                  <span>邮箱地址</span>
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="bob@example.com"
+                    className={inviteInputClass}
+                  />
+                </label>
+                <label className="space-y-1.5 text-xs font-medium text-muted">
+                  <span>角色</span>
+                  <Select
+                    size="sm"
+                    value={emailRole}
+                    onChange={(e) => setEmailRole(e.target.value as MemberRole)}
+                    options={[
+                      { value: "editor", label: `${formatKbRole("editor")}（读+写文档）` },
+                      { value: "viewer", label: formatKbRole("viewer") },
+                    ]}
+                    className="h-[40px] w-full admin-select-trigger"
+                  />
+                </label>
               </div>
               <button
                 type="submit"
                 disabled={emailBusy || !email.trim()}
-                className="btn btn-primary w-full"
+                className="admin-btn-primary min-h-[40px] w-full"
               >
-                {emailBusy ? "邀请中…" : "发送邀请"}
+                {emailBusy ? "邀请中..." : "发送邀请"}
               </button>
             </form>
           ) : (
-            <div className="space-y-4">
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <label className="text-xs text-muted w-16">角色</label>
+            <div className="space-y-5">
+              <div className="grid gap-3 rounded-lg border border-surface-border/70 bg-surface-2/35 p-4">
+                <label className="space-y-1.5 text-xs font-medium text-muted">
+                  <span>角色</span>
                   <Select
                     size="sm"
                     value={linkRole}
                     onChange={(e) => setLinkRole(e.target.value as MemberRole)}
                     options={[
-                      { value: "viewer", label: "viewer（只读）" },
-                      { value: "editor", label: "editor（读+写）" },
+                      { value: "viewer", label: formatKbRole("viewer") },
+                      { value: "editor", label: `${formatKbRole("editor")}（读+写）` },
                     ]}
-                    className="flex-1"
+                    className="h-[40px] w-full admin-select-trigger"
                   />
-                </div>
-                <div className="flex items-center gap-2">
-                  <label className="text-xs text-muted w-16">有效期</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={linkExpiresHours}
-                    onChange={(e) => setLinkExpiresHours(e.target.value)}
-                    placeholder="留空 = 永不过期"
-                    className="flex-1 rounded-md border bg-bg px-3 py-1.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-                  />
-                  <span className="text-xs text-muted">小时</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <label className="text-xs text-muted w-16">最大次数</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={linkMaxUses}
-                    onChange={(e) => setLinkMaxUses(e.target.value)}
-                    placeholder="留空 = 不限"
-                    className="flex-1 rounded-md border bg-bg px-3 py-1.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-                  />
-                  <span className="text-xs text-muted">次</span>
+                </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-xs font-medium text-muted">
+                    <span>有效期（小时）</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={linkExpiresHours}
+                      onChange={(e) => setLinkExpiresHours(e.target.value)}
+                      placeholder="留空 = 永不过期"
+                      className={inviteInputClass}
+                    />
+                  </label>
+                  <label className="space-y-1.5 text-xs font-medium text-muted">
+                    <span>最大使用次数</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={linkMaxUses}
+                      onChange={(e) => setLinkMaxUses(e.target.value)}
+                      placeholder="留空 = 不限"
+                      className={inviteInputClass}
+                    />
+                  </label>
                 </div>
                 <button
                   onClick={onCreateLink}
                   disabled={linkBusy}
-                  className="btn btn-primary w-full"
+                  className="admin-btn-primary min-h-[40px] w-full"
                   type="button"
                 >
-                  {linkBusy ? "生成中…" : "生成新链接"}
+                  {linkBusy ? "生成中..." : "生成新链接"}
                 </button>
               </div>
 
               {invitations.length > 0 && (
-                <div className="mt-4 border-t pt-3">
+                <div className="border-t border-surface-border/70 pt-4">
                   <div className="mb-2 text-xs font-medium text-muted">
                     现有链接
                   </div>
@@ -1525,13 +1617,13 @@ function InviteDialog({
                       <li
                         key={inv.id}
                         className={cn(
-                          "rounded-md border bg-surface-2 p-2 text-xs",
-                          inv.revoked && "opacity-50"
+                          "rounded-lg border border-surface-border/75 bg-surface px-3 py-2.5 text-xs shadow-sm transition",
+                          inv.revoked && "opacity-55"
                         )}
                       >
-                        <div className="flex items-center gap-1.5">
-                          <span className="chip border-border bg-surface text-muted">
-                            {inv.role}
+                        <div className="flex items-center gap-2">
+                          <span className="chip chip-brand">
+                            {formatKbRole(inv.role)}
                           </span>
                           {inv.max_uses != null && (
                             <span className="text-muted">
@@ -1551,25 +1643,27 @@ function InviteDialog({
                             <>
                               <button
                                 onClick={() => copy(buildUrl(inv.id))}
-                                className="rounded p-1 hover:bg-brand/15 hover:text-brand"
+                                className="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg border border-transparent text-muted transition hover:border-brand/20 hover:bg-brand/10 hover:text-brand"
                                 title="复制链接"
+                                aria-label="复制邀请链接"
                                 type="button"
                               >
-                                <Copy className="h-3 w-3" />
+                                <Copy className="h-3.5 w-3.5" />
                               </button>
                               <button
                                 onClick={() => onRevoke(inv.id)}
-                                className="rounded p-1 hover:bg-danger/15 hover:text-danger"
+                                className="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg border border-transparent text-muted transition hover:border-danger/20 hover:bg-danger/10 hover:text-danger"
                                 title="撤销"
+                                aria-label="撤销邀请链接"
                                 type="button"
                               >
-                                <X className="h-3 w-3" />
+                                <X className="h-3.5 w-3.5" />
                               </button>
                             </>
                           )}
                         </div>
                         {!inv.revoked && (
-                          <div className="mt-1 break-all font-mono text-[10px] text-muted">
+                          <div className="mt-2 break-all rounded-md border border-surface-border/60 bg-surface-2/55 px-2 py-1.5 font-mono text-[11px] leading-5 text-muted">
                             {buildUrl(inv.id)}
                           </div>
                         )}
@@ -1585,3 +1679,6 @@ function InviteDialog({
     </div>
   );
 }
+
+const inviteInputClass =
+  "admin-input";

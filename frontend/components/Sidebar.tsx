@@ -77,13 +77,13 @@ export default function Sidebar({
       {open && (
         <div
           onClick={onToggle}
-          className="fixed inset-0 z-30 bg-black/40 backdrop-blur-sm md:hidden"
+          className="app-modal-overlay fixed inset-0 z-30 md:hidden"
         />
       )}
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-[18rem] flex-col border-r border-surface-border/70 bg-surface/96 backdrop-blur-xl transition-transform md:relative md:translate-x-0",
+          "fixed inset-y-0 left-0 z-40 flex w-[18rem] flex-col border-r border-surface-border/80 bg-surface/96 shadow-[8px_0_28px_rgb(15_23_42/0.08)] backdrop-blur-xl transition-transform md:relative md:translate-x-0 md:shadow-none",
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >
@@ -92,7 +92,7 @@ export default function Sidebar({
           <Brand size="sm" />
           <button
             onClick={onToggle}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-lg hover:bg-surface-2 md:hidden"
+            className="admin-icon-action md:hidden"
             aria-label="关闭侧栏"
             type="button"
           >
@@ -103,7 +103,7 @@ export default function Sidebar({
         {/* New chat */}
         <button
           onClick={onNew}
-          className="mx-3 mt-3 inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-brand/25 bg-brand px-3 text-sm font-medium text-white shadow-soft transition-[transform,background-color,border-color,box-shadow] duration-press ease-ui-out hover:bg-brand-dark active:scale-[0.97]"
+          className="admin-btn-primary mx-3 mt-3 h-10 px-3"
           type="button"
         >
           <Plus className="h-4 w-4" />
@@ -111,17 +111,17 @@ export default function Sidebar({
         </button>
 
         {/* Conversation list */}
-        <nav className="flex-1 overflow-y-auto px-2 pb-3">
+        <nav className="flex-1 overflow-y-auto px-2 pb-3 pt-3">
           {conversations.length === 0 ? (
-            <div className="mt-4 flex flex-col items-center gap-2 rounded-lg border border-dashed border-surface-border/80 bg-surface-2/45 px-3 py-6 text-center text-xs text-muted">
+            <div className="mt-1 flex flex-col items-center gap-2 rounded-lg border border-dashed border-surface-border/80 bg-surface-2/55 px-3 py-6 text-center text-xs text-muted">
               <Sparkles className="h-4 w-4 text-brand/70" />
               <div>还没有对话</div>
               <button
                 onClick={onNew}
-                className="text-brand hover:underline"
+                className="inline-flex min-h-[36px] cursor-pointer items-center justify-center rounded-md border border-brand/20 bg-brand/5 px-3 font-medium text-brand transition-colors hover:bg-brand/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
                 type="button"
               >
-                开始第一次对话 →
+                开始第一次对话
               </button>
             </div>
           ) : (
@@ -132,10 +132,10 @@ export default function Sidebar({
                 <div
                   key={c.id}
                   className={cn(
-                    "group flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-[background-color,color,box-shadow] duration-press ease-ui-out",
+                    "group flex min-h-[44px] cursor-pointer items-center gap-2 rounded-lg border border-transparent px-2.5 py-1.5 text-sm transition-[background-color,border-color,color,box-shadow] duration-200 ease-ui-out focus-within:border-brand/30 focus-within:ring-2 focus-within:ring-brand/15",
                     active
-                      ? "bg-brand/12 font-medium text-fg shadow-sm ring-1 ring-brand/20"
-                      : "text-fg/80 hover:bg-surface-2"
+                      ? "border-brand/25 bg-brand/10 font-medium text-fg shadow-sm"
+                      : "text-muted hover:border-surface-border/80 hover:bg-surface-2 hover:text-fg"
                   )}
                   onClick={() => !isEditing && onSelect(c.id)}
                 >
@@ -153,7 +153,7 @@ export default function Sidebar({
                         }
                       }}
                       onBlur={(e) => commitRename(c.id, c.title, e.target.value)}
-                      className="flex-1 min-w-0 bg-transparent outline-none border-b border-brand/50 text-sm"
+                      className="h-[36px] min-w-0 flex-1 rounded-md border border-brand/25 bg-surface px-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
                       maxLength={128}
                     />
                   ) : (
@@ -167,7 +167,7 @@ export default function Sidebar({
                         e.stopPropagation();
                         setEditingId(c.id);
                       }}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg opacity-100 transition hover:bg-brand/15 hover:text-brand sm:opacity-0 sm:group-hover:opacity-100"
+                      className="admin-icon-action admin-icon-action-brand admin-icon-action-soft"
                       aria-label="重命名对话"
                       title="重命名"
                       type="button"
@@ -181,7 +181,7 @@ export default function Sidebar({
                         e.stopPropagation();
                         setDeleteTarget(c);
                       }}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg opacity-100 transition hover:bg-danger/15 hover:text-danger sm:opacity-0 sm:group-hover:opacity-100"
+                      className="admin-icon-action admin-icon-action-danger admin-icon-action-soft"
                       aria-label="删除对话"
                       title="删除"
                       type="button"
@@ -228,7 +228,7 @@ export default function Sidebar({
 }
 
 // ---------------------------------------------------------------------------
-// v3-M1: UserMenu — bottom user card with popup menu (DeepSeek-style)
+// v3-M1: UserMenu - bottom user card with popup menu (DeepSeek-style)
 // ---------------------------------------------------------------------------
 function UserMenu({
   user,
@@ -242,7 +242,7 @@ function UserMenu({
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // ESC + outside click → close
+  // ESC + outside click - close
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -264,69 +264,69 @@ function UserMenu({
   if (!user) {
     // Edge case: not signed in (shouldn't happen on the chat page, but
     // keep the layout stable for tests / initial paint).
-    return <div className="border-t px-3 py-3 text-xs text-muted">未登录</div>;
+    return <div className="border-t border-surface-border/70 bg-surface-2/35 px-3 py-3 text-xs text-muted">未登录</div>;
   }
 
   const displayLabel = user.display_name?.trim() || user.email;
   const initial = (user.display_name?.trim()?.[0] || user.email[0] || "?").toUpperCase();
 
   return (
-    <div ref={containerRef} className="relative border-t border-surface-border/70 p-2">
-      {/* Popup menu — anchored above the trigger button */}
+    <div ref={containerRef} className="relative border-t border-surface-border/70 bg-surface-2/35 p-2">
+      {/* Popup menu - anchored above the trigger button */}
       {open && (
-        <div className="absolute bottom-full left-2 right-2 mb-1 overflow-hidden rounded-lg border border-surface-border/80 bg-surface shadow-lift">
+        <div className="absolute bottom-full left-2 right-2 mb-2 overflow-hidden rounded-lg border border-surface-border/80 bg-surface p-1 shadow-[0_18px_44px_rgb(15_23_42/0.14)]">
           <button
             onClick={() => {
               setOpen(false);
               onOpenSettings();
             }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-fg/90 transition hover:bg-surface-2"
+            className="flex min-h-[40px] w-full cursor-pointer items-center gap-2 rounded-md px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
             type="button"
           >
-            <Settings className="h-4 w-4 opacity-70" />
+            <Settings className="h-4 w-4 text-muted" />
             设置
           </button>
           <Link
             href="/settings"
             onClick={() => setOpen(false)}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-fg/90 transition hover:bg-surface-2"
+            className="flex min-h-[40px] items-center gap-2 rounded-md px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
           >
-            <Settings className="h-4 w-4 opacity-70" />
+            <Settings className="h-4 w-4 text-muted" />
             模型设置
           </Link>
           <Link
             href="/kbs"
             onClick={() => setOpen(false)}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-fg/90 transition hover:bg-surface-2"
+            className="flex min-h-[40px] items-center gap-2 rounded-md px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
           >
-            <BookOpen className="h-4 w-4 opacity-70" />
+            <BookOpen className="h-4 w-4 text-muted" />
             我的知识库
           </Link>
           <Link
             href="/memories"
             onClick={() => setOpen(false)}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-fg/90 transition hover:bg-surface-2"
+            className="flex min-h-[40px] items-center gap-2 rounded-md px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
           >
-            <BrainCircuit className="h-4 w-4 opacity-70" />
+            <BrainCircuit className="h-4 w-4 text-muted" />
             我的记忆
           </Link>
           {user.is_admin && (
             <Link
               href="/admin"
               onClick={() => setOpen(false)}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-fg/90 transition hover:bg-surface-2"
+              className="flex min-h-[40px] items-center gap-2 rounded-md px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
             >
-              <Shield className="h-4 w-4 opacity-70" />
+              <Shield className="h-4 w-4 text-muted" />
               后台管理
             </Link>
           )}
-          <div className="border-t" />
+          <div className="my-1 border-t border-surface-border/70" />
           <button
             onClick={() => {
               setOpen(false);
               onLogout();
             }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-danger transition hover:bg-danger/10"
+            className="flex min-h-[40px] w-full cursor-pointer items-center gap-2 rounded-md px-3 text-sm font-medium text-danger transition-colors hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/25"
             type="button"
           >
             <LogOut className="h-4 w-4" />
@@ -339,15 +339,15 @@ function UserMenu({
       <button
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition hover:bg-surface-2",
-          open && "bg-surface-2"
+          "flex min-h-[48px] w-full cursor-pointer items-center gap-2 rounded-lg border border-transparent px-2.5 py-2 text-left transition-[background-color,border-color,box-shadow] duration-200 hover:border-surface-border/80 hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30",
+          open && "border-surface-border/80 bg-surface shadow-sm"
         )}
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="用户菜单"
       >
-        <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-brand/15 text-xs font-semibold text-brand">
+        <span className="admin-icon-tile admin-icon-tile-brand flex-none rounded-md text-xs font-semibold">
           {initial}
         </span>
         <span className="min-w-0 flex-1 truncate text-sm" title={user.email}>
@@ -368,7 +368,7 @@ export function SidebarToggle({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-surface-2 md:hidden"
+      className="admin-icon-action border-transparent md:hidden"
       aria-label="打开侧栏"
       type="button"
     >

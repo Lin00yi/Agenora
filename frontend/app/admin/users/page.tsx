@@ -7,7 +7,9 @@ import {
   Ban,
   CheckCircle2,
   KeyRound,
+  RefreshCw,
   Trash2,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -25,6 +27,9 @@ import AdminShell from "../AdminShell";
 import { PageSkeleton, StateView } from "@/components/ui/state-view";
 
 const PAGE_SIZE = 50;
+
+const paginationButtonClass =
+  "admin-btn-secondary shrink-0";
 
 /**
  * /admin/users — user management table with inline actions (06-01).
@@ -132,19 +137,34 @@ function UsersTable() {
 
   return (
     <div className="space-y-4">
-      <div className="text-sm text-muted">共 {total} 个用户</div>
+      <div className="flex flex-col gap-3 border-b border-surface-border/70 pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold tracking-[0.16em] text-brand">
+            用户目录
+          </p>
+          <h2 className="mt-2 flex items-center gap-2 text-2xl font-semibold tracking-tight">
+            <Users className="h-5 w-5 text-brand" />
+            用户管理
+          </h2>
+          <p className="mt-2 text-sm text-muted">共 {total} 个用户，可管理状态、角色和密码。</p>
+        </div>
+        <button type="button" className="admin-btn-secondary" onClick={() => load(offset)}>
+          <RefreshCw className="h-4 w-4" />
+          刷新
+        </button>
+      </div>
 
-      <div className="card overflow-x-auto">
-        <table className="w-full text-sm">
+      <div className="admin-panel overflow-x-auto">
+        <table className="admin-table admin-table-users">
           <thead>
-            <tr className="border-b text-left text-xs text-muted">
-              <th className="px-3 py-2 font-medium">用户</th>
-              <th className="px-3 py-2 font-medium">注册时间</th>
-              <th className="px-3 py-2 font-medium">状态</th>
-              <th className="px-3 py-2 text-right font-medium">KB</th>
-              <th className="px-3 py-2 text-right font-medium">会话</th>
-              <th className="px-3 py-2 font-medium">LLM</th>
-              <th className="px-3 py-2 text-right font-medium">操作</th>
+            <tr>
+              <th className="w-[28%]">用户</th>
+              <th className="w-[14%]">注册时间</th>
+              <th className="w-[10%]">状态</th>
+              <th className="w-[8%] text-right">KB</th>
+              <th className="w-[8%] text-right">会话</th>
+              <th className="w-[12%]">LLM</th>
+              <th className="w-[20%] text-right">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -152,53 +172,56 @@ function UsersTable() {
               const isSelf = me?.id === u.id;
               const busy = busyId === u.id;
               return (
-                <tr key={u.id} className="border-b last:border-0 align-middle">
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">
+                <tr key={u.id}>
+                  <td className="max-w-0">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="admin-icon-tile admin-icon-tile-brand shrink-0 rounded-md text-xs font-semibold">
+                        {(u.display_name?.trim()?.[0] || u.email[0] || "?").toUpperCase()}
+                      </span>
+                      <span className="truncate font-medium">
                         {u.display_name?.trim() || u.email}
                       </span>
                       {u.is_admin && (
-                        <span className="chip border-brand/30 bg-brand/10 text-brand">
+                        <span className="chip chip-brand shrink-0">
                           管理员
                         </span>
                       )}
                       {isSelf && (
-                        <span className="chip border-border bg-surface text-muted">
+                        <span className="chip chip-muted shrink-0">
                           你
                         </span>
                       )}
                     </div>
-                    <div className="truncate text-xs text-muted">{u.email}</div>
+                    <div className="truncate text-xs text-muted" title={u.email}>{u.email}</div>
                   </td>
-                  <td className="px-3 py-2 text-xs text-muted">
+                  <td className="text-xs text-muted">
                     {u.created_at
                       ? new Date(u.created_at).toLocaleDateString("zh-CN")
                       : "—"}
                   </td>
-                  <td className="px-3 py-2">
+                  <td>
                     {u.is_active ? (
-                      <span className="chip border-success/30 bg-success/10 text-success">
+                      <span className="chip chip-success">
                         活跃
                       </span>
                     ) : (
-                      <span className="chip border-danger/30 bg-danger/10 text-danger">
+                      <span className="chip chip-danger">
                         已封禁
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums">{u.kb_count}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">
+                  <td className="text-right tabular-nums">{u.kb_count}</td>
+                  <td className="text-right tabular-nums">
                     {u.conversation_count}
                   </td>
-                  <td className="px-3 py-2">
+                  <td>
                     {u.byok_configured ? (
-                      <span className="text-xs text-success">已配置</span>
+                      <span className="chip chip-success">已配置</span>
                     ) : (
                       <span className="text-xs text-muted">—</span>
                     )}
                   </td>
-                  <td className="px-3 py-2">
+                  <td>
                     <div className="flex items-center justify-end gap-1">
                       <IconBtn
                         title={u.is_active ? "封禁" : "解封"}
@@ -255,7 +278,7 @@ function UsersTable() {
         <div className="flex items-center justify-end gap-2 text-sm">
           <button
             type="button"
-            className="btn btn-ghost btn-sm"
+            className={paginationButtonClass}
             disabled={offset === 0}
             onClick={() => load(Math.max(0, offset - PAGE_SIZE))}
           >
@@ -266,7 +289,7 @@ function UsersTable() {
           </span>
           <button
             type="button"
-            className="btn btn-ghost btn-sm"
+            className={paginationButtonClass}
             disabled={offset + PAGE_SIZE >= total}
             onClick={() => load(offset + PAGE_SIZE)}
           >
@@ -293,7 +316,7 @@ function UsersTable() {
               value={resetPwd}
               onChange={(e) => setResetPwd(e.target.value)}
               placeholder="新密码"
-              className="block w-full rounded-lg border bg-bg px-3 py-2 text-sm text-fg outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+              className="admin-input"
             />
           </div>
         }
@@ -338,10 +361,10 @@ function IconBtn({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "rounded-md p-1.5 text-muted/80 transition disabled:opacity-30 disabled:cursor-not-allowed",
+        "admin-icon-action admin-icon-action-lg disabled:opacity-30",
         danger
-          ? "hover:bg-danger/15 hover:text-danger"
-          : "hover:bg-brand/15 hover:text-brand"
+          ? "admin-icon-action-danger border-danger/20 bg-danger/5 text-danger"
+          : "admin-icon-action-surface text-muted"
       )}
     >
       {children}

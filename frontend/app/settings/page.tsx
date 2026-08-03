@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, BrainCircuit, KeyRound, Loader2, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeft, Bot, BrainCircuit, Globe2, KeyRound, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import Dialog from "@/components/Dialog";
@@ -29,11 +29,13 @@ import {
 } from "@/lib/settings-api";
 import { LoadingState, StateView } from "@/components/ui/state-view";
 import ThemeToggle from "@/components/ThemeToggle";
+import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 
 /**
- * /settings — LLM provider credentials (v3-M8 simplified).
+ * /settings - LLM provider credentials (v3-M8 simplified).
  *
- * Embedding + Reranker config has been removed from this page (v3-M8) — both
+ * Embedding + Reranker config has been removed from this page (v3-M8) - both
  * are now configured per-KB at creation time. This page exists solely to:
  *   - Save LLM provider creds (provider + base_url + api_key + default_model)
  *   - Toggle KB-mode options (e.g. web_search opt-in)
@@ -74,10 +76,10 @@ export default function SettingsPage() {
   return (
     <div className="app-page min-h-dvh text-fg">
       <header className="app-page-header border-b">
-        <div className="mx-auto flex h-14 max-w-3xl items-center px-4 sm:px-6">
+        <div className="mx-auto flex h-14 max-w-6xl items-center px-4 sm:px-6">
           <Link
             href="/"
-            className="inline-flex items-center gap-1 text-sm text-muted transition hover:text-fg"
+            className="app-nav-link app-nav-link-compact"
           >
             <ArrowLeft className="h-4 w-4" />
             返回对话
@@ -85,12 +87,16 @@ export default function SettingsPage() {
           <div className="ml-auto"><ThemeToggle /></div>
         </div>
       </header>
-      <main className="app-page-content mx-auto max-w-3xl px-4 py-7 sm:px-6 sm:py-10">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand">Model workspace</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">模型设置</h1>
-        <p className="mt-2 text-sm text-muted">
-          配置 LLM 提供商凭据（用于聊天）。Embedding 和 Reranker 现在在创建知识库时按 KB 单独配置。
-        </p>
+      <main className="app-page-content mx-auto max-w-6xl px-4 py-7 sm:px-6 sm:py-10">
+        <section className="admin-panel overflow-hidden">
+          <div className="border-b border-surface-border/70 bg-surface-2/45 px-5 py-5 sm:px-6">
+            <p className="text-xs font-semibold tracking-[0.16em] text-brand">模型设置</p>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight">模型设置</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+              配置 LLM 提供商凭据、知识库兜底策略和长期记忆控制。Embedding / Reranker 在创建知识库时按 KB 单独配置。
+            </p>
+          </div>
+        </section>
 
         <div className="mt-8 space-y-6">
           <LLMCard
@@ -136,11 +142,9 @@ function LLMCard({
   const placeholders = useMemo(() => {
     if (provider === "anthropic")
       return { url: "https://api.anthropic.com", key: "sk-ant-..." };
-    return { url: "https://api.deepseek.com   ←  或 OpenAI / vLLM / LMStudio", key: "sk-..." };
+    return { url: "https://api.deepseek.com   或 OpenAI / vLLM / LMStudio", key: "sk-..." };
   }, [provider]);
 
-  // Allow saving without re-entering key (user wants to change model only).
-  const effectiveKey = apiKey || (hasSavedKey ? "" : "");
   const canProbe = baseUrl.trim() && apiKey.trim() && !probing;
   const canSave =
     !!defaultModel &&
@@ -225,11 +229,14 @@ function LLMCard({
   }, [models, defaultModel, complexModel]);
 
   return (
-    <section className="card p-5">
-      <header className="mb-4 flex items-start justify-between gap-2">
-        <div>
+    <section className="admin-panel overflow-hidden">
+      <header className="flex flex-col gap-3 border-b border-surface-border/70 bg-surface-2/35 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="admin-icon-tile admin-icon-tile-brand">
+            <Bot className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
           <h2 className="flex items-center gap-2 text-base font-semibold">
-            <Sparkles className="h-4 w-4 text-brand" />
             LLM 提供商
           </h2>
           <p className="mt-1 text-xs text-muted">
@@ -237,20 +244,21 @@ function LLMCard({
               ? `当前：${initial.provider} · ${initial.default_model}`
               : "未配置，使用系统默认"}
           </p>
+          </div>
         </div>
         {initial?.configured && (
           <button
             onClick={() => setClearOpen(true)}
-            className="btn btn-ghost btn-sm text-muted"
+            className="admin-btn-secondary w-full shrink-0 sm:w-auto"
             type="button"
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <Trash2 className="h-4 w-4" />
             清除
           </button>
         )}
       </header>
 
-      <div className="space-y-3 text-sm">
+      <div className="grid gap-5 px-5 py-5 text-sm lg:grid-cols-2">
         <Field label="Provider">
           <Select
             value={provider}
@@ -274,14 +282,14 @@ function LLMCard({
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
             placeholder={placeholders.url}
-            className="block w-full rounded-lg border bg-bg px-3 py-2 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+            className={inputClass}
           />
         </Field>
 
         <Field label="API Key">
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <KeyRound className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative min-w-0 flex-1">
+              <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
               <input
                 type="password"
                 name="llm-api-key"
@@ -293,17 +301,17 @@ function LLMCard({
                 placeholder={
                   hasSavedKey ? "已保存（留空保持现有）" : placeholders.key
                 }
-                className="block w-full rounded-lg border bg-bg pl-8 pr-3 py-2 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                className={cn(inputClass, "pl-9")}
               />
             </div>
             <button
               onClick={handleProbe}
               disabled={!canProbe}
-              className="btn btn-ghost btn-sm"
+              className="admin-btn-secondary h-[40px] w-full shrink-0 sm:w-auto"
               type="button"
             >
               {probing ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 "测试连接"
               )}
@@ -320,7 +328,7 @@ function LLMCard({
             placeholderOption={
               modelOptions.length === 0
                 ? { value: "", label: "请先点击测试连接" }
-                : { value: "", label: "请选择…" }
+                : { value: "", label: "请选择" }
             }
             className="min-w-0 sm:min-w-[16rem]"
           />
@@ -345,7 +353,7 @@ function LLMCard({
             step={1024}
             value={contextWindow}
             onChange={(e) => setContextWindow(Number(e.target.value))}
-            className="block w-full rounded-lg border bg-bg px-3 py-2 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+            className={inputClass}
           />
           <p className="mt-1 text-xs text-muted">
             填写该模型的最大上下文窗口；不确定时请使用提供商文档中的输入窗口值。
@@ -353,17 +361,17 @@ function LLMCard({
         </Field>
       </div>
 
-      <div className="-mx-5 -mb-5 mt-5 flex items-center justify-between gap-3 border-t bg-card/95 px-5 py-3 backdrop-blur">
+      <div className="flex flex-col gap-3 border-t border-surface-border/70 bg-surface-2/35 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <span className="min-w-0 flex-1 text-xs text-muted">
-          {canSave ? "配置校验通过，可以保存。" : "补全 Base URL、API Key、模型和上下文窗口后保存。"}
+          {canSave ? "配置校验通过，可以保存" : "补全 Base URL、API Key、模型和上下文窗口后保存"}
         </span>
         <button
           onClick={handleSave}
           disabled={!canSave}
-          className="btn btn-primary shrink-0"
+          className={primaryActionClass}
           type="button"
         >
-          {saving ? "保存中…" : "保存"}
+          {saving ? "保存中..." : "保存 LLM 配置"}
         </button>
       </div>
       <Dialog
@@ -384,7 +392,7 @@ function LLMCard({
 }
 
 // ---------------------------------------------------------------------------
-// KbOptions card (v2-M6) — KB-mode toggles
+// KbOptions card (v2-M6) - KB-mode toggles
 // ---------------------------------------------------------------------------
 function KbOptionsCard({
   initial,
@@ -419,48 +427,55 @@ function KbOptionsCard({
   };
 
   return (
-    <section className="card p-5">
-      <header className="mb-3 flex items-center gap-2">
-        <KeyRound className="h-4 w-4 text-brand" />
-        <h2 className="text-base font-semibold">KB 模式选项</h2>
+    <section className="admin-panel overflow-hidden">
+      <header className="flex items-start gap-3 border-b border-surface-border/70 bg-surface-2/35 px-5 py-4">
+        <span className="admin-icon-tile admin-icon-tile-brand">
+          <Globe2 className="h-4 w-4" />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold">KB 模式选项</h2>
+          <p className="mt-1 text-xs text-muted">控制知识库回答不足时是否允许网络检索兜底。</p>
+        </div>
       </header>
 
-      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3 transition hover:bg-surface">
-        <input
-          type="checkbox"
+      <div className="px-5 py-5">
+      <div className="flex items-start gap-4 rounded-lg border border-surface-border/80 bg-surface p-4 shadow-sm transition-[background-color,border-color,box-shadow] hover:border-brand/30 hover:bg-surface-2/60 hover:shadow-md">
+        <Switch
           checked={webEnabled}
-          onChange={(e) => setWebEnabled(e.target.checked)}
+          onCheckedChange={setWebEnabled}
           disabled={saving}
-          className="mt-0.5 h-4 w-4 accent-accent"
+          aria-label="允许 KB 对话调用网络搜索作为兜底"
+          className="mt-1"
         />
-        <div className="flex-1">
+        <div className="min-w-0 flex-1">
           <div className="text-sm font-medium">KB 对话允许调用网络搜索作为兜底</div>
           <p className="mt-1 text-xs text-muted leading-relaxed">
             开启后，绑定 KB 的对话里 agent 仍然优先 <code className="rounded bg-surface px-1">search_kb</code>{" "}
-            检索你的文档；只在 KB 没有相关 chunks（相关度 &lt; 0.4）时，**最多调一次**{" "}
+            检索你的文档；只在 KB 没有相关分块（相关度 &lt; 0.4）时最多调一次{" "}
             <code className="rounded bg-surface px-1">web_search</code> 兜底补充。
-            答案会按【📚 KB】/【🌐 Web】分段标注来源。默认关闭以保持答案严格基于知识库。
+            答案会按【KB】【Web】分段标注来源。默认关闭以保持答案严格基于知识库。
           </p>
         </div>
-      </label>
+      </div>
+      </div>
 
-      <div className="-mx-5 -mb-5 mt-5 flex items-center justify-between gap-3 border-t bg-card/95 px-5 py-3 backdrop-blur">
+      <div className="flex flex-col gap-3 border-t border-surface-border/70 bg-surface-2/35 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <span className="min-w-0 flex-1 text-xs text-muted">
-          {dirty ? "选项已变更，保存后会影响后续 KB 对话。" : "当前选项与服务器配置一致。"}
+          {dirty ? "选项已变更，保存后会影响后续 KB 对话" : "当前选项与服务器配置一致"}
         </span>
         <button
           type="button"
           onClick={onSave}
           disabled={saving || !dirty}
-          className="btn btn-primary btn-sm shrink-0"
+          className={primaryActionClass}
         >
           {saving ? (
             <>
-              <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-              保存中…
+              <Loader2 className="h-4 w-4 animate-spin" />
+              保存中...
             </>
           ) : (
-            "保存"
+            "保存 KB 选项"
           )}
         </button>
       </div>
@@ -469,7 +484,7 @@ function KbOptionsCard({
 }
 
 // ---------------------------------------------------------------------------
-// Memory card — audit and control without interrupting chat capture
+// Memory card - audit and control without interrupting chat capture
 // ---------------------------------------------------------------------------
 function MemoryCard() {
   const [memories, setMemories] = useState<UserMemory[]>([]);
@@ -517,25 +532,33 @@ function MemoryCard() {
   };
 
   return (
-    <section className="card p-5">
-      <header className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <h2 className="flex items-center gap-2 text-base font-semibold">
-            <BrainCircuit className="h-4 w-4 text-brand" />
-            记忆管理
-          </h2>
-          <p className="mt-1 text-xs leading-relaxed text-muted">
-            系统会在后台仅保存高置信度的偏好和约束。你可以随时查看、降低重要度或删除；不会影响聊天时的静默体验。
-          </p>
+    <section className="admin-panel overflow-hidden">
+      <header className="flex flex-col gap-3 border-b border-surface-border/70 bg-surface-2/35 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="admin-icon-tile admin-icon-tile-brand shrink-0">
+            <BrainCircuit className="h-4 w-4" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base font-semibold">记忆管理</h2>
+            <p className="mt-1 text-xs leading-relaxed text-muted">
+              系统会在后台仅保存高置信度的偏好和约束。你可以随时查看、降低重要度或删除；不会影响聊天时的静默体验。
+            </p>
+          </div>
         </div>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => void refresh()} disabled={loading}>
+        <button
+          type="button"
+          className="admin-btn-secondary w-full shrink-0 sm:w-auto"
+          onClick={() => void refresh()}
+          disabled={loading}
+        >
           刷新
         </button>
       </header>
 
+      <div className="px-5 py-5">
       {loading ? (
         <div className="flex items-center gap-2 py-5 text-sm text-muted">
-          <Loader2 className="h-4 w-4 animate-spin" /> 读取记忆…
+          <Loader2 className="h-4 w-4 animate-spin" /> 读取记忆中...
         </div>
       ) : memories.length === 0 ? (
         <StateView
@@ -549,9 +572,9 @@ function MemoryCard() {
           {memories.map((memory) => {
             const busy = busyId === memory.id;
             return (
-              <article key={memory.id} className="rounded-lg border p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
+              <article key={memory.id} className="rounded-lg border border-surface-border/80 bg-surface shadow-sm transition-[background-color,border-color,box-shadow] hover:border-brand/30 hover:bg-surface-2/45 hover:shadow-md">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0 px-3 py-3">
                     <p className="break-words text-sm font-medium">{memory.content}</p>
                     <p className="mt-1 text-xs text-muted">
                       {memoryTypeLabel(memory.type)} · {memorySourceLabel(memory.source)} · {memory.scope === "kb" ? "知识库范围" : "全局范围"}
@@ -563,15 +586,15 @@ function MemoryCard() {
                   </div>
                   <button
                     type="button"
-                    className="btn btn-ghost btn-sm shrink-0 text-muted hover:text-destructive"
+                    className={cn(secondaryActionClass, "mx-3 mb-3 text-muted hover:text-destructive sm:m-3")}
                     onClick={() => setDeleteTarget(memory)}
                     disabled={busy}
                     aria-label={`删除记忆：${memory.content}`}
                   >
-                    <Trash2 className="h-3.5 w-3.5" /> 删除
+                    <Trash2 className="h-4 w-4" /> 删除
                   </button>
                 </div>
-                <div className="mt-3 flex items-center gap-2 text-xs">
+                <div className="flex flex-wrap items-center gap-2 border-t border-surface-border/60 bg-surface-2/35 px-3 py-3 text-xs">
                   <span className="text-muted">重要度</span>
                   <Select
                     value={String(memory.importance)}
@@ -586,7 +609,7 @@ function MemoryCard() {
                       { value: "1", label: "最高" },
                     ]}
                     size="sm"
-                    className="h-7 min-w-[5.5rem] text-xs"
+                    className="h-[40px] min-w-[6rem] text-sm"
                     contentAlign="start"
                     contentPosition="popper"
                     aria-label={`调整记忆重要度：${memory.content}`}
@@ -598,6 +621,7 @@ function MemoryCard() {
           })}
         </div>
       )}
+      </div>
 
       <Dialog
         open={deleteTarget !== null}
@@ -635,9 +659,18 @@ function formatMemoryDate(value: string) {
 // ---------------------------------------------------------------------------
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="block">
-      <div className="mb-1 text-xs font-medium text-muted">{label}</div>
+    <label className="block min-w-0">
+      <div className="mb-1.5 text-xs font-medium text-muted">{label}</div>
       {children}
     </label>
   );
 }
+
+const inputClass =
+  "admin-input";
+
+const primaryActionClass =
+  "admin-btn-primary w-full shrink-0 sm:w-auto";
+
+const secondaryActionClass =
+  "admin-btn-secondary w-full shrink-0 sm:w-auto";

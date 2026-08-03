@@ -150,7 +150,7 @@ function estimateContextStatus(
   return {
     state,
     label: "本地估算",
-    description: `后端尚未提供上下文状态，已按当前消息与 ${model ?? "默认模型"} 的上下文窗口估算。`,
+    description: `后端尚未提供上下文状态，已按当前消息和 ${model ?? "默认模型"} 的上下文窗口估算。`,
     current_tokens: current,
     available_tokens: available,
     context_window: window,
@@ -1059,18 +1059,18 @@ export function ChatPage({
     return (
       <ChatLoadingShell
         label={`正在打开 ${APP_NAME}`}
-        description="正在恢复你的知识库和最近会话。"
+        description="正在恢复你的知识库和会话。"
       />
     );
   }
 
   return (
-    <div className="ak-chat ak-page-transition h-dvh w-screen overflow-hidden text-slate-100">
+    <div className="ak-chat ak-chat-root ak-page-transition h-dvh w-screen overflow-hidden">
       {sidebarOpen && (
         <button
-          aria-label="关闭侧栏背景"
+          aria-label="关闭侧栏遮罩"
           tabIndex={-1}
-          className="fixed inset-0 z-30 bg-black/60 lg:hidden"
+          className="ak-mobile-overlay fixed inset-0 z-30 lg:hidden"
           onClick={() => setSidebarOpen(false)}
           type="button"
         />
@@ -1115,7 +1115,7 @@ export function ChatPage({
                       action={
                         <button
                           type="button"
-                          className="btn btn-primary"
+                          className="admin-btn-primary"
                           onClick={() => handleNew(null)}
                         >
                           新建对话
@@ -1239,25 +1239,25 @@ function ChatLoadingShell({
   description?: string;
 }) {
   return (
-    <div className="ak-chat ak-page-transition h-dvh w-screen overflow-hidden text-slate-100">
+    <div className="ak-chat ak-chat-root ak-page-transition h-dvh w-screen overflow-hidden">
       <div className="grid h-full grid-cols-1 lg:grid-cols-[286px_minmax(0,1fr)]">
         <aside
           aria-hidden="true"
-          className="ak-sidebar hidden h-full min-h-0 w-[286px] flex-col overflow-hidden border-r border-white/10 bg-[#0a121f]/98 px-3 py-4 lg:flex"
+          className="ak-sidebar ak-sidebar-shell hidden h-full min-h-0 w-[286px] flex-col overflow-hidden border-r px-3 py-4 lg:flex"
         >
-          <div className="ak-sidebar-top rounded-xl px-2 pb-3 pt-2">
-            <Brand className="ak-sidebar-brand text-slate-950 dark:text-white" size="md" />
-            <div className="ak-sidebar-new mt-5 h-11 rounded-lg border border-emerald-300/20 bg-emerald-400 shadow-[0_10px_30px_rgba(16,185,129,0.22)]" />
-            <div className="ak-sidebar-search mt-4 h-9 rounded-lg border border-white/10 bg-black/20" />
+          <div className="ak-sidebar-top rounded-lg px-2 pb-3 pt-2">
+            <Brand className="ak-sidebar-brand" size="md" />
+            <div className="ak-sidebar-new ak-sidebar-primary-action mt-5 h-10 rounded-lg border" />
+            <div className="ak-sidebar-search mt-4 h-[40px] rounded-lg border" />
           </div>
-          <div className="my-4 h-px bg-white/10" />
+          <div className="ak-sidebar-separator my-4 h-px" />
           <div className="space-y-2 px-1">
-            <div className="h-4 w-28 rounded bg-white/[0.06]" />
-            <div className="h-12 rounded-lg bg-white/[0.04]" />
-            <div className="h-12 rounded-lg bg-white/[0.035]" />
-            <div className="h-12 rounded-lg bg-white/[0.03]" />
+            <div className="ak-sidebar-skeleton h-4 w-28 rounded" />
+            <div className="ak-sidebar-skeleton h-12 rounded-lg" />
+            <div className="ak-sidebar-skeleton h-12 rounded-lg" />
+            <div className="ak-sidebar-skeleton h-12 rounded-lg" />
           </div>
-          <div className="mt-auto h-[58px] rounded-lg border border-white/10 bg-black/20" />
+          <div className="ak-user-trigger mt-auto h-[58px] rounded-lg border" />
         </aside>
 
         <div className="flex h-[100dvh] max-h-[100dvh] min-h-0 min-w-0 flex-col overflow-hidden">
@@ -1274,10 +1274,10 @@ function ChatLoadingShell({
             </div>
             <div
               aria-hidden="true"
-              className="ak-composer shrink-0 bg-[#08101c]/90 px-5 py-3 backdrop-blur-xl"
+              className="ak-composer shrink-0 px-5 py-3 backdrop-blur-xl"
             >
-              <div className="ak-composer-box mx-auto h-[105px] max-w-[860px] rounded-lg border border-white/12 bg-[#0d1726]/94 shadow-[0_18px_46px_rgba(0,0,0,0.32)]" />
-              <div className="mx-auto mt-2 h-4 w-48 rounded bg-white/[0.04]" />
+              <div className="ak-composer-box mx-auto h-[105px] max-w-[860px] rounded-lg border" />
+              <div className="ak-composer-skeleton mx-auto mt-2 h-4 w-48 rounded" />
             </div>
           </main>
         </div>
@@ -1310,23 +1310,23 @@ function getKbStatusView(kb: KB) {
     return {
       label: "\u7a7a\u5e93",
       detail: "\u7b49\u5f85\u4e0a\u4f20\u8d44\u6599",
-      dot: "bg-slate-500",
-      tone: "text-slate-400",
+      dot: "ak-status-dot-muted",
+      tone: "ak-status-text-muted",
     };
   }
   if (kb.chunks_count > 0) {
     return {
       label: "\u53ef\u68c0\u7d22",
-      detail: `${kb.chunks_count.toLocaleString()} chunks`,
-      dot: "bg-emerald-400",
-      tone: "text-emerald-300",
+      detail: `${kb.chunks_count.toLocaleString()} 分块`,
+      dot: "ak-status-dot-accent",
+      tone: "ak-status-text-accent",
     };
   }
   return {
     label: "\u5f85\u7d22\u5f15",
     detail: `${kb.documents_count.toLocaleString()} \u4e2a\u6587\u6863`,
-    dot: "bg-sky-300",
-    tone: "text-sky-200",
+    dot: "ak-status-dot-accent",
+    tone: "ak-status-text-accent",
   };
 }
 
@@ -1356,21 +1356,21 @@ function getConversationStatusView(conversation: Conversation, currentId: string
   if (active) {
     return {
       label: "\u5f53\u524d",
-      dot: "bg-emerald-400",
-      tone: "border-emerald-300/20 bg-emerald-400/10 text-emerald-300",
+      dot: "ak-status-dot-accent",
+      tone: "ak-status-badge-current",
     };
   }
   if (messageCount === 0) {
     return {
       label: "\u7a7a\u4f1a\u8bdd",
-      dot: "bg-slate-500",
-      tone: "border-white/10 bg-white/[0.04] text-slate-400",
+      dot: "ak-status-dot-muted",
+      tone: "ak-sidebar-status-muted",
     };
   }
   return {
     label: "\u5df2\u4fdd\u5b58",
-    dot: "bg-sky-300",
-    tone: "border-sky-300/15 bg-sky-300/10 text-sky-200",
+    dot: "ak-status-dot-accent",
+    tone: "ak-status-badge-saved",
   };
 }
 
@@ -1460,25 +1460,25 @@ function DarkSidebar({
   return (
     <aside
       className={cn(
-        "ak-sidebar ak-motion-enter fixed inset-y-0 left-0 z-40 flex h-full min-h-0 w-[286px] flex-col overflow-hidden border-r border-white/10 bg-[#0a121f]/98 px-3 py-4 shadow-2xl transition-transform duration-surface ease-ui-drawer lg:relative lg:z-auto lg:translate-x-0 lg:shadow-none",
+        "ak-sidebar ak-sidebar-shell ak-motion-enter fixed inset-y-0 left-0 z-40 flex h-full min-h-0 w-[286px] flex-col overflow-hidden border-r px-3 py-4 shadow-[0_24px_64px_rgba(0,0,0,0.28)] transition-transform duration-surface ease-ui-drawer lg:relative lg:z-auto lg:translate-x-0 lg:shadow-none",
         open ? "translate-x-0" : "-translate-x-full"
       )}
     >
-      <div className="ak-sidebar-top rounded-xl px-2 pb-3 pt-2">
+      <div className="ak-sidebar-top rounded-lg px-2 pb-3 pt-2">
         <div className="flex items-center justify-between">
-        <Brand className="ak-sidebar-brand text-slate-950 dark:text-white" size="md" />
-        <button
-          aria-label="关闭侧栏"
-          className="ak-press inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-white/10 lg:hidden"
-          onClick={onClose}
-          type="button"
-        >
-          <X className="h-4 w-4" />
-        </button>
+          <Brand className="ak-sidebar-brand" size="md" />
+          <button
+            aria-label="关闭侧栏"
+            className="ak-sidebar-icon-action ak-press inline-flex size-[40px] items-center justify-center rounded-lg border lg:hidden"
+            onClick={onClose}
+            type="button"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
 
         <button
-          className="ak-sidebar-new ak-press mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-emerald-300/20 bg-emerald-400 text-sm font-medium text-white shadow-[0_10px_30px_rgba(16,185,129,0.22)]"
+          className="ak-sidebar-new ak-sidebar-primary-action ak-press mt-5 flex h-10 w-full items-center justify-center gap-2 rounded-lg border text-sm font-medium"
           onClick={() => onNew(currentKbId)}
           type="button"
         >
@@ -1486,32 +1486,32 @@ function DarkSidebar({
           {"\u65b0\u5efa\u5bf9\u8bdd"}
         </button>
 
-        <div className="ak-sidebar-search mt-4 flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 text-sm text-slate-400 focus-within:border-emerald-300/35">
-        <Search className="h-4 w-4" />
-        <input
-          className="min-w-0 flex-1 bg-transparent text-sm text-slate-200 outline-none placeholder:text-slate-500"
-          ref={searchInputRef}
-          aria-label="搜索最近对话"
-          value={searchTerm}
-          onChange={(event) => setSearchTerm(event.target.value)}
-          placeholder="搜索对话"
-        />
-        <kbd aria-hidden="true" className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-slate-500">
-          Ctrl K
-        </kbd>
-      </div>
+        <div className="ak-sidebar-search mt-4 flex h-[40px] items-center gap-2 rounded-lg border px-3 text-sm">
+          <Search className="h-4 w-4" />
+          <input
+            className="ak-sidebar-search-input min-w-0 flex-1 bg-transparent text-sm outline-none"
+            ref={searchInputRef}
+            aria-label="搜索历史对话"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="搜索对话"
+          />
+          <kbd aria-hidden="true" className="ak-sidebar-kbd rounded border px-1.5 py-0.5 text-[10px]">
+            Ctrl K
+          </kbd>
+        </div>
 
       </div>
 
-      <div className="my-4 h-px bg-white/10" />
+      <div className="ak-sidebar-separator my-4 h-px" />
 
       <div
         className="min-h-0 basis-0 flex-1 overflow-y-auto pr-1"
         onScroll={handleConversationScroll}
       >
-        <div className="flex items-center justify-between px-2 pb-2 text-sm text-slate-400">
+        <div className="ak-sidebar-section-label flex items-center justify-between px-2 pb-2 text-sm">
           <span>{"\u6700\u8fd1\u5bf9\u8bdd"}</span>
-          <span className="text-xs tabular-nums text-slate-600">
+          <span className="ak-sidebar-count text-xs tabular-nums">
             {filteredConversations.length}/{conversationTotal}
           </span>
         </div>
@@ -1524,30 +1524,30 @@ function DarkSidebar({
             <div
               key={conversation.id}
               className={cn(
-                "group flex min-h-12 items-center gap-2 rounded-lg px-3 py-2 text-sm transition",
+                "ak-sidebar-row group flex min-h-12 items-center gap-2 rounded-lg border border-transparent px-3 py-2 text-sm transition-[background-color,border-color,color]",
                 conversation.id === currentId
-                  ? "bg-white/[0.08] text-slate-100"
-                  : "text-slate-500 hover:bg-white/[0.06] hover:text-slate-200"
+                  ? "ak-sidebar-row-active"
+                  : "ak-sidebar-row-idle"
               )}
             >
               <button
-                className="min-w-0 flex-1 text-left"
+                className="min-w-0 flex-1 cursor-pointer text-left"
                 onClick={() => onSelectConversation(conversation.id)}
                 type="button"
                 title={conversation.title}
               >
                 <span className="block truncate">{conversation.title}</span>
-                <span className="mt-0.5 flex items-center gap-2 text-[11px] text-slate-600">
-                  <span className={cn("h-1.5 w-1.5 rounded-full", statusView.dot)} />
+                <span className="ak-sidebar-meta mt-0.5 flex items-center gap-2 text-[11px]">
+                  <span className={cn("h-1.5 w-1.5 rounded-sm", statusView.dot)} />
                   <span>{formatConversationTime(conversation.updated_at)}</span>
-                  <span className="h-1 w-1 rounded-full bg-slate-700" />
+                  <span className="ak-sidebar-meta-separator h-1 w-1 rounded-sm" />
                   <span>{messageCount}{" \u6761\u6d88\u606f"}</span>
                 </span>
               </button>
               {showStatusTag && (
                 <span
                   className={cn(
-                    "shrink-0 rounded-md border px-1.5 py-0.5 text-[11px] group-hover:hidden",
+                    "ak-sidebar-status-badge shrink-0 rounded-md border px-1.5 py-0.5 text-[11px] group-hover:hidden",
                     statusView.tone
                   )}
                 >
@@ -1556,7 +1556,7 @@ function DarkSidebar({
               )}
               <button
                 aria-label="删除会话"
-                className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-500 hover:bg-red-400/10 hover:text-red-300 group-hover:flex"
+                className="ak-sidebar-row-action hidden size-8 shrink-0 cursor-pointer items-center justify-center rounded-md group-hover:flex"
                 onClick={() => {
                   setDeleteTarget(conversation);
                 }}
@@ -1568,13 +1568,13 @@ function DarkSidebar({
             );
           })}
           {filteredConversations.length === 0 && (
-            <div className="rounded-lg border border-dashed border-white/10 px-3 py-4 text-sm text-slate-500">
+            <div className="ak-sidebar-empty rounded-lg border border-dashed px-3 py-4 text-sm">
               {searchTerm ? "\u6ca1\u6709\u5339\u914d\u7684\u5bf9\u8bdd\u3002" : "\u8fd8\u6ca1\u6709\u5bf9\u8bdd\uff0c\u5148\u95ee\u4e00\u4e2a\u95ee\u9898\u3002"}
             </div>
           )}
           {(conversationHasMore || conversationLoadingMore) && (
             <button
-              className="flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] text-xs text-slate-500 transition hover:border-emerald-300/20 hover:text-slate-300 disabled:cursor-wait disabled:opacity-70"
+              className="ak-sidebar-load-more flex min-h-[40px] w-full cursor-pointer items-center justify-center gap-2 rounded-lg border text-xs transition disabled:cursor-wait disabled:opacity-70"
               disabled={conversationLoadingMore}
               onClick={onLoadMoreConversations}
               type="button"
@@ -1594,55 +1594,55 @@ function DarkSidebar({
 
       <div ref={userMenuRef} className="relative mt-3 shrink-0">
         {userMenuOpen && (
-          <div className="ak-popover absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-lg border border-white/10 bg-[#111c2b] shadow-2xl">
+          <div className="ak-popover ak-user-popover absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-lg border shadow-[0_18px_48px_rgba(0,0,0,0.26)]">
             <button
-              className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-slate-200 transition hover:bg-white/[0.06]"
+              className="ak-user-menu-item flex min-h-[40px] w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left text-sm transition"
               onClick={() => {
                 setUserMenuOpen(false);
                 onOpenAccountSettings();
               }}
               type="button"
             >
-              <Settings className="h-4 w-4 text-slate-400" />
+              <Settings className="ak-user-menu-icon h-4 w-4" />
               账号设置
             </button>
             <Link
-              className="flex items-center gap-2 px-3 py-2.5 text-sm text-slate-200 transition hover:bg-white/[0.06]"
+              className="ak-user-menu-item flex min-h-[40px] items-center gap-2 px-3 py-2.5 text-sm transition"
               href="/settings"
               onClick={() => setUserMenuOpen(false)}
             >
-              <SlidersHorizontal className="h-4 w-4 text-slate-400" />
+              <SlidersHorizontal className="ak-user-menu-icon h-4 w-4" />
               模型设置
             </Link>
             <Link
-              className="flex items-center gap-2 px-3 py-2.5 text-sm text-slate-200 transition hover:bg-white/[0.06]"
+              className="ak-user-menu-item flex min-h-[40px] items-center gap-2 px-3 py-2.5 text-sm transition"
               href="/kbs"
               onClick={() => setUserMenuOpen(false)}
             >
-              <BookOpen className="h-4 w-4 text-slate-400" />
+              <BookOpen className="ak-user-menu-icon h-4 w-4" />
               我的知识库
             </Link>
             <Link
-              className="flex items-center gap-2 px-3 py-2.5 text-sm text-slate-200 transition hover:bg-white/[0.06]"
+              className="ak-user-menu-item flex min-h-[40px] items-center gap-2 px-3 py-2.5 text-sm transition"
               href="/memories"
               onClick={() => setUserMenuOpen(false)}
             >
-              <BrainCircuit className="h-4 w-4 text-slate-400" />
+              <BrainCircuit className="ak-user-menu-icon h-4 w-4" />
               记忆系统
             </Link>
             {user?.is_admin && (
               <Link
-                className="flex items-center gap-2 px-3 py-2.5 text-sm text-slate-200 transition hover:bg-white/[0.06]"
+                className="ak-user-menu-item flex min-h-[40px] items-center gap-2 px-3 py-2.5 text-sm transition"
                 href="/admin"
                 onClick={() => setUserMenuOpen(false)}
               >
-                <Shield className="h-4 w-4 text-slate-400" />
+                <Shield className="ak-user-menu-icon h-4 w-4" />
                 后台管理
               </Link>
             )}
-            <div className="h-px bg-white/10" />
+            <div className="ak-sidebar-separator h-px" />
             <button
-              className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-red-300 transition hover:bg-red-400/10"
+              className="ak-user-menu-item-danger flex min-h-[40px] w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left text-sm transition"
               onClick={() => {
                 setUserMenuOpen(false);
                 onLogout();
@@ -1659,24 +1659,24 @@ function DarkSidebar({
           aria-haspopup="menu"
           aria-label="用户菜单"
           className={cn(
-            "flex w-full items-center justify-between rounded-lg border border-white/10 bg-black/20 p-2 text-left transition hover:bg-white/[0.06]",
-            userMenuOpen && "border-emerald-300/30 bg-white/[0.06]"
+            "ak-user-trigger flex min-h-14 w-full cursor-pointer items-center justify-between rounded-lg border p-2 text-left transition",
+            userMenuOpen && "ak-user-trigger-open"
           )}
           onClick={() => setUserMenuOpen((open) => !open)}
           type="button"
         >
           <span className="flex min-w-0 items-center gap-2">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-500 text-sm font-semibold text-white">
+            <span className="ak-user-avatar flex size-[40px] shrink-0 items-center justify-center rounded-lg border text-sm font-semibold shadow-sm">
               {(user?.display_name?.[0] || user?.email?.[0] || "Z").toUpperCase()}
             </span>
             <span className="min-w-0">
-              <span className="block truncate text-sm font-medium text-slate-100">
+              <span className="block truncate text-sm font-medium text-[color:var(--chat-ink)]">
                 {user?.display_name || user?.email || "\u7528\u6237"}
               </span>
-              <span className="block text-xs text-slate-500">{user?.is_admin ? "\u7ba1\u7406\u5458" : "\u6210\u5458"}</span>
+              <span className="ak-user-role block text-xs">{user?.is_admin ? "\u7ba1\u7406\u5458" : "\u6210\u5458"}</span>
             </span>
           </span>
-          <ChevronDown className={cn("h-4 w-4 shrink-0 text-slate-500 transition", userMenuOpen && "rotate-180")} />
+          <ChevronDown className={cn("ak-user-chevron h-4 w-4 shrink-0 transition", userMenuOpen && "rotate-180")} />
         </button>
       </div>
       <Dialog
@@ -1708,7 +1708,7 @@ function TopBar({
   return (
     <header className="ak-topbar ak-chat-header grid h-[64px] shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 xl:px-7">
       <button
-        className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 text-slate-300 lg:hidden"
+        className="ak-mobile-sidebar-action inline-flex size-[40px] cursor-pointer items-center justify-center rounded-lg border lg:hidden"
         onClick={onOpenSidebar}
         type="button"
         aria-label="打开侧栏"
@@ -1723,7 +1723,7 @@ function TopBar({
       <div className="flex items-center justify-end gap-2">
         <ThemeToggle />
         <Link
-          className="ak-header-help inline-flex h-9 w-9 items-center justify-center rounded-lg"
+          className="ak-header-help inline-flex h-[40px] w-[40px] items-center justify-center rounded-md"
           href="/welcome"
           aria-label="打开产品介绍"
         >
@@ -1747,11 +1747,11 @@ function EmptyWorkbench({
     <div className={cn("flex items-center justify-center", centered ? "pt-12 sm:pt-20" : "min-h-full py-2")}>
       <section className="ak-empty-workbench w-full max-w-[720px] px-5 py-8 sm:px-10">
         <div className="text-center">
-          <div className="text-sm font-medium text-emerald-300">{"\u5df2\u8fde\u63a5 "}{currentKbName}</div>
+          <div className="text-sm font-medium text-[color:var(--chat-accent)]">{"\u5df2\u8fde\u63a5 "}{currentKbName}</div>
           <h1 className="ak-empty-heading mt-4 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">
             {"\u628a\u95ee\u9898\u53d8\u6210"}<span>{"\u6e05\u6670\u7b54\u6848"}</span>
           </h1>
-          <p className="mx-auto mt-4 max-w-lg text-sm leading-6 text-slate-400">
+          <p className="ak-empty-description mx-auto mt-4 max-w-lg text-sm leading-6">
             {"\u4ece\u77e5\u8bc6\u5e93\u4e2d\u68c0\u7d22\u3001\u63a8\u7406\u5e76\u5f15\u7528\u53ef\u8ffd\u6eaf\u7684\u7b54\u6848\u3002"}
           </p>
         </div>
@@ -1759,7 +1759,7 @@ function EmptyWorkbench({
         {!centered && (
           <>
             <div className="mt-8 grid gap-3 sm:grid-cols-3">
-              <EmptyStat icon={<Database className="h-4 w-4" />} label="上下文" value={currentKbName} />
+              <EmptyStat icon={<Database className="h-4 w-4" />} label="知识库" value={currentKbName} />
               <EmptyStat icon={<SlidersHorizontal className="h-4 w-4" />} label="检索模式" value="混合检索" />
               <EmptyStat icon={<ShieldCheck className="h-4 w-4" />} label="数据策略" value="BYOK / 私有化" />
             </div>
@@ -1767,7 +1767,7 @@ function EmptyWorkbench({
             <div className="mt-5 flex flex-wrap gap-2">
               {EMPTY_PROMPTS.map((item) => (
                 <button
-                  className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-slate-300 transition hover:border-emerald-300/40 hover:text-emerald-200"
+                  className="ak-empty-prompt rounded-lg border px-3 py-2 text-sm transition"
                   key={item}
                   onClick={() => onPick(item)}
                   type="button"
@@ -1806,12 +1806,12 @@ function StarterPromptCards({ onPick }: { onPick: (q: string) => void }) {
 
 function EmptyStat({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-black/14 px-3 py-3">
-      <div className="flex items-center gap-2 text-xs text-slate-500">
-        <span className="text-emerald-300">{icon}</span>
+    <div className="ak-empty-stat rounded-lg border px-3 py-3">
+      <div className="flex items-center gap-2 text-xs">
+        <span className="ak-empty-stat-icon">{icon}</span>
         {label}
       </div>
-      <div className="mt-2 truncate text-sm font-medium text-slate-200" title={value}>
+      <div className="ak-empty-stat-value mt-2 truncate text-sm font-medium" title={value}>
         {value}
       </div>
     </div>
@@ -1826,7 +1826,7 @@ function DarkMessage({ message }: { message: Message }) {
           <div className="ak-message-user max-w-full whitespace-pre-wrap break-words rounded-lg px-4 py-2.5 text-left text-[15px] leading-7 sm:px-5 sm:py-3">
             {message.content}
           </div>
-          <div className="mt-1.5 text-xs text-slate-500">{formatMessageTime(message.created_at)}</div>
+          <div className="ak-message-time mt-1.5 text-xs">{formatMessageTime(message.created_at)}</div>
         </div>
       </div>
     );
@@ -1848,15 +1848,15 @@ function DarkAssistantMessage({ message }: { message: Extract<Message, { role: "
       <div className="min-w-0 flex-1">
         <div className="ak-answer px-1 py-1 sm:px-2">
           {message.error && (
-            <div className="mb-3 rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-200">
+            <div className="ak-answer-error mb-3 rounded-lg border px-3 py-2 text-sm">
               {message.error}
             </div>
           )}
           {!hasContent && streaming && (
-            <div className="flex flex-wrap items-center gap-2 text-sm text-slate-400">
-              <LoaderCircle className="h-4 w-4 animate-spin text-emerald-400" />
+            <div className="ak-streaming-status flex flex-wrap items-center gap-2 text-sm">
+              <LoaderCircle className="h-4 w-4 animate-spin text-[color:var(--chat-accent)]" />
               <span>{status.label}</span>
-              <span className="rounded-full bg-emerald-400/10 px-2 py-0.5 text-xs tabular-nums text-emerald-200">
+              <span className="ak-live-badge rounded-md border px-2 py-0.5 text-xs tabular-nums">
                 {status.elapsed}
               </span>
             </div>
@@ -1867,7 +1867,7 @@ function DarkAssistantMessage({ message }: { message: Extract<Message, { role: "
             </div>
           )}
           {hasContent && streaming && (
-            <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-400/10 px-2.5 py-1 text-xs tabular-nums text-emerald-200">
+            <div className="ak-live-badge mt-3 inline-flex items-center gap-2 rounded-md border px-2.5 py-1 text-xs tabular-nums">
               <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
               <span>{status.label}</span>
               <span>{status.elapsed}</span>
@@ -1922,21 +1922,21 @@ function getAssistantStreamingStatus(
     allToolsSettled && latestToolDoneAt != null ? Math.max(0, Date.now() - latestToolDoneAt) : null;
 
   if (hasContent) {
-    return { label: "正在输出回答", elapsed: `本轮 ${formatDuration(elapsedMs)}` };
+    return { label: "正在生成回答", elapsed: `耗时 ${formatDuration(elapsedMs)}` };
   }
   if (allToolsSettled) {
     return {
-      label: "检索完成，正在生成回答",
+      label: "工具完成，正在生成回答",
       elapsed:
         waitAfterToolsMs == null
-          ? `本轮 ${formatDuration(elapsedMs)}`
-          : `等待 ${formatDuration(waitAfterToolsMs)} · 本轮 ${formatDuration(elapsedMs)}`,
+          ? `耗时 ${formatDuration(elapsedMs)}`
+          : `等待 ${formatDuration(waitAfterToolsMs)} / 耗时 ${formatDuration(elapsedMs)}`,
     };
   }
   if (hasTools) {
-    return { label: "正在检索知识库", elapsed: `本轮 ${formatDuration(elapsedMs)}` };
+    return { label: "正在检索知识库", elapsed: `耗时 ${formatDuration(elapsedMs)}` };
   }
-  return { label: "正在检索并生成回答", elapsed: `本轮 ${formatDuration(elapsedMs)}` };
+  return { label: "正在检索并生成回答", elapsed: `耗时 ${formatDuration(elapsedMs)}` };
 }
 
 function getLatestToolDoneAt(tools: ToolEvent[]) {
@@ -1949,20 +1949,20 @@ function getLatestToolDoneAt(tools: ToolEvent[]) {
 
 function AnswerMarkdown({ markdown, streaming }: { markdown: string; streaming: boolean }) {
   return (
-    <div className="text-[15px] leading-7 text-slate-300">
+    <div className="ak-answer-markdown text-[15px] leading-7">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
           p: ({ children }) => <p className="mb-4 last:mb-0">{children}</p>,
           ul: ({ children }) => <ul className="mb-4 list-disc space-y-1 pl-5">{children}</ul>,
           ol: ({ children }) => <ol className="mb-4 list-decimal space-y-1 pl-5">{children}</ol>,
-          li: ({ children }) => <li className="pl-1 marker:text-emerald-400">{children}</li>,
-          strong: ({ children }) => <strong className="font-semibold text-slate-100">{children}</strong>,
-          h1: ({ children }) => <h1 className="mb-3 text-xl font-semibold text-slate-100">{children}</h1>,
-          h2: ({ children }) => <h2 className="mb-3 mt-5 text-lg font-semibold text-slate-100">{children}</h2>,
-          h3: ({ children }) => <h3 className="mb-2 mt-4 text-base font-semibold text-slate-100">{children}</h3>,
+          li: ({ children }) => <li className="ak-answer-list-item pl-1">{children}</li>,
+          strong: ({ children }) => <strong className="ak-answer-strong font-semibold">{children}</strong>,
+          h1: ({ children }) => <h1 className="ak-answer-heading mb-3 text-xl font-semibold">{children}</h1>,
+          h2: ({ children }) => <h2 className="ak-answer-heading mb-3 mt-5 text-lg font-semibold">{children}</h2>,
+          h3: ({ children }) => <h3 className="ak-answer-heading mb-2 mt-4 text-base font-semibold">{children}</h3>,
           code: ({ children }) => (
-            <code className="rounded bg-white/10 px-1.5 py-0.5 text-sm text-emerald-200">
+            <code className="ak-answer-code rounded px-1.5 py-0.5 text-sm">
               {children}
             </code>
           ),
@@ -1970,7 +1970,7 @@ function AnswerMarkdown({ markdown, streaming }: { markdown: string; streaming: 
       >
         {markdown.replace(/\\n/g, "\n")}
       </ReactMarkdown>
-      {streaming && <span className="inline-block h-4 w-1.5 animate-pulse bg-emerald-400" />}
+      {streaming && <span className="ak-streaming-cursor inline-block h-4 w-1.5 animate-pulse" />}
     </div>
   );
 }
@@ -1979,20 +1979,20 @@ function SourceStrip({ sources }: { sources: SourceRow[] }) {
   if (sources.length === 0) return null;
 
   return (
-    <div className="mt-5 rounded-lg border border-white/10 bg-black/14 p-2">
-      <div className="mb-2 text-sm font-medium text-emerald-300">{"\u5de5\u5177\u8c03\u7528"}</div>
+    <div className="ak-source-strip mt-5 rounded-lg border p-2">
+      <div className="ak-source-strip-title mb-2 text-sm font-medium">{"\u5de5\u5177\u8c03\u7528"}</div>
       <div className="grid gap-2 sm:grid-cols-2">
         {sources.map((source) => (
           <div
-            className="flex min-w-0 items-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-2 py-2"
+            className="ak-source-row flex min-w-0 items-center gap-2 rounded-md border px-2 py-2"
             key={source.title}
           >
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-slate-700/60 text-[10px] font-semibold text-slate-300">
+            <span className="ak-source-score flex min-h-8 min-w-[40px] shrink-0 items-center justify-center rounded-md border px-1.5 text-[10px] font-semibold">
               {source.score}
             </span>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-xs text-slate-200">{source.title}</div>
-              <div className="truncate text-xs text-slate-500">{source.meta}</div>
+              <div className="ak-source-title truncate text-xs">{source.title}</div>
+              <div className="ak-source-meta truncate text-xs">{source.meta}</div>
             </div>
           </div>
         ))}
@@ -2009,7 +2009,7 @@ function ContextCompressionNotice({
   if (!contextStatus || contextStatus.state === "normal") return null;
   const isCompressed = contextStatus.state === "compressed";
   return (
-    <div className="ak-context-notice mx-auto flex w-fit max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-xs shadow-[0_10px_28px_rgba(0,0,0,0.18)]">
+    <div className="ak-context-notice mx-auto flex w-fit max-w-full items-center gap-2 rounded-lg border px-3 py-2 text-xs shadow-[0_10px_28px_rgba(0,0,0,0.18)]">
       <ShieldCheck
         className={cn(
           "h-3.5 w-3.5",
@@ -2018,7 +2018,7 @@ function ContextCompressionNotice({
       />
       <span className="truncate">
         {isCompressed
-          ? `已自动压缩早期上下文，保留最近 ${contextStatus.retained_recent_turns} 轮完整对话`
+          ? `已自动压缩长期上下文，保留最近 ${contextStatus.retained_recent_turns} 轮对话`
           : contextStatus.description}
       </span>
     </div>
@@ -2224,10 +2224,10 @@ function SmallAction({
   return (
     <button
       className={cn(
-        "inline-flex h-7 min-w-7 items-center justify-center rounded-md px-1.5 text-xs transition",
+        "ak-small-action inline-flex size-[40px] cursor-pointer items-center justify-center rounded-md border px-2 text-xs transition",
         disabled
           ? "cursor-not-allowed opacity-45"
-          : "hover:bg-white/10 hover:text-slate-200"
+          : ""
       )}
       disabled={disabled}
       onClick={onClick}
@@ -2284,12 +2284,12 @@ function Composer({
       : modelOptions;
   const showModelSelector = visibleModelOptions.length > 1;
   const defaultModelLabel = llmReady
-    ? "auto"
+    ? "\u81ea\u52a8"
     : "\u672a\u914d\u7f6e\u6a21\u578b";
 
   return (
-    <div className={cn("ak-composer", centered ? "ak-composer-centered mt-6 px-0 pb-8" : "shrink-0 bg-[#08101c]/90 px-5 py-3 backdrop-blur-xl")}>
-      <div className="ak-composer-box mx-auto max-w-[860px] rounded-lg border border-white/12 bg-[#0d1726]/94 shadow-[0_18px_46px_rgba(0,0,0,0.32)] focus-within:border-brand/40">
+    <div className={cn("ak-composer", centered ? "ak-composer-centered mt-6 px-0 pb-8" : "shrink-0 px-5 py-3 backdrop-blur-xl")}>
+      <div className="ak-composer-box mx-auto max-w-[860px] rounded-lg border focus-within:border-brand/40">
         <textarea
           ref={textareaRef}
           value={value}
@@ -2303,42 +2303,42 @@ function Composer({
           rows={1}
           aria-label="输入消息"
           data-testid="composer-input"
-          placeholder="向当前会话提问，知识库会随会话锁定"
-          className={cn("block max-h-[160px] w-full resize-none bg-transparent px-5 py-4 text-[15px] leading-6 text-slate-100 outline-none placeholder:text-slate-500", centered ? "min-h-[112px] text-base" : "min-h-[44px] px-4 py-3")}
+          placeholder="向当前会话提问，知识库将为会话增强"
+          className={cn("ak-composer-input block max-h-[160px] w-full resize-none bg-transparent px-5 py-4 text-[15px] leading-6 outline-none", centered ? "min-h-[112px] text-base" : "min-h-[44px] px-4 py-3")}
         />
-        <div className="flex flex-wrap items-center gap-2 px-3 pb-3 pt-1">
+        <div className="flex flex-wrap items-center gap-1.5 px-3 pb-2.5 pt-0.5">
           <div
-            className="ak-control inline-flex h-9 max-w-[240px] items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-slate-300"
-            title={kbLocked ? "当前会话已有消息，知识库已锁定" : "选择通用聊天或知识库"}
+            className="ak-control inline-flex h-8 max-w-[220px] items-center gap-1.5 rounded-md border px-2 text-xs"
+            title={kbLocked ? "当前会话由首条消息的知识库锁定" : "选择通用对话或知识库"}
           >
-            <Database className="h-4 w-4 text-brand" />
+            <Database className="h-3.5 w-3.5 text-brand" />
             <ModelSelect
               aria-label="选择知识库"
-              className="h-7 min-w-[120px] flex-1 border-0 bg-transparent px-0 py-0 text-sm text-slate-200 shadow-none hover:bg-transparent focus-visible:ring-0 dark:bg-transparent dark:hover:bg-transparent disabled:cursor-not-allowed disabled:text-slate-500"
+              className="h-7 min-w-[108px] flex-1 border-0 bg-transparent px-0 py-0 text-xs text-current shadow-none hover:bg-transparent focus-visible:ring-0 disabled:cursor-not-allowed disabled:text-muted"
               contentAlign="start"
               contentClassName="ak-model-content"
               contentPosition="popper"
               disabled={kbLocked || busy}
               onChange={(e) => onSelectKb(e.target.value || null)}
               options={[
-                { value: "", label: "通用聊天" },
+                { value: "", label: "通用对话" },
                 ...kbs.map((kb) => ({ value: kb.id, label: kb.name })),
               ]}
               size="sm"
-              title={kbLocked ? "当前会话已有消息，知识库已锁定" : "选择通用聊天或知识库"}
+              title={kbLocked ? "当前会话由首条消息的知识库锁定" : "选择通用对话或知识库"}
               value={currentKbId ?? ""}
             />
-            {kbLocked && <LockKeyhole className="h-3.5 w-3.5 text-slate-500" />}
+            {kbLocked && <LockKeyhole className="h-3 w-3 text-muted" />}
           </div>
           <Link
-            className="ak-control ak-press inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]"
+            className="ak-control ak-press inline-flex size-8 items-center justify-center rounded-md border"
             href={currentKbId ? `/kbs/${currentKbId}` : "/kbs"}
             aria-label={currentKbId ? "\u6253\u5f00\u77e5\u8bc6\u5e93\u4e0a\u4f20\u8d44\u6599" : "\u9009\u62e9\u77e5\u8bc6\u5e93\u540e\u4e0a\u4f20\u8d44\u6599"}
             title={currentKbId ? "\u6253\u5f00\u77e5\u8bc6\u5e93\u4e0a\u4f20\u8d44\u6599" : "\u9009\u62e9\u77e5\u8bc6\u5e93\u540e\u4e0a\u4f20\u8d44\u6599"}
           >
-            <Paperclip className="h-4 w-4" />
+            <Paperclip className="h-3.5 w-3.5" />
           </Link>
-          <div className="ml-auto flex min-w-0 items-center gap-2">
+          <div className="ml-auto flex min-w-0 items-center gap-1.5">
             <ContextUsageIndicator
               contextStatus={contextStatus}
               loading={contextStatusLoading}
@@ -2346,7 +2346,7 @@ function Composer({
             {showModelSelector && (
               <ModelSelect
                 aria-label="\u6a21\u578b\u9009\u62e9"
-                className="ak-model-trigger h-9 min-w-[172px] max-w-[220px]"
+                className="ak-model-trigger h-8 min-w-[132px] max-w-[180px] text-xs"
                 contentAlign="end"
                 contentClassName="ak-model-content"
                 contentPosition="popper"
@@ -2362,18 +2362,18 @@ function Composer({
           </div>
           {busy ? (
             <button
-              className="ak-press inline-flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-4 text-sm font-medium text-slate-100 hover:bg-white/10"
+              className="ak-stop-button ak-press inline-flex h-8 min-w-8 cursor-pointer items-center justify-center gap-1 rounded-md border px-2.5 text-xs font-medium"
               aria-label="停止生成"
               data-testid="composer-stop"
               onClick={onStop}
               type="button"
             >
-              <Square className="h-3.5 w-3.5 fill-current" />
-              {"\u505c\u6b62"}
+              <Square className="h-3 w-3 fill-current" />
+              <span className="hidden sm:inline">{"\u505c\u6b62"}</span>
             </button>
           ) : (
             <button
-              className="ak-send-button ak-press inline-flex size-9 items-center justify-center rounded-full transition disabled:cursor-not-allowed"
+              className="ak-send-button ak-press inline-flex size-8 items-center justify-center rounded-md transition disabled:cursor-not-allowed"
               aria-label="发送消息"
               data-testid="composer-send"
               disabled={!value.trim()}
@@ -2381,12 +2381,12 @@ function Composer({
               title="发送消息"
               type="button"
             >
-              <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
+              <ArrowUp className="h-3.5 w-3.5" strokeWidth={2.5} />
             </button>
           )}
         </div>
       </div>
-      <p className="mt-2 text-center text-xs text-slate-500">{"\u5185\u5bb9\u7531 AI \u751f\u6210\uff0c\u8bf7\u4ed4\u7ec6\u7504\u522b"}</p>
+      <p className="ak-composer-disclaimer mt-2 text-center text-xs">{"\u5185\u5bb9\u7531 AI \u751f\u6210\uff0c\u8bf7\u4ed4\u7ec6\u7504\u522b"}</p>
     </div>
   );
 }
@@ -2400,7 +2400,7 @@ function ContextUsageIndicator({
 }) {
   const status = contextStatus ?? {
     state: "normal" as const,
-    label: loading ? "正在读取" : "暂不可用",
+    label: loading ? "正在读取" : "暂无数据",
     description: loading
       ? "正在读取当前会话的上下文使用情况。"
       : "暂时无法读取上下文状态，请刷新后重试。",
@@ -2419,26 +2419,26 @@ function ContextUsageIndicator({
       ? "text-brand"
       : isAttention
         ? "text-amber-300"
-        : "text-slate-400";
+        : "ak-context-ring-muted";
   const detail =
     status.state === "compressed"
-      ? `已自动压缩早期上下文，保留最近 ${status.retained_recent_turns} 轮完整对话。`
+      ? `已自动压缩长期上下文，保留最近 ${status.retained_recent_turns} 轮对话。`
       : status.description;
 
   return (
     <div className="group relative shrink-0">
       <span
         aria-describedby="context-usage-detail"
-        aria-label={loading ? "正在读取上下文使用率" : `上下文使用率 ${progress}%：${status.label}`}
-        className="ak-context-usage inline-flex size-9 items-center justify-center rounded-full text-slate-400 outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
+        aria-label={loading ? "正在读取上下文使用量" : `上下文使用量 ${progress}%，${status.label}`}
+        className="ak-context-usage inline-flex size-8 items-center justify-center rounded-md border outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
         tabIndex={0}
       >
         <svg
           aria-hidden="true"
-          className={cn("size-5 -rotate-90", loading && "animate-spin motion-reduce:animate-none")}
+          className={cn("size-4 -rotate-90", loading && "animate-spin motion-reduce:animate-none")}
           viewBox="0 0 20 20"
         >
-          <circle className="stroke-current text-white/10" cx="10" cy="10" fill="none" r="8" strokeWidth="2.25" />
+          <circle className="ak-context-track stroke-current" cx="10" cy="10" fill="none" r="8" strokeWidth="2.25" />
           <circle
             className={cn("ak-context-ring stroke-current", ringTone)}
             cx="10"
@@ -2453,24 +2453,24 @@ function ContextUsageIndicator({
         </svg>
       </span>
       <div
-        className="pointer-events-none absolute bottom-full right-0 z-20 mb-2 w-72 translate-y-1 rounded-lg border border-white/10 bg-[#111c2b]/98 p-3 text-left opacity-0 shadow-xl transition-[opacity,transform] duration-150 ease-out group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100"
+        className="ak-context-tooltip pointer-events-none absolute bottom-full right-0 z-20 mb-2 w-72 translate-y-1 rounded-lg border p-3 text-left opacity-0 transition-[opacity,transform] duration-150 ease-out group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100"
         id="context-usage-detail"
         role="tooltip"
       >
         <div className="flex items-center justify-between gap-3">
-          <span className="text-sm font-medium text-slate-100">上下文使用</span>
+          <span className="ak-context-tooltip-title text-sm font-medium">上下文使用</span>
           <span className={cn("text-xs font-medium tabular-nums", ringTone)}>{status.label}</span>
         </div>
         <div className="mt-2 flex items-baseline justify-between gap-3 tabular-nums">
-          <span className="text-lg font-semibold text-slate-100">{progress}%</span>
-          <span className="text-xs text-slate-400">
+          <span className="ak-context-tooltip-title text-lg font-semibold">{progress}%</span>
+          <span className="ak-context-tooltip-muted text-xs">
             {formatTokenCount(status.current_tokens)} / {formatTokenCount(status.available_tokens)}
           </span>
         </div>
-        <p className="mt-2 text-xs leading-5 text-slate-400">{detail}</p>
+        <p className="ak-context-tooltip-muted mt-2 text-xs leading-5">{detail}</p>
         {status.summary && (
-          <p className="mt-2 border-t border-white/10 pt-2 text-xs leading-5 text-slate-400">
-            已覆盖 {status.summary.covered_message_count} 条早期消息 · 摘要约 {formatTokenCount(status.summary.token_count)}
+          <p className="ak-context-tooltip-summary ak-context-tooltip-muted mt-2 border-t pt-2 text-xs leading-5">
+            已覆盖 {status.summary.covered_message_count} 条历史消息 / 摘要约 {formatTokenCount(status.summary.token_count)}
           </p>
         )}
       </div>
@@ -2503,76 +2503,76 @@ function RightInsightPanel({
   const modelLabel = currentModel || (llmSource === "system" ? "\u7cfb\u7edf\u9ed8\u8ba4" : llmSource === "user" ? "\u9ed8\u8ba4\u6a21\u578b" : "\u672a\u914d\u7f6e");
 
   return (
-    <aside className="ak-insight hidden min-w-0 flex-col overflow-y-auto bg-[#0a121f] lg:flex">
-      <section className="border-b border-white/10 p-5">
+    <aside className="ak-insight hidden min-w-0 flex-col overflow-y-auto lg:flex">
+      <section className="ak-insight-section border-b p-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-slate-100">{"\u68c0\u7d22\u4e0e\u63a8\u7406\u8fc7\u7a0b"}</h2>
-          <span className="text-xs text-slate-500">只读状态</span>
+          <h2 className="ak-insight-heading text-base font-semibold">{"\u68c0\u7d22\u4e0e\u63a8\u7406\u8fc7\u7a0b"}</h2>
+          <span className="ak-insight-badge ak-insight-badge-muted">只读状态</span>
         </div>
         <div className="mt-5 space-y-0">
           {steps.map((step, index) => (
             <div className="relative flex gap-3 pb-5 last:pb-0" key={step.title}>
               {index < steps.length - 1 && (
-                <span className="absolute left-[7px] top-5 h-full w-px bg-white/10" />
+                <span className="ak-insight-timeline-line absolute left-[7px] top-5 h-full w-px" />
               )}
               <span
                 className={cn(
-                  "relative z-10 mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border",
-                  step.status === "done" && "border-emerald-400 bg-emerald-400/15",
-                  step.status === "running" && "border-emerald-400 bg-[#0a121f]",
-                  step.status === "pending" && "border-slate-600 bg-[#0a121f]"
+                  "relative z-10 mt-0.5 flex h-4 w-4 items-center justify-center rounded-md border",
+                  step.status === "done" && "ak-step-node-done",
+                  step.status === "running" && "ak-step-node ak-step-node-running",
+                  step.status === "pending" && "ak-step-node"
                 )}
               >
-                {step.status === "done" && <Check className="h-3 w-3 text-emerald-300" />}
+                {step.status === "done" && <Check className="ak-step-check h-3 w-3" />}
                 {step.status === "running" && (
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+                  <span className="ak-step-dot h-1.5 w-1.5 rounded-sm" />
                 )}
               </span>
               <div
                 className={cn(
                   "flex-1 rounded-lg px-3 py-2",
-                  step.active && "border border-emerald-300/40 bg-emerald-400/8"
+                  step.active && "ak-step-card-active border"
                 )}
               >
                 <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium text-slate-200">{step.title}</span>
-                  {step.status === "done" && <CheckCircle2 className="h-4 w-4 text-emerald-400" />}
+                  <span className="ak-step-title font-medium">{step.title}</span>
+                  {step.status === "done" && <CheckCircle2 className="ak-step-check h-4 w-4" />}
                 </div>
-                <div className="mt-1 text-xs leading-5 text-slate-500">{step.description}</div>
-                {step.time && <div className="mt-1 text-xs text-slate-500">{step.time}</div>}
+                <div className="ak-step-meta mt-1 text-xs leading-5">{step.description}</div>
+                {step.time && <div className="ak-step-meta mt-1 text-xs">{step.time}</div>}
               </div>
             </div>
           ))}
         </div>
       </section>
 
-      <section className="border-b border-white/10 p-5">
+      <section className="ak-insight-section border-b p-5">
         <div className="flex items-center gap-2">
-          <h2 className="text-base font-semibold text-slate-100">{"\u5de5\u5177\u8c03\u7528\u8bb0\u5f55"}</h2>
-          <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-slate-400">
+          <h2 className="ak-insight-heading text-base font-semibold">{"\u5de5\u5177\u8c03\u7528\u8bb0\u5f55"}</h2>
+          <span className="ak-insight-badge ak-insight-badge-count">
             {panelSources.length}
           </span>
         </div>
         {panelSources.length > 0 ? (
           <>
-            <div className="mt-4 overflow-hidden rounded-lg border border-white/10">
+            <div className="ak-tool-list mt-4 overflow-hidden rounded-lg border">
               {panelSources.map((source) => (
                 <div
-                  className="flex items-center gap-3 border-b border-white/8 px-3 py-3 last:border-b-0"
+                  className="ak-tool-row flex items-center gap-3 border-b px-3 py-3 last:border-b-0"
                   key={`${source.title}-${source.meta}`}
                 >
-                  <span className="flex h-7 min-w-10 shrink-0 items-center justify-center rounded-md bg-slate-700/60 px-1.5 text-[10px] font-semibold text-slate-300">
+                  <span className="ak-insight-badge ak-insight-badge-state flex min-h-8 min-w-12 shrink-0 items-center justify-center px-1.5 text-[10px] font-semibold">
                     {source.score}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-slate-200">
+                    <div className="ak-tool-title truncate text-sm font-medium">
                       {source.title}
                     </div>
-                    <div className="text-xs text-slate-500">{source.meta}</div>
+                    <div className="ak-tool-meta text-xs">{source.meta}</div>
                     {source.detail && source.detail.length > 0 && (
                       <div className="mt-1 space-y-0.5">
                         {source.detail.map((item, index) => (
-                          <div className="truncate text-[11px] text-slate-500" key={`${item}-${index}`}>
+                          <div className="ak-tool-detail truncate text-[11px]" key={`${item}-${index}`}>
                             {item}
                           </div>
                         ))}
@@ -2584,17 +2584,17 @@ function RightInsightPanel({
             </div>
           </>
         ) : (
-          <div className="mt-4 rounded-lg border border-dashed border-white/10 px-3 py-5 text-sm leading-6 text-slate-500">
+          <div className="ak-empty-panel mt-4 rounded-lg border border-dashed px-3 py-5 text-sm leading-6">
             {"\u6682\u65e0\u5de5\u5177\u8c03\u7528\u3002\u53d1\u9001\u95ee\u9898\u540e\uff0c\u5982\u679c\u540e\u7aef\u8fd4\u56de\u68c0\u7d22\u3001\u91cd\u6392\u6216\u5176\u4ed6\u5de5\u5177\u4e8b\u4ef6\uff0c\u8fd9\u91cc\u4f1a\u5b9e\u65f6\u66f4\u65b0\u3002"}
           </div>
         )}
       </section>
 
-      <section className="border-b border-white/10 p-5">
+      <section className="ak-insight-section border-b p-5">
         <div className="flex items-center gap-2">
-          <BrainCircuit className="h-4 w-4 text-emerald-300" />
-          <h2 className="text-base font-semibold text-slate-100">记忆注入</h2>
-          <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-slate-400">
+          <BrainCircuit className="ak-insight-accent h-4 w-4" />
+          <h2 className="ak-insight-heading text-base font-semibold">记忆注入</h2>
+          <span className="ak-insight-badge ak-insight-badge-count">
             {memoryTrace?.memories?.injected_count ?? 0}
           </span>
         </div>
@@ -2610,7 +2610,7 @@ function RightInsightPanel({
                 value={String(memoryTrace.memories?.injected_count ?? 0)}
               />
               <TraceStat
-                label="摘要"
+                label="ժҪ"
                 value={memoryTrace.summary ? "已注入" : "无"}
               />
             </div>
@@ -2622,30 +2622,30 @@ function RightInsightPanel({
             )}
             {memoryTrace.memories?.items && memoryTrace.memories.items.length > 0 && (
               <TraceList
-                title="本轮召回"
+                title="记忆召回"
                 items={memoryTrace.memories.items.slice(0, 4)}
               />
             )}
             {memoryTrace.summary && (
-              <p className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs leading-5 text-slate-400">
-                摘要覆盖 {memoryTrace.summary.covered_message_count} 条早期消息 ·
+              <p className="ak-memory-summary rounded-lg border px-3 py-2 text-xs leading-5">
+                摘要覆盖 {memoryTrace.summary.covered_message_count} 条历史消息 /
                 约 {formatTokenCount(memoryTrace.summary.token_count)}
               </p>
             )}
           </div>
         ) : (
-          <div className="mt-4 rounded-lg border border-dashed border-white/10 px-3 py-5 text-sm leading-6 text-slate-500">
-            完成一轮对话后，这里会显示画像、长期记忆和摘要的注入 Trace。
+          <div className="ak-empty-panel mt-4 rounded-lg border border-dashed px-3 py-5 text-sm leading-6">
+            发起一轮对话后，这里会显示画像、长期记忆和摘要的注入 Trace。
           </div>
         )}
       </section>
 
       <section className="flex-1 p-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-slate-100">{"\u4f1a\u8bdd\u4fe1\u606f"}</h2>
+          <h2 className="ak-insight-heading text-base font-semibold">{"\u4f1a\u8bdd\u4fe1\u606f"}</h2>
           {currentConversation?.id && (
             <button
-              className="inline-flex h-7 items-center gap-1.5 rounded-md border border-white/10 px-2 text-xs text-slate-400 transition hover:border-emerald-300/40 hover:text-emerald-200"
+              className="ak-copy-id-button inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs transition"
               onClick={() => {
                 void navigator.clipboard.writeText(currentConversation.id);
                 toast.success("\u5df2\u590d\u5236\u4f1a\u8bdd ID");
@@ -2671,7 +2671,7 @@ function RightInsightPanel({
             value={
               currentConversation?.kb_id ? (
                 <Link
-                  className="truncate text-right text-emerald-200 transition hover:text-emerald-100"
+                  className="ak-info-link truncate text-right transition"
                   href={`/kbs/${currentConversation.kb_id}`}
                   title={currentKbName}
                 >
@@ -2687,7 +2687,7 @@ function RightInsightPanel({
       </section>
 
       <section className="hidden">
-        <h2 className="text-base font-semibold text-slate-100">{"\u4f1a\u8bdd\u4fe1\u606f"}</h2>
+        <h2 className="ak-insight-heading text-base font-semibold">{"\u4f1a\u8bdd\u4fe1\u606f"}</h2>
         <dl className="mt-5 space-y-4 text-sm">
           <InfoRow label="会话 ID" value={currentConversation?.id.slice(0, 8) ?? "-"} />
           <InfoRow label="创建时间" value={formatTime(currentConversation?.created_at)} />
@@ -2701,9 +2701,9 @@ function RightInsightPanel({
 
 function TraceStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.03] px-2 py-2">
-      <div className="text-[11px] text-slate-500">{label}</div>
-      <div className="mt-1 truncate font-medium text-slate-200" title={value}>
+    <div className="ak-trace-stat rounded-lg border px-2 py-2">
+      <div className="ak-trace-label text-[11px]">{label}</div>
+      <div className="ak-trace-value mt-1 truncate font-medium" title={value}>
         {value}
       </div>
     </div>
@@ -2713,22 +2713,22 @@ function TraceStat({ label, value }: { label: string; value: string }) {
 function TraceList({ title, items }: { title: string; items: MemoryTraceItem[] }) {
   return (
     <div>
-      <div className="mb-2 text-xs font-medium text-slate-400">{title}</div>
+      <div className="ak-trace-title mb-2 text-xs font-medium">{title}</div>
       <div className="space-y-2">
         {items.map((item) => (
           <div
-            className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2"
+            className="ak-trace-card rounded-lg border px-3 py-2"
             key={item.id}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="truncate text-xs font-medium text-emerald-200">
+              <span className="ak-trace-type truncate text-xs font-medium">
                 {memoryTraceTypeLabel(item.type)}
               </span>
-              <span className="shrink-0 text-[11px] text-slate-500">
+              <span className="ak-trace-score shrink-0 text-[11px]">
                 {Math.round((item.importance ?? 0) * 100)}%
               </span>
             </div>
-            <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-400">
+            <p className="ak-trace-body mt-1 line-clamp-2 text-xs leading-5">
               {item.content}
             </p>
           </div>
@@ -2840,8 +2840,8 @@ function InfoRow({
 }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <dt className="text-slate-500">{label}</dt>
-      <dd className="min-w-0 truncate text-right text-slate-300" title={title}>
+      <dt className="ak-info-label">{label}</dt>
+      <dd className="ak-info-value min-w-0 truncate text-right" title={title}>
         {value}
       </dd>
     </div>

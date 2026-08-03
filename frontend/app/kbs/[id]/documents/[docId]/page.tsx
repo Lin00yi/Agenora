@@ -357,7 +357,7 @@ export default function DocumentDetailPage({
         chunk_overlap: parseOptionalInt(docChunkOverlap),
       });
       setDoc((cur) => (cur ? { ...cur, ...updated } : cur));
-      toast.success("分块策略已保存，重新 ingest 后对现有 chunks 生效");
+      toast.success("分块策略已保存，重新入库后对现有分块生效");
     } catch (e) {
       toastApiError(e, (p) => router.push(p));
     } finally {
@@ -448,10 +448,10 @@ export default function DocumentDetailPage({
           className="w-full max-w-md"
           action={
             <div className="flex flex-wrap justify-center gap-2">
-              <Link href={`/kbs/${kbId}`} className="btn btn-primary btn-sm">
+              <Link href={`/kbs/${kbId}`} className="admin-btn-primary">
                 返回文档列表
               </Link>
-              <Link href="/kbs" className="btn btn-ghost btn-sm">
+              <Link href="/kbs" className="admin-btn-secondary">
                 返回知识库列表
               </Link>
             </div>
@@ -541,7 +541,7 @@ export default function DocumentDetailPage({
         <DocContextStat
           icon={Hash}
           label="分块总数"
-          value={`${doc.chunks_count.toLocaleString()} chunks`}
+          value={`${doc.chunks_count.toLocaleString()} 分块`}
         />
         <DocContextStat
           icon={Type}
@@ -565,23 +565,27 @@ export default function DocumentDetailPage({
             doc.effective_chunk_overlap ?? kb.chunk_overlap
           }${hasDocChunkOverride ? " · 文档级覆盖" : " · 继承 KB 默认"}`}
           className="mb-4"
+          bodyClassName="bg-surface/35"
         >
-          <form onSubmit={onSaveDocChunkSettings} className="grid gap-3 p-4 md:grid-cols-5">
-            <label className="text-xs">
-              <span className="text-muted">切分策略</span>
+          <form
+            onSubmit={onSaveDocChunkSettings}
+            className="grid gap-4 border-b border-surface-border/70 p-4 md:grid-cols-[1.25fr_repeat(3,minmax(0,1fr))_auto]"
+          >
+            <label className="space-y-1.5 text-xs font-medium text-muted">
+              <span>切分策略</span>
               <Select
                 size="sm"
                 value={docChunkStrategy}
                 onChange={(e) => setDocChunkStrategy(e.target.value as ChunkStrategy | "")}
                 placeholderOption={{ value: "", label: "继承 KB 默认" }}
                 options={CHUNK_STRATEGY_OPTIONS}
-                className="mt-1 admin-select-trigger"
+                className="h-[40px] w-full admin-select-trigger"
                 contentAlign="start"
                 contentPosition="popper"
               />
             </label>
-            <label className="text-xs">
-              <span className="text-muted">目标长度</span>
+            <label className="space-y-1.5 text-xs font-medium text-muted">
+              <span>目标长度</span>
               <input
                 type="number"
                 min={200}
@@ -589,11 +593,11 @@ export default function DocumentDetailPage({
                 placeholder={String(kb.chunk_target)}
                 value={docChunkTarget}
                 onChange={(e) => setDocChunkTarget(e.target.value)}
-                className="mt-1 block w-full rounded-md border bg-bg px-2 py-1.5 text-sm"
+                className={docInputClass}
               />
             </label>
-            <label className="text-xs">
-              <span className="text-muted">最大长度</span>
+            <label className="space-y-1.5 text-xs font-medium text-muted">
+              <span>最大长度</span>
               <input
                 type="number"
                 min={200}
@@ -601,11 +605,11 @@ export default function DocumentDetailPage({
                 placeholder={String(kb.chunk_max_size)}
                 value={docChunkMaxSize}
                 onChange={(e) => setDocChunkMaxSize(e.target.value)}
-                className="mt-1 block w-full rounded-md border bg-bg px-2 py-1.5 text-sm"
+                className={docInputClass}
               />
             </label>
-            <label className="text-xs">
-              <span className="text-muted">重叠长度</span>
+            <label className="space-y-1.5 text-xs font-medium text-muted">
+              <span>重叠长度</span>
               <input
                 type="number"
                 min={0}
@@ -613,23 +617,23 @@ export default function DocumentDetailPage({
                 placeholder={String(kb.chunk_overlap)}
                 value={docChunkOverlap}
                 onChange={(e) => setDocChunkOverlap(e.target.value)}
-                className="mt-1 block w-full rounded-md border bg-bg px-2 py-1.5 text-sm"
+                className={docInputClass}
               />
             </label>
-            <div className="flex items-end gap-2">
+            <div className="flex items-end gap-2 md:justify-end">
               <button
                 type="submit"
-                className="admin-btn-secondary btn-sm"
+                className="admin-btn-secondary h-[40px]"
                 disabled={anyPending}
               >
                 {isPending("doc-chunk-settings") ? "保存中..." : "保存"}
               </button>
               <button
                 type="button"
-                className="admin-btn-primary btn-sm"
+                className="admin-btn-primary h-[40px]"
                 disabled={anyPending}
                 onClick={() => void onReingest()}
-                title="重新 ingest 后，已保存的切分策略才会应用到现有 chunks。"
+                title="重新入库后，已保存的切分策略才会应用到现有分块。"
               >
                 <RotateCcw
                   className={cn("h-4 w-4", isPending("reingest") && "animate-spin")}
@@ -638,8 +642,8 @@ export default function DocumentDetailPage({
               </button>
             </div>
           </form>
-          <p className="px-4 pb-4 text-xs text-muted">
-            留空表示继承 KB 默认。保存后仅影响新的 ingest；已有 chunks 需要重新 ingest 或重建整个 KB 后才会变化。
+          <p className="px-4 py-3 text-xs leading-5 text-muted">
+            留空表示继承知识库默认。保存后仅影响新的入库；已有分块需要重新入库或重建整个知识库后才会变化。
           </p>
         </AdminPanel>
       )}
@@ -650,14 +654,14 @@ export default function DocumentDetailPage({
         toolbarClassName="w-full sm:w-auto"
         toolbar={
           <>
-            <div className="input-shell flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 sm:w-64 sm:flex-none">
+            <div className="input-shell flex h-[40px] min-w-0 flex-1 items-center gap-2 px-3 sm:w-72 sm:flex-none">
               <Search className="h-3.5 w-3.5 shrink-0 text-muted" />
               <input
                 type="search"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 placeholder="搜索 chunk 内容…"
-                className="min-w-0 flex-1 bg-transparent text-xs outline-none"
+                className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted/70"
               />
             </div>
             <Select
@@ -730,7 +734,7 @@ export default function DocumentDetailPage({
                 </AdminToolbarButton>
                 <button
                   type="button"
-                  className="admin-btn-secondary !px-2 !py-1 text-xs"
+                  className="admin-toolbar-btn"
                   onClick={() => setSelected([])}
                 >
                   清空选择
@@ -746,7 +750,7 @@ export default function DocumentDetailPage({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  className="admin-btn-secondary !px-2 !py-1 text-xs"
+                  className="admin-toolbar-btn"
                   disabled={page <= 1}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                 >
@@ -757,7 +761,7 @@ export default function DocumentDetailPage({
                 </span>
                 <button
                   type="button"
-                  className="admin-btn-secondary !px-2 !py-1 text-xs"
+                  className="admin-toolbar-btn"
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => p + 1)}
                 >
@@ -806,7 +810,7 @@ export default function DocumentDetailPage({
                         {c.enabled ? "启用" : "禁用"}
                       </span>
                     </div>
-                    <p className="mt-2 line-clamp-4 text-sm leading-relaxed text-fg/90">
+                    <p className="mt-2 line-clamp-4 rounded-md border border-surface-border/55 bg-surface-2/35 px-3 py-2 text-sm leading-relaxed text-fg">
                       {c.text}
                     </p>
                     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
@@ -818,7 +822,7 @@ export default function DocumentDetailPage({
                 </div>
 
                 {canWrite && (
-                  <div className="mt-3 flex items-center justify-end gap-0.5 border-t border-surface-border/60 pt-3">
+                  <div className="mt-3 flex items-center justify-end gap-1.5 border-t border-surface-border/60 pt-3">
                     <AdminRowAction
                       icon={Pencil}
                       label="编辑"
@@ -932,9 +936,9 @@ export default function DocumentDetailPage({
                   )}
                   <td className="tabular-nums text-muted">{c.chunk_idx}</td>
                   <td>
-                    <p className="line-clamp-3 max-w-3xl text-sm leading-relaxed text-fg/90">
-                      {c.text}
-                    </p>
+                      <p className="line-clamp-3 max-w-3xl text-sm leading-relaxed text-fg">
+                        {c.text}
+                      </p>
                   </td>
                   <td>
                     <span
@@ -957,7 +961,7 @@ export default function DocumentDetailPage({
                   </td>
                   {canWrite && (
                     <td>
-                      <div className="flex items-center gap-0.5">
+                        <div className="flex items-center gap-1.5">
                         <AdminRowAction
                           icon={Pencil}
                           label="编辑"
@@ -1054,18 +1058,18 @@ export default function DocumentDetailPage({
                 setEditText(e.target.value)
               }
               rows={12}
-              className="w-full resize-y rounded-xl bg-transparent px-3 py-2.5 text-sm leading-relaxed outline-none"
+              className="w-full resize-y rounded-md bg-transparent px-3 py-2.5 text-sm leading-relaxed outline-none"
             />
           </div>
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-col justify-end gap-2 sm:flex-row">
             <button
               type="button"
-              className="admin-btn-secondary btn-sm"
+              className="admin-btn-secondary"
               onClick={() => setEditingChunk(null)}
             >
               取消
             </button>
-            <button type="submit" className="admin-btn-primary btn-sm" disabled={anyPending}>
+            <button type="submit" className="admin-btn-primary" disabled={anyPending}>
               {isPending(`edit:${editingChunk?.id ?? ""}`) ? "保存中…" : "保存"}
             </button>
           </div>
@@ -1089,21 +1093,23 @@ export default function DocumentDetailPage({
           <p className="max-h-32 overflow-y-auto rounded-lg border border-surface-border/60 bg-surface-2 p-3 text-xs leading-relaxed text-muted">
             {splittingChunk?.text}
           </p>
-          <label className="block text-xs text-muted">
-            切分位置（字符偏移，1 ~ {Math.max(0, (splittingChunk?.text.length ?? 1) - 1)}）
+          <label className="block space-y-1.5 text-xs font-medium text-muted">
+            <span>
+              切分位置（字符偏移，1 ~ {Math.max(0, (splittingChunk?.text.length ?? 1) - 1)}）
+            </span>
             <input
               type="number"
               min={1}
               max={Math.max(1, (splittingChunk?.text.length ?? 2) - 1)}
               value={splitOffset}
               onChange={(e) => setSplitOffset(e.target.value)}
-              className="mt-1 block w-full rounded-md border bg-bg px-3 py-2 text-sm"
+              className={docInputClass}
             />
           </label>
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-col justify-end gap-2 sm:flex-row">
             <button
               type="button"
-              className="admin-btn-secondary btn-sm"
+              className="admin-btn-secondary"
               onClick={() => {
                 setSplittingChunk(null);
                 setSplitOffset("");
@@ -1111,7 +1117,7 @@ export default function DocumentDetailPage({
             >
               取消
             </button>
-            <button type="submit" className="admin-btn-primary btn-sm" disabled={anyPending}>
+            <button type="submit" className="admin-btn-primary" disabled={anyPending}>
               {splittingChunk && isPending(`split:${splittingChunk.id}`)
                 ? "切分中…"
                 : "切分"}
@@ -1152,6 +1158,9 @@ export default function DocumentDetailPage({
   );
 }
 
+const docInputClass =
+  "admin-input";
+
 function DocContextStat({
   icon: Icon,
   label,
@@ -1164,9 +1173,9 @@ function DocContextStat({
   detail?: ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-surface-border/70 bg-surface px-4 py-3 shadow-sm">
+    <div className="rounded-lg border border-surface-border/80 bg-surface px-4 py-3 shadow-sm transition-[background-color,border-color,box-shadow] hover:border-brand/25 hover:shadow-[0_10px_24px_rgb(15_23_42/0.06)]">
       <div className="flex items-start gap-3">
-        <span className="mt-0.5 inline-flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-surface-2 text-muted">
+        <span className="admin-icon-tile admin-icon-tile-brand mt-0.5 flex-none rounded-md">
           <Icon className="h-4 w-4" aria-hidden />
         </span>
         <div className="min-w-0">

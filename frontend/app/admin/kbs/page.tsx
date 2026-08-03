@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Lock, Trash2 } from "lucide-react";
+import { BookOpen, Database, Lock, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { listKbs, deleteKb, type AdminKb } from "@/lib/admin-api";
@@ -11,6 +11,9 @@ import AdminShell from "../AdminShell";
 import { PageSkeleton, StateView } from "@/components/ui/state-view";
 
 const PAGE_SIZE = 50;
+
+const paginationButtonClass =
+  "admin-btn-secondary shrink-0";
 
 /**
  * /admin/kbs — cross-user knowledge base management (06-01).
@@ -77,58 +80,81 @@ function KbsTable() {
 
   return (
     <div className="space-y-4">
-      <div className="text-sm text-muted">共 {total} 个知识库</div>
+      <div className="flex flex-col gap-3 border-b border-surface-border/70 pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold tracking-[0.16em] text-brand">
+            知识库清单
+          </p>
+          <h2 className="mt-2 flex items-center gap-2 text-2xl font-semibold tracking-tight">
+            <Database className="h-5 w-5 text-brand" />
+            全局知识库
+          </h2>
+          <p className="mt-2 text-sm text-muted">共 {total} 个知识库，包含用户资料库和系统示例库。</p>
+        </div>
+        <button type="button" className="admin-btn-secondary" onClick={() => load(offset)}>
+          <RefreshCw className="h-4 w-4" />
+          刷新
+        </button>
+      </div>
 
-      <div className="card overflow-x-auto">
-        <table className="w-full text-sm">
+      <div className="admin-panel overflow-x-auto">
+        <table className="admin-table admin-table-kbs">
           <thead>
-            <tr className="border-b text-left text-xs text-muted">
-              <th className="px-3 py-2 font-medium">名称</th>
-              <th className="px-3 py-2 font-medium">所有者</th>
-              <th className="px-3 py-2 text-right font-medium">文档</th>
-              <th className="px-3 py-2 text-right font-medium">chunks</th>
-              <th className="px-3 py-2 text-right font-medium">成员</th>
-              <th className="px-3 py-2 font-medium">创建时间</th>
-              <th className="px-3 py-2 text-right font-medium">操作</th>
+            <tr>
+              <th className="w-[32%]">名称</th>
+              <th className="w-[22%]">所有者</th>
+              <th className="w-[8%] text-right">文档</th>
+              <th className="w-[8%] text-right">分块</th>
+              <th className="w-[8%] text-right">成员</th>
+              <th className="w-[14%]">创建时间</th>
+              <th className="w-[8%] text-right">操作</th>
             </tr>
           </thead>
           <tbody>
             {kbs.map((kb) => (
-              <tr key={kb.id} className="border-b last:border-0 align-middle">
-                <td className="px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    {kb.is_system && <Lock className="h-3.5 w-3.5 text-warning" />}
-                    <span className="font-medium">{kb.name}</span>
+              <tr key={kb.id}>
+                <td className="max-w-0">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="admin-icon-tile admin-icon-tile-muted shrink-0 rounded-md">
+                      {kb.is_system ? (
+                        <Lock className="h-4 w-4 text-warning" />
+                      ) : (
+                        <BookOpen className="h-4 w-4 text-brand" />
+                      )}
+                    </span>
+                    <span className="truncate font-medium">{kb.name}</span>
                     {kb.is_system && (
-                      <span className="chip border-warning/30 bg-warning/10 text-warning">
+                      <span className="chip chip-warning shrink-0">
                         系统
                       </span>
                     )}
                   </div>
                   {kb.description && (
-                    <div className="truncate text-xs text-muted">{kb.description}</div>
+                    <div className="mt-1 truncate text-xs text-muted" title={kb.description}>
+                      {kb.description}
+                    </div>
                   )}
                 </td>
-                <td className="px-3 py-2 text-xs text-muted">
+                <td className="max-w-0 truncate text-xs text-muted" title={kb.owner_email || undefined}>
                   {kb.owner_email || (
                     <span className="italic opacity-60">系统 / 无主</span>
                   )}
                 </td>
-                <td className="px-3 py-2 text-right tabular-nums">
+                <td className="text-right tabular-nums">
                   {kb.documents_count}
                 </td>
-                <td className="px-3 py-2 text-right tabular-nums">
+                <td className="text-right tabular-nums">
                   {kb.chunks_count}
                 </td>
-                <td className="px-3 py-2 text-right tabular-nums">
+                <td className="text-right tabular-nums">
                   {kb.member_count}
                 </td>
-                <td className="px-3 py-2 text-xs text-muted">
+                <td className="whitespace-nowrap text-xs text-muted">
                   {kb.created_at
                     ? new Date(kb.created_at).toLocaleDateString("zh-CN")
                     : "—"}
                 </td>
-                <td className="px-3 py-2">
+                <td>
                   <div className="flex items-center justify-end">
                     <button
                       type="button"
@@ -137,8 +163,8 @@ function KbsTable() {
                       disabled={kb.is_system}
                       onClick={() => setDeleteTarget(kb)}
                       className={cn(
-                        "rounded-md p-1.5 text-muted/80 transition disabled:opacity-30 disabled:cursor-not-allowed",
-                        "hover:bg-danger/15 hover:text-danger"
+                        "admin-icon-action admin-icon-action-lg admin-icon-action-danger text-muted/80 disabled:opacity-30",
+                        "hover:bg-danger/15"
                       )}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -155,7 +181,7 @@ function KbsTable() {
         <div className="flex items-center justify-end gap-2 text-sm">
           <button
             type="button"
-            className="btn btn-ghost btn-sm"
+            className={paginationButtonClass}
             disabled={offset === 0}
             onClick={() => load(Math.max(0, offset - PAGE_SIZE))}
           >
@@ -166,7 +192,7 @@ function KbsTable() {
           </span>
           <button
             type="button"
-            className="btn btn-ghost btn-sm"
+            className={paginationButtonClass}
             disabled={offset + PAGE_SIZE >= total}
             onClick={() => load(offset + PAGE_SIZE)}
           >

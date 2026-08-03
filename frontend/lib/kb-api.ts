@@ -23,6 +23,19 @@ export type ChunkStrategy =
 export type KbRole = "owner" | "editor" | "viewer";
 export type MemberRole = "editor" | "viewer";
 
+export function formatKbRole(role: KbRole | MemberRole | string): string {
+  switch (role) {
+    case "owner":
+      return "所有者";
+    case "editor":
+      return "编辑者";
+    case "viewer":
+      return "只读";
+    default:
+      return role;
+  }
+}
+
 export type KB = {
   id: string;
   name: string;
@@ -160,6 +173,36 @@ export class KbApiError extends Error {
   }
 }
 
+function localizeKbApiMessage(message: string): string {
+  const text = message.trim();
+  const lower = text.toLowerCase();
+  if (lower.includes("invitation invalid") || lower.includes("revoked")) {
+    return "邀请链接无效或已被撤销。";
+  }
+  if (lower.includes("invitation expired")) {
+    return "邀请链接已过期。";
+  }
+  if (lower.includes("invitation exhausted")) {
+    return "邀请链接已达到使用次数上限。";
+  }
+  if (lower.includes("kb no longer exists")) {
+    return "对应的知识库已不存在。";
+  }
+  if (lower === "kb not found") {
+    return "未找到知识库。";
+  }
+  if (lower.includes("system kb is read-only") || lower.includes("system kbs cannot")) {
+    return "系统知识库为只读，无法修改。";
+  }
+  if (lower.includes("owner role required")) {
+    return "需要所有者权限。";
+  }
+  if (lower.includes("editor or owner role required")) {
+    return "需要编辑者或所有者权限。";
+  }
+  return text;
+}
+
 async function unwrap<T>(r: Response): Promise<T> {
   if (!r.ok) {
     let detail: unknown = null;
@@ -176,7 +219,7 @@ async function unwrap<T>(r: Response): Promise<T> {
     } catch {
       /* keep default */
     }
-    throw new KbApiError(r.status, detail, message);
+    throw new KbApiError(r.status, detail, localizeKbApiMessage(message));
   }
   if (r.status === 204) return undefined as T;
   return (await r.json()) as T;

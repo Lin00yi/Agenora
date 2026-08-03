@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { Copy, FileText, Image as ImageIcon } from "lucide-react";
@@ -9,14 +9,18 @@ import ShareCardDialog from "@/components/ShareCardDialog";
 type Props = {
   markdown: string;
   cost?: number | null;
-  /** Optional — user question that triggered this assistant answer.
-   *  Rendered as the share-card sub-heading when present. */
+  /** Optional user question that triggered this assistant answer. */
   question?: string;
   /** DOM id of the answer to export. */
   reportId?: string;
 };
 
-export default function ExportActions({ markdown, cost, question, reportId = "report-output" }: Props) {
+export default function ExportActions({
+  markdown,
+  cost,
+  question,
+  reportId = "report-output",
+}: Props) {
   const [shareOpen, setShareOpen] = useState(false);
 
   const copy = async () => {
@@ -29,7 +33,6 @@ export default function ExportActions({ markdown, cost, question, reportId = "re
   };
 
   const downloadPdf = async () => {
-    // Dynamic import to keep initial bundle small.
     const html2pdf = (await import("html2pdf.js")).default;
     const el = document.getElementById(reportId);
     if (!el) {
@@ -42,30 +45,21 @@ export default function ExportActions({ markdown, cost, question, reportId = "re
   return (
     <>
       <div className="ak-export-actions mt-4 flex flex-wrap items-center gap-2 text-sm">
-        <button
-          onClick={copy}
-          className="inline-flex items-center gap-1 rounded-full border px-3 py-1.5 transition hover:bg-surface-2"
-          type="button"
-        >
-          <Copy className="h-3.5 w-3.5" /> 复制 Markdown
+        <button onClick={copy} className={exportActionClass} type="button">
+          <Copy className="h-4 w-4" />
+          复制 Markdown
         </button>
-        <button
-          onClick={downloadPdf}
-          className="inline-flex items-center gap-1 rounded-full border px-3 py-1.5 transition hover:bg-surface-2"
-          type="button"
-        >
-          <FileText className="h-3.5 w-3.5" /> 导出 PDF
+        <button onClick={downloadPdf} className={exportActionClass} type="button">
+          <FileText className="h-4 w-4" />
+          导出 PDF
         </button>
-        <button
-          onClick={() => setShareOpen(true)}
-          className="inline-flex items-center gap-1 rounded-full border px-3 py-1.5 transition hover:bg-surface-2"
-          type="button"
-        >
-          <ImageIcon className="h-3.5 w-3.5" /> 分享
+        <button onClick={() => setShareOpen(true)} className={exportActionClass} type="button">
+          <ImageIcon className="h-4 w-4" />
+          分享
         </button>
         {cost != null && (
-          <span className="ml-auto text-xs text-muted">
-            本次成本 ≈ ${cost.toFixed(4)}
+          <span className="ak-export-cost basis-full text-xs tabular-nums sm:ml-auto sm:basis-auto">
+            本次成本约 ${cost.toFixed(4)}
           </span>
         )}
       </div>
@@ -79,3 +73,6 @@ export default function ExportActions({ markdown, cost, question, reportId = "re
     </>
   );
 }
+
+const exportActionClass =
+  "ak-export-action inline-flex min-h-[40px] cursor-pointer items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium transition-[background-color,border-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30";
