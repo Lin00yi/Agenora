@@ -31,6 +31,10 @@
   --duration-press: 160ms;
   --duration-popover: 180ms;
   --duration-surface: 200ms;
+
+  /* Control sizing: default interactive controls vs dense/inline compact. */
+  --control-h: 40px;
+  --control-h-sm: 32px;
 }
 
 /* Chat workspace theme bridge.
@@ -625,6 +629,17 @@
     background: color-mix(in srgb, var(--chat-accent) 7%, var(--chat-surface)) !important;
   }
 
+  .ak-chat .ak-user-trigger .ak-theme-toggle-compact {
+    border-color: var(--chat-line) !important;
+    background: color-mix(in srgb, var(--chat-surface) 92%, transparent) !important;
+    color: var(--chat-ink) !important;
+    box-shadow: none !important;
+  }
+
+  .ak-chat .ak-user-trigger .ak-theme-toggle-compact:hover {
+    background: var(--chat-surface) !important;
+  }
+
   .ak-chat .ak-user-avatar {
     border-color: color-mix(in srgb, var(--chat-accent) 36%, var(--chat-line)) !important;
     background: color-mix(in srgb, var(--chat-accent) 88%, #0f172a) !important;
@@ -734,6 +749,71 @@
   .ak-chat .ak-workspace .ak-composer {
     background: color-mix(in srgb, var(--chat-canvas) 86%, transparent) !important;
     border-top: 0 !important;
+  }
+
+  .ak-chat .ak-workspace .ak-thread {
+    --ak-composer-offset: 11.75rem;
+    --ak-thread-scrollbar: 10px;
+  }
+
+  .ak-chat .ak-workspace .ak-thread-scroll {
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--chat-muted) 42%, transparent) transparent;
+  }
+
+  .ak-chat .ak-workspace .ak-thread-scroll::-webkit-scrollbar {
+    width: var(--ak-thread-scrollbar);
+  }
+
+  .ak-chat .ak-workspace .ak-thread-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .ak-chat .ak-workspace .ak-thread-scroll::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--chat-muted) 38%, transparent);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    border-radius: 999px;
+  }
+
+  .ak-chat .ak-workspace .ak-thread-scroll::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--chat-muted) 58%, transparent);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .ak-chat .ak-workspace .ak-thread-inner {
+    min-height: 100%;
+    padding-bottom: calc(var(--ak-composer-offset) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .ak-chat .ak-workspace .ak-thread-dock {
+    /* Keep clear of the thread scrollbar so the fade never masks the thumb. */
+    right: var(--ak-thread-scrollbar);
+    padding-top: 2.75rem;
+    background: linear-gradient(
+      to top,
+      color-mix(in srgb, var(--chat-canvas) 96%, transparent) 42%,
+      color-mix(in srgb, var(--chat-canvas) 72%, transparent) 72%,
+      transparent
+    );
+  }
+
+  .ak-chat .ak-workspace .ak-composer.ak-composer-docked {
+    background: transparent !important;
+  }
+
+  .ak-chat .ak-workspace .ak-scroll-to-bottom {
+    border-color: var(--chat-line);
+    background: color-mix(in srgb, var(--chat-surface) 92%, transparent);
+    color: var(--chat-ink);
+    backdrop-filter: blur(10px);
+  }
+
+  .ak-chat .ak-workspace .ak-scroll-to-bottom:hover {
+    background: var(--chat-surface);
   }
 
   .ak-chat .ak-workspace .ak-composer.ak-composer-centered {
@@ -1420,26 +1500,26 @@ body {
   }
 
   .chip {
-    @apply inline-flex min-h-6 items-center gap-1 rounded-md
-           border border-surface-border/80 bg-surface px-2 py-0.5 text-xs font-medium shadow-[inset_0_1px_0_rgb(255_255_255/0.35)];
+    @apply inline-flex h-6 items-center gap-1 rounded-md border border-surface-border/80
+           bg-surface-2/70 px-2 text-[11px] font-medium leading-none tracking-wide text-fg/85;
   }
   .chip-brand {
-    @apply border-brand/30 bg-brand/10 text-brand;
+    @apply border-brand/30 bg-brand/15 text-brand dark:text-sky-300;
   }
   .chip-success {
-    @apply border-success/30 bg-success/10 text-success;
+    @apply border-success/30 bg-success/15 text-success dark:text-emerald-300;
   }
   .chip-warning {
-    @apply border-warning/30 bg-warning/10 text-warning;
+    @apply border-warning/30 bg-warning/15 text-warning dark:text-amber-300;
   }
   .chip-danger {
-    @apply border-danger/30 bg-danger/10 text-danger;
+    @apply border-danger/30 bg-danger/15 text-danger dark:text-red-300;
   }
   .chip-info {
-    @apply border-info/30 bg-info/10 text-info;
+    @apply border-info/30 bg-info/15 text-info dark:text-sky-300;
   }
   .chip-muted {
-    @apply border-surface-border bg-surface text-muted;
+    @apply border-surface-border/80 bg-surface-2/80 text-muted;
   }
 
   .app-nav-link {
@@ -1725,20 +1805,20 @@ body {
   }
 
   .status-tag {
-    @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium;
+    @apply inline-flex h-6 items-center rounded-md border px-2 text-[11px] font-medium leading-none tracking-wide;
   }
   .status-tag-enabled {
-    @apply bg-brand/15 text-brand dark:bg-brand/20;
+    @apply border-brand/30 bg-brand/15 text-brand dark:text-sky-300;
   }
   .status-tag-disabled {
-    @apply bg-surface-2 text-muted;
+    @apply border-surface-border/80 bg-surface-2/80 text-muted;
   }
 
   .admin-section-nav {
     @apply sticky top-[3.5rem] z-10 mb-6 flex gap-1 overflow-x-auto rounded-lg border border-surface-border/75 bg-surface/95 p-1 shadow-sm backdrop-blur;
   }
   .admin-section-nav-item {
-    @apply inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-3 text-xs font-semibold text-muted
+    @apply inline-flex h-[40px] shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-3 text-sm font-semibold text-muted
            transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30;
   }
   .admin-section {

@@ -2,14 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   BrainCircuit,
-  CalendarClock,
-  CheckCircle2,
+  ChevronDown,
   Edit3,
-  Filter,
   Loader2,
   RefreshCw,
   Search,
@@ -20,7 +18,6 @@ import { toast } from "sonner";
 import Dialog from "@/components/Dialog";
 import Select from "@/components/Select";
 import ThemeToggle from "@/components/ThemeToggle";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { LoadingState, StateView } from "@/components/ui/state-view";
@@ -31,9 +28,10 @@ import {
   patchMemory,
   type UserMemory,
 } from "@/lib/conversations-api";
+import { cn } from "@/lib/utils";
 
 type StatusFilter = "active" | "superseded" | "deleted" | "expired" | "all";
-type TypeFilter = "all" | "explicit" | "preference" | "constraint";
+type TypeFilter = "all" | "fact" | "explicit" | "preference" | "constraint";
 type ScopeFilter = "all" | "personal" | "kb";
 
 const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
@@ -46,6 +44,7 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
 
 const TYPE_OPTIONS: { value: TypeFilter; label: string }[] = [
   { value: "all", label: "全部类型" },
+  { value: "fact", label: "事实" },
   { value: "explicit", label: "显式" },
   { value: "preference", label: "偏好" },
   { value: "constraint", label: "约束" },
@@ -114,11 +113,8 @@ export default function MemoriesPage() {
 
   const stats = useMemo(() => {
     const active = rows.filter((m) => m.status === "active").length;
-    const byType = rows.reduce<Record<string, number>>((acc, memory) => {
-      acc[memory.type] = (acc[memory.type] ?? 0) + 1;
-      return acc;
-    }, {});
-    return { active, total: rows.length, byType };
+    const embedded = rows.filter((m) => m.has_embedding).length;
+    return { active, total: rows.length, embedded };
   }, [rows]);
 
   const handleStatusChange = (next: StatusFilter) => {
@@ -168,105 +164,89 @@ export default function MemoriesPage() {
     <div className="app-page min-h-dvh text-fg">
       <header className="app-page-header border-b">
         <div className="mx-auto flex h-14 max-w-5xl items-center px-4 sm:px-6">
-          <Link
-            href="/"
-            className="app-nav-link app-nav-link-compact"
-          >
+          <Link href="/" className="app-nav-link app-nav-link-compact">
             <ArrowLeft className="h-4 w-4" />
             返回对话
           </Link>
-          <div className="ml-auto flex items-center gap-2">
-            <button
-              type="button"
-              className="admin-btn-secondary"
-              onClick={() => void refresh(status)}
-              disabled={refreshing}
-            >
-              {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              刷新
-            </button>
-            <ThemeToggle />
+          <div className="ml-auto">
+            <ThemeToggle compact />
           </div>
         </div>
       </header>
 
-      <main className="app-page-content mx-auto max-w-6xl px-4 py-7 sm:px-6 sm:py-10">
+      <main className="app-page-content mx-auto max-w-5xl px-4 py-7 sm:px-6 sm:py-10">
         <div className="admin-panel overflow-hidden">
           <div className="border-b border-surface-border/70 bg-surface-2/45 px-5 py-5 sm:px-6">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <p className="text-xs font-semibold tracking-[0.16em] text-brand">
-                  记忆治理
-                </p>
-                <h1 className="mt-2 flex items-center gap-2 text-2xl font-semibold tracking-tight">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div className="min-w-0">
+                <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
                   <span className="admin-icon-tile admin-icon-tile-brand rounded-md">
                     <BrainCircuit className="h-5 w-5" />
                   </span>
                   我的记忆
                 </h1>
                 <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">
-                  审计系统从对话中保存的长期记忆，筛选、编辑或删除任意记录；只有有效记忆会参与后续上下文注入。
+                  管理对话中保存的长期记忆。只有有效记忆会注入后续上下文。
                 </p>
               </div>
-
-              <div className="grid grid-cols-3 gap-2 rounded-lg border border-surface-border/80 bg-surface p-2 text-center shadow-sm">
-                <Stat label="当前有效" value={stats.active} />
-                <Stat label="本页记录" value={stats.total} />
-                <Stat label="有向量" value={rows.filter((m) => m.has_embedding).length} />
-              </div>
+              <p className="shrink-0 text-sm tabular-nums text-muted">
+                有效 <span className="font-semibold text-fg">{stats.active}</span>
+                <span className="mx-2 text-surface-border">·</span>
+                本页 <span className="font-semibold text-fg">{stats.total}</span>
+                <span className="mx-2 text-surface-border">·</span>
+                已向量化 <span className="font-semibold text-fg">{stats.embedded}</span>
+              </p>
             </div>
           </div>
 
-          <section className="border-b border-surface-border/70 bg-surface px-5 py-4 sm:px-6">
-            <div className="grid gap-3 md:grid-cols-[minmax(16rem,1fr)_repeat(3,minmax(0,9.5rem))]">
-              <label className="relative block md:col-span-1">
+          <section className="border-b border-surface-border/70 bg-surface px-5 py-3.5 sm:px-6">
+            <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center">
+              <label className="relative min-w-0 flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
                 <Input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="搜索内容、键、值或来源"
-                  className="pl-9"
+                  className="h-[40px] pl-9"
                   aria-label="搜索记忆"
                 />
               </label>
-              <Select
-                value={status}
-                onChange={(e) => handleStatusChange(e.target.value as StatusFilter)}
-                options={STATUS_OPTIONS}
-                aria-label="按状态筛选"
-              />
-              <Select
-                value={type}
-                onChange={(e) => setType(e.target.value as TypeFilter)}
-                options={TYPE_OPTIONS}
-                aria-label="按类型筛选"
-              />
-              <Select
-                value={scope}
-                onChange={(e) => setScope(e.target.value as ScopeFilter)}
-                options={SCOPE_OPTIONS}
-                aria-label="按范围筛选"
-              />
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
-              <span className="inline-flex items-center gap-1.5 rounded-md border border-surface-border/70 bg-surface-2 px-2.5 py-1 font-medium text-fg">
-                <Filter className="h-3.5 w-3.5 text-brand" />
-                类型分布
-              </span>
-              {(stats.byType.preference ?? 0) > 0 && (
-                <span className="chip">偏好 {stats.byType.preference}</span>
-              )}
-              {(stats.byType.constraint ?? 0) > 0 && (
-                <span className="chip">约束 {stats.byType.constraint}</span>
-              )}
-              {(stats.byType.explicit ?? 0) > 0 && (
-                <span className="chip">显式 {stats.byType.explicit}</span>
-              )}
-              {(stats.byType.preference ?? 0) === 0 &&
-                (stats.byType.constraint ?? 0) === 0 &&
-                (stats.byType.explicit ?? 0) === 0 && (
-                  <span className="text-muted">暂无分类数据</span>
-                )}
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:flex lg:shrink-0">
+                <Select
+                  value={status}
+                  onChange={(e) => handleStatusChange(e.target.value as StatusFilter)}
+                  options={STATUS_OPTIONS}
+                  aria-label="按状态筛选"
+                  className="h-[40px] min-h-[40px] w-full min-w-0 lg:w-[8.5rem]"
+                />
+                <Select
+                  value={type}
+                  onChange={(e) => setType(e.target.value as TypeFilter)}
+                  options={TYPE_OPTIONS}
+                  aria-label="按类型筛选"
+                  className="h-[40px] min-h-[40px] w-full min-w-0 lg:w-[7.5rem]"
+                />
+                <Select
+                  value={scope}
+                  onChange={(e) => setScope(e.target.value as ScopeFilter)}
+                  options={SCOPE_OPTIONS}
+                  aria-label="按范围筛选"
+                  className="h-[40px] min-h-[40px] w-full min-w-0 lg:w-[7.5rem]"
+                />
+                <button
+                  type="button"
+                  className="admin-btn-secondary h-[40px] min-h-[40px]"
+                  onClick={() => void refresh(status)}
+                  disabled={refreshing}
+                >
+                  {refreshing ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  刷新
+                </button>
+              </div>
             </div>
           </section>
 
@@ -278,7 +258,7 @@ export default function MemoriesPage() {
                 className="border-surface-border bg-surface"
               />
             ) : (
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 {filtered.map((memory) => (
                   <MemoryRow
                     key={memory.id}
@@ -321,15 +301,6 @@ export default function MemoriesPage() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="min-w-0 rounded-md px-3 py-2">
-      <div className="text-lg font-semibold tabular-nums tracking-tight">{value}</div>
-      <div className="truncate text-xs text-muted">{label}</div>
-    </div>
-  );
-}
-
 function MemoryRow({
   memory,
   busy,
@@ -341,51 +312,79 @@ function MemoryRow({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const structureSummary = [memory.key, memory.value].filter(Boolean).join(" · ");
+  const expiryLabel = memory.expires_at
+    ? `到期 ${formatMemoryDate(memory.expires_at)}`
+    : "长期有效";
+
   return (
-    <article className="group rounded-lg border border-surface-border/80 bg-surface shadow-sm transition-[background-color,border-color,box-shadow] duration-200 hover:border-brand/30 hover:bg-surface/95 hover:shadow-[0_10px_28px_rgb(15_23_42/0.08)]">
-      <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_17rem_auto]">
-        <div className="min-w-0 border-b border-surface-border/55 p-4 lg:border-b-0 lg:border-r lg:border-surface-border/65">
-          <div className="mb-2 flex flex-wrap items-center gap-1.5">
-            <Badge variant={memory.status === "active" ? "default" : "outline"}>
-              {statusLabel(memory.status)}
-            </Badge>
-            <Badge variant="secondary">{memoryTypeLabel(memory.type)}</Badge>
-            <Badge variant="outline">{memory.scope === "kb" ? "知识库范围" : "全局范围"}</Badge>
-            {memory.has_embedding ? (
-              <span className="inline-flex min-h-6 items-center gap-1 rounded-md border border-brand/15 bg-brand/5 px-2 text-xs font-medium text-muted">
-                <CheckCircle2 className="h-3.5 w-3.5 text-brand" />
-                已向量化
-              </span>
+    <article
+      className={cn(
+        "group relative overflow-hidden rounded-lg border border-surface-border/80 bg-surface transition-[border-color,background-color] duration-200",
+        "hover:border-brand/30 hover:bg-surface/95"
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn("absolute inset-y-0 left-0 w-0.5", memoryTypeAccent(memory.type))}
+      />
+      <div className="flex gap-3 py-3.5 pl-4 pr-3 sm:pl-5">
+        <div className="min-w-0 flex-1">
+          <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+            <MemoryChip tone={statusTone(memory.status)}>{statusLabel(memory.status)}</MemoryChip>
+            <MemoryChip tone={typeTone(memory.type)}>{memoryTypeLabel(memory.type)}</MemoryChip>
+            <MemoryChip tone="neutral">{memory.scope === "kb" ? "知识库" : "全局"}</MemoryChip>
+          </div>
+
+          <p className="line-clamp-2 break-words text-[15px] font-medium leading-6 text-fg">
+            {memory.content}
+          </p>
+
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+            <span>{formatMemoryDate(memory.updated_at)}</span>
+            <span aria-hidden className="text-surface-border">
+              ·
+            </span>
+            <span>{expiryLabel}</span>
+            {structureSummary ? (
+              <>
+                <span aria-hidden className="text-surface-border">
+                  ·
+                </span>
+                <span className="max-w-[28rem] truncate font-mono text-[11px] text-muted/90">
+                  {structureSummary}
+                </span>
+              </>
             ) : null}
           </div>
-          <p className="break-words text-sm font-medium leading-relaxed">{memory.content}</p>
-          <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted">
-            <MetaPill label="来源" value={memorySourceLabel(memory.source)} />
-            <MetaPill label="重要度" value={memory.importance.toFixed(2)} />
-            <MetaPill label="置信度" value={`${Math.round(memory.confidence * 100)}%`} />
-          </div>
-        </div>
-        <div className="grid gap-2 border-b border-surface-border/55 bg-surface-2/45 p-4 text-xs text-muted lg:border-b-0 lg:border-r lg:border-surface-border/65">
-          <div className="min-w-0">
-            <div className="mb-1 font-medium text-fg">结构键</div>
-            <div className="truncate">{memory.key || "-"}</div>
-          </div>
-          <div className="min-w-0">
-            <div className="mb-1 font-medium text-fg">结构值</div>
-            <div className="truncate">{memory.value || "-"}</div>
-          </div>
-          <div className="flex min-w-0 items-center gap-1.5 rounded-md border border-surface-border/55 bg-surface px-2.5 py-1.5 shadow-sm">
-            <CalendarClock className="h-3.5 w-3.5 text-brand" />
-            <span className="truncate">{formatMemoryDate(memory.updated_at)}</span>
-          </div>
-          <div className="truncate rounded-md border border-surface-border/55 bg-surface px-2.5 py-1.5 shadow-sm">
-            {memory.expires_at ? `到期：${formatMemoryDate(memory.expires_at)}` : "长期有效"}
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center justify-end gap-2 bg-surface p-3 lg:flex-col lg:justify-center lg:bg-surface-2/25">
+
+          {detailsOpen ? (
+            <div className="mt-3 grid gap-2 rounded-md border border-surface-border/60 bg-surface-2/50 px-3 py-2.5 text-xs text-muted sm:grid-cols-2">
+              <DetailItem label="结构键" value={memory.key || "—"} mono />
+              <DetailItem label="结构值" value={memory.value || "—"} mono />
+              <DetailItem label="来源" value={memorySourceLabel(memory.source)} />
+              <DetailItem label="重要度" value={memory.importance.toFixed(2)} />
+              <DetailItem label="置信度" value={`${Math.round(memory.confidence * 100)}%`} />
+              <DetailItem label="向量" value={memory.has_embedding ? "已向量化" : "未向量化"} />
+            </div>
+          ) : null}
+
           <button
             type="button"
-            className="admin-icon-action admin-icon-action-lg admin-icon-action-brand"
+            className="mt-2 inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-muted transition hover:bg-surface-2 hover:text-fg"
+            onClick={() => setDetailsOpen((open) => !open)}
+            aria-expanded={detailsOpen}
+          >
+            <ChevronDown className={cn("h-3.5 w-3.5 transition", detailsOpen && "rotate-180")} />
+            {detailsOpen ? "收起详情" : "详情"}
+          </button>
+        </div>
+
+        <div className="flex shrink-0 items-start gap-1 pt-0.5 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
+          <button
+            type="button"
+            className="admin-icon-action admin-icon-action-brand size-8"
             onClick={onEdit}
             disabled={busy}
             aria-label="编辑记忆"
@@ -395,7 +394,7 @@ function MemoryRow({
           </button>
           <button
             type="button"
-            className="admin-icon-action admin-icon-action-lg admin-icon-action-danger"
+            className="admin-icon-action admin-icon-action-danger size-8"
             onClick={onDelete}
             disabled={busy || memory.status === "deleted"}
             aria-label="删除记忆"
@@ -409,13 +408,73 @@ function MemoryRow({
   );
 }
 
-function MetaPill({ label, value }: { label: string; value: string }) {
+function DetailItem({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
   return (
-    <span className="inline-flex min-h-7 items-center gap-1 rounded-md border border-surface-border/70 bg-surface-2 px-2.5 py-1 shadow-[inset_0_1px_0_rgb(255_255_255/0.35)] dark:shadow-none">
-      <span className="text-muted">{label}</span>
-      <span className="font-medium text-fg">{value}</span>
+    <div className="min-w-0">
+      <div className="mb-0.5 text-muted">{label}</div>
+      <div className={cn("truncate font-medium text-fg", mono && "font-mono text-[11px]")}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function MemoryChip({
+  tone,
+  children,
+}: {
+  tone: "success" | "danger" | "warning" | "muted" | "info" | "accent" | "neutral";
+  children: ReactNode;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex h-6 items-center rounded-md border px-2 text-[11px] font-medium leading-none tracking-wide",
+        tone === "success" &&
+          "border-emerald-500/30 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+        tone === "danger" &&
+          "border-red-500/30 bg-red-500/15 text-red-700 dark:text-red-300",
+        tone === "warning" &&
+          "border-amber-500/30 bg-amber-500/15 text-amber-800 dark:text-amber-300",
+        tone === "muted" &&
+          "border-surface-border/80 bg-surface-2/80 text-muted",
+        tone === "info" &&
+          "border-sky-500/30 bg-sky-500/15 text-sky-800 dark:text-sky-300",
+        tone === "accent" &&
+          "border-brand/30 bg-brand/15 text-brand dark:text-sky-300",
+        tone === "neutral" &&
+          "border-surface-border/80 bg-surface-2/70 text-fg/85"
+      )}
+    >
+      {children}
     </span>
   );
+}
+
+function statusTone(
+  status: UserMemory["status"]
+): "success" | "danger" | "warning" | "muted" {
+  if (status === "active") return "success";
+  if (status === "deleted") return "danger";
+  if (status === "expired") return "warning";
+  return "muted";
+}
+
+function typeTone(
+  type: UserMemory["type"]
+): "info" | "accent" | "warning" | "neutral" {
+  if (type === "preference") return "info";
+  if (type === "constraint") return "warning";
+  if (type === "explicit") return "accent";
+  return "neutral";
 }
 
 function MemoryEditDialog({
@@ -436,14 +495,14 @@ function MemoryEditDialog({
   const [content, setContent] = useState("");
   const [value, setValue] = useState("");
   const [importance, setImportance] = useState(0.5);
-  const [status, setStatus] = useState<"active" | "deleted">("active");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   useEffect(() => {
     if (!memory) return;
     setContent(memory.content);
     setValue(memory.value ?? "");
     setImportance(memory.importance);
-    setStatus(memory.status === "deleted" ? "deleted" : "active");
+    setAdvancedOpen(false);
   }, [memory]);
 
   const save = async () => {
@@ -459,7 +518,7 @@ function MemoryEditDialog({
         content: nextContent,
         value: value.trim() || undefined,
         importance,
-        status,
+        status: memory.status === "deleted" ? "deleted" : "active",
       });
       toast.success("记忆已更新");
       onSaved(updated);
@@ -492,37 +551,46 @@ function MemoryEditDialog({
             disabled={busy}
           />
         </label>
-        <label className="block">
-          <div className="mb-1 text-xs font-medium text-muted">结构值</div>
-          <Input value={value} onChange={(e) => setValue(e.target.value)} maxLength={500} disabled={busy} />
-        </label>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block">
-            <div className="mb-1 text-xs font-medium text-muted">重要度 {importance.toFixed(2)}</div>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={importance}
-              onChange={(e) => setImportance(Number(e.target.value))}
-              disabled={busy}
-              className="h-8 w-full accent-brand"
-            />
-          </label>
-          <label className="block">
-            <div className="mb-1 text-xs font-medium text-muted">状态</div>
-            <Select
-              value={status}
-              onChange={(e) => setStatus(e.target.value as "active" | "deleted")}
-              disabled={busy}
-              options={[
-                { value: "active", label: "有效" },
-                { value: "deleted", label: "删除" },
-              ]}
-            />
-          </label>
-        </div>
+
+        <button
+          type="button"
+          className="inline-flex h-8 items-center gap-1 text-xs font-medium text-muted transition hover:text-fg"
+          onClick={() => setAdvancedOpen((open) => !open)}
+          aria-expanded={advancedOpen}
+        >
+          <ChevronDown className={cn("h-3.5 w-3.5 transition", advancedOpen && "rotate-180")} />
+          高级选项
+        </button>
+
+        {advancedOpen ? (
+          <div className="space-y-3 rounded-lg border border-surface-border/70 bg-surface-2/40 p-3">
+            <label className="block">
+              <div className="mb-1 text-xs font-medium text-muted">结构值</div>
+              <Input
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                maxLength={500}
+                disabled={busy}
+              />
+            </label>
+            <label className="block">
+              <div className="mb-1 text-xs font-medium text-muted">
+                重要度 {importance.toFixed(2)}
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={importance}
+                onChange={(e) => setImportance(Number(e.target.value))}
+                disabled={busy}
+                className="h-8 w-full accent-brand"
+              />
+            </label>
+          </div>
+        ) : null}
+
         <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
           <button type="button" className="admin-btn-secondary" onClick={onClose} disabled={busy}>
             取消
@@ -537,15 +605,24 @@ function MemoryEditDialog({
   );
 }
 
+function memoryTypeAccent(type: UserMemory["type"]) {
+  if (type === "preference") return "bg-sky-500/80";
+  if (type === "constraint") return "bg-amber-500/80";
+  if (type === "explicit") return "bg-emerald-500/80";
+  return "bg-brand/70";
+}
+
 function memoryTypeLabel(type: UserMemory["type"]) {
   if (type === "preference") return "偏好";
   if (type === "constraint") return "约束";
   if (type === "explicit") return "显式";
+  if (type === "fact") return "事实";
   return type;
 }
 
 function memorySourceLabel(source: UserMemory["source"]) {
   if (source === "auto_rule") return "自动提取";
+  if (source === "auto_session") return "会话自动";
   if (source === "user_edited") return "用户编辑";
   if (source === "explicit") return "用户明确要求";
   return source;
@@ -560,7 +637,14 @@ function statusLabel(status: UserMemory["status"]) {
 }
 
 function formatMemoryDate(value: string | null) {
-  if (!value) return "-";
+  if (!value) return "—";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString();
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }

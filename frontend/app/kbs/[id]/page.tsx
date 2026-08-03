@@ -18,7 +18,6 @@ import {
   RefreshCw,
   AlertCircle,
   Lock,
-  Hash,
   Layers,
   BookOpen,
   SlidersHorizontal,
@@ -500,34 +499,38 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
 
         {/* Meta + stats */}
         <section className="admin-panel mb-4 overflow-hidden">
-          <div className="flex flex-col gap-4 border-b border-surface-border/70 bg-surface-2/35 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-3 bg-surface-2/35 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex min-w-0 items-start gap-3">
               <span className="admin-icon-tile admin-icon-tile-brand">
                 {kb.is_system ? <Lock className="h-4 w-4" /> : <BookOpen className="h-4 w-4" />}
               </span>
               <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <h2 className="truncate text-base font-semibold">{kb.name}</h2>
-                  {kb.is_system && (
-                    <span className="chip chip-warning">
-                      示例 · 只读
-                    </span>
-                  )}
+                  {kb.is_system && <span className="chip chip-warning">示例</span>}
+                  {kb.is_system && <span className="chip chip-muted">只读</span>}
+                  <span className="chip chip-muted">{formatKbRole(myRole)}</span>
                 </div>
                 {kb.description && (
                   <p className="mt-1 text-sm leading-6 text-muted">{kb.description}</p>
                 )}
+                <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs tabular-nums text-muted">
+                  <span>
+                    <span className="font-semibold text-fg">{kb.documents.length}</span> 文档
+                  </span>
+                  <span aria-hidden className="text-surface-border">·</span>
+                  <span>
+                    <span className="font-semibold text-fg">{kb.chunks_count}</span> 分块
+                  </span>
+                  <span aria-hidden className="text-surface-border">·</span>
+                  <span className="max-w-[18rem] truncate font-mono text-[11px]">
+                    {kb.embedding_model || "—"}
+                  </span>
+                  <span aria-hidden className="text-surface-border">·</span>
+                  <span>{kb.vector_size} 维</span>
+                </p>
               </div>
             </div>
-            <span className="chip chip-muted">
-              {formatKbRole(myRole)}
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-3 bg-surface/35 p-4 sm:grid-cols-4">
-            <Stat icon={FileText} label="文档" value={kb.documents.length} />
-            <Stat icon={Hash} label="分块" value={kb.chunks_count} />
-            <Stat icon={Layers} label="向量模型" value={kb.embedding_model || "-"} />
-            <Stat icon={BookOpen} label="维度" value={kb.vector_size} />
           </div>
         </section>
 
@@ -611,19 +614,18 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
               </AdminToolbarButton>
             ) : (
               <>
-                <div className="input-shell flex items-center gap-2 px-3 py-1.5">
+                <div className="input-shell flex h-[40px] items-center gap-2 px-3">
                   <Search className="h-3.5 w-3.5 text-muted" />
                   <input
                     type="search"
                     value={docSearch}
                     onChange={(e) => setDocSearch(e.target.value)}
                     placeholder="搜索文档名称"
-                    className="w-36 bg-transparent text-xs outline-none sm:w-44"
+                    className="w-36 bg-transparent text-sm outline-none sm:w-44"
                   />
                 </div>
                 <Select
-                  size="sm"
-                  className="w-[110px] admin-select-trigger"
+                  className="w-[120px] admin-select-trigger"
                   value={docStatusFilter}
                   onChange={(e) =>
                     setDocStatusFilter(e.target.value as typeof docStatusFilter)
@@ -718,10 +720,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                           <span>{formatFileSize(d.size_bytes)}</span>
                         </div>
                       </div>
-                      <span className="inline-flex shrink-0 items-center gap-1.5 text-xs">
-                        <span className={cn("h-2 w-2 rounded-sm", st.dot)} />
-                        {st.label}
-                      </span>
+                      <span className={cn("chip", st.badge)}>{st.label}</span>
                     </div>
 
                     <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
@@ -837,10 +836,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                         </div>
                       </td>
                       <td>
-                        <span className="inline-flex items-center gap-1.5 text-xs">
-                          <span className={cn("h-2 w-2 rounded-sm", st.dot)} />
-                          {st.label}
-                        </span>
+                        <span className={cn("chip", st.badge)}>{st.label}</span>
                       </td>
                       <td>
                         <Switch
@@ -983,11 +979,10 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                 <label className="text-xs">
                   <span className="text-muted">切分策略</span>
                   <Select
-                    size="sm"
                     value={chunkStrategy}
                     onChange={(e) => setChunkStrategy(e.target.value as ChunkStrategy)}
                     options={CHUNK_STRATEGY_OPTIONS}
-                    className="mt-1 admin-select-trigger"
+                    className="mt-1 h-[40px] admin-select-trigger"
                     contentAlign="start"
                     contentPosition="popper"
                   />
@@ -1130,26 +1125,6 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
   );
 }
 
-function Stat({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: typeof FileText;
-  label: string;
-  value: string | number;
-}) {
-  return (
-    <div className="flex items-start gap-2 rounded-lg bg-surface-2 px-3 py-2">
-      <Icon className="mt-0.5 h-3.5 w-3.5 flex-none text-muted" />
-      <div className="min-w-0">
-        <div className="text-[10px] uppercase tracking-wide text-muted">{label}</div>
-        <div className="truncate text-sm">{value}</div>
-      </div>
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // v2-M9: Members section
 // ---------------------------------------------------------------------------
@@ -1281,7 +1256,6 @@ function MembersSection({ kbId, isOwner }: { kbId: string; isOwner: boolean }) {
               {isOwner ? (
                 <>
                   <Select
-                    size="sm"
                     value={m.role}
                     onChange={(e) =>
                       onChangeRole(m.user_id, e.target.value as MemberRole)
@@ -1538,7 +1512,6 @@ function InviteDialog({
                 <label className="space-y-1.5 text-xs font-medium text-muted">
                   <span>角色</span>
                   <Select
-                    size="sm"
                     value={emailRole}
                     onChange={(e) => setEmailRole(e.target.value as MemberRole)}
                     options={[
@@ -1563,7 +1536,6 @@ function InviteDialog({
                 <label className="space-y-1.5 text-xs font-medium text-muted">
                   <span>角色</span>
                   <Select
-                    size="sm"
                     value={linkRole}
                     onChange={(e) => setLinkRole(e.target.value as MemberRole)}
                     options={[

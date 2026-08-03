@@ -94,21 +94,21 @@ export default function KbsPage() {
             <span>返回对话</span>
           </Link>
           <div className="flex-1" />
-          <h1 className="flex items-center gap-2 text-sm font-medium">
-            <BookOpen className="h-4 w-4" />
-            我的知识库
-          </h1>
-          <ThemeToggle />
+          <ThemeToggle compact />
         </div>
       </header>
 
       <main className="app-page-content mx-auto max-w-5xl px-4 py-7 sm:px-6 sm:py-10">
-        <div className="mb-7 flex flex-col gap-4 border-b border-surface-border/70 pb-6 sm:flex-row sm:items-end sm:justify-between">
+        <div className="mb-6 flex flex-col gap-3 border-b border-surface-border/70 pb-5 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
-            <p className="text-xs font-semibold tracking-[0.16em] text-brand">知识工作区</p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-fg">管理你的知识库</h2>
+            <h2 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-fg">
+              <span className="admin-icon-tile admin-icon-tile-brand rounded-md">
+                <BookOpen className="h-5 w-5" />
+              </span>
+              我的知识库
+            </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-              创建新知识库时可选择此 KB 使用的 embedding / reranker 配置。
+              创建与管理资料库；新建时可单独配置 embedding / reranker。
             </p>
           </div>
           <button
@@ -135,7 +135,7 @@ export default function KbsPage() {
             }
           />
         ) : (
-          <ul className="grid min-w-0 gap-3">
+          <ul className="grid min-w-0 gap-2">
             {kbs.map((kb) => {
               const isOwner = kb.my_role === "owner";
               const isEditor = kb.my_role === "editor";
@@ -143,9 +143,9 @@ export default function KbsPage() {
               return (
                 <li
                   key={kb.id}
-                  className="group min-w-0 overflow-hidden rounded-lg border border-surface-border/80 bg-surface shadow-sm transition-[background-color,border-color,box-shadow] hover:border-brand/30 hover:bg-surface-2/50 hover:shadow-md"
+                  className="group min-w-0 overflow-hidden rounded-lg border border-surface-border/80 bg-surface transition-[background-color,border-color] hover:border-brand/30 hover:bg-surface-2/40"
                 >
-                  <div className="flex min-w-0 items-start gap-3 px-4 py-4 sm:gap-4 sm:px-5">
+                  <div className="flex min-w-0 items-start gap-3 px-4 py-3.5 sm:gap-3.5 sm:px-5">
                     <span className="admin-icon-tile admin-icon-tile-muted mt-0.5 shrink-0 transition group-hover:border-brand/25 group-hover:bg-brand/10 group-hover:text-brand">
                         {kb.is_system ? (
                           <Lock className="h-4 w-4 text-warning" />
@@ -158,49 +158,52 @@ export default function KbsPage() {
                         )}
                     </span>
                     <Link href={`/kbs/${kb.id}`} className="min-w-0 flex-1 overflow-hidden rounded-md outline-none focus-visible:ring-2 focus-visible:ring-brand/25">
-                      <div className="flex min-w-0 flex-wrap items-center gap-2">
-                        <span className="min-w-0 break-words font-medium">{kb.name}</span>
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        <span className="min-w-0 break-words text-[15px] font-medium">{kb.name}</span>
                         {kb.is_system && (
-                          <span className="chip chip-warning">
-                            示例 · 只读
-                          </span>
+                          <span className="chip chip-warning">示例</span>
+                        )}
+                        {kb.is_system && (
+                          <span className="chip chip-muted">只读</span>
                         )}
                         {isEditor && (
-                          <span className="chip chip-info">
-                            协作
-                          </span>
+                          <span className="chip chip-info">协作</span>
                         )}
                         {isViewer && (
-                          <span className="chip chip-muted">
-                            只读
-                          </span>
+                          <span className="chip chip-muted">只读</span>
                         )}
                       </div>
-                      <div className="mt-1.5 line-clamp-2 break-words text-xs text-muted">
+                      <div className="mt-1 line-clamp-2 break-words text-sm text-muted">
                         {kb.description || (
                           <span className="italic opacity-60">无描述</span>
                         )}
                       </div>
-                      <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted">
-                        <span className="stat-pill min-h-8 py-1">
+                      <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+                        <span className="inline-flex items-center gap-1">
                           <FileText className="h-3 w-3" />
                           {kb.documents_count} 文档
                         </span>
-                        <span className="stat-pill min-h-8 py-1">
+                        <span aria-hidden className="text-surface-border">·</span>
+                        <span className="inline-flex items-center gap-1">
                           <Hash className="h-3 w-3" />
                           {kb.chunks_count} 分块
                         </span>
-                        <span className="stat-pill min-h-8 max-w-full min-w-0 truncate py-1">
-                          {kb.embedding_model || "—"}
-                        </span>
+                        {kb.embedding_model ? (
+                          <>
+                            <span aria-hidden className="text-surface-border">·</span>
+                            <span className="max-w-[16rem] truncate font-mono text-[11px]">
+                              {kb.embedding_model}
+                            </span>
+                          </>
+                        ) : null}
                       </div>
                     </Link>
                     {isOwner && (
                       <button
                         onClick={() => setPendingDelete(kb)}
                         className={cn(
-                          "admin-icon-action admin-icon-action-lg admin-icon-action-danger shrink-0 text-muted/70",
-                          "hover:bg-danger/15"
+                          "admin-icon-action size-8 shrink-0 text-muted/70 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:group-focus-within:opacity-100",
+                          "hover:bg-danger/15 hover:text-danger"
                         )}
                         aria-label="删除知识库"
                         title="删除知识库"

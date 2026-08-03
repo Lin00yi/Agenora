@@ -8,7 +8,6 @@ import {
   useState,
   FormEvent,
   ChangeEvent,
-  type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -21,13 +20,8 @@ import {
   EyeOff,
   Loader2,
   Search,
-  Plus,
   Split,
   Merge,
-  FileText,
-  Hash,
-  Clock,
-  Type,
   MoreHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -482,14 +476,14 @@ export default function DocumentDetailPage({
         { label: "首页", href: "/" },
         { label: "知识库管理", href: "/kbs" },
         { label: "文档管理", href: `/kbs/${kbId}` },
-        { label: "切片管理" },
+        { label: "分块管理" },
       ]}
       title="分块管理"
       subtitle={
         <>
           {doc.filename}
           <span className="mx-1.5 text-muted/50">·</span>
-          <span className="text-muted">知识库: {kb.name}</span>
+          <span className="text-muted">{kb.name}</span>
         </>
       }
       actions={
@@ -498,63 +492,43 @@ export default function DocumentDetailPage({
             返回文档
           </Link>
           {canWrite && (
-            <>
-              <button
-                type="button"
-                className="admin-btn-secondary"
-                disabled={anyPending}
-                onClick={() => void onReingest()}
-              >
-                <RotateCcw
-                  className={cn(
-                    "h-4 w-4",
-                    isPending("reingest") && "animate-spin"
-                  )}
-                />
-                {isPending("reingest") ? "重建中…" : "重建向量"}
-              </button>
-              <button
-                type="button"
-                className="admin-btn-primary"
-                disabled
-                title="即将支持"
-              >
-                <Plus className="h-4 w-4" />
-                新建分块
-              </button>
-            </>
+            <button
+              type="button"
+              className="admin-btn-primary"
+              disabled={anyPending}
+              onClick={() => void onReingest()}
+            >
+              <RotateCcw
+                className={cn(
+                  "h-4 w-4",
+                  isPending("reingest") && "animate-spin"
+                )}
+              />
+              {isPending("reingest") ? "重建中…" : "重建向量"}
+            </button>
           )}
         </>
       }
     >
-      <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <DocContextStat
-          icon={FileText}
-          label="文档状态"
-          value={
-            <span className="inline-flex items-center gap-1.5">
-              <span className={cn("h-2 w-2 rounded-full", docStatus.dot)} />
-              {docStatus.label}
+      <section className="admin-panel mb-4 overflow-hidden">
+        <div className="flex flex-col gap-2 bg-surface-2/35 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <span className={cn("chip", docStatus.badge)}>{docStatus.label}</span>
+            <span className="text-sm text-muted">
+              <span className="font-semibold tabular-nums text-fg">{doc.chunks_count}</span> 分块
             </span>
-          }
-        />
-        <DocContextStat
-          icon={Hash}
-          label="分块总数"
-          value={`${doc.chunks_count.toLocaleString()} 分块`}
-        />
-        <DocContextStat
-          icon={Type}
-          label="文本规模"
-          value={`${doc.parsed_text_length.toLocaleString()} 字符`}
-          detail={formatFileSize(doc.size_bytes)}
-        />
-        <DocContextStat
-          icon={Clock}
-          label="最近更新"
-          value={formatAdminDate(doc.updated_at ?? doc.created_at)}
-        />
-      </div>
+            <span aria-hidden className="text-surface-border">·</span>
+            <span className="text-sm tabular-nums text-muted">
+              {doc.parsed_text_length.toLocaleString()} 字符
+            </span>
+            <span aria-hidden className="text-surface-border">·</span>
+            <span className="text-sm text-muted">{formatFileSize(doc.size_bytes)}</span>
+          </div>
+          <p className="shrink-0 text-xs text-muted">
+            更新于 {formatAdminDate(doc.updated_at ?? doc.created_at)}
+          </p>
+        </div>
+      </section>
 
       {canWrite && (
         <AdminPanel
@@ -574,7 +548,6 @@ export default function DocumentDetailPage({
             <label className="space-y-1.5 text-xs font-medium text-muted">
               <span>切分策略</span>
               <Select
-                size="sm"
                 value={docChunkStrategy}
                 onChange={(e) => setDocChunkStrategy(e.target.value as ChunkStrategy | "")}
                 placeholderOption={{ value: "", label: "继承 KB 默认" }}
@@ -665,8 +638,7 @@ export default function DocumentDetailPage({
               />
             </div>
             <Select
-              size="sm"
-              className="w-[120px] admin-select-trigger"
+              className="h-[40px] min-h-[40px] w-[132px] admin-select-trigger"
               value={enabledFilter}
               onChange={(e) =>
                 setEnabledFilter(e.target.value as typeof enabledFilter)
@@ -1160,32 +1132,3 @@ export default function DocumentDetailPage({
 
 const docInputClass =
   "admin-input";
-
-function DocContextStat({
-  icon: Icon,
-  label,
-  value,
-  detail,
-}: {
-  icon: typeof FileText;
-  label: string;
-  value: ReactNode;
-  detail?: ReactNode;
-}) {
-  return (
-    <div className="rounded-lg border border-surface-border/80 bg-surface px-4 py-3 shadow-sm transition-[background-color,border-color,box-shadow] hover:border-brand/25 hover:shadow-[0_10px_24px_rgb(15_23_42/0.06)]">
-      <div className="flex items-start gap-3">
-        <span className="admin-icon-tile admin-icon-tile-brand mt-0.5 flex-none rounded-md">
-          <Icon className="h-4 w-4" aria-hidden />
-        </span>
-        <div className="min-w-0">
-          <div className="text-[10px] font-medium uppercase tracking-wide text-muted">
-            {label}
-          </div>
-          <div className="mt-0.5 truncate text-sm font-medium text-fg">{value}</div>
-          {detail ? <div className="mt-0.5 text-xs text-muted">{detail}</div> : null}
-        </div>
-      </div>
-    </div>
-  );
-}

@@ -38,21 +38,21 @@ export const DOC_STATUS_UI: Record<
   pending: {
     label: "排队",
     dot: "bg-warning",
-    badge: "border-warning/30 bg-warning/10 text-warning",
+    badge: "chip-warning",
   },
   ingesting: {
     label: "处理中",
     dot: "bg-info",
-    badge: "border-info/30 bg-info/10 text-info",
+    badge: "chip-info",
   },
   done: {
     label: "完成",
     dot: "bg-success",
-    badge: "border-success/30 bg-success/10 text-success",
+    badge: "chip-success",
   },
   failed: {
     label: "失败",
     dot: "bg-danger",
-    badge: "border-danger/30 bg-danger/10 text-danger",
+    badge: "chip-danger",
   },
 };

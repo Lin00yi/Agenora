@@ -32,6 +32,7 @@ from src.conversations.routes import router as conversations_router
 from src.infra.database import get_session, init_db
 from src.infra.llm import normalize_model_name
 from src.infra.rate_limit import check as rate_check
+from src.infra import generation_lock
 from src.kb.models import KB
 from src.kb.routes import invitations_router
 from src.kb.routes import router as kb_router
@@ -153,6 +154,7 @@ def _run_chat_session(
     user: User | None = None,
     model_override: str | None = None,
     memory_trace: dict[str, Any] | None = None,
+    conversation_lock_id: str | None = None,
 ) -> EventSourceResponse:
     settings = get_settings()
     allowed, remaining = rate_check(rate_key, settings.rate_limit_per_hour)
@@ -254,6 +256,8 @@ def _run_chat_session(
                     break
                 yield {"event": "message", "data": json.dumps(evt, ensure_ascii=False)}
         finally:
+            if conversation_lock_id:
+                await generation_lock.release(conversation_lock_id)
             if not task.done():
                 task.cancel()
 
@@ -280,66 +284,79 @@ async def chat_post(
     require_user_llm(user)
 
     conv: Conversation | None = None
+    conversation_lock_id: str | None = None
     if req.conversation_id:
         conv = await session.get(Conversation, req.conversation_id)
         if conv is None or conv.user_id != user.id:
             raise HTTPException(status_code=404, detail="conversation not found")
+        conversation_lock_id = str(conv.id)
+        if not await generation_lock.try_acquire(conversation_lock_id):
+            raise HTTPException(
+                status_code=409,
+                detail="generation_in_progress",
+            )
 
-    effective_kb_id = req.kb_id if req.kb_id is not None else (conv.kb_id if conv else None)
-    selected_model = normalize_model_name(req.model or (conv.llm_model if conv else None))
+    try:
+        effective_kb_id = req.kb_id if req.kb_id is not None else (conv.kb_id if conv else None)
+        selected_model = normalize_model_name(req.model or (conv.llm_model if conv else None))
 
-    kb: KB | None = None
-    if effective_kb_id:
-        kb = await session.get(KB, effective_kb_id)
-        if kb is None:
-            raise HTTPException(status_code=404, detail="kb not found")
-        # v2-M9: any role (owner / editor / viewer) grants read access. System
-        # KB returns "viewer" for everyone. None role = caller has no access,
-        # answer 404 to avoid leaking existence.
-        role = await kb.role_for(session, user.id)
-        if role is None:
-            raise HTTPException(status_code=404, detail="kb not found")
-        # KB-mode chat needs embedding cfg too (search_kb embeds the query).
-        # Skip the check for system KBs (they're read-only and predate BYOK).
-        # v3-M7: also skip when the KB carries its own embedding cfg — the
-        # caller doesn't need user-level cfg to use a KB that brings its own.
-        if not kb.is_system and not bool(getattr(kb, "embedding_provider", None)):
-            require_user_embedding(user)
+        kb: KB | None = None
+        if effective_kb_id:
+            kb = await session.get(KB, effective_kb_id)
+            if kb is None:
+                raise HTTPException(status_code=404, detail="kb not found")
+            # v2-M9: any role (owner / editor / viewer) grants read access. System
+            # KB returns "viewer" for everyone. None role = caller has no access,
+            # answer 404 to avoid leaking existence.
+            role = await kb.role_for(session, user.id)
+            if role is None:
+                raise HTTPException(status_code=404, detail="kb not found")
+            # KB-mode chat needs embedding cfg too (search_kb embeds the query).
+            # Skip the check for system KBs (they're read-only and predate BYOK).
+            # v3-M7: also skip when the KB carries its own embedding cfg — the
+            # caller doesn't need user-level cfg to use a KB that brings its own.
+            if not kb.is_system and not bool(getattr(kb, "embedding_provider", None)):
+                require_user_embedding(user)
 
-    if conv is not None:
-        memory_trace: dict[str, Any] | None = None
-        context_llm_cfg = (resolve_user_llm(user) if user is not None else None) or resolve_system_llm()
-        user_memory_embedding_cfg = resolve_user_embedding(user)
-        built = await build_context_for_conversation(
-            session,
-            conversation_id=conv.id,
-            user_id=user.id,
-            model=selected_model,
-            kb_id=effective_kb_id,
-            context_window=context_llm_cfg.context_window if context_llm_cfg is not None else None,
-            llm_cfg=context_llm_cfg,
-            embedding_cfg=user_memory_embedding_cfg,
+        if conv is not None:
+            memory_trace: dict[str, Any] | None = None
+            context_llm_cfg = (resolve_user_llm(user) if user is not None else None) or resolve_system_llm()
+            user_memory_embedding_cfg = resolve_user_embedding(user)
+            built = await build_context_for_conversation(
+                session,
+                conversation_id=conv.id,
+                user_id=user.id,
+                model=selected_model,
+                kb_id=effective_kb_id,
+                context_window=context_llm_cfg.context_window if context_llm_cfg is not None else None,
+                llm_cfg=context_llm_cfg,
+                embedding_cfg=user_memory_embedding_cfg,
+            )
+            messages = built.messages
+            memory_trace = built.memory_trace
+        elif req.messages:
+            messages = [{"role": m.role, "content": m.content} for m in req.messages]
+            memory_trace = None
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="messages or conversation_id is required",
+            )
+
+        return _run_chat_session(
+            messages,
+            rate_key=f"user:{user.id}",
+            user_email=user.email,
+            kb=kb,
+            user=user,
+            model_override=selected_model,
+            memory_trace=memory_trace,
+            conversation_lock_id=conversation_lock_id,
         )
-        messages = built.messages
-        memory_trace = built.memory_trace
-    elif req.messages:
-        messages = [{"role": m.role, "content": m.content} for m in req.messages]
-        memory_trace = None
-    else:
-        raise HTTPException(
-            status_code=400,
-            detail="messages or conversation_id is required",
-        )
-
-    return _run_chat_session(
-        messages,
-        rate_key=f"user:{user.id}",
-        user_email=user.email,
-        kb=kb,
-        user=user,
-        model_override=selected_model,
-        memory_trace=memory_trace,
-    )
+    except Exception:
+        if conversation_lock_id:
+            await generation_lock.release(conversation_lock_id)
+        raise
 
 
 @app.get("/api/chat", deprecated=True)

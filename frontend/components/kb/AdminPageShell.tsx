@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronRight, Home } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
@@ -37,48 +37,39 @@ export function AdminPageShell({
   return (
     <div className={cn("app-page admin-page min-h-dvh text-fg", className)}>
       <header className="app-page-header border-b">
-        <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 sm:px-6">
-          <Link
-            href="/"
-            className="admin-icon-action admin-icon-action-surface"
-            aria-label="返回首页"
+        <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6">
+          <nav
+            aria-label="面包屑"
+            className="flex min-w-0 flex-1 flex-wrap items-center gap-1 text-xs text-muted"
           >
-            <Home className="h-4 w-4" />
-          </Link>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold">{title}</div>
-            <div className="hidden text-xs text-muted sm:block">知识库管理</div>
-          </div>
-          <ThemeToggle />
+            {breadcrumbs.map((item, i) => (
+              <span key={`${item.label}-${i}`} className="inline-flex min-w-0 items-center gap-1">
+                {i > 0 && <ChevronRight className="h-3 w-3 shrink-0 opacity-50" />}
+                {item.href ? (
+                  <Link
+                    href={item.href}
+                    className="inline-flex min-h-7 max-w-full items-center truncate rounded-md px-1.5 text-muted transition-colors hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
+                  >
+                    {item.label}
+                  </Link>
+                ) : (
+                  <span className="inline-flex min-h-7 max-w-full items-center truncate px-1.5 font-medium text-fg">
+                    {item.label}
+                  </span>
+                )}
+              </span>
+            ))}
+          </nav>
+          <ThemeToggle compact />
         </div>
       </header>
 
       <main className="app-page-content mx-auto px-4 py-7 sm:px-6 sm:py-10">
-        <nav className="mb-5 flex flex-wrap items-center gap-1 text-xs text-muted">
-          {breadcrumbs.map((item, i) => (
-            <span key={item.label} className="inline-flex items-center gap-1">
-              {i > 0 && <ChevronRight className="h-3 w-3 opacity-50" />}
-              {item.href ? (
-                <Link
-                  href={item.href}
-                  className="inline-flex min-h-7 items-center rounded-md border border-transparent px-2 text-muted transition-colors hover:border-surface-border/70 hover:bg-surface hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
-                >
-                  {item.label}
-                </Link>
-              ) : (
-                <span className="inline-flex min-h-7 items-center rounded-md border border-surface-border/70 bg-surface px-2 font-medium text-fg shadow-sm">
-                  {item.label}
-                </span>
-              )}
-            </span>
-          ))}
-        </nav>
-
-        <div className="mb-6 flex flex-col gap-4 border-b border-surface-border/70 pb-6 sm:flex-row sm:items-end sm:justify-between">
+        <div className="mb-5 flex flex-col gap-3 border-b border-surface-border/70 pb-5 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
             <h1 className="text-2xl font-semibold tracking-tight text-fg">{title}</h1>
             {subtitle && (
-              <p className="mt-2 text-sm leading-6 text-muted">{subtitle}</p>
+              <p className="mt-1.5 text-sm leading-6 text-muted">{subtitle}</p>
             )}
           </div>
           {actions && (

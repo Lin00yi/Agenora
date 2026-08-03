@@ -25,11 +25,11 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
+  ArrowDown,
   BrainCircuit,
   Circle,
   Copy,
   Database,
-  HelpCircle,
   LoaderCircle,
   LockKeyhole,
   LogOut,
@@ -294,8 +294,11 @@ export function ChatPage({
   const messagesCache = useRef<Map<string, Message[]>>(new Map());
   const cleanupRef = useRef<(() => void) | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const paneSwitchSeq = useRef(0);
+  const sendLockRef = useRef(false);
   const modelOptionsRef = useRef<string[]>([]);
   const streamingRef = useRef<{
     convId: string;
@@ -659,16 +662,40 @@ export function ChatPage({
     return () => window.removeEventListener("popstate", handlePopState);
   }, [authChecked, loadConversation, runPaneTransition]);
 
+  const scrollThreadToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior });
+    stickToBottomRef.current = true;
+    setShowScrollToBottom(false);
+  }, []);
+
+  const onThreadScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const nearBottom = distanceFromBottom < 96;
+    stickToBottomRef.current = nearBottom;
+    setShowScrollToBottom(!nearBottom && el.scrollHeight > el.clientHeight + 24);
+  }, []);
+
   useEffect(() => {
-    if (!scrollRef.current) return;
-    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (!stickToBottomRef.current) return;
+    scrollThreadToBottom("auto");
   }, [
+    scrollThreadToBottom,
     visibleMessages.length,
     visibleMessages[visibleMessages.length - 1]?.role === "assistant"
       ? (visibleMessages[visibleMessages.length - 1] as Message & { content: string })?.content
           ?.length
       : 0,
   ]);
+
+  useEffect(() => {
+    stickToBottomRef.current = true;
+    setShowScrollToBottom(false);
+    requestAnimationFrame(() => scrollThreadToBottom("auto"));
+  }, [currentId, scrollThreadToBottom]);
 
   useEffect(() => {
     const ta = textareaRef.current;
@@ -805,10 +832,19 @@ export function ChatPage({
     router.replace("/login");
   }, [router]);
 
+  const releaseSendLock = useCallback(() => {
+    sendLockRef.current = false;
+    setBusy(false);
+  }, []);
+
   const handleSend = useCallback(
     async (q: string) => {
       const trimmed = q.trim();
-      if (!trimmed || busy) return;
+      if (!trimmed || sendLockRef.current) return;
+      sendLockRef.current = true;
+      stickToBottomRef.current = true;
+      setShowScrollToBottom(false);
+      setBusy(true);
 
       let convId = currentId;
       let isFreshConv = false;
@@ -840,6 +876,7 @@ export function ChatPage({
           window.history.replaceState(null, "", conversationHref(created.id));
         } catch (e) {
           toast.error((e as Error)?.message ?? "\u521b\u5efa\u4f1a\u8bdd\u5931\u8d25");
+          releaseSendLock();
           return;
         }
       }
@@ -850,6 +887,7 @@ export function ChatPage({
         userMsg = serverMsgToLocal(persisted) as Message;
       } catch (e) {
         toast.error((e as Error)?.message ?? "\u4fdd\u5b58\u6d88\u606f\u5931\u8d25");
+        releaseSendLock();
         return;
       }
 
@@ -895,7 +933,6 @@ export function ChatPage({
       );
 
       setCurrentMemoryTrace(null);
-      setBusy(true);
       setComposerValue("");
 
       const persistFinal = async (opts: { error?: string; costUsd?: number }) => {
@@ -1006,6 +1043,15 @@ export function ChatPage({
             }
             case "error": {
               const errMsg = evt.message ?? "\u751f\u6210\u5931\u8d25";
+              if (errMsg === "generation_in_progress") {
+                const friendly = "当前会话正在生成回答，请稍后再发送";
+                toast.info(friendly);
+                setMessagesForCurrent((prev) => prev.filter((m) => m.id !== aiId));
+                streamingRef.current = null;
+                cleanupRef.current = null;
+                releaseSendLock();
+                break;
+              }
               updateLastAssistant((m) =>
                 m.role === "assistant" ? { ...m, error: errMsg, streaming: false } : m
               );
@@ -1018,8 +1064,8 @@ export function ChatPage({
                 });
               }
               void persistFinal({ error: errMsg });
-              setBusy(false);
               cleanupRef.current = null;
+              releaseSendLock();
               break;
             }
             case "done": {
@@ -1039,16 +1085,16 @@ export function ChatPage({
                     : m
                 );
                 void persistFinal({ error: EMPTY_ASSISTANT_RESPONSE, costUsd });
-                setBusy(false);
                 cleanupRef.current = null;
+                releaseSendLock();
                 break;
               }
               updateLastAssistant((m) =>
                 m.role === "assistant" ? { ...m, streaming: false, cost_usd: costUsd } : m
               );
               void persistFinal({ costUsd });
-              setBusy(false);
               cleanupRef.current = null;
+              releaseSendLock();
               break;
             }
             default:
@@ -1061,7 +1107,6 @@ export function ChatPage({
       cleanupRef.current = cleanup;
     },
     [
-      busy,
       currentId,
       currentKbId,
       currentMessages,
@@ -1070,6 +1115,7 @@ export function ChatPage({
       setMessagesForCurrent,
       updateLastAssistant,
       bumpSummary,
+      releaseSendLock,
       router,
     ]
   );
@@ -1077,7 +1123,7 @@ export function ChatPage({
   const handleStop = useCallback(() => {
     cleanupRef.current?.();
     cleanupRef.current = null;
-    setBusy(false);
+    releaseSendLock();
     const snap = streamingRef.current;
     if (snap) {
       streamingRef.current = null;
@@ -1101,7 +1147,7 @@ export function ChatPage({
         })
         .catch((e) => console.error("persist stopped turn failed", e));
     }
-  }, [updateLastAssistant, setMessagesForCurrent, bumpSummary]);
+  }, [updateLastAssistant, setMessagesForCurrent, bumpSummary, releaseSendLock]);
 
   const submitComposer = useCallback(() => {
     void handleSend(composerValue);
@@ -1216,9 +1262,13 @@ export function ChatPage({
                   </div>
                 </div>
               ) : (
-                <>
-                  <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-                    <div className="mx-auto flex w-full max-w-[860px] flex-col gap-7">
+                <div className="ak-thread relative min-h-0 flex-1">
+                  <div
+                    ref={scrollRef}
+                    onScroll={onThreadScroll}
+                    className="ak-thread-scroll absolute inset-0 overflow-y-auto"
+                  >
+                    <div className="ak-thread-inner mx-auto flex w-full max-w-[860px] flex-col gap-7 px-5 pt-5">
                       <ContextCompressionNotice contextStatus={currentContextStatus} />
                       {visibleMessages.length === 0 ? (
                         <EmptyWorkbench currentKbName={currentKb?.name ?? "\u901a\u7528\u5bf9\u8bdd"} onPick={handleSend} />
@@ -1227,26 +1277,42 @@ export function ChatPage({
                       )}
                     </div>
                   </div>
-                  <Composer
-                value={composerValue}
-                textareaRef={textareaRef}
-                busy={busy}
-                currentKbId={currentKbId}
-                kbs={kbs}
-                currentModel={currentModel}
-                modelOptions={modelOptions}
-                llmReady={llmReady}
-                llmSource={llmSource}
-                contextStatus={currentContextStatus}
-                contextStatusLoading={contextStatusLoading}
-                kbLocked={!!currentId && hasConversationMessages}
-                onChange={setComposerValue}
-                onSubmit={submitComposer}
-                onStop={handleStop}
-                onSelectKb={handleKbChange}
-                onModelChange={handleModelChange}
-                  />
-                </>
+                  <div className="ak-thread-dock pointer-events-none absolute bottom-0 left-0 z-10">
+                    {showScrollToBottom ? (
+                      <div className="pointer-events-auto flex justify-center pb-2">
+                        <button
+                          type="button"
+                          aria-label="滚动到底部"
+                          className="ak-scroll-to-bottom ak-press inline-flex size-9 items-center justify-center rounded-full border shadow-sm"
+                          onClick={() => scrollThreadToBottom("smooth")}
+                        >
+                          <ArrowDown className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : null}
+                    <div className="pointer-events-auto">
+                      <Composer
+                        value={composerValue}
+                        textareaRef={textareaRef}
+                        busy={busy}
+                        currentKbId={currentKbId}
+                        kbs={kbs}
+                        currentModel={currentModel}
+                        modelOptions={modelOptions}
+                        llmReady={llmReady}
+                        llmSource={llmSource}
+                        contextStatus={currentContextStatus}
+                        contextStatusLoading={contextStatusLoading}
+                        kbLocked={!!currentId && hasConversationMessages}
+                        onChange={setComposerValue}
+                        onSubmit={submitComposer}
+                        onStop={handleStop}
+                        onSelectKb={handleKbChange}
+                        onModelChange={handleModelChange}
+                      />
+                    </div>
+                  </div>
+                </div>
               )}
             </main>
           </div>
@@ -1331,7 +1397,7 @@ function ChatLoadingShell({
         >
           <div className="ak-sidebar-top rounded-lg px-2 pb-3 pt-2">
             <Brand className="ak-sidebar-brand" size="md" />
-            <div className="ak-sidebar-new ak-sidebar-primary-action mt-5 h-10 rounded-lg border" />
+            <div className="ak-sidebar-new ak-sidebar-primary-action mt-5 h-[40px] rounded-lg border" />
             <div className="ak-sidebar-search mt-4 h-[40px] rounded-lg border" />
           </div>
           <div className="ak-sidebar-separator my-4 h-px" />
@@ -1347,21 +1413,25 @@ function ChatLoadingShell({
         <div className="flex h-[100dvh] max-h-[100dvh] min-h-0 min-w-0 flex-col overflow-hidden">
           <TopBar title={DEFAULT_TITLE} onOpenSidebar={() => {}} />
           <main className="ak-main ak-workspace flex h-full min-h-0 min-w-0 flex-col">
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-              <div className="mx-auto flex min-h-full w-full max-w-[860px] items-center justify-center">
-                <LoadingState
-                  label={label}
-                  description={description}
-                  className="w-full max-w-md"
-                />
+            <div className="ak-thread relative min-h-0 flex-1">
+              <div className="ak-thread-scroll absolute inset-0 overflow-y-auto">
+                <div className="ak-thread-inner mx-auto flex min-h-full w-full max-w-[860px] items-center justify-center px-5 pt-5">
+                  <LoadingState
+                    label={label}
+                    description={description}
+                    className="w-full max-w-md"
+                  />
+                </div>
               </div>
-            </div>
-            <div
-              aria-hidden="true"
-              className="ak-composer shrink-0 px-5 py-3 backdrop-blur-xl"
-            >
-              <div className="ak-composer-box mx-auto h-[105px] max-w-[860px] rounded-lg border" />
-              <div className="ak-composer-skeleton mx-auto mt-2 h-4 w-48 rounded" />
+              <div
+                aria-hidden="true"
+                className="ak-thread-dock pointer-events-none absolute bottom-0 left-0 z-10"
+              >
+                <div className="ak-composer ak-composer-docked px-5 pb-3 pt-1">
+                  <div className="ak-composer-box mx-auto h-[105px] max-w-[860px] rounded-lg border" />
+                  <div className="ak-composer-skeleton mx-auto mt-2 h-4 w-48 rounded" />
+                </div>
+              </div>
             </div>
           </main>
         </div>
@@ -1564,7 +1634,7 @@ function DarkSidebar({
         </div>
 
         <button
-          className="ak-sidebar-new ak-sidebar-primary-action ak-press mt-5 flex h-10 w-full items-center justify-center gap-2 rounded-lg border text-sm font-medium"
+          className="ak-sidebar-new ak-sidebar-primary-action ak-press mt-5 flex h-[40px] w-full items-center justify-center gap-2 rounded-lg border text-sm font-medium"
           onClick={() => onNew(currentKbId)}
           type="button"
         >
@@ -1727,15 +1797,6 @@ function DarkSidebar({
               </Link>
             )}
             <div className="ak-sidebar-separator h-px" />
-            <div
-              className="px-3 py-2.5"
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="mb-1.5 text-xs font-medium text-muted">外观主题</div>
-              <ThemeToggle className="w-full min-w-0" />
-            </div>
-            <div className="ak-sidebar-separator h-px" />
             <button
               className="ak-user-menu-item-danger flex min-h-[40px] w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left text-sm transition"
               onClick={() => {
@@ -1749,30 +1810,35 @@ function DarkSidebar({
             </button>
           </div>
         )}
-        <button
-          aria-expanded={userMenuOpen}
-          aria-haspopup="menu"
-          aria-label="用户菜单"
+        <div
           className={cn(
-            "ak-user-trigger flex min-h-14 w-full cursor-pointer items-center justify-between rounded-lg border p-2 text-left transition",
+            "ak-user-trigger flex min-h-14 w-full items-center gap-1.5 rounded-lg border p-1.5 transition",
             userMenuOpen && "ak-user-trigger-open"
           )}
-          onClick={() => setUserMenuOpen((open) => !open)}
-          type="button"
         >
-          <span className="flex min-w-0 items-center gap-2">
-            <span className="ak-user-avatar flex size-[40px] shrink-0 items-center justify-center rounded-lg border text-sm font-semibold shadow-sm">
-              {(user?.display_name?.[0] || user?.email?.[0] || "Z").toUpperCase()}
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-medium text-[color:var(--chat-ink)]">
-                {user?.display_name || user?.email || "\u7528\u6237"}
+          <button
+            aria-expanded={userMenuOpen}
+            aria-haspopup="menu"
+            aria-label="用户菜单"
+            className="flex min-h-[44px] min-w-0 flex-1 cursor-pointer items-center justify-between gap-2 rounded-md px-0.5 text-left transition"
+            onClick={() => setUserMenuOpen((open) => !open)}
+            type="button"
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="ak-user-avatar flex size-[40px] shrink-0 items-center justify-center rounded-lg border text-sm font-semibold shadow-sm">
+                {(user?.display_name?.[0] || user?.email?.[0] || "Z").toUpperCase()}
               </span>
-              <span className="ak-user-role block text-xs">{user?.is_admin ? "\u7ba1\u7406\u5458" : "\u6210\u5458"}</span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-medium text-[color:var(--chat-ink)]">
+                  {user?.display_name || user?.email || "\u7528\u6237"}
+                </span>
+                <span className="ak-user-role block text-xs">{user?.is_admin ? "\u7ba1\u7406\u5458" : "\u6210\u5458"}</span>
+              </span>
             </span>
-          </span>
-          <ChevronDown className={cn("ak-user-chevron h-4 w-4 shrink-0 transition", userMenuOpen && "rotate-180")} />
-        </button>
+            <ChevronDown className={cn("ak-user-chevron h-4 w-4 shrink-0 transition", userMenuOpen && "rotate-180")} />
+          </button>
+          <ThemeToggle compact />
+        </div>
       </div>
       <Dialog
         open={deleteTarget !== null}
@@ -1801,7 +1867,7 @@ function TopBar({
   onOpenSidebar: () => void;
 }) {
   return (
-    <header className="ak-topbar ak-chat-header grid h-[64px] shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 xl:px-7">
+    <header className="ak-topbar ak-chat-header grid h-[64px] shrink-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-3 px-4 xl:px-7">
       <button
         className="ak-mobile-sidebar-action inline-flex size-[40px] cursor-pointer items-center justify-center rounded-lg border lg:hidden"
         onClick={onOpenSidebar}
@@ -1813,16 +1879,6 @@ function TopBar({
 
       <div className="min-w-0">
         <h1 className="truncate text-[15px] font-semibold tracking-[-0.01em]">{title}</h1>
-      </div>
-
-      <div className="flex items-center justify-end gap-2">
-        <Link
-          className="ak-header-help inline-flex h-[40px] w-[40px] items-center justify-center rounded-md"
-          href="/welcome"
-          aria-label="打开产品介绍"
-        >
-          <HelpCircle className="h-4 w-4" />
-        </Link>
       </div>
     </header>
   );
@@ -2382,13 +2438,14 @@ function Composer({
     : "\u672a\u914d\u7f6e\u6a21\u578b";
 
   return (
-    <div className={cn("ak-composer", centered ? "ak-composer-centered mt-6 px-0 pb-8" : "shrink-0 px-5 py-3 backdrop-blur-xl")}>
+    <div className={cn("ak-composer", centered ? "ak-composer-centered mt-6 px-0 pb-8" : "ak-composer-docked px-5 pb-3 pt-1")}>
       <div className="ak-composer-box mx-auto max-w-[860px] rounded-lg border focus-within:border-brand/40">
         <textarea
           ref={textareaRef}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => {
+            if (busy) return;
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               onSubmit();
@@ -2398,17 +2455,18 @@ function Composer({
           aria-label="输入消息"
           data-testid="composer-input"
           placeholder="向当前会话提问，知识库将为会话增强"
-          className={cn("ak-composer-input block max-h-[160px] w-full resize-none bg-transparent px-5 py-4 text-[15px] leading-6 outline-none", centered ? "min-h-[112px] text-base" : "min-h-[44px] px-4 py-3")}
+          disabled={busy}
+          className={cn("ak-composer-input block max-h-[160px] w-full resize-none bg-transparent px-5 py-4 text-[15px] leading-6 outline-none disabled:cursor-not-allowed disabled:opacity-70", centered ? "min-h-[112px] text-base" : "min-h-[44px] px-4 py-3")}
         />
-        <div className="flex flex-wrap items-center gap-1.5 px-3 pb-2.5 pt-0.5">
+        <div className="flex flex-wrap items-center gap-2 px-3 pb-3 pt-1">
           <div
-            className="ak-control inline-flex h-8 max-w-[220px] items-center gap-1.5 rounded-md border px-2 text-xs"
+            className="ak-control inline-flex h-[40px] max-w-[240px] items-center gap-1.5 rounded-lg border px-2.5 text-sm"
             title={kbLocked ? "当前会话由首条消息的知识库锁定" : "选择通用对话或知识库"}
           >
-            <Database className="h-3.5 w-3.5 text-brand" />
+            <Database className="h-4 w-4 shrink-0 text-brand" />
             <ModelSelect
               aria-label="选择知识库"
-              className="h-7 min-w-[108px] flex-1 border-0 bg-transparent px-0 py-0 text-xs text-current shadow-none hover:bg-transparent focus-visible:ring-0 disabled:cursor-not-allowed disabled:text-muted"
+              className="h-[40px] min-w-[108px] flex-1 border-0 bg-transparent px-0 py-0 text-sm text-current shadow-none hover:bg-transparent focus-visible:ring-0 disabled:cursor-not-allowed disabled:text-muted"
               contentAlign="start"
               contentClassName="ak-model-content"
               contentPosition="popper"
@@ -2418,21 +2476,20 @@ function Composer({
                 { value: "", label: "通用对话" },
                 ...kbs.map((kb) => ({ value: kb.id, label: kb.name })),
               ]}
-              size="sm"
               title={kbLocked ? "当前会话由首条消息的知识库锁定" : "选择通用对话或知识库"}
               value={currentKbId ?? ""}
             />
-            {kbLocked && <LockKeyhole className="h-3 w-3 text-muted" />}
+            {kbLocked && <LockKeyhole className="h-3.5 w-3.5 shrink-0 text-muted" />}
           </div>
           <Link
-            className="ak-control ak-press inline-flex size-8 items-center justify-center rounded-md border"
+            className="ak-control ak-press inline-flex size-[40px] items-center justify-center rounded-lg border"
             href={currentKbId ? `/kbs/${currentKbId}` : "/kbs"}
             aria-label={currentKbId ? "\u6253\u5f00\u77e5\u8bc6\u5e93\u4e0a\u4f20\u8d44\u6599" : "\u9009\u62e9\u77e5\u8bc6\u5e93\u540e\u4e0a\u4f20\u8d44\u6599"}
             title={currentKbId ? "\u6253\u5f00\u77e5\u8bc6\u5e93\u4e0a\u4f20\u8d44\u6599" : "\u9009\u62e9\u77e5\u8bc6\u5e93\u540e\u4e0a\u4f20\u8d44\u6599"}
           >
-            <Paperclip className="h-3.5 w-3.5" />
+            <Paperclip className="h-4 w-4" />
           </Link>
-          <div className="ml-auto flex min-w-0 items-center gap-1.5">
+          <div className="ml-auto flex min-w-0 items-center gap-2">
             <ContextUsageIndicator
               contextStatus={contextStatus}
               loading={contextStatusLoading}
@@ -2440,7 +2497,7 @@ function Composer({
             {showModelSelector && (
               <ModelSelect
                 aria-label="\u6a21\u578b\u9009\u62e9"
-                className="ak-model-trigger h-8 min-w-[132px] max-w-[180px] text-xs"
+                className="ak-model-trigger h-[40px] min-w-[132px] max-w-[200px] text-sm"
                 contentAlign="end"
                 contentClassName="ak-model-content"
                 contentPosition="popper"
@@ -2448,7 +2505,6 @@ function Composer({
                 onChange={(event) => onModelChange(event.target.value || null)}
                 options={visibleModelOptions.map((model) => ({ value: model, label: model }))}
                 placeholderOption={{ value: "", label: defaultModelLabel }}
-                size="sm"
                 title="\u6a21\u578b\u9009\u62e9"
                 value={currentModel ?? ""}
               />
@@ -2456,18 +2512,18 @@ function Composer({
           </div>
           {busy ? (
             <button
-              className="ak-stop-button ak-press inline-flex h-8 min-w-8 cursor-pointer items-center justify-center gap-1 rounded-md border px-2.5 text-xs font-medium"
+              className="ak-stop-button ak-press inline-flex h-[40px] min-w-[40px] cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-3 text-sm font-medium"
               aria-label="停止生成"
               data-testid="composer-stop"
               onClick={onStop}
               type="button"
             >
-              <Square className="h-3 w-3 fill-current" />
+              <Square className="h-3.5 w-3.5 fill-current" />
               <span className="hidden sm:inline">{"\u505c\u6b62"}</span>
             </button>
           ) : (
             <button
-              className="ak-send-button ak-press inline-flex size-8 items-center justify-center rounded-md transition disabled:cursor-not-allowed"
+              className="ak-send-button ak-press inline-flex size-[40px] items-center justify-center rounded-lg transition disabled:cursor-not-allowed"
               aria-label="发送消息"
               data-testid="composer-send"
               disabled={!value.trim()}
@@ -2475,7 +2531,7 @@ function Composer({
               title="发送消息"
               type="button"
             >
-              <ArrowUp className="h-3.5 w-3.5" strokeWidth={2.5} />
+              <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
             </button>
           )}
         </div>
@@ -2524,7 +2580,7 @@ function ContextUsageIndicator({
       <span
         aria-describedby="context-usage-detail"
         aria-label={loading ? "正在读取上下文使用量" : `上下文使用量 ${progress}%，${status.label}`}
-        className="ak-context-usage inline-flex size-8 items-center justify-center rounded-md border outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
+        className="ak-context-usage inline-flex size-[40px] items-center justify-center rounded-lg border outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
         tabIndex={0}
       >
         <svg
@@ -2744,7 +2800,7 @@ function RightInsightPanel({
           <h2 className="ak-insight-heading text-base font-semibold">{"\u4f1a\u8bdd\u4fe1\u606f"}</h2>
           {currentConversation?.id && (
             <button
-              className="ak-copy-id-button inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs transition"
+              className="ak-copy-id-button inline-flex h-[var(--control-h-sm)] cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs transition"
               onClick={() => {
                 void navigator.clipboard.writeText(currentConversation.id);
                 toast.success("\u5df2\u590d\u5236\u4f1a\u8bdd ID");
