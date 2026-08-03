@@ -1283,6 +1283,8 @@ html.dark {
 
   .ak-motion-enter,
   .ak-page-transition,
+  .ak-chat-pane,
+  .ak-chat-boot-leave,
   .ak-press {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
@@ -1338,6 +1340,33 @@ body {
     to {
       opacity: 1;
       transform: translateY(0);
+    }
+  }
+
+  .ak-chat-pane {
+    transition:
+      opacity var(--duration-surface) var(--ease-out),
+      transform var(--duration-surface) var(--ease-out);
+  }
+  .ak-chat-pane[data-phase="out"] {
+    opacity: 0;
+    transform: translateY(6px);
+    pointer-events: none;
+  }
+  .ak-chat-pane[data-phase="in"] {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .ak-chat-boot-leave {
+    animation: ak-chat-boot-leave var(--duration-surface) var(--ease-out) forwards;
+  }
+  @keyframes ak-chat-boot-leave {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
     }
   }
 

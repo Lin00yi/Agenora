@@ -238,6 +238,22 @@ function mergeConversationSummaries(
   });
 }
 
+const CHAT_PANE_FADE_MS = 180;
+
+function prefersReducedMotion() {
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+function waitPaneMs(ms: number) {
+  if (prefersReducedMotion() || ms <= 0) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
 export function ChatPage({
   routeConversationId = null,
   startBlank = false,
@@ -249,6 +265,8 @@ export function ChatPage({
   const [user, setUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const [bootPhase, setBootPhase] = useState<"loading" | "leaving" | "gone">("loading");
+  const [panePhase, setPanePhase] = useState<"in" | "out">("in");
 
   const [summaries, setSummaries] = useState<ConversationSummary[]>([]);
   const [conversationTotal, setConversationTotal] = useState(0);
@@ -277,6 +295,7 @@ export function ChatPage({
   const cleanupRef = useRef<(() => void) | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const paneSwitchSeq = useRef(0);
   const modelOptionsRef = useRef<string[]>([]);
   const streamingRef = useRef<{
     convId: string;
@@ -396,6 +415,21 @@ export function ChatPage({
       setContextStatusLoading(false);
       return false;
     }
+  }, []);
+
+  const runPaneTransition = useCallback(async (action: () => void | Promise<void | boolean>) => {
+    const seq = ++paneSwitchSeq.current;
+    setPanePhase("out");
+    await waitPaneMs(CHAT_PANE_FADE_MS);
+    if (seq !== paneSwitchSeq.current) return false;
+    const result = await action();
+    if (seq !== paneSwitchSeq.current) return false;
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
+    if (seq !== paneSwitchSeq.current) return false;
+    setPanePhase("in");
+    return result !== false;
   }, []);
 
   const setMessagesForCurrent = useCallback(
@@ -593,24 +627,37 @@ export function ChatPage({
   }, [authChecked]);
 
   useEffect(() => {
+    if (!authChecked || !initialLoadDone) return;
+    if (bootPhase !== "loading") return;
+    setBootPhase("leaving");
+    const timer = window.setTimeout(
+      () => setBootPhase("gone"),
+      prefersReducedMotion() ? 0 : CHAT_PANE_FADE_MS
+    );
+    return () => window.clearTimeout(timer);
+  }, [authChecked, bootPhase, initialLoadDone]);
+
+  useEffect(() => {
     if (!authChecked) return;
     const handlePopState = () => {
       const id = conversationIdFromPath(window.location.pathname);
-      if (id) {
-        void loadConversation(id);
-      } else {
-        setMissingConversationId(null);
-        setCurrentId(null);
-        setCurrentMessages([]);
-        setCurrentKbId(null);
-        setCurrentModel(null);
-        setCurrentContextStatus(null);
-        setCurrentMemoryTrace(null);
-      }
+      void runPaneTransition(async () => {
+        if (id) {
+          await loadConversation(id);
+        } else {
+          setMissingConversationId(null);
+          setCurrentId(null);
+          setCurrentMessages([]);
+          setCurrentKbId(null);
+          setCurrentModel(null);
+          setCurrentContextStatus(null);
+          setCurrentMemoryTrace(null);
+        }
+      });
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [authChecked, loadConversation]);
+  }, [authChecked, loadConversation, runPaneTransition]);
 
   useEffect(() => {
     if (!scrollRef.current) return;
@@ -654,28 +701,31 @@ export function ChatPage({
     if (currentId && hasConversationMessages && !busy) {
       finalizeSilently(currentId);
     }
-    setMissingConversationId(null);
-    setCurrentId(null);
-    setCurrentMessages([]);
-    setCurrentKbId(kbId);
-    setCurrentModel(null);
-    setCurrentContextStatus(null);
-    setCurrentMemoryTrace(null);
-    setComposerValue("");
     setSidebarOpen(false);
-    window.history.pushState(null, "", "/c");
-  }, [busy, currentId, currentKbId, finalizeSilently, hasConversationMessages]);
+    void runPaneTransition(() => {
+      setMissingConversationId(null);
+      setCurrentId(null);
+      setCurrentMessages([]);
+      setCurrentKbId(kbId);
+      setCurrentModel(null);
+      setCurrentContextStatus(null);
+      setCurrentMemoryTrace(null);
+      setComposerValue("");
+      window.history.pushState(null, "", "/c");
+    });
+  }, [busy, currentId, currentKbId, finalizeSilently, hasConversationMessages, runPaneTransition]);
 
   const handleSelect = useCallback(
     async (id: string) => {
       setSidebarOpen(false);
+      if (id === currentId) return;
       if (currentId && currentId !== id && hasConversationMessages && !busy) {
         finalizeSilently(currentId);
       }
-      const ok = await loadConversation(id);
+      const ok = await runPaneTransition(() => loadConversation(id));
       if (ok) window.history.pushState(null, "", conversationHref(id));
     },
-    [busy, currentId, finalizeSilently, hasConversationMessages, loadConversation, router]
+    [busy, currentId, finalizeSilently, hasConversationMessages, loadConversation, runPaneTransition]
   );
 
   const handleKbChange = useCallback(
@@ -730,21 +780,23 @@ export function ChatPage({
       setConversationTotal((total) => Math.max(0, total - 1));
       if (currentId === id) {
         const newId = next[0]?.id ?? null;
-        setCurrentId(newId);
-        if (newId) {
-          window.history.replaceState(null, "", conversationHref(newId));
-          void loadConversation(newId);
-        } else {
-          setCurrentMessages([]);
-          setCurrentKbId(null);
-          setCurrentModel(null);
-          setCurrentContextStatus(null);
-          setCurrentMemoryTrace(null);
-          window.history.replaceState(null, "", "/c");
-        }
+        void runPaneTransition(async () => {
+          if (newId) {
+            window.history.replaceState(null, "", conversationHref(newId));
+            await loadConversation(newId);
+          } else {
+            setCurrentId(null);
+            setCurrentMessages([]);
+            setCurrentKbId(null);
+            setCurrentModel(null);
+            setCurrentContextStatus(null);
+            setCurrentMemoryTrace(null);
+            window.history.replaceState(null, "", "/c");
+          }
+        });
       }
     },
-    [currentId, loadConversation, router, summaries]
+    [currentId, loadConversation, runPaneTransition, summaries]
   );
 
   const handleLogout = useCallback(() => {
@@ -1055,7 +1107,10 @@ export function ChatPage({
     void handleSend(composerValue);
   }, [composerValue, handleSend]);
 
-  if (!authChecked || !initialLoadDone) {
+  const showBootShell = !authChecked || bootPhase !== "gone";
+  const showChatApp = authChecked && initialLoadDone;
+
+  if (!authChecked) {
     return (
       <ChatLoadingShell
         label={`正在打开 ${APP_NAME}`}
@@ -1065,7 +1120,9 @@ export function ChatPage({
   }
 
   return (
-    <div className="ak-chat ak-chat-root ak-page-transition h-dvh w-screen overflow-hidden">
+    <div className="relative h-dvh w-screen overflow-hidden">
+      {showChatApp && (
+      <div className="ak-chat ak-chat-root ak-page-transition h-dvh w-screen overflow-hidden">
       {sidebarOpen && (
         <button
           aria-label="关闭侧栏遮罩"
@@ -1096,7 +1153,10 @@ export function ChatPage({
           onLogout={handleLogout}
         />
 
-        <div className="flex h-[100dvh] max-h-[100dvh] min-h-0 min-w-0 flex-col overflow-hidden">
+        <div
+          className="ak-chat-pane flex h-[100dvh] max-h-[100dvh] min-h-0 min-w-0 flex-col overflow-hidden"
+          data-phase={panePhase}
+        >
           <TopBar
             title={currentConversation?.title ?? DEFAULT_TITLE}
             onOpenSidebar={() => setSidebarOpen(true)}
@@ -1192,6 +1252,7 @@ export function ChatPage({
           </div>
         </div>
         <RightInsightPanel
+          panePhase={panePhase}
           currentKbName={currentKb?.name ?? "\u901a\u7528\u5bf9\u8bdd"}
           currentConversation={currentConversation}
           currentModel={currentModel}
@@ -1209,6 +1270,23 @@ export function ChatPage({
           user={user}
           onUserChanged={setUser}
         />
+      )}
+      </div>
+      )}
+      {showBootShell && (
+        <div
+          className={cn(
+            showChatApp ? "pointer-events-none absolute inset-0 z-50" : "h-full",
+            bootPhase === "leaving" && "ak-chat-boot-leave"
+          )}
+          aria-hidden={bootPhase === "leaving"}
+        >
+          <ChatLoadingShell
+            animated={bootPhase === "loading" && !initialLoadDone}
+            label={`正在打开 ${APP_NAME}`}
+            description="正在恢复你的知识库和会话。"
+          />
+        </div>
       )}
     </div>
   );
@@ -1234,13 +1312,19 @@ export default function Page() {
 function ChatLoadingShell({
   label,
   description,
+  animated = true,
 }: {
   label: string;
   description?: string;
+  animated?: boolean;
 }) {
   return (
-    <div className="ak-chat ak-chat-root ak-page-transition h-dvh w-screen overflow-hidden">
-      <div className="grid h-full grid-cols-1 lg:grid-cols-[286px_minmax(0,1fr)]">
+    <div
+      className={cn(
+        "ak-chat ak-chat-root h-dvh w-screen overflow-hidden",
+        animated && "ak-page-transition"
+      )}
+    >      <div className="grid h-full grid-cols-1 lg:grid-cols-[286px_minmax(0,1fr)]">
         <aside
           aria-hidden="true"
           className="ak-sidebar ak-sidebar-shell hidden h-full min-h-0 w-[286px] flex-col overflow-hidden border-r px-3 py-4 lg:flex"
@@ -1434,9 +1518,11 @@ function DarkSidebar({
       if (event.key === "Escape") setUserMenuOpen(false);
     };
     const onPointerDown = (event: MouseEvent) => {
-      if (!userMenuRef.current?.contains(event.target as Node)) {
-        setUserMenuOpen(false);
-      }
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (userMenuRef.current?.contains(target)) return;
+      if (target.closest?.('[data-slot="select-content"]')) return;
+      setUserMenuOpen(false);
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener("mousedown", onPointerDown);
@@ -1641,6 +1727,15 @@ function DarkSidebar({
               </Link>
             )}
             <div className="ak-sidebar-separator h-px" />
+            <div
+              className="px-3 py-2.5"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mb-1.5 text-xs font-medium text-muted">外观主题</div>
+              <ThemeToggle className="w-full min-w-0" />
+            </div>
+            <div className="ak-sidebar-separator h-px" />
             <button
               className="ak-user-menu-item-danger flex min-h-[40px] w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left text-sm transition"
               onClick={() => {
@@ -1721,7 +1816,6 @@ function TopBar({
       </div>
 
       <div className="flex items-center justify-end gap-2">
-        <ThemeToggle />
         <Link
           className="ak-header-help inline-flex h-[40px] w-[40px] items-center justify-center rounded-md"
           href="/welcome"
@@ -2479,6 +2573,7 @@ function ContextUsageIndicator({
 }
 
 function RightInsightPanel({
+  panePhase = "in",
   currentKbName,
   currentConversation,
   currentModel,
@@ -2488,6 +2583,7 @@ function RightInsightPanel({
   tools,
   busy,
 }: {
+  panePhase?: "in" | "out";
   currentKbName: string;
   currentConversation: Conversation | null;
   currentModel: string | null;
@@ -2503,7 +2599,10 @@ function RightInsightPanel({
   const modelLabel = currentModel || (llmSource === "system" ? "\u7cfb\u7edf\u9ed8\u8ba4" : llmSource === "user" ? "\u9ed8\u8ba4\u6a21\u578b" : "\u672a\u914d\u7f6e");
 
   return (
-    <aside className="ak-insight hidden min-w-0 flex-col overflow-y-auto lg:flex">
+    <aside
+      className="ak-insight ak-chat-pane hidden min-w-0 flex-col overflow-y-auto lg:flex"
+      data-phase={panePhase}
+    >
       <section className="ak-insight-section border-b p-5">
         <div className="flex items-center justify-between">
           <h2 className="ak-insight-heading text-base font-semibold">{"\u68c0\u7d22\u4e0e\u63a8\u7406\u8fc7\u7a0b"}</h2>
