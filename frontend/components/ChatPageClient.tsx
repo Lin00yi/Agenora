@@ -21,8 +21,6 @@ import SystemSettingsDialog from "@/components/SystemSettingsDialog";
 import {
   ArrowUp,
   BookOpen,
-  Check,
-  CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ArrowDown,
@@ -110,14 +108,6 @@ type SourceRow = {
   meta: string;
   score: string;
   detail?: string[];
-};
-
-type ProcessStep = {
-  title: string;
-  description: string;
-  status: "done" | "running" | "pending";
-  active: boolean;
-  time?: string;
 };
 
 type LlmSource = "user" | "system" | "missing";
@@ -321,10 +311,6 @@ export function ChatPage({
   const currentConversation = sidebarConversations.find((c) => c.id === currentId) ?? null;
   const currentKb = kbs.find((kb) => kb.id === currentKbId) ?? null;
   const hasConversationMessages = visibleMessages.length > 0;
-  const currentTools = useMemo(() => {
-    const lastAssistant = [...visibleMessages].reverse().find((message) => message.role === "assistant");
-    return lastAssistant?.role === "assistant" ? lastAssistant.tools : [];
-  }, [visibleMessages]);
 
   const loadConversation = useCallback(async (id: string) => {
     setMissingConversationId(null);
@@ -1325,8 +1311,6 @@ export function ChatPage({
           llmSource={llmSource}
           memoryTrace={currentMemoryTrace}
           messages={visibleMessages}
-          tools={currentTools}
-          busy={busy}
         />
       </div>
       {user && (
@@ -2180,44 +2164,6 @@ function buildMessageSources(message: Extract<Message, { role: "assistant" }>): 
   return aggregateToolSources(message.tools, 4);
 }
 
-function buildPanelSources(tools: ToolEvent[]): SourceRow[] {
-  if (tools.length > 0) {
-    return tools.slice(0, 6).map((tool) => ({
-      title: getToolLabel(tool.name),
-      meta:
-        tool.status === "running"
-          ? "\u6b63\u5728\u6267\u884c"
-          : tool.status === "ok"
-          ? `\u5df2\u5b8c\u6210${tool.latency_ms ? ` · ${tool.latency_ms}ms` : ""}`
-          : tool.status === "blocked"
-          ? tool.reason || "\u5df2\u963b\u6b62"
-          : tool.error || "\u6267\u884c\u5931\u8d25",
-      score:
-        tool.status === "ok"
-          ? "\u5b8c\u6210"
-          : tool.status === "running"
-          ? "\u5b9e\u65f6"
-          : tool.status === "blocked"
-          ? "\u963b\u6b62"
-          : "\u5931\u8d25",
-    }));
-  }
-  return [];
-}
-
-function getToolLabel(name: string): string {
-  const labels: Record<string, string> = {
-    search_kb: "\u77e5\u8bc6\u5e93\u68c0\u7d22",
-    generate_kb_report: "\u77e5\u8bc6\u5e93\u62a5\u544a\u751f\u6210",
-    web_search: "\u7f51\u7edc\u641c\u7d22",
-    get_weather: "\u5929\u6c14\u67e5\u8be2",
-    search_restaurant_kb: "\u672c\u5730\u77e5\u8bc6\u68c0\u7d22",
-    amap_search: "\u5730\u56fe\u641c\u7d22",
-    generate_travel_report: "\u65c5\u884c\u62a5\u544a\u751f\u6210",
-  };
-  return labels[name] ?? name;
-}
-
 function updateToolEvent(
   tools: ToolEvent[],
   evt: ChatEvent,
@@ -2237,10 +2183,6 @@ function findToolEventIndex(tools: ToolEvent[], evt: ChatEvent): number {
     if (tools[i].name === evt.name && tools[i].status === "running") return i;
   }
   return -1;
-}
-
-function buildPanelSourcesClean(tools: ToolEvent[]): SourceRow[] {
-  return aggregateToolSources(tools, 8);
 }
 
 function aggregateToolSources(tools: ToolEvent[], maxRows: number): SourceRow[] {
@@ -2346,18 +2288,6 @@ function normalizeToolError(error?: string | null) {
 function formatDuration(ms: number) {
   if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
   return `${ms}ms`;
-}
-
-function describeToolSummary(tools: ToolEvent[]) {
-  if (tools.length === 0) return "\u672c\u8f6e\u672a\u8c03\u7528\u68c0\u7d22\u5de5\u5177";
-  const counts = new Map<string, number>();
-  for (const tool of tools) {
-    const label = getToolLabelClean(tool.name);
-    counts.set(label, (counts.get(label) ?? 0) + 1);
-  }
-  return Array.from(counts.entries())
-    .map(([label, count]) => (count > 1 ? `${label} x${count}` : label))
-    .join("\u3001");
 }
 
 function SmallAction({
@@ -2636,8 +2566,6 @@ function RightInsightPanel({
   llmSource,
   memoryTrace,
   messages,
-  tools,
-  busy,
 }: {
   panePhase?: "in" | "out";
   currentKbName: string;
@@ -2646,11 +2574,7 @@ function RightInsightPanel({
   llmSource: LlmSource;
   memoryTrace: MemoryTrace | null;
   messages: Message[];
-  tools: ToolEvent[];
-  busy: boolean;
 }) {
-  const steps = deriveStepsClean(tools, busy, messages);
-  const panelSources = buildPanelSourcesClean(tools);
   const messageStats = formatMessageStats(messages);
   const modelLabel = currentModel || (llmSource === "system" ? "\u7cfb\u7edf\u9ed8\u8ba4" : llmSource === "user" ? "\u9ed8\u8ba4\u6a21\u578b" : "\u672a\u914d\u7f6e");
 
@@ -2659,92 +2583,6 @@ function RightInsightPanel({
       className="ak-insight ak-chat-pane hidden min-w-0 flex-col overflow-y-auto lg:flex"
       data-phase={panePhase}
     >
-      <section className="ak-insight-section border-b p-5">
-        <div className="flex items-center justify-between">
-          <h2 className="ak-insight-heading text-base font-semibold">{"\u68c0\u7d22\u4e0e\u63a8\u7406\u8fc7\u7a0b"}</h2>
-          <span className="ak-insight-badge ak-insight-badge-muted">只读状态</span>
-        </div>
-        <div className="mt-5 space-y-0">
-          {steps.map((step, index) => (
-            <div className="relative flex gap-3 pb-5 last:pb-0" key={step.title}>
-              {index < steps.length - 1 && (
-                <span className="ak-insight-timeline-line absolute left-[7px] top-5 h-full w-px" />
-              )}
-              <span
-                className={cn(
-                  "relative z-10 mt-0.5 flex h-4 w-4 items-center justify-center rounded-md border",
-                  step.status === "done" && "ak-step-node-done",
-                  step.status === "running" && "ak-step-node ak-step-node-running",
-                  step.status === "pending" && "ak-step-node"
-                )}
-              >
-                {step.status === "done" && <Check className="ak-step-check h-3 w-3" />}
-                {step.status === "running" && (
-                  <span className="ak-step-dot h-1.5 w-1.5 rounded-sm" />
-                )}
-              </span>
-              <div
-                className={cn(
-                  "flex-1 rounded-lg px-3 py-2",
-                  step.active && "ak-step-card-active border"
-                )}
-              >
-                <div className="flex items-center justify-between text-sm">
-                  <span className="ak-step-title font-medium">{step.title}</span>
-                  {step.status === "done" && <CheckCircle2 className="ak-step-check h-4 w-4" />}
-                </div>
-                <div className="ak-step-meta mt-1 text-xs leading-5">{step.description}</div>
-                {step.time && <div className="ak-step-meta mt-1 text-xs">{step.time}</div>}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="ak-insight-section border-b p-5">
-        <div className="flex items-center gap-2">
-          <h2 className="ak-insight-heading text-base font-semibold">{"\u5de5\u5177\u8c03\u7528\u8bb0\u5f55"}</h2>
-          <span className="ak-insight-badge ak-insight-badge-count">
-            {panelSources.length}
-          </span>
-        </div>
-        {panelSources.length > 0 ? (
-          <>
-            <div className="ak-tool-list mt-4 overflow-hidden rounded-lg border">
-              {panelSources.map((source) => (
-                <div
-                  className="ak-tool-row flex items-center gap-3 border-b px-3 py-3 last:border-b-0"
-                  key={`${source.title}-${source.meta}`}
-                >
-                  <span className="ak-insight-badge ak-insight-badge-state flex min-h-8 min-w-12 shrink-0 items-center justify-center px-1.5 text-[10px] font-semibold">
-                    {source.score}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="ak-tool-title truncate text-sm font-medium">
-                      {source.title}
-                    </div>
-                    <div className="ak-tool-meta text-xs">{source.meta}</div>
-                    {source.detail && source.detail.length > 0 && (
-                      <div className="mt-1 space-y-0.5">
-                        {source.detail.map((item, index) => (
-                          <div className="ak-tool-detail truncate text-[11px]" key={`${item}-${index}`}>
-                            {item}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <div className="ak-empty-panel mt-4 rounded-lg border border-dashed px-3 py-5 text-sm leading-6">
-            {"\u6682\u65e0\u5de5\u5177\u8c03\u7528\u3002\u53d1\u9001\u95ee\u9898\u540e\uff0c\u5982\u679c\u540e\u7aef\u8fd4\u56de\u68c0\u7d22\u3001\u91cd\u6392\u6216\u5176\u4ed6\u5de5\u5177\u4e8b\u4ef6\uff0c\u8fd9\u91cc\u4f1a\u5b9e\u65f6\u66f4\u65b0\u3002"}
-          </div>
-        )}
-      </section>
-
       <section className="ak-insight-section border-b p-5">
         <div className="flex items-center gap-2">
           <BrainCircuit className="ak-insight-accent h-4 w-4" />
@@ -2765,7 +2603,7 @@ function RightInsightPanel({
                 value={String(memoryTrace.memories?.injected_count ?? 0)}
               />
               <TraceStat
-                label="ժҪ"
+                label="摘要"
                 value={memoryTrace.summary ? "已注入" : "无"}
               />
             </div>
@@ -2840,16 +2678,6 @@ function RightInsightPanel({
           <InfoRow label="模型" value={modelLabel} />
         </dl>
       </section>
-
-      <section className="hidden">
-        <h2 className="ak-insight-heading text-base font-semibold">{"\u4f1a\u8bdd\u4fe1\u606f"}</h2>
-        <dl className="mt-5 space-y-4 text-sm">
-          <InfoRow label="会话 ID" value={currentConversation?.id.slice(0, 8) ?? "-"} />
-          <InfoRow label="创建时间" value={formatTime(currentConversation?.created_at)} />
-          <InfoRow label="消息数" value={String(messages.length)} />
-          <InfoRow label="知识库" value={currentKbName} />
-        </dl>
-      </section>
     </aside>
   );
 }
@@ -2899,89 +2727,6 @@ function memoryTraceTypeLabel(type: string) {
   if (type === "fact") return "事实";
   if (type === "explicit") return "显式";
   return type;
-}
-
-function deriveStepsClean(tools: ToolEvent[], busy: boolean, messages: Message[]): ProcessStep[] {
-  const hasMessages = messages.length > 0;
-  const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
-  const hasAssistantAnswer =
-    lastAssistant?.role === "assistant" && Boolean(lastAssistant.content.trim());
-  const hasRunning = tools.some((tool) => tool.status === "running");
-  const hasToolFailures = tools.some((tool) => tool.status === "error" || tool.status === "blocked");
-
-  if (!hasMessages) {
-    return [
-      {
-        title: "\u7b49\u5f85\u63d0\u95ee",
-        description: "\u8f93\u5165\u95ee\u9898\u540e\u5f00\u59cb\u5206\u6790\u610f\u56fe",
-        status: "pending",
-        active: false,
-      },
-      {
-        title: "\u68c0\u7d22\u77e5\u8bc6",
-        description: "\u7ed1\u5b9a\u77e5\u8bc6\u5e93\u65f6\u6267\u884c\u6df7\u5408\u68c0\u7d22",
-        status: "pending",
-        active: false,
-      },
-      {
-        title: "\u91cd\u6392\u7ed3\u679c",
-        description: "\u6709\u68c0\u7d22\u7ed3\u679c\u65f6\u8fdb\u884c\u76f8\u5173\u6027\u6392\u5e8f",
-        status: "pending",
-        active: false,
-      },
-      {
-        title: "\u751f\u6210\u56de\u7b54",
-        description: "\u68c0\u7d22\u5b8c\u6210\u540e\u751f\u6210\u6700\u7ec8\u56de\u7b54",
-        status: "pending",
-        active: false,
-      },
-    ];
-  }
-
-  const retrievalStatus = hasRunning ? "running" : tools.length > 0 ? "done" : "pending";
-  const rerankStatus = hasRunning ? "pending" : tools.length > 0 ? "done" : "pending";
-  const answerStatus = busy ? "running" : hasAssistantAnswer ? "done" : "pending";
-
-  return [
-    {
-      title: "\u7406\u89e3\u95ee\u9898",
-      description: "\u5206\u6790\u7528\u6237\u95ee\u9898\uff0c\u8bc6\u522b\u5173\u952e\u610f\u56fe",
-      status: "done",
-      active: false,
-    },
-    {
-      title: "\u68c0\u7d22\u77e5\u8bc6",
-      description:
-        tools.length > 0
-          ? `${describeToolSummary(tools)}${hasToolFailures ? "\uff0c\u90e8\u5206\u8c03\u7528\u5931\u8d25" : ""}`
-          : "\u672c\u8f6e\u672a\u8fd4\u56de\u7ed3\u6784\u5316\u68c0\u7d22\u4e8b\u4ef6",
-      status: retrievalStatus,
-      active: retrievalStatus === "running",
-    },
-    {
-      title: "\u91cd\u6392\u7ed3\u679c",
-      description:
-        tools.length > 0
-          ? "\u5df2\u6574\u7406\u53ef\u7528\u68c0\u7d22\u7ed3\u679c"
-          : "\u65e0\u53ef\u5c55\u793a\u7684\u91cd\u6392\u7ed3\u679c",
-      status: rerankStatus,
-      active: false,
-    },
-    {
-      title: "\u751f\u6210\u56de\u7b54",
-      description: busy
-        ? "\u6b63\u5728\u751f\u6210\u6700\u7ec8\u56de\u7b54"
-        : hasAssistantAnswer
-        ? "\u56de\u7b54\u5df2\u5199\u5165\u5f53\u524d\u4f1a\u8bdd"
-        : "\u7b49\u5f85\u6a21\u578b\u8fd4\u56de\u56de\u7b54",
-      status: answerStatus,
-      active: answerStatus === "running",
-    },
-  ];
-}
-
-function deriveSteps(tools: ToolEvent[], busy: boolean, messages: Message[]): ProcessStep[] {
-  return deriveStepsClean(tools, busy, messages);
 }
 
 function InfoRow({
