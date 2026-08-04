@@ -79,7 +79,7 @@ export default function ChatBox({ onSend, onStop, busy, placeholder }: Props) {
           <button
             type="button"
             onClick={onStop}
-            className="admin-btn-secondary ml-auto h-[40px] px-3"
+            className="admin-btn-secondary ml-auto h-[var(--control-h)] px-3"
             aria-label="停止生成"
           >
             <Square className="h-3.5 w-3.5 fill-current" />
@@ -90,7 +90,7 @@ export default function ChatBox({ onSend, onStop, busy, placeholder }: Props) {
             type="button"
             onClick={submit}
             disabled={!hasText}
-            className="admin-btn-primary ml-auto h-[40px] px-4"
+            className="admin-btn-primary ml-auto h-[var(--control-h)] px-4"
             aria-label="发送消息"
           >
             <Send className="h-3.5 w-3.5" />

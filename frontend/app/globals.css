@@ -33,8 +33,8 @@
   --duration-surface: 200ms;
 
   /* Control sizing: default interactive controls vs dense/inline compact. */
-  --control-h: 40px;
-  --control-h-sm: 32px;
+  --control-h: 36px;
+  --control-h-sm: 28px;
 }
 
 /* Chat workspace theme bridge.
@@ -480,7 +480,7 @@
   }
 
   .ak-chat .ak-sidebar-primary-action {
-    min-height: 40px;
+    min-height: var(--control-h);
     border-color: color-mix(in srgb, var(--chat-accent) 74%, var(--chat-line)) !important;
     background: linear-gradient(180deg, color-mix(in srgb, var(--chat-accent) 92%, white), var(--chat-accent)) !important;
     color: var(--chat-on-accent) !important;
@@ -495,7 +495,7 @@
   .ak-chat .ak-sidebar-icon-action,
   .ak-chat .ak-sidebar-row-action,
   .ak-chat .ak-sidebar-load-more {
-    min-height: 40px;
+    min-height: var(--control-h);
     border-color: var(--chat-line) !important;
     background: color-mix(in srgb, var(--chat-surface) 82%, transparent) !important;
     color: var(--chat-muted) !important;
@@ -503,7 +503,7 @@
 
   .ak-chat .ak-sidebar-icon-action,
   .ak-chat .ak-sidebar-row-action {
-    min-width: 40px;
+    min-width: var(--control-h);
   }
 
   .ak-chat .ak-sidebar-icon-action:hover,
@@ -607,12 +607,12 @@
   }
 
   .ak-chat .ak-user-trigger {
-    min-height: 56px;
+    min-height: 52px;
   }
 
   .ak-chat .ak-user-menu-item,
   .ak-chat .ak-user-menu-item-danger {
-    min-height: 40px;
+    min-height: var(--control-h);
   }
 
   .ak-chat .ak-user-popover {
@@ -926,8 +926,8 @@
   .dark .ak-chat .ak-workspace .ak-composer .ak-control:hover { background: var(--chat-surface) !important; }
 
   .ak-chat .ak-workspace .ak-composer .ak-stop-button {
-    min-height: 40px;
-    min-width: 40px;
+    min-height: var(--control-h);
+    min-width: var(--control-h);
     border-color: var(--chat-line) !important;
     background: var(--chat-soft) !important;
     color: var(--chat-ink) !important;
@@ -945,8 +945,8 @@
 
   .ak-chat .ak-workspace .ak-context-usage { color: var(--chat-muted); }
   .ak-chat .ak-workspace .ak-context-usage {
-    min-height: 40px;
-    min-width: 40px;
+    min-height: var(--control-h);
+    min-width: var(--control-h);
     border-color: var(--chat-line) !important;
     background: var(--chat-soft) !important;
     box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18);
@@ -1090,8 +1090,8 @@
     box-shadow: 0 8px 24px color-mix(in srgb, var(--chat-accent) 10%, transparent) !important;
   }
   .ak-chat .ak-workspace .ak-send-button {
-    min-height: 40px;
-    min-width: 40px;
+    min-height: var(--control-h);
+    min-width: var(--control-h);
     border: 1px solid transparent;
     background: linear-gradient(180deg, color-mix(in srgb, var(--chat-accent) 94%, white), var(--chat-accent)) !important;
     color: var(--chat-on-accent) !important;
@@ -1275,6 +1275,22 @@
 
   .dark .app-modal-overlay {
     background: rgb(0 0 0 / 0.5);
+  }
+
+  .app-modal-panel {
+    overflow: hidden;
+  }
+
+  .app-modal-footer {
+    margin-inline: -1.25rem;
+    margin-bottom: -1.25rem;
+    border-top: 1px solid color-mix(in srgb, rgb(var(--surface-border)) 85%, transparent);
+    background: color-mix(in srgb, rgb(var(--surface-2)) 72%, transparent);
+    padding: 0.75rem 1.25rem;
+  }
+
+  .dark .app-modal-footer {
+    background: color-mix(in srgb, rgb(var(--surface-2)) 88%, transparent);
   }
 
   .app-message-user {
@@ -1467,8 +1483,8 @@ body {
   }
 
   .btn {
-    @apply inline-flex min-h-[40px] cursor-pointer items-center justify-center gap-1.5 rounded-lg
-           border px-3.5 py-2 text-sm font-medium shadow-sm
+    @apply inline-flex h-[var(--control-h)] cursor-pointer items-center justify-center gap-1.5 rounded-lg
+           border px-3 text-sm font-medium shadow-sm
            transition-[transform,background-color,border-color,color,box-shadow] duration-200 ease-ui-out
            disabled:opacity-50 disabled:cursor-not-allowed
            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30
@@ -1523,7 +1539,7 @@ body {
   }
 
   .app-nav-link {
-    @apply inline-flex min-h-[40px] items-center gap-1.5 rounded-md px-3 text-sm font-medium text-muted
+    @apply inline-flex h-[var(--control-h)] items-center gap-1.5 rounded-md px-3 text-sm font-medium text-muted
            transition-colors hover:bg-surface-2 hover:text-fg
            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30;
   }
@@ -1533,13 +1549,18 @@ body {
   .app-nav-link-surface {
     @apply border border-surface-border/80 bg-surface shadow-sm hover:bg-surface-2;
   }
+  .app-nav-cta {
+    @apply inline-flex h-[var(--control-h)] items-center gap-1 rounded-md px-2 font-medium text-brand
+           transition-colors hover:bg-brand/10
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30;
+  }
   .app-inline-link-brand {
-    @apply inline-flex min-h-[40px] items-center gap-1 rounded-md px-2 font-medium text-brand
+    @apply inline-flex h-[var(--control-h)] items-center gap-1 rounded-md px-2 font-medium text-brand
            transition hover:bg-brand/10 hover:no-underline
            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30;
   }
   .app-mini-link {
-    @apply inline-flex min-h-[32px] shrink-0 cursor-pointer items-center rounded-md border border-transparent px-2 text-xs font-medium
+    @apply inline-flex h-[var(--control-h-sm)] shrink-0 cursor-pointer items-center rounded-md border border-transparent px-2 text-xs font-medium
            transition-[background-color,border-color,color]
            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/20;
   }
@@ -1690,24 +1711,24 @@ body {
   }
 
   .admin-btn-primary {
-    @apply inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg
-           border border-transparent bg-brand px-4 py-2 text-sm font-medium text-white
+    @apply inline-flex h-[var(--control-h)] items-center justify-center gap-1.5 rounded-lg
+           border border-transparent bg-brand px-3.5 text-sm font-medium text-white
            shadow-[0_8px_18px_rgb(var(--brand)/0.18)] transition hover:bg-brand-dark hover:shadow-[0_12px_24px_rgb(var(--brand)/0.24)]
            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30
            cursor-pointer disabled:cursor-not-allowed
            disabled:border-surface-border/80 disabled:bg-surface-2 disabled:text-muted disabled:shadow-none disabled:opacity-100;
   }
   .admin-btn-secondary {
-    @apply inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg
-           border border-surface-border bg-surface px-4 py-2 text-sm font-medium text-fg
+    @apply inline-flex h-[var(--control-h)] items-center justify-center gap-1.5 rounded-lg
+           border border-surface-border bg-surface px-3.5 text-sm font-medium text-fg
            shadow-sm transition hover:border-brand/30 hover:bg-surface-2
            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/25
            cursor-pointer disabled:cursor-not-allowed
            disabled:border-surface-border/70 disabled:bg-surface-2/80 disabled:text-muted disabled:opacity-100;
   }
   .admin-btn-danger {
-    @apply inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg
-           border border-danger/30 bg-danger/10 px-4 py-2 text-sm font-medium text-danger
+    @apply inline-flex h-[var(--control-h)] items-center justify-center gap-1.5 rounded-lg
+           border border-danger/30 bg-danger/10 px-3.5 text-sm font-medium text-danger
            shadow-sm transition hover:border-danger/45 hover:bg-danger/15
            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/25
            cursor-pointer disabled:cursor-not-allowed
@@ -1715,15 +1736,15 @@ body {
   }
 
   .admin-input {
-    @apply block min-h-[40px] w-full rounded-lg border border-surface-border/80 bg-surface
-           px-3 py-2 text-sm text-fg shadow-sm outline-none
+    @apply block h-[var(--control-h)] w-full rounded-lg border border-surface-border/80 bg-surface
+           px-3 text-sm text-fg shadow-sm outline-none
            transition-[background-color,border-color,box-shadow]
            hover:border-brand/35 focus:border-brand focus:ring-2 focus:ring-brand/20
            disabled:cursor-not-allowed disabled:opacity-60;
   }
 
   .admin-icon-tile {
-    @apply flex size-[40px] shrink-0 items-center justify-center rounded-lg border shadow-sm;
+    @apply flex size-[var(--control-h)] shrink-0 items-center justify-center rounded-lg border shadow-sm;
   }
   .admin-icon-tile-sm {
     @apply size-6 rounded-md;
@@ -1745,7 +1766,7 @@ body {
   }
 
   .admin-icon-action {
-    @apply inline-flex size-[40px] shrink-0 cursor-pointer items-center justify-center rounded-md
+    @apply inline-flex size-[var(--control-h)] shrink-0 cursor-pointer items-center justify-center rounded-md
            border border-transparent text-muted
            transition-[background-color,border-color,color,box-shadow] duration-200 ease-ui-out
            hover:border-surface-border hover:bg-surface-2 hover:text-fg
@@ -1770,7 +1791,7 @@ body {
   }
 
   .admin-toolbar-btn {
-    @apply inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg
+    @apply inline-flex h-[var(--control-h)] items-center justify-center gap-1.5 rounded-lg
            border border-surface-border/80 bg-surface px-3 text-sm font-medium text-fg
            shadow-sm transition-[background-color,border-color,color,box-shadow,transform] duration-200 ease-ui-out
            hover:border-surface-border hover:bg-surface-2 hover:shadow
@@ -1818,7 +1839,7 @@ body {
     @apply sticky top-[3.5rem] z-10 mb-6 flex gap-1 overflow-x-auto rounded-lg border border-surface-border/75 bg-surface/95 p-1 shadow-sm backdrop-blur;
   }
   .admin-section-nav-item {
-    @apply inline-flex h-[40px] shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-3 text-sm font-semibold text-muted
+    @apply inline-flex h-[var(--control-h)] shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-3 text-sm font-semibold text-muted
            transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30;
   }
   .admin-section {
@@ -1835,7 +1856,7 @@ body {
   .ak-state-view-error { @apply border-danger/30 bg-danger/5; }
   .ak-state-view-notice { @apply border-warning/30 bg-warning/5; }
   .ak-state-icon {
-    @apply mb-1 inline-flex size-[40px] items-center justify-center rounded-lg bg-muted text-muted-foreground;
+    @apply mb-1 inline-flex size-[var(--control-h)] items-center justify-center rounded-lg bg-muted text-muted-foreground;
   }
   .ak-state-view-compact .ak-state-icon { @apply mb-0 size-9 flex-none; }
   .ak-state-view-error .ak-state-icon { @apply bg-danger/10 text-danger; }

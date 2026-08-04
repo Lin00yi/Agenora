@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import {
@@ -1397,8 +1397,8 @@ function ChatLoadingShell({
         >
           <div className="ak-sidebar-top rounded-lg px-2 pb-3 pt-2">
             <Brand className="ak-sidebar-brand" size="md" />
-            <div className="ak-sidebar-new ak-sidebar-primary-action mt-5 h-[40px] rounded-lg border" />
-            <div className="ak-sidebar-search mt-4 h-[40px] rounded-lg border" />
+            <div className="ak-sidebar-new ak-sidebar-primary-action mt-5 h-[var(--control-h)] rounded-lg border" />
+            <div className="ak-sidebar-search mt-4 h-[var(--control-h)] rounded-lg border" />
           </div>
           <div className="ak-sidebar-separator my-4 h-px" />
           <div className="space-y-2 px-1">
@@ -1625,7 +1625,7 @@ function DarkSidebar({
           <Brand className="ak-sidebar-brand" size="md" />
           <button
             aria-label="关闭侧栏"
-            className="ak-sidebar-icon-action ak-press inline-flex size-[40px] items-center justify-center rounded-lg border lg:hidden"
+            className="ak-sidebar-icon-action ak-press inline-flex size-[var(--control-h)] items-center justify-center rounded-lg border lg:hidden"
             onClick={onClose}
             type="button"
           >
@@ -1634,7 +1634,7 @@ function DarkSidebar({
         </div>
 
         <button
-          className="ak-sidebar-new ak-sidebar-primary-action ak-press mt-5 flex h-[40px] w-full items-center justify-center gap-2 rounded-lg border text-sm font-medium"
+          className="ak-sidebar-new ak-sidebar-primary-action ak-press mt-5 flex h-[var(--control-h)] w-full items-center justify-center gap-2 rounded-lg border text-sm font-medium"
           onClick={() => onNew(currentKbId)}
           type="button"
         >
@@ -1642,7 +1642,7 @@ function DarkSidebar({
           {"\u65b0\u5efa\u5bf9\u8bdd"}
         </button>
 
-        <div className="ak-sidebar-search mt-4 flex h-[40px] items-center gap-2 rounded-lg border px-3 text-sm">
+        <div className="ak-sidebar-search mt-4 flex h-[var(--control-h)] items-center gap-2 rounded-lg border px-3 text-sm">
           <Search className="h-4 w-4" />
           <input
             className="ak-sidebar-search-input min-w-0 flex-1 bg-transparent text-sm outline-none"
@@ -1730,7 +1730,7 @@ function DarkSidebar({
           )}
           {(conversationHasMore || conversationLoadingMore) && (
             <button
-              className="ak-sidebar-load-more flex min-h-[40px] w-full cursor-pointer items-center justify-center gap-2 rounded-lg border text-xs transition disabled:cursor-wait disabled:opacity-70"
+              className="ak-sidebar-load-more flex min-h-[var(--control-h)] w-full cursor-pointer items-center justify-center gap-2 rounded-lg border text-xs transition disabled:cursor-wait disabled:opacity-70"
               disabled={conversationLoadingMore}
               onClick={onLoadMoreConversations}
               type="button"
@@ -1752,7 +1752,7 @@ function DarkSidebar({
         {userMenuOpen && (
           <div className="ak-popover ak-user-popover absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-lg border shadow-[0_18px_48px_rgba(0,0,0,0.26)]">
             <button
-              className="ak-user-menu-item flex min-h-[40px] w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left text-sm transition"
+              className="ak-user-menu-item flex min-h-[var(--control-h)] w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left text-sm transition"
               onClick={() => {
                 setUserMenuOpen(false);
                 onOpenAccountSettings();
@@ -1763,7 +1763,7 @@ function DarkSidebar({
               账号设置
             </button>
             <Link
-              className="ak-user-menu-item flex min-h-[40px] items-center gap-2 px-3 py-2.5 text-sm transition"
+              className="ak-user-menu-item flex min-h-[var(--control-h)] items-center gap-2 px-3 py-2.5 text-sm transition"
               href="/settings"
               onClick={() => setUserMenuOpen(false)}
             >
@@ -1771,7 +1771,7 @@ function DarkSidebar({
               模型设置
             </Link>
             <Link
-              className="ak-user-menu-item flex min-h-[40px] items-center gap-2 px-3 py-2.5 text-sm transition"
+              className="ak-user-menu-item flex min-h-[var(--control-h)] items-center gap-2 px-3 py-2.5 text-sm transition"
               href="/kbs"
               onClick={() => setUserMenuOpen(false)}
             >
@@ -1779,7 +1779,7 @@ function DarkSidebar({
               我的知识库
             </Link>
             <Link
-              className="ak-user-menu-item flex min-h-[40px] items-center gap-2 px-3 py-2.5 text-sm transition"
+              className="ak-user-menu-item flex min-h-[var(--control-h)] items-center gap-2 px-3 py-2.5 text-sm transition"
               href="/memories"
               onClick={() => setUserMenuOpen(false)}
             >
@@ -1788,7 +1788,7 @@ function DarkSidebar({
             </Link>
             {user?.is_admin && (
               <Link
-                className="ak-user-menu-item flex min-h-[40px] items-center gap-2 px-3 py-2.5 text-sm transition"
+                className="ak-user-menu-item flex min-h-[var(--control-h)] items-center gap-2 px-3 py-2.5 text-sm transition"
                 href="/admin"
                 onClick={() => setUserMenuOpen(false)}
               >
@@ -1798,7 +1798,7 @@ function DarkSidebar({
             )}
             <div className="ak-sidebar-separator h-px" />
             <button
-              className="ak-user-menu-item-danger flex min-h-[40px] w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left text-sm transition"
+              className="ak-user-menu-item-danger flex min-h-[var(--control-h)] w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left text-sm transition"
               onClick={() => {
                 setUserMenuOpen(false);
                 onLogout();
@@ -1812,7 +1812,7 @@ function DarkSidebar({
         )}
         <div
           className={cn(
-            "ak-user-trigger flex min-h-14 w-full items-center gap-1.5 rounded-lg border p-1.5 transition",
+            "ak-user-trigger flex min-h-[52px] w-full items-center gap-1.5 rounded-lg border p-1.5 transition",
             userMenuOpen && "ak-user-trigger-open"
           )}
         >
@@ -1820,12 +1820,12 @@ function DarkSidebar({
             aria-expanded={userMenuOpen}
             aria-haspopup="menu"
             aria-label="用户菜单"
-            className="flex min-h-[44px] min-w-0 flex-1 cursor-pointer items-center justify-between gap-2 rounded-md px-0.5 text-left transition"
+            className="flex min-h-[var(--control-h)] min-w-0 flex-1 cursor-pointer items-center justify-between gap-2 rounded-md px-0.5 text-left transition"
             onClick={() => setUserMenuOpen((open) => !open)}
             type="button"
           >
             <span className="flex min-w-0 items-center gap-2">
-              <span className="ak-user-avatar flex size-[40px] shrink-0 items-center justify-center rounded-lg border text-sm font-semibold shadow-sm">
+              <span className="ak-user-avatar flex size-[var(--control-h)] shrink-0 items-center justify-center rounded-lg border text-sm font-semibold shadow-sm">
                 {(user?.display_name?.[0] || user?.email?.[0] || "Z").toUpperCase()}
               </span>
               <span className="min-w-0">
@@ -1869,7 +1869,7 @@ function TopBar({
   return (
     <header className="ak-topbar ak-chat-header grid h-[64px] shrink-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-3 px-4 xl:px-7">
       <button
-        className="ak-mobile-sidebar-action inline-flex size-[40px] cursor-pointer items-center justify-center rounded-lg border lg:hidden"
+        className="ak-mobile-sidebar-action inline-flex size-[var(--control-h)] cursor-pointer items-center justify-center rounded-lg border lg:hidden"
         onClick={onOpenSidebar}
         type="button"
         aria-label="打开侧栏"
@@ -2137,7 +2137,7 @@ function SourceStrip({ sources }: { sources: SourceRow[] }) {
             className="ak-source-row flex min-w-0 items-center gap-2 rounded-md border px-2 py-2"
             key={source.title}
           >
-            <span className="ak-source-score flex min-h-8 min-w-[40px] shrink-0 items-center justify-center rounded-md border px-1.5 text-[10px] font-semibold">
+            <span className="ak-source-score flex min-h-8 min-w-[var(--control-h)] shrink-0 items-center justify-center rounded-md border px-1.5 text-[10px] font-semibold">
               {source.score}
             </span>
             <div className="min-w-0 flex-1">
@@ -2374,7 +2374,7 @@ function SmallAction({
   return (
     <button
       className={cn(
-        "ak-small-action inline-flex size-[40px] cursor-pointer items-center justify-center rounded-md border px-2 text-xs transition",
+        "ak-small-action inline-flex size-[var(--control-h)] cursor-pointer items-center justify-center rounded-md border px-2 text-xs transition",
         disabled
           ? "cursor-not-allowed opacity-45"
           : ""
@@ -2460,13 +2460,13 @@ function Composer({
         />
         <div className="flex flex-wrap items-center gap-2 px-3 pb-3 pt-1">
           <div
-            className="ak-control inline-flex h-[40px] max-w-[240px] items-center gap-1.5 rounded-lg border px-2.5 text-sm"
+            className="ak-control inline-flex h-[var(--control-h)] max-w-[240px] items-center gap-1.5 rounded-lg border px-2.5 text-sm"
             title={kbLocked ? "当前会话由首条消息的知识库锁定" : "选择通用对话或知识库"}
           >
             <Database className="h-4 w-4 shrink-0 text-brand" />
             <ModelSelect
               aria-label="选择知识库"
-              className="h-[40px] min-w-[108px] flex-1 border-0 bg-transparent px-0 py-0 text-sm text-current shadow-none hover:bg-transparent focus-visible:ring-0 disabled:cursor-not-allowed disabled:text-muted"
+              className="h-[var(--control-h)] min-w-[108px] flex-1 border-0 bg-transparent px-0 py-0 text-sm text-current shadow-none hover:bg-transparent focus-visible:ring-0 disabled:cursor-not-allowed disabled:text-muted"
               contentAlign="start"
               contentClassName="ak-model-content"
               contentPosition="popper"
@@ -2482,7 +2482,7 @@ function Composer({
             {kbLocked && <LockKeyhole className="h-3.5 w-3.5 shrink-0 text-muted" />}
           </div>
           <Link
-            className="ak-control ak-press inline-flex size-[40px] items-center justify-center rounded-lg border"
+            className="ak-control ak-press inline-flex size-[var(--control-h)] items-center justify-center rounded-lg border"
             href={currentKbId ? `/kbs/${currentKbId}` : "/kbs"}
             aria-label={currentKbId ? "\u6253\u5f00\u77e5\u8bc6\u5e93\u4e0a\u4f20\u8d44\u6599" : "\u9009\u62e9\u77e5\u8bc6\u5e93\u540e\u4e0a\u4f20\u8d44\u6599"}
             title={currentKbId ? "\u6253\u5f00\u77e5\u8bc6\u5e93\u4e0a\u4f20\u8d44\u6599" : "\u9009\u62e9\u77e5\u8bc6\u5e93\u540e\u4e0a\u4f20\u8d44\u6599"}
@@ -2497,7 +2497,7 @@ function Composer({
             {showModelSelector && (
               <ModelSelect
                 aria-label="\u6a21\u578b\u9009\u62e9"
-                className="ak-model-trigger h-[40px] min-w-[132px] max-w-[200px] text-sm"
+                className="ak-model-trigger h-[var(--control-h)] min-w-[132px] max-w-[200px] text-sm"
                 contentAlign="end"
                 contentClassName="ak-model-content"
                 contentPosition="popper"
@@ -2512,7 +2512,7 @@ function Composer({
           </div>
           {busy ? (
             <button
-              className="ak-stop-button ak-press inline-flex h-[40px] min-w-[40px] cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-3 text-sm font-medium"
+              className="ak-stop-button ak-press inline-flex h-[var(--control-h)] min-w-[var(--control-h)] cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-3 text-sm font-medium"
               aria-label="停止生成"
               data-testid="composer-stop"
               onClick={onStop}
@@ -2523,7 +2523,7 @@ function Composer({
             </button>
           ) : (
             <button
-              className="ak-send-button ak-press inline-flex size-[40px] items-center justify-center rounded-lg transition disabled:cursor-not-allowed"
+              className="ak-send-button ak-press inline-flex size-[var(--control-h)] items-center justify-center rounded-lg transition disabled:cursor-not-allowed"
               aria-label="发送消息"
               data-testid="composer-send"
               disabled={!value.trim()}
@@ -2580,7 +2580,7 @@ function ContextUsageIndicator({
       <span
         aria-describedby="context-usage-detail"
         aria-label={loading ? "正在读取上下文使用量" : `上下文使用量 ${progress}%，${status.label}`}
-        className="ak-context-usage inline-flex size-[40px] items-center justify-center rounded-lg border outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
+        className="ak-context-usage inline-flex size-[var(--control-h)] items-center justify-center rounded-lg border outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
         tabIndex={0}
       >
         <svg

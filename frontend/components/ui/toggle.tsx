@@ -16,8 +16,8 @@ const toggleVariants = cva(
       },
       size: {
         default:
-          "h-[40px] min-w-[40px] px-3 has-data-[icon=inline-end]:pr-2.5 has-data-[icon=inline-start]:pl-2.5",
-        sm: "h-[40px] min-w-[40px] rounded-[min(var(--radius-md),8px)] px-2.5 text-sm has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 [&_svg:not([class*='size-'])]:size-4",
+          "h-[var(--control-h)] min-w-[var(--control-h)] px-3 has-data-[icon=inline-end]:pr-2.5 has-data-[icon=inline-start]:pl-2.5",
+        sm: "h-[var(--control-h)] min-w-[var(--control-h)] rounded-[min(var(--radius-md),8px)] px-2.5 text-sm has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 [&_svg:not([class*='size-'])]:size-4",
         lg: "h-11 min-w-11 px-3.5 has-data-[icon=inline-end]:pr-3 has-data-[icon=inline-start]:pl-3",
       },
     },

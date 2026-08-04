@@ -109,7 +109,7 @@ export default function InvitePage({
                 title="链接无法使用"
                 description={error}
                 action={
-                  <Link href="/kbs" className="admin-btn-primary min-h-[40px] px-4 text-sm">
+                  <Link href="/kbs" className="admin-btn-primary min-h-[var(--control-h)] px-4 text-sm">
                     返回知识库列表
                   </Link>
                 }

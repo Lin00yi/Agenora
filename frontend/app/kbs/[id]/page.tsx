@@ -64,6 +64,7 @@ import {
 import { toastApiError } from "@/lib/byok-toast";
 import { cn } from "@/lib/cn";
 import Dialog from "@/components/Dialog";
+import AppModal from "@/components/AppModal";
 import Select from "@/components/Select";
 import { LoadingState, StateView } from "@/components/ui/state-view";
 import { Switch } from "@/components/ui/switch";
@@ -406,7 +407,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
           variant="error"
           title="找不到这个知识库"
           description="它可能已被删除、你没有访问权限，或链接已失效。"
-          action={<Link href="/kbs" className="admin-btn-secondary min-h-[40px] px-4 text-sm">返回知识库列表</Link>}
+          action={<Link href="/kbs" className="admin-btn-secondary min-h-[var(--control-h)] px-4 text-sm">返回知识库列表</Link>}
           className="w-full max-w-md"
         />
       </div>
@@ -591,7 +592,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
               <button
                 type="submit"
                 disabled={!url.trim() || submittingUrl}
-                className="admin-btn-secondary min-h-[40px] shrink-0 px-4 text-sm"
+                className="admin-btn-secondary min-h-[var(--control-h)] shrink-0 px-4 text-sm"
               >
                 {submittingUrl ? "提交中..." : "抓取"}
               </button>
@@ -614,7 +615,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
               </AdminToolbarButton>
             ) : (
               <>
-                <div className="input-shell flex h-[40px] items-center gap-2 px-3">
+                <div className="input-shell flex h-[var(--control-h)] items-center gap-2 px-3">
                   <Search className="h-3.5 w-3.5 text-muted" />
                   <input
                     type="search"
@@ -982,7 +983,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                     value={chunkStrategy}
                     onChange={(e) => setChunkStrategy(e.target.value as ChunkStrategy)}
                     options={CHUNK_STRATEGY_OPTIONS}
-                    className="mt-1 h-[40px] admin-select-trigger"
+                    className="mt-1 h-[var(--control-h)] admin-select-trigger"
                     contentAlign="start"
                     contentPosition="popper"
                   />
@@ -1018,7 +1019,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
               <button
                 type="submit"
                 disabled={chunkBusy}
-                className="admin-btn-secondary mt-3 min-h-[40px] px-4 text-sm"
+                className="admin-btn-secondary mt-3 min-h-[var(--control-h)] px-4 text-sm"
               >
                 保存分块参数
               </button>
@@ -1033,7 +1034,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
               <button
                 onClick={() => setPendingRebuild(true)}
                 disabled={rebuildingKb}
-                className="admin-btn-secondary mt-3 min-h-[40px] px-4 text-sm"
+                className="admin-btn-secondary mt-3 min-h-[var(--control-h)] px-4 text-sm"
                 type="button"
               >
                 <RefreshCw className={cn("h-4 w-4", rebuildingKb && "animate-spin")} />
@@ -1068,7 +1069,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
             <button
               onClick={() => setPendingDeleteKb(true)}
               disabled={deletingKb}
-              className="admin-btn-danger mt-4 min-h-[40px] px-4 text-sm"
+              className="admin-btn-danger mt-4 min-h-[var(--control-h)] px-4 text-sm"
               type="button"
             >
               <Trash2 className="h-4 w-4" />
@@ -1189,7 +1190,7 @@ function MembersSection({ kbId, isOwner }: { kbId: string; isOwner: boolean }) {
         isOwner ? (
           <button
             onClick={() => setInviteOpen(true)}
-            className="admin-btn-primary min-h-[40px] px-3 text-sm"
+            className="admin-btn-primary min-h-[var(--control-h)] px-3 text-sm"
             type="button"
           >
             <UserPlus className="h-4 w-4" />
@@ -1264,7 +1265,7 @@ function MembersSection({ kbId, isOwner }: { kbId: string; isOwner: boolean }) {
                       { value: "editor", label: formatKbRole("editor") },
                       { value: "viewer", label: formatKbRole("viewer") },
                     ]}
-                    className="h-[40px] w-[112px] admin-select-trigger"
+                    className="h-[var(--control-h)] w-[112px] admin-select-trigger"
                   />
                   <button
                     onClick={() =>
@@ -1431,224 +1432,202 @@ function InviteDialog({
     }
   };
 
-  if (!open) return null;
-
   return (
-    <div
-      className="app-modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4"
-      onClick={onClose}
+    <AppModal
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title="邀请协作者"
+      description="通过邮箱添加成员，或生成可撤销的分享邀请链接。"
+      icon={
+        <span className="admin-icon-tile admin-icon-tile-brand">
+          <UserPlus className="h-4 w-4" />
+        </span>
+      }
+      size="lg"
+      bodyClassName="p-0"
     >
-      <div
-        className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-surface-border/80 bg-surface shadow-[0_24px_70px_rgb(15_23_42/0.22)]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex min-h-16 items-center justify-between gap-3 border-b border-surface-border/70 bg-surface px-5 py-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="admin-icon-tile admin-icon-tile-brand">
-              <UserPlus className="h-4 w-4" />
-            </span>
-            <div className="min-w-0">
-              <div className="truncate text-base font-semibold">邀请协作者</div>
-              <p className="mt-0.5 text-xs text-muted">通过邮箱添加成员，或生成可撤销的分享邀请链接。</p>
+      <div className="grid grid-cols-2 gap-1 border-b border-surface-border/70 bg-surface-2/45 p-1">
+        <button
+          type="button"
+          onClick={() => setTab("email")}
+          className={cn(
+            "inline-flex h-[var(--control-h)] cursor-pointer items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-[background-color,color,box-shadow]",
+            tab === "email"
+              ? "bg-surface text-fg shadow-sm"
+              : "text-muted hover:bg-surface/70 hover:text-fg"
+          )}
+        >
+          <UserPlus className="h-3.5 w-3.5" />
+          按邮箱邀请
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("link")}
+          className={cn(
+            "inline-flex h-[var(--control-h)] cursor-pointer items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-[background-color,color,box-shadow]",
+            tab === "link"
+              ? "bg-surface text-fg shadow-sm"
+              : "text-muted hover:bg-surface/70 hover:text-fg"
+          )}
+        >
+          <Link2 className="h-3.5 w-3.5" />
+          生成分享链接
+        </button>
+      </div>
+
+      <div className="p-5">
+        {tab === "email" ? (
+          <form onSubmit={onInviteEmail} className="space-y-4">
+            <div className="rounded-lg border border-surface-border/70 bg-surface-2/45 px-3 py-2 text-xs leading-5 text-muted">
+              被邀请者必须先在 KnowFlow 注册一个账号，再用该邮箱邀请。
             </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="admin-icon-action"
-            aria-label="关闭邀请弹窗"
-            type="button"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 gap-1 border-b border-surface-border/70 bg-surface-2/45 p-1">
-          <button
-            type="button"
-            onClick={() => setTab("email")}
-            className={cn(
-              "inline-flex min-h-[40px] cursor-pointer items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-[background-color,color,box-shadow]",
-              tab === "email"
-                ? "bg-surface text-fg shadow-sm"
-                : "text-muted hover:bg-surface/70 hover:text-fg"
-            )}
-          >
-            <UserPlus className="h-3.5 w-3.5" />
-            按邮箱邀请
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("link")}
-            className={cn(
-              "inline-flex min-h-[40px] cursor-pointer items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-[background-color,color,box-shadow]",
-              tab === "link"
-                ? "bg-surface text-fg shadow-sm"
-                : "text-muted hover:bg-surface/70 hover:text-fg"
-            )}
-          >
-            <Link2 className="h-3.5 w-3.5" />
-            生成分享链接
-          </button>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">
-          {tab === "email" ? (
-            <form onSubmit={onInviteEmail} className="space-y-4">
-              <div className="rounded-lg border border-surface-border/70 bg-surface-2/45 px-3 py-2 text-xs leading-5 text-muted">
-                被邀请者必须先在 KnowFlow 注册一个账号，再用该邮箱邀请。
-              </div>
-              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
+              <label className="space-y-1.5 text-xs font-medium text-muted">
+                <span>邮箱地址</span>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="bob@example.com"
+                  className={inviteInputClass}
+                />
+              </label>
+              <label className="space-y-1.5 text-xs font-medium text-muted">
+                <span>角色</span>
+                <Select
+                  value={emailRole}
+                  onChange={(e) => setEmailRole(e.target.value as MemberRole)}
+                  options={[
+                    { value: "editor", label: `${formatKbRole("editor")}（读+写文档）` },
+                    { value: "viewer", label: formatKbRole("viewer") },
+                  ]}
+                  className="h-[var(--control-h)] w-full admin-select-trigger"
+                />
+              </label>
+            </div>
+            <button
+              type="submit"
+              disabled={emailBusy || !email.trim()}
+              className="admin-btn-primary w-full"
+            >
+              {emailBusy ? "邀请中..." : "发送邀请"}
+            </button>
+          </form>
+        ) : (
+          <div className="space-y-5">
+            <div className="grid gap-3 rounded-lg border border-surface-border/70 bg-surface-2/35 p-4">
+              <label className="space-y-1.5 text-xs font-medium text-muted">
+                <span>角色</span>
+                <Select
+                  value={linkRole}
+                  onChange={(e) => setLinkRole(e.target.value as MemberRole)}
+                  options={[
+                    { value: "viewer", label: formatKbRole("viewer") },
+                    { value: "editor", label: `${formatKbRole("editor")}（读+写）` },
+                  ]}
+                  className="h-[var(--control-h)] w-full admin-select-trigger"
+                />
+              </label>
+              <div className="grid gap-3 sm:grid-cols-2">
                 <label className="space-y-1.5 text-xs font-medium text-muted">
-                  <span>邮箱地址</span>
+                  <span>有效期（小时）</span>
                   <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="bob@example.com"
+                    type="number"
+                    min="0"
+                    value={linkExpiresHours}
+                    onChange={(e) => setLinkExpiresHours(e.target.value)}
+                    placeholder="留空 = 永不过期"
                     className={inviteInputClass}
                   />
                 </label>
                 <label className="space-y-1.5 text-xs font-medium text-muted">
-                  <span>角色</span>
-                  <Select
-                    value={emailRole}
-                    onChange={(e) => setEmailRole(e.target.value as MemberRole)}
-                    options={[
-                      { value: "editor", label: `${formatKbRole("editor")}（读+写文档）` },
-                      { value: "viewer", label: formatKbRole("viewer") },
-                    ]}
-                    className="h-[40px] w-full admin-select-trigger"
+                  <span>最大使用次数</span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={linkMaxUses}
+                    onChange={(e) => setLinkMaxUses(e.target.value)}
+                    placeholder="留空 = 不限"
+                    className={inviteInputClass}
                   />
                 </label>
               </div>
               <button
-                type="submit"
-                disabled={emailBusy || !email.trim()}
-                className="admin-btn-primary min-h-[40px] w-full"
+                onClick={onCreateLink}
+                disabled={linkBusy}
+                className="admin-btn-primary w-full"
+                type="button"
               >
-                {emailBusy ? "邀请中..." : "发送邀请"}
+                {linkBusy ? "生成中..." : "生成新链接"}
               </button>
-            </form>
-          ) : (
-            <div className="space-y-5">
-              <div className="grid gap-3 rounded-lg border border-surface-border/70 bg-surface-2/35 p-4">
-                <label className="space-y-1.5 text-xs font-medium text-muted">
-                  <span>角色</span>
-                  <Select
-                    value={linkRole}
-                    onChange={(e) => setLinkRole(e.target.value as MemberRole)}
-                    options={[
-                      { value: "viewer", label: formatKbRole("viewer") },
-                      { value: "editor", label: `${formatKbRole("editor")}（读+写）` },
-                    ]}
-                    className="h-[40px] w-full admin-select-trigger"
-                  />
-                </label>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="space-y-1.5 text-xs font-medium text-muted">
-                    <span>有效期（小时）</span>
-                    <input
-                      type="number"
-                      min="0"
-                      value={linkExpiresHours}
-                      onChange={(e) => setLinkExpiresHours(e.target.value)}
-                      placeholder="留空 = 永不过期"
-                      className={inviteInputClass}
-                    />
-                  </label>
-                  <label className="space-y-1.5 text-xs font-medium text-muted">
-                    <span>最大使用次数</span>
-                    <input
-                      type="number"
-                      min="1"
-                      value={linkMaxUses}
-                      onChange={(e) => setLinkMaxUses(e.target.value)}
-                      placeholder="留空 = 不限"
-                      className={inviteInputClass}
-                    />
-                  </label>
-                </div>
-                <button
-                  onClick={onCreateLink}
-                  disabled={linkBusy}
-                  className="admin-btn-primary min-h-[40px] w-full"
-                  type="button"
-                >
-                  {linkBusy ? "生成中..." : "生成新链接"}
-                </button>
-              </div>
-
-              {invitations.length > 0 && (
-                <div className="border-t border-surface-border/70 pt-4">
-                  <div className="mb-2 text-xs font-medium text-muted">
-                    现有链接
-                  </div>
-                  <ul className="space-y-2">
-                    {invitations.map((inv) => (
-                      <li
-                        key={inv.id}
-                        className={cn(
-                          "rounded-lg border border-surface-border/75 bg-surface px-3 py-2.5 text-xs shadow-sm transition",
-                          inv.revoked && "opacity-55"
-                        )}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="chip chip-brand">
-                            {formatKbRole(inv.role)}
-                          </span>
-                          {inv.max_uses != null && (
-                            <span className="text-muted">
-                              {inv.uses_count}/{inv.max_uses} 次
-                            </span>
-                          )}
-                          {inv.expires_at && (
-                            <span className="text-muted">
-                              到期 {new Date(inv.expires_at).toLocaleString()}
-                            </span>
-                          )}
-                          {inv.revoked && (
-                            <span className="text-danger">已撤销</span>
-                          )}
-                          <div className="flex-1" />
-                          {!inv.revoked && (
-                            <>
-                              <button
-                                onClick={() => copy(buildUrl(inv.id))}
-                                className="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg border border-transparent text-muted transition hover:border-brand/20 hover:bg-brand/10 hover:text-brand"
-                                title="复制链接"
-                                aria-label="复制邀请链接"
-                                type="button"
-                              >
-                                <Copy className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                onClick={() => onRevoke(inv.id)}
-                                className="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg border border-transparent text-muted transition hover:border-danger/20 hover:bg-danger/10 hover:text-danger"
-                                title="撤销"
-                                aria-label="撤销邀请链接"
-                                type="button"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                        {!inv.revoked && (
-                          <div className="mt-2 break-all rounded-md border border-surface-border/60 bg-surface-2/55 px-2 py-1.5 font-mono text-[11px] leading-5 text-muted">
-                            {buildUrl(inv.id)}
-                          </div>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
             </div>
-          )}
-        </div>
+
+            {invitations.length > 0 && (
+              <div className="border-t border-surface-border/70 pt-4">
+                <div className="mb-2 text-xs font-medium text-muted">现有链接</div>
+                <ul className="space-y-2">
+                  {invitations.map((inv) => (
+                    <li
+                      key={inv.id}
+                      className={cn(
+                        "rounded-lg border border-surface-border/75 bg-surface px-3 py-2.5 text-xs shadow-sm transition",
+                        inv.revoked && "opacity-55"
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="chip chip-brand">{formatKbRole(inv.role)}</span>
+                        {inv.max_uses != null && (
+                          <span className="text-muted">
+                            {inv.uses_count}/{inv.max_uses} 次
+                          </span>
+                        )}
+                        {inv.expires_at && (
+                          <span className="text-muted">
+                            到期 {new Date(inv.expires_at).toLocaleString()}
+                          </span>
+                        )}
+                        {inv.revoked && <span className="text-danger">已撤销</span>}
+                        <div className="flex-1" />
+                        {!inv.revoked && (
+                          <>
+                            <button
+                              onClick={() => copy(buildUrl(inv.id))}
+                              className="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg border border-transparent text-muted transition hover:border-brand/20 hover:bg-brand/10 hover:text-brand"
+                              title="复制链接"
+                              aria-label="复制邀请链接"
+                              type="button"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => onRevoke(inv.id)}
+                              className="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg border border-transparent text-muted transition hover:border-danger/20 hover:bg-danger/10 hover:text-danger"
+                              title="撤销"
+                              aria-label="撤销邀请链接"
+                              type="button"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                      {!inv.revoked && (
+                        <div className="mt-2 break-all rounded-md border border-surface-border/60 bg-surface-2/55 px-2 py-1.5 font-mono text-[11px] leading-5 text-muted">
+                          {buildUrl(inv.id)}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
       </div>
-    </div>
+    </AppModal>
   );
 }
 

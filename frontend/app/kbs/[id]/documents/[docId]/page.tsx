@@ -48,6 +48,7 @@ import {
 import { toastApiError } from "@/lib/byok-toast";
 import { cn } from "@/lib/cn";
 import Dialog from "@/components/Dialog";
+import AppModal from "@/components/AppModal";
 import Select from "@/components/Select";
 import { StateView } from "@/components/ui/state-view";
 import {
@@ -305,8 +306,8 @@ export default function DocumentDetailPage({
     }
   };
 
-  const onSaveChunk = async (e: FormEvent) => {
-    e.preventDefault();
+  const onSaveChunk = async (e?: FormEvent) => {
+    e?.preventDefault();
     if (!editingChunk) return;
     setPendingKey(`edit:${editingChunk.id}`);
     try {
@@ -370,8 +371,8 @@ export default function DocumentDetailPage({
     }
   };
 
-  const onSplitChunk = async (e: FormEvent) => {
-    e.preventDefault();
+  const onSplitChunk = async (e?: FormEvent) => {
+    e?.preventDefault();
     if (!splittingChunk) return;
     const offset = parseInt(splitOffset, 10);
     if (!Number.isFinite(offset) || offset <= 0 || offset >= splittingChunk.text.length) {
@@ -552,7 +553,7 @@ export default function DocumentDetailPage({
                 onChange={(e) => setDocChunkStrategy(e.target.value as ChunkStrategy | "")}
                 placeholderOption={{ value: "", label: "继承 KB 默认" }}
                 options={CHUNK_STRATEGY_OPTIONS}
-                className="h-[40px] w-full admin-select-trigger"
+                className="h-[var(--control-h)] w-full admin-select-trigger"
                 contentAlign="start"
                 contentPosition="popper"
               />
@@ -596,14 +597,14 @@ export default function DocumentDetailPage({
             <div className="flex items-end gap-2 md:justify-end">
               <button
                 type="submit"
-                className="admin-btn-secondary h-[40px]"
+                className="admin-btn-secondary h-[var(--control-h)]"
                 disabled={anyPending}
               >
                 {isPending("doc-chunk-settings") ? "保存中..." : "保存"}
               </button>
               <button
                 type="button"
-                className="admin-btn-primary h-[40px]"
+                className="admin-btn-primary h-[var(--control-h)]"
                 disabled={anyPending}
                 onClick={() => void onReingest()}
                 title="重新入库后，已保存的切分策略才会应用到现有分块。"
@@ -627,7 +628,7 @@ export default function DocumentDetailPage({
         toolbarClassName="w-full sm:w-auto"
         toolbar={
           <>
-            <div className="input-shell flex h-[40px] min-w-0 flex-1 items-center gap-2 px-3 sm:w-72 sm:flex-none">
+            <div className="input-shell flex h-[var(--control-h)] min-w-0 flex-1 items-center gap-2 px-3 sm:w-72 sm:flex-none">
               <Search className="h-3.5 w-3.5 shrink-0 text-muted" />
               <input
                 type="search"
@@ -638,7 +639,7 @@ export default function DocumentDetailPage({
               />
             </div>
             <Select
-              className="h-[40px] min-h-[40px] w-[132px] admin-select-trigger"
+              className="h-[var(--control-h)] min-h-[var(--control-h)] w-[132px] admin-select-trigger"
               value={enabledFilter}
               onChange={(e) =>
                 setEnabledFilter(e.target.value as typeof enabledFilter)
@@ -1014,26 +1015,15 @@ export default function DocumentDetailPage({
         )}
       </AdminPanel>
 
-      <Dialog
+      <AppModal
         open={editingChunk != null}
         onOpenChange={(o) => !o && setEditingChunk(null)}
         title={`编辑 chunk #${(editingChunk?.chunk_idx ?? 0) + 1}`}
         description="修改后会自动重新 embedding 并更新向量库。"
-        confirmLabel="保存"
-        onConfirm={() => {}}
-      >
-        <form onSubmit={onSaveChunk} className="space-y-4">
-          <div className="input-shell">
-            <textarea
-              value={editText}
-              onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
-                setEditText(e.target.value)
-              }
-              rows={12}
-              className="w-full resize-y rounded-md bg-transparent px-3 py-2.5 text-sm leading-relaxed outline-none"
-            />
-          </div>
-          <div className="flex flex-col justify-end gap-2 sm:flex-row">
+        size="lg"
+        busy={anyPending}
+        footer={
+          <>
             <button
               type="button"
               className="admin-btn-secondary"
@@ -1041,14 +1031,28 @@ export default function DocumentDetailPage({
             >
               取消
             </button>
-            <button type="submit" className="admin-btn-primary" disabled={anyPending}>
+            <button
+              type="button"
+              className="admin-btn-primary"
+              disabled={anyPending}
+              onClick={() => void onSaveChunk()}
+            >
               {isPending(`edit:${editingChunk?.id ?? ""}`) ? "保存中…" : "保存"}
             </button>
-          </div>
-        </form>
-      </Dialog>
+          </>
+        }
+      >
+        <div className="input-shell">
+          <textarea
+            value={editText}
+            onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setEditText(e.target.value)}
+            rows={12}
+            className="w-full resize-y rounded-md bg-transparent px-3 py-2.5 text-sm leading-relaxed outline-none"
+          />
+        </div>
+      </AppModal>
 
-      <Dialog
+      <AppModal
         open={splittingChunk != null}
         onOpenChange={(o) => {
           if (!o) {
@@ -1058,10 +1062,32 @@ export default function DocumentDetailPage({
         }}
         title={`切分 chunk #${(splittingChunk?.chunk_idx ?? 0) + 1}`}
         description="在指定字符位置切分为两个 chunk（会重新 embedding）。"
-        confirmLabel="切分"
-        onConfirm={() => {}}
+        size="md"
+        busy={anyPending}
+        footer={
+          <>
+            <button
+              type="button"
+              className="admin-btn-secondary"
+              onClick={() => {
+                setSplittingChunk(null);
+                setSplitOffset("");
+              }}
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              className="admin-btn-primary"
+              disabled={anyPending}
+              onClick={() => void onSplitChunk()}
+            >
+              {splittingChunk && isPending(`split:${splittingChunk.id}`) ? "切分中…" : "切分"}
+            </button>
+          </>
+        }
       >
-        <form onSubmit={onSplitChunk} className="space-y-4">
+        <div className="space-y-4">
           <p className="max-h-32 overflow-y-auto rounded-lg border border-surface-border/60 bg-surface-2 p-3 text-xs leading-relaxed text-muted">
             {splittingChunk?.text}
           </p>
@@ -1078,25 +1104,8 @@ export default function DocumentDetailPage({
               className={docInputClass}
             />
           </label>
-          <div className="flex flex-col justify-end gap-2 sm:flex-row">
-            <button
-              type="button"
-              className="admin-btn-secondary"
-              onClick={() => {
-                setSplittingChunk(null);
-                setSplitOffset("");
-              }}
-            >
-              取消
-            </button>
-            <button type="submit" className="admin-btn-primary" disabled={anyPending}>
-              {splittingChunk && isPending(`split:${splittingChunk.id}`)
-                ? "切分中…"
-                : "切分"}
-            </button>
-          </div>
-        </form>
-      </Dialog>
+        </div>
+      </AppModal>
 
       <Dialog
         open={deleteTarget != null}

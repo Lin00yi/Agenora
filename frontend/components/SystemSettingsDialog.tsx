@@ -13,10 +13,9 @@
  * stays untouched - this dialog is purely the account-level UX surface.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  X,
   User as UserIcon,
   KeyRound,
   Database,
@@ -28,12 +27,12 @@ import {
 import { toast } from "sonner";
 
 import Dialog from "@/components/Dialog";
+import AppModal from "@/components/AppModal";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import {
   changePassword,
   deleteAccount,
-  logout,
   updateProfile,
   type User,
 } from "@/lib/auth";
@@ -66,94 +65,123 @@ export default function SystemSettingsDialog({
   onUserChanged,
 }: Props) {
   const [tab, setTab] = useState<Tab>("general");
-  const panelRef = useRef<HTMLDivElement>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const router = useRouter();
 
-  // ESC + body scroll lock
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    const orig = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = orig;
-    };
-  }, [open, onClose]);
+  const doClear = async () => {
+    setClearing(true);
+    try {
+      await deleteAllConversations();
+      toast.success("已清空所有对话");
+      setConfirmClear(false);
+      window.location.reload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "清空失败");
+      setClearing(false);
+    }
+  };
 
-  if (!open) return null;
+  const doDelete = async () => {
+    setDeleting(true);
+    try {
+      await deleteAccount();
+      toast.success("账号已删除");
+      onClose();
+      router.replace("/login");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "删除失败");
+      setDeleting(false);
+    }
+  };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      onClick={onClose}
-      role="presentation"
-    >
-      <div className="app-modal-overlay absolute inset-0" />
-      <div
-        ref={panelRef}
-        onClick={(e) => e.stopPropagation()}
-        className="relative flex h-[min(680px,calc(100dvh-2rem))] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-surface-border/80 bg-surface shadow-[0_24px_70px_rgb(15_23_42/0.22)] sm:flex-row"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="syssettings-title"
+    <>
+      <AppModal
+        open={open}
+        onOpenChange={(next) => {
+          if (!next) onClose();
+        }}
+        bare
+        size="xl"
+        className="h-[min(680px,calc(100dvh-2rem))] max-w-3xl sm:max-w-3xl"
+        showCloseButton
       >
-        {/* Left tab nav */}
-        <nav className="flex w-full shrink-0 gap-1 overflow-x-auto border-b border-surface-border/70 bg-surface-2/50 p-2 sm:block sm:w-44 sm:border-b-0 sm:border-r">
-          <div className="hidden px-2 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted sm:block">
-            系统设置
-          </div>
-          {TABS.map(({ key, label, Icon }) => {
-            const active = tab === key;
-            return (
-              <button
-                key={key}
-                onClick={() => setTab(key)}
-                className={cn(
-                  "flex h-[40px] shrink-0 cursor-pointer items-center gap-2 rounded-md border border-transparent px-3 text-sm font-medium transition-[background-color,border-color,color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 sm:w-full sm:px-2",
-                  active
-                    ? "border-brand/25 bg-surface text-fg shadow-sm"
-                    : "text-muted hover:border-surface-border/80 hover:bg-surface/75 hover:text-fg"
-                )}
-                aria-pressed={active}
-                type="button"
-              >
-                <Icon className={cn("h-4 w-4", active ? "text-brand" : "text-muted")} />
-                {label}
-              </button>
-            );
-          })}
-        </nav>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden sm:flex-row">
+          <nav className="flex w-full shrink-0 gap-1 overflow-x-auto border-b border-surface-border/70 bg-surface-2/50 p-2 sm:block sm:w-44 sm:border-b-0 sm:border-r">
+            <div className="hidden px-2 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted sm:block">
+              系统设置
+            </div>
+            {TABS.map(({ key, label, Icon }) => {
+              const active = tab === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setTab(key)}
+                  className={cn(
+                    "flex h-[var(--control-h)] shrink-0 cursor-pointer items-center gap-2 rounded-md border border-transparent px-3 text-sm font-medium transition-[background-color,border-color,color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 sm:w-full sm:px-2",
+                    active
+                      ? "border-brand/25 bg-surface text-fg shadow-sm"
+                      : "text-muted hover:border-surface-border/80 hover:bg-surface/75 hover:text-fg"
+                  )}
+                  aria-pressed={active}
+                  type="button"
+                >
+                  <Icon className={cn("h-4 w-4", active ? "text-brand" : "text-muted")} />
+                  {label}
+                </button>
+              );
+            })}
+          </nav>
 
-        {/* Right content */}
-        <div className="flex min-h-0 flex-1 flex-col">
-          <header className="flex h-14 shrink-0 items-center justify-between border-b border-surface-border/70 bg-surface px-5">
-            <h2 id="syssettings-title" className="text-base font-semibold">
-              {TABS.find((t) => t.key === tab)?.label}
-            </h2>
-            <button
-              onClick={onClose}
-              className="admin-icon-action"
-              aria-label="关闭"
-              type="button"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </header>
+          <div className="flex min-h-0 flex-1 flex-col">
+            <header className="flex h-14 shrink-0 items-center border-b border-surface-border/70 bg-surface px-5 pr-14">
+              <h2 className="text-[15px] font-semibold tracking-tight">
+                {TABS.find((t) => t.key === tab)?.label}
+              </h2>
+            </header>
 
-          <div className="flex-1 overflow-y-auto p-5">
-            {tab === "general" && (
-              <GeneralTab user={user} onUserChanged={onUserChanged} />
-            )}
-            {tab === "account" && <AccountTab user={user} />}
-            {tab === "data" && <DataTab onClose={onClose} />}
-            {tab === "about" && <AboutTab />}
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
+              {tab === "general" && (
+                <GeneralTab user={user} onUserChanged={onUserChanged} />
+              )}
+              {tab === "account" && <AccountTab user={user} />}
+              {tab === "data" && (
+                <DataTab
+                  onRequestClear={() => setConfirmClear(true)}
+                  onRequestDelete={() => setConfirmDelete(true)}
+                />
+              )}
+              {tab === "about" && <AboutTab />}
+            </div>
           </div>
         </div>
-      </div>
-    </div>
+      </AppModal>
+
+      <Dialog
+        open={confirmClear}
+        onOpenChange={setConfirmClear}
+        title="清空所有对话？"
+        description="所有对话历史将被永久删除，无法恢复。KB 和账号设置不受影响。"
+        variant="danger"
+        confirmLabel="确认清空"
+        onConfirm={doClear}
+        busy={clearing}
+      />
+
+      <Dialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title="删除账号？"
+        description="账号、对话、我所拥有的 KB 和上传文档都会被永久删除。此操作不可恢复。"
+        variant="danger"
+        confirmLabel="确认删除账号"
+        onConfirm={doDelete}
+        busy={deleting}
+      />
+    </>
   );
 }
 
@@ -317,13 +345,14 @@ function AccountTab({ user }: { user: User }) {
 // ---------------------------------------------------------------------------
 // Tab: 数据
 // ---------------------------------------------------------------------------
-function DataTab({ onClose }: { onClose: () => void }) {
-  const router = useRouter();
+function DataTab({
+  onRequestClear,
+  onRequestDelete,
+}: {
+  onRequestClear: () => void;
+  onRequestDelete: () => void;
+}) {
   const [exporting, setExporting] = useState(false);
-  const [confirmClear, setConfirmClear] = useState(false);
-  const [clearing, setClearing] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
 
   const doExport = async () => {
     setExporting(true);
@@ -334,33 +363,6 @@ function DataTab({ onClose }: { onClose: () => void }) {
       toast.error(e instanceof Error ? e.message : "导出失败");
     } finally {
       setExporting(false);
-    }
-  };
-
-  const doClear = async () => {
-    setClearing(true);
-    try {
-      await deleteAllConversations();
-      toast.success("已清空所有对话");
-      setConfirmClear(false);
-      // Reload so the sidebar refreshes from server
-      window.location.reload();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "清空失败");
-      setClearing(false);
-    }
-  };
-
-  const doDelete = async () => {
-    setDeleting(true);
-    try {
-      await deleteAccount();
-      toast.success("账号已删除");
-      onClose();
-      router.replace("/login");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "删除失败");
-      setDeleting(false);
     }
   };
 
@@ -386,11 +388,7 @@ function DataTab({ onClose }: { onClose: () => void }) {
         title="清空所有对话"
         description="不可恢复，但 KB / 账号配置不受影响。"
         action={
-          <Button
-            onClick={() => setConfirmClear(true)}
-            variant="destructive"
-            type="button"
-          >
+          <Button onClick={onRequestClear} variant="destructive" type="button">
             <Trash2 className="h-4 w-4" />
             清空对话
           </Button>
@@ -408,7 +406,7 @@ function DataTab({ onClose }: { onClose: () => void }) {
               永久删除账号、所有对话、所拥有的知识库以及上传的文档。<strong>不可恢复。</strong>
             </p>
             <Button
-              onClick={() => setConfirmDelete(true)}
+              onClick={onRequestDelete}
               className="mt-4"
               variant="destructive"
               type="button"
@@ -418,28 +416,6 @@ function DataTab({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       </div>
-
-      <Dialog
-        open={confirmClear}
-        onOpenChange={setConfirmClear}
-        title="清空所有对话？"
-        description="所有对话历史将被永久删除，无法恢复。KB 和账号设置不受影响。"
-        variant="danger"
-        confirmLabel="确认清空"
-        onConfirm={doClear}
-        busy={clearing}
-      />
-
-      <Dialog
-        open={confirmDelete}
-        onOpenChange={setConfirmDelete}
-        title="删除账号？"
-        description="账号、对话、我所拥有的 KB 和上传文档都会被永久删除。此操作不可恢复。"
-        variant="danger"
-        confirmLabel="确认删除账号"
-        onConfirm={doDelete}
-        busy={deleting}
-      />
     </div>
   );
 }

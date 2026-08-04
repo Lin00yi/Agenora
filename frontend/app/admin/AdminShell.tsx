@@ -133,7 +133,7 @@ export default function AdminShell({
                 href={t.href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "inline-flex min-h-[40px] shrink-0 items-center gap-2 rounded-md border border-transparent px-3.5 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30",
+                  "inline-flex min-h-[var(--control-h)] shrink-0 items-center gap-2 rounded-md border border-transparent px-3.5 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30",
                   active
                     ? "border-brand/25 bg-brand/10 text-fg shadow-sm"
                     : "text-muted hover:border-surface-border/80 hover:bg-surface hover:text-fg"

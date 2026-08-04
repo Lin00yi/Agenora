@@ -80,7 +80,7 @@ export default function MessageBubble({
 
 function ThinkingPlaceholder({ label }: { label: string }) {
   return (
-    <div className="inline-flex min-h-[40px] items-center gap-2.5 rounded-lg border border-surface-border/80 bg-surface px-3.5 py-2 text-sm text-muted shadow-soft">
+    <div className="inline-flex min-h-[var(--control-h)] items-center gap-2.5 rounded-lg border border-surface-border/80 bg-surface px-3.5 py-2 text-sm text-muted shadow-soft">
       <span className="admin-icon-tile admin-icon-tile-sm admin-icon-tile-brand">
         <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
       </span>

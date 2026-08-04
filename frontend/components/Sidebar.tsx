@@ -280,7 +280,7 @@ function UserMenu({
               setOpen(false);
               onOpenSettings();
             }}
-            className="flex min-h-[40px] w-full cursor-pointer items-center gap-2 rounded-md px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
+            className="flex min-h-[var(--control-h)] w-full cursor-pointer items-center gap-2 rounded-md px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
             type="button"
           >
             <Settings className="h-4 w-4 text-muted" />
@@ -289,7 +289,7 @@ function UserMenu({
           <Link
             href="/settings"
             onClick={() => setOpen(false)}
-            className="flex min-h-[40px] items-center gap-2 rounded-md px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
+            className="flex min-h-[var(--control-h)] items-center gap-2 rounded-md px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
           >
             <Settings className="h-4 w-4 text-muted" />
             模型设置
@@ -297,7 +297,7 @@ function UserMenu({
           <Link
             href="/kbs"
             onClick={() => setOpen(false)}
-            className="flex min-h-[40px] items-center gap-2 rounded-md px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
+            className="flex min-h-[var(--control-h)] items-center gap-2 rounded-md px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
           >
             <BookOpen className="h-4 w-4 text-muted" />
             我的知识库
@@ -305,7 +305,7 @@ function UserMenu({
           <Link
             href="/memories"
             onClick={() => setOpen(false)}
-            className="flex min-h-[40px] items-center gap-2 rounded-md px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
+            className="flex min-h-[var(--control-h)] items-center gap-2 rounded-md px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
           >
             <BrainCircuit className="h-4 w-4 text-muted" />
             我的记忆
@@ -314,7 +314,7 @@ function UserMenu({
             <Link
               href="/admin"
               onClick={() => setOpen(false)}
-              className="flex min-h-[40px] items-center gap-2 rounded-md px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
+              className="flex min-h-[var(--control-h)] items-center gap-2 rounded-md px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
             >
               <Shield className="h-4 w-4 text-muted" />
               后台管理
@@ -326,7 +326,7 @@ function UserMenu({
               setOpen(false);
               onLogout();
             }}
-            className="flex min-h-[40px] w-full cursor-pointer items-center gap-2 rounded-md px-3 text-sm font-medium text-danger transition-colors hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/25"
+            className="flex min-h-[var(--control-h)] w-full cursor-pointer items-center gap-2 rounded-md px-3 text-sm font-medium text-danger transition-colors hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/25"
             type="button"
           >
             <LogOut className="h-4 w-4" />

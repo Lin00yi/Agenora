@@ -307,7 +307,7 @@ function LLMCard({
             <button
               onClick={handleProbe}
               disabled={!canProbe}
-              className="admin-btn-secondary h-[40px] w-full shrink-0 sm:w-auto"
+              className="admin-btn-secondary h-[var(--control-h)] w-full shrink-0 sm:w-auto"
               type="button"
             >
               {probing ? (
@@ -609,7 +609,7 @@ function MemoryCard() {
                       { value: "1", label: "最高" },
                     ]}
                     size="sm"
-                    className="h-[40px] min-w-[6rem] text-sm"
+                    className="h-[var(--control-h)] min-w-[6rem] text-sm"
                     contentAlign="start"
                     contentPosition="popper"
                     aria-label={`调整记忆重要度：${memory.content}`}

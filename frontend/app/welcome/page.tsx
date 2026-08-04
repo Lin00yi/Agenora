@@ -87,12 +87,12 @@ export default function WelcomePage() {
                 上传文档、抓取网页、选择知识库后直接提问。{APP_NAME} 会展示检索过程、引用来源和生成状态，方便排查答案质量。
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <Link href={signedIn ? "/" : "/register"} className="admin-btn-primary min-h-[40px] px-5">
+                <Link href={signedIn ? "/" : "/register"} className="admin-btn-primary min-h-[var(--control-h)] px-5">
                   {signedIn ? "进入工作台" : "免费开始"}
                   <ArrowRight className="h-4 w-4" />
                 </Link>
                 {!signedIn && (
-                  <Link href="/login" className="admin-btn-secondary min-h-[40px] px-5">
+                  <Link href="/login" className="admin-btn-secondary min-h-[var(--control-h)] px-5">
                     已有账号，去登录
                   </Link>
                 )}
@@ -261,7 +261,7 @@ function ProductPreview() {
 
 function TrustPill({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
-    <div className="flex min-h-[40px] items-center gap-2 rounded-lg border border-surface-border/80 bg-surface px-3 py-2 shadow-sm">
+    <div className="flex min-h-[var(--control-h)] items-center gap-2 rounded-lg border border-surface-border/80 bg-surface px-3 py-2 shadow-sm">
       <span className="text-brand">{icon}</span>
       <span>{text}</span>
     </div>
@@ -294,7 +294,7 @@ function StepCard({ n, icon, title, desc }: { n: number; icon: React.ReactNode; 
   return (
     <div className="rounded-lg border border-surface-border/80 bg-surface p-5 shadow-sm">
       <div className="mb-4 flex items-center gap-3">
-        <span className="flex h-[40px] w-[40px] items-center justify-center rounded-lg bg-brand text-sm font-semibold text-white shadow-sm">
+        <span className="flex size-[var(--control-h)] items-center justify-center rounded-lg bg-brand text-sm font-semibold text-white shadow-sm">
           {n}
         </span>
         <span className="text-brand">{icon}</span>
@@ -330,7 +330,7 @@ function PreviewKbItem({
 }) {
   return (
     <div
-      className={`flex min-h-[40px] items-center justify-between gap-3 rounded-lg border px-3 py-2 text-xs shadow-sm ${
+      className={`flex min-h-[var(--control-h)] items-center justify-between gap-3 rounded-lg border px-3 py-2 text-xs shadow-sm ${
         active ? "border-brand/45 bg-brand/10 text-fg" : "border-surface-border/70 bg-surface text-muted"
       }`}
     >
@@ -366,7 +366,7 @@ function PreviewStat({ label, value }: { label: string; value: string }) {
 
 function PreviewPipeline({ name, latency, status }: { name: string; latency: string; status: string }) {
   return (
-    <div className="grid min-h-[40px] grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-t border-surface-border/60 px-3 py-2 text-xs">
+    <div className="grid min-h-[var(--control-h)] grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-t border-surface-border/60 px-3 py-2 text-xs">
       <span className="min-w-0 truncate font-medium">{name}</span>
       <span className="tabular-nums text-muted">{latency}</span>
       <span className="chip chip-success px-2">{status}</span>

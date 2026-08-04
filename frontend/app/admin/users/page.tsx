@@ -23,6 +23,7 @@ import {
 } from "@/lib/admin-api";
 import { cn } from "@/lib/cn";
 import Dialog from "@/components/Dialog";
+import AppModal from "@/components/AppModal";
 import AdminShell from "../AdminShell";
 import { PageSkeleton, StateView } from "@/components/ui/state-view";
 
@@ -298,32 +299,55 @@ function UsersTable() {
         </div>
       )}
 
-      {/* Reset password dialog */}
-      <Dialog
+      <AppModal
         open={resetTarget != null}
         onOpenChange={(o) => {
-          if (!o) {
+          if (!o && !resetBusy) {
             setResetTarget(null);
             setResetPwd("");
           }
         }}
         title={`为「${resetTarget?.email ?? ""}」重置密码`}
-        description={
-          <div className="space-y-2">
-            <p>设置一个新密码（至少 8 位）。该用户可立即用新密码登录。</p>
-            <input
-              type="password"
-              value={resetPwd}
-              onChange={(e) => setResetPwd(e.target.value)}
-              placeholder="新密码"
-              className="admin-input"
-            />
-          </div>
-        }
-        confirmLabel="重置"
-        onConfirm={confirmReset}
+        description="设置一个新密码（至少 8 位）。该用户可立即用新密码登录。"
+        size="sm"
         busy={resetBusy}
-      />
+        footer={
+          <>
+            <button
+              type="button"
+              className="admin-btn-secondary"
+              disabled={resetBusy}
+              onClick={() => {
+                setResetTarget(null);
+                setResetPwd("");
+              }}
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              className="admin-btn-primary"
+              disabled={resetBusy || resetPwd.length < 8}
+              onClick={() => void confirmReset()}
+            >
+              {resetBusy ? "重置中…" : "重置"}
+            </button>
+          </>
+        }
+      >
+        <label className="block space-y-1.5 text-xs font-medium text-muted">
+          <span>新密码</span>
+          <input
+            type="password"
+            value={resetPwd}
+            onChange={(e) => setResetPwd(e.target.value)}
+            placeholder="至少 8 位"
+            className="admin-input"
+            autoComplete="new-password"
+            disabled={resetBusy}
+          />
+        </label>
+      </AppModal>
 
       {/* Delete confirm dialog */}
       <Dialog

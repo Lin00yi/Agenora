@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { Monitor, Moon, Sun } from "lucide-react";
 import Select from "@/components/Select";
@@ -36,10 +36,9 @@ export default function ThemeToggle({
       <ShadcnSelect value={theme} onValueChange={(next) => setTheme(next as Theme)}>
         <SelectTrigger
           aria-label="外观主题"
-          size="sm"
           title="外观主题"
           className={cn(
-            "ak-theme-toggle-compact size-[40px] shrink-0 !grid-cols-1 place-items-center gap-0 px-0 [&>svg:last-child]:hidden",
+            "ak-theme-toggle-compact size-[var(--control-h)] shrink-0 !grid-cols-1 place-items-center gap-0 px-0 [&>svg:last-child]:hidden",
             className
           )}
         >
@@ -70,7 +69,7 @@ export default function ThemeToggle({
       aria-label="外观主题"
       contentAlign="start"
       contentPosition="popper"
-      className={cn("h-[40px] min-h-[40px] w-[8.5rem] min-w-[8.5rem]", className)}
+      className={cn("h-[var(--control-h)] min-h-[var(--control-h)] w-[8.5rem] min-w-[8.5rem]", className)}
     />
   );
 }

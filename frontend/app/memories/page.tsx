@@ -16,6 +16,7 @@ import {
 import { toast } from "sonner";
 
 import Dialog from "@/components/Dialog";
+import AppModal from "@/components/AppModal";
 import Select from "@/components/Select";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Input } from "@/components/ui/input";
@@ -207,7 +208,7 @@ export default function MemoriesPage() {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="搜索内容、键、值或来源"
-                  className="h-[40px] pl-9"
+                  className="h-[var(--control-h)] pl-9"
                   aria-label="搜索记忆"
                 />
               </label>
@@ -217,25 +218,25 @@ export default function MemoriesPage() {
                   onChange={(e) => handleStatusChange(e.target.value as StatusFilter)}
                   options={STATUS_OPTIONS}
                   aria-label="按状态筛选"
-                  className="h-[40px] min-h-[40px] w-full min-w-0 lg:w-[8.5rem]"
+                  className="h-[var(--control-h)] min-h-[var(--control-h)] w-full min-w-0 lg:w-[8.5rem]"
                 />
                 <Select
                   value={type}
                   onChange={(e) => setType(e.target.value as TypeFilter)}
                   options={TYPE_OPTIONS}
                   aria-label="按类型筛选"
-                  className="h-[40px] min-h-[40px] w-full min-w-0 lg:w-[7.5rem]"
+                  className="h-[var(--control-h)] min-h-[var(--control-h)] w-full min-w-0 lg:w-[7.5rem]"
                 />
                 <Select
                   value={scope}
                   onChange={(e) => setScope(e.target.value as ScopeFilter)}
                   options={SCOPE_OPTIONS}
                   aria-label="按范围筛选"
-                  className="h-[40px] min-h-[40px] w-full min-w-0 lg:w-[7.5rem]"
+                  className="h-[var(--control-h)] min-h-[var(--control-h)] w-full min-w-0 lg:w-[7.5rem]"
                 />
                 <button
                   type="button"
-                  className="admin-btn-secondary h-[40px] min-h-[40px]"
+                  className="admin-btn-secondary h-[var(--control-h)] min-h-[var(--control-h)]"
                   onClick={() => void refresh(status)}
                   disabled={refreshing}
                 >
@@ -530,15 +531,25 @@ function MemoryEditDialog({
   };
 
   return (
-    <Dialog
+    <AppModal
       open={memory !== null}
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
       title="编辑记忆"
-      hideFooter
+      size="md"
       busy={busy}
-      onConfirm={save}
+      footer={
+        <>
+          <button type="button" className="admin-btn-secondary" onClick={onClose} disabled={busy}>
+            取消
+          </button>
+          <button type="button" className="admin-btn-primary" onClick={save} disabled={busy}>
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            保存
+          </button>
+        </>
+      }
     >
       <div className="space-y-4">
         <label className="block">
@@ -590,18 +601,8 @@ function MemoryEditDialog({
             </label>
           </div>
         ) : null}
-
-        <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-          <button type="button" className="admin-btn-secondary" onClick={onClose} disabled={busy}>
-            取消
-          </button>
-          <button type="button" className="admin-btn-primary" onClick={save} disabled={busy}>
-            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-            保存
-          </button>
-        </div>
       </div>
-    </Dialog>
+    </AppModal>
   );
 }
 

@@ -14,7 +14,6 @@ import {
   Hash,
   Users,
   Eye,
-  X,
   ChevronDown,
   ChevronRight,
   KeyRound,
@@ -37,6 +36,7 @@ import {
 import { toastApiError } from "@/lib/byok-toast";
 import { cn } from "@/lib/cn";
 import Dialog from "@/components/Dialog";
+import AppModal from "@/components/AppModal";
 import Select from "@/components/Select";
 import ThemeToggle from "@/components/ThemeToggle";
 import { LoadingState, StateView } from "@/components/ui/state-view";
@@ -508,38 +508,60 @@ function CreateKbDialog({
     }
   };
 
-  if (!open) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      role="presentation"
-      onClick={() => !creating && onClose()}
+    <AppModal
+      open={open}
+      onOpenChange={(next) => {
+        if (!next && !creating) onClose();
+      }}
+      title="新建知识库"
+      description="创建资料库并为该 KB 配置独立的 embedding。"
+      size="lg"
+      busy={creating}
+      bodyClassName="space-y-4"
+      footer={
+        <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {!embedVerified ? (
+            <span className="inline-flex items-center gap-1.5 text-xs text-warning">
+              <AlertCircle className="h-3.5 w-3.5" />
+              请先点「测试连接 / 拉取模型」验证 Embedding 可用
+            </span>
+          ) : rerankerMode === "custom" && !rerankerVerified ? (
+            <span className="inline-flex items-center gap-1.5 text-xs text-warning">
+              <AlertCircle className="h-3.5 w-3.5" />
+              请先验证 Reranker 连接
+            </span>
+          ) : (
+            <span />
+          )}
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={creating}
+              className={secondaryActionClass}
+            >
+              取消
+            </button>
+            <button
+              type="submit"
+              form="create-kb-form"
+              disabled={
+                creating ||
+                !name.trim() ||
+                !embedVerified ||
+                (rerankerMode === "custom" && !rerankerVerified)
+              }
+              className={primaryActionClass}
+            >
+              <Plus className="h-4 w-4" />
+              {creating ? "创建中…" : "创建知识库"}
+            </button>
+          </div>
+        </div>
+      }
     >
-      <div className="app-modal-overlay absolute inset-0" />
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="relative flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-surface-border/80 bg-surface shadow-[0_24px_70px_rgb(15_23_42/0.22)]"
-        role="dialog"
-        aria-modal="true"
-      >
-        <header className="flex min-h-14 shrink-0 items-center justify-between border-b border-surface-border/70 bg-surface px-5">
-          <h2 className="text-base font-semibold">新建知识库</h2>
-          <button
-            onClick={onClose}
-            disabled={creating}
-            className="admin-icon-action admin-icon-action-lg"
-            aria-label="关闭"
-            type="button"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </header>
-
-        <form
-          onSubmit={submit}
-          className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-surface px-5 py-5"
-        >
+      <form id="create-kb-form" onSubmit={submit} className="space-y-4">
           <FormField label="名称" required>
             <input
               required
@@ -874,48 +896,8 @@ function CreateKbDialog({
               )}
             </div>
           </CollapsibleSection>
-
-          <div className="sticky bottom-0 -mx-5 -mb-5 flex flex-col gap-3 border-t border-surface-border/70 bg-surface/95 px-5 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-            {!embedVerified ? (
-              <span className="inline-flex items-center gap-1.5 text-xs text-warning">
-                <AlertCircle className="h-3.5 w-3.5" />
-                请先点「测试连接 / 拉取模型」验证 Embedding 可用
-              </span>
-            ) : rerankerMode === "custom" && !rerankerVerified ? (
-              <span className="inline-flex items-center gap-1.5 text-xs text-warning">
-                <AlertCircle className="h-3.5 w-3.5" />
-                请先验证 Reranker 连接
-              </span>
-            ) : (
-              <span />
-            )}
-            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={creating}
-                className={secondaryActionClass}
-              >
-                取消
-              </button>
-              <button
-                type="submit"
-                disabled={
-                  creating ||
-                  !name.trim() ||
-                  !embedVerified ||
-                  (rerankerMode === "custom" && !rerankerVerified)
-                }
-                className={primaryActionClass}
-              >
-                <Plus className="h-4 w-4" />
-                {creating ? "创建中…" : "创建知识库"}
-              </button>
-            </div>
-          </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </AppModal>
   );
 }
 

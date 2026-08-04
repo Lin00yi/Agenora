@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import { Copy, FileText, Image as ImageIcon } from "lucide-react";
@@ -75,4 +75,4 @@ export default function ExportActions({
 }
 
 const exportActionClass =
-  "ak-export-action inline-flex min-h-[40px] cursor-pointer items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium transition-[background-color,border-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30";
+  "ak-export-action inline-flex h-[var(--control-h)] cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm font-medium transition-[background-color,border-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30";
