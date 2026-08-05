@@ -36,6 +36,8 @@ export type ConversationContextStatus = {
   label: string;
   description: string;
   current_tokens: number;
+  /** Uncompressed message history size; present when backend reports effective usage. */
+  raw_history_tokens?: number;
   available_tokens: number;
   context_window: number;
   ratio: number;

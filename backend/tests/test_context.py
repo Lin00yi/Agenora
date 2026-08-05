@@ -271,10 +271,11 @@ async def test_new_preference_silently_supersedes_previous_value(db, create_user
 
 
 @pytest.mark.asyncio
-async def test_global_preferences_are_injected_for_normal_questions(db, create_user):
+async def test_global_preferences_are_injected_via_profile_not_retrieval(db, create_user):
     from src.infra.database import get_session_factory
 
     user = await create_user("global-preference@example.com")
+    conv_id = str(uuid.uuid4())
     factory = get_session_factory()
     async with factory() as session:
         await store_user_memories(
@@ -283,12 +284,33 @@ async def test_global_preferences_are_injected_for_normal_questions(db, create_u
             message_id=str(uuid.uuid4()),
             content="以后请用中文回复。",
         )
+        session.add(
+            Conversation(id=conv_id, user_id=user.id, title="preference profile")
+        )
+        session.add(
+            Message(
+                id=str(uuid.uuid4()),
+                conversation_id=conv_id,
+                role="user",
+                content="帮我总结这份文档",
+            )
+        )
         await session.commit()
         memories = await retrieve_user_memories(
             session, user_id=user.id, query="帮我总结这份文档"
         )
+        built = await build_context_for_conversation(
+            session,
+            conversation_id=conv_id,
+            user_id=user.id,
+            model="deepseek-v4-flash",
+        )
 
-    assert [memory.memory_key for memory in memories] == ["response_language"]
+    assert memories == []
+    assert built.messages[0]["_context_source"] == "profile"
+    assert "中文" in built.messages[0]["content"]
+    sources = [message.get("_context_source") for message in built.messages]
+    assert sources.count("memory") == 0
 
 
 @pytest.mark.asyncio
@@ -334,8 +356,109 @@ async def test_user_profile_is_injected_and_traced(db, create_user):
 
     assert built.messages[0]["_context_source"] == "profile"
     assert "User prefers concise implementation notes." in built.messages[0]["content"]
+    assert "偏好：" in built.messages[0]["content"]
     assert built.memory_trace["profile"]["injected"] is True
     assert built.memory_trace["profile"]["counts"]["preferences"] == 1
+
+
+@pytest.mark.asyncio
+async def test_profile_and_retrieved_memory_do_not_double_inject(db, create_user):
+    from src.infra.database import get_session_factory
+
+    user = await create_user("dedup-memory@example.com")
+    conv_id = str(uuid.uuid4())
+    preference_id = str(uuid.uuid4())
+    fact_id = str(uuid.uuid4())
+    factory = get_session_factory()
+    async with factory() as session:
+        session.add(Conversation(id=conv_id, user_id=user.id, title="dedup"))
+        session.add_all(
+            [
+                Message(
+                    id=str(uuid.uuid4()),
+                    conversation_id=conv_id,
+                    role="user",
+                    content="PostgreSQL 数据库方案怎么选？请结合我的偏好说明。",
+                ),
+                UserMemory(
+                    id=preference_id,
+                    user_id=user.id,
+                    type="preference",
+                    memory_key="response_language",
+                    memory_value="zh-CN",
+                    content="用户偏好使用中文回复。",
+                    status="active",
+                    confidence=0.95,
+                    importance=0.9,
+                ),
+                UserMemory(
+                    id=fact_id,
+                    user_id=user.id,
+                    type="constraint",
+                    scope="personal",
+                    memory_key="constraint:pg",
+                    memory_value="postgresql",
+                    content="项目的数据持久化统一使用 PostgreSQL。",
+                    status="active",
+                    confidence=0.9,
+                    importance=0.8,
+                ),
+            ]
+        )
+        await session.commit()
+        built = await build_context_for_conversation(
+            session,
+            conversation_id=conv_id,
+            user_id=user.id,
+            model="deepseek-v4-flash",
+        )
+
+    profile_text = next(
+        m["content"] for m in built.messages if m.get("_context_source") == "profile"
+    )
+    memory_msgs = [m for m in built.messages if m.get("_context_source") == "memory"]
+    assert "用户偏好使用中文回复。" in profile_text
+    assert memory_msgs
+    assert "PostgreSQL" in memory_msgs[0]["content"]
+    assert "用户偏好使用中文回复。" not in memory_msgs[0]["content"]
+    assert preference_id not in {
+        item["id"] for item in built.memory_trace["memories"]["items"]
+    }
+
+
+def test_compute_budget_skips_rag_reserve_without_kb() -> None:
+    messages = [
+        Message(id="1", conversation_id="c", role="user", content="短消息")
+    ]
+    general = compute_budget(messages, "deepseek-v4-flash", rag_reserve=0)
+    kb = compute_budget(messages, "deepseek-v4-flash", rag_reserve=8_000)
+    assert general.available_history_tokens - kb.available_history_tokens == 8_000
+
+
+def test_context_status_uses_effective_tokens_after_summary() -> None:
+    from src.conversations.context import context_status_payload, estimate_effective_context_tokens
+
+    messages = [
+        Message(id=str(i), conversation_id="c", role="user" if i % 2 == 0 else "assistant", content="内容" * 40)
+        for i in range(30)
+    ]
+    summary = ConversationSummary(
+        id="s1",
+        conversation_id="c",
+        summary="早期摘要" * 20,
+        covered_message_count=10,
+        token_count=80,
+    )
+    budget = compute_budget(messages, "deepseek-v4-flash", rag_reserve=0)
+    effective = estimate_effective_context_tokens(messages, summary)
+    payload = context_status_payload(
+        budget=budget, summary=summary, effective_tokens=effective
+    )
+    assert payload["state"] == "compressed"
+    assert payload["current_tokens"] == effective
+    assert payload["raw_history_tokens"] == budget.current_history_tokens
+    assert payload["current_tokens"] < payload["raw_history_tokens"]
+    assert payload["percent"] == min(100, round((effective / budget.available_history_tokens) * 100))
 
 
 @pytest.mark.asyncio

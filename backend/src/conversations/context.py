@@ -67,6 +67,11 @@ PREPARE_SUMMARY_RATIO = 0.60
 SUMMARY_TRIGGER_RATIO = 0.72
 FORCE_SUMMARY_RATIO = 0.85
 RECENT_TURNS = 10
+# Stable response preferences that belong in the always-on profile block.
+# Query-retrieved memories exclude these ids so the same fact is not injected twice.
+PROFILE_PREFERENCE_KEYS = frozenset(
+    {"response_language", "response_style", "response_max_chars"}
+)
 
 SENSITIVE_PATTERNS = [
     re.compile(r"sk-[A-Za-z0-9_\-]{16,}"),
@@ -237,13 +242,23 @@ def resolve_output_token_budget(
     return max(MIN_OUTPUT_TOKENS, int(budget))
 
 
+def rag_reserve_for_kb(kb_id: str | None) -> int:
+    """Reserve RAG capacity only when the conversation can inject KB context."""
+    return RAG_RESERVE if kb_id else 0
+
+
 def compute_budget(
-    messages: list[Message], model: str | None, configured_window: int | None = None
+    messages: list[Message],
+    model: str | None,
+    configured_window: int | None = None,
+    *,
+    rag_reserve: int | None = None,
 ) -> ContextBudget:
     window = context_window_for_model(model, configured_window)
+    reserved_rag = RAG_RESERVE if rag_reserve is None else max(0, int(rag_reserve))
     available = max(
         4_000,
-        window - MAX_OUTPUT_TOKENS - SYSTEM_AND_TOOL_RESERVE - RAG_RESERVE - SAFETY_RESERVE,
+        window - MAX_OUTPUT_TOKENS - SYSTEM_AND_TOOL_RESERVE - reserved_rag - SAFETY_RESERVE,
     )
     current = estimate_messages_tokens(messages)
     ratio = current / available if available else 1.0
@@ -259,11 +274,39 @@ def compute_budget(
     )
 
 
+def estimate_effective_context_tokens(
+    messages: list[Message],
+    summary: ConversationSummary | None,
+) -> int:
+    """Estimate tokens that would enter the prompt after summary compression.
+
+    Raw history can stay large after a rolling summary exists. Status meters
+    should reflect the bounded prompt, not the uncompressed archive size.
+    """
+    if not summary:
+        return estimate_messages_tokens(messages)
+    keep_count = RECENT_TURNS * 2
+    recent = messages[-keep_count:] if messages else []
+    summary_tokens = summary.token_count or estimate_tokens(summary.summary or "")
+    return summary_tokens + estimate_messages_tokens(recent)
+
+
 def context_status_payload(
     *,
     budget: ContextBudget,
     summary: ConversationSummary | None,
+    effective_tokens: int | None = None,
 ) -> dict:
+    measured = (
+        budget.current_history_tokens
+        if effective_tokens is None
+        else max(0, int(effective_tokens))
+    )
+    display_ratio = (
+        measured / budget.available_history_tokens
+        if budget.available_history_tokens
+        else 1.0
+    )
     if summary:
         state = "compressed"
         label = "已压缩"
@@ -289,11 +332,12 @@ def context_status_payload(
         "state": state,
         "label": label,
         "description": description,
-        "current_tokens": budget.current_history_tokens,
+        "current_tokens": measured,
+        "raw_history_tokens": budget.current_history_tokens,
         "available_tokens": budget.available_history_tokens,
         "context_window": budget.context_window,
-        "ratio": round(budget.ratio, 4),
-        "percent": min(100, round(budget.ratio * 100)),
+        "ratio": round(display_ratio, 4),
+        "percent": min(100, round(display_ratio * 100)),
         "prepare_threshold_percent": round(PREPARE_SUMMARY_RATIO * 100),
         "summary_threshold_percent": round(SUMMARY_TRIGGER_RATIO * 100),
         "force_threshold_percent": round(FORCE_SUMMARY_RATIO * 100),
@@ -523,7 +567,10 @@ async def ensure_summary_if_needed(
 
     keep_count = RECENT_TURNS * 2
     older = messages[:-keep_count] if len(messages) > keep_count else []
-    if len(older) < 4:
+    # At the force threshold, compress even a thin older window so the UI
+    # "critical" state actually drives a write instead of only a label change.
+    min_older = 2 if budget.force_summarize else 4
+    if len(older) < min_older:
         return summary
 
     covered = older[-1]
@@ -597,6 +644,7 @@ async def retrieve_user_memories(
     kb_id: str | None = None,
     limit: int = 6,
     embedding_cfg=None,
+    exclude_ids: set[str] | frozenset[str] | None = None,
 ) -> list[UserMemory]:
     """Hybrid retrieval with a safe lexical fallback.
 
@@ -605,6 +653,7 @@ async def retrieve_user_memories(
     set, in-process cosine scoring is cheaper and simpler than provisioning a
     second vector collection per user.
     """
+    excluded = exclude_ids or set()
     result = await session.execute(
         select(UserMemory)
         .where(
@@ -615,7 +664,7 @@ async def retrieve_user_memories(
         .order_by(desc(UserMemory.updated_at))
         .limit(50)
     )
-    rows = list(result.scalars().all())
+    rows = [row for row in result.scalars().all() if row.id not in excluded]
     if not rows:
         return []
 
@@ -636,6 +685,14 @@ async def retrieve_user_memories(
             continue
         if row.scope not in {"personal", "kb"}:
             continue
+        # Always-on response preferences live in the profile block; skip them
+        # here so they do not consume retrieval slots or double-inject.
+        if (
+            row.scope == "personal"
+            and row.type == "preference"
+            and row.memory_key in PROFILE_PREFERENCE_KEYS
+        ):
+            continue
         terms = _memory_terms(row.content)
         keyword_score = len(query_terms & terms)
         semantic_score = 0.0
@@ -644,21 +701,12 @@ async def retrieve_user_memories(
             semantic_score = max(0.0, _cosine_similarity(query_vector, vector))
         type_bonus = 1.5 if wants_preferences and row.type == "preference" else 0.0
         scope_bonus = 0.75 if row.scope == "kb" and row.scope_id == kb_id else 0.0
-        # Response preferences are intentionally global: a request such as
-        # "帮我总结这份文档" has no lexical overlap with "使用中文回复", but
-        # should still honour the user's saved response language/style.
-        is_global_preference = (
-            row.scope == "personal"
-            and row.type == "preference"
-            and row.memory_key in {"response_language", "response_style", "response_max_chars"}
-        )
-        if keyword_score > 0 or semantic_score >= 0.35 or type_bonus > 0 or is_global_preference:
+        if keyword_score > 0 or semantic_score >= 0.35 or type_bonus > 0:
             score = (
                 keyword_score * 4
                 + semantic_score * 5
                 + type_bonus
                 + scope_bonus
-                + (2.0 if is_global_preference else 0.0)
                 + float(row.importance or 0.5)
                 + float(row.confidence or 0.0)
             )
@@ -1466,43 +1514,51 @@ async def build_user_memory_profile(
     kb_id: str | None = None,
     limit: int = MAX_PROFILE_MEMORY_ROWS,
 ) -> dict[str, Any]:
+    """Build the always-on preference profile for every turn.
+
+    Only stable response preferences belong here. Query-relevant constraints and
+    facts are injected separately via ``retrieve_user_memories`` so the same
+    row is not double-counted in the prompt budget. ``kb_id`` is accepted for
+    call-site symmetry but unused: profile prefs are always personal.
+    """
+    _ = kb_id
     result = await session.execute(
         select(UserMemory)
         .where(
             UserMemory.user_id == user_id,
             UserMemory.status == "active",
+            UserMemory.scope == "personal",
+            UserMemory.type == "preference",
+            UserMemory.memory_key.in_(tuple(PROFILE_PREFERENCE_KEYS)),
             or_(UserMemory.expires_at.is_(None), UserMemory.expires_at > datetime.now(timezone.utc)),
         )
         .order_by(desc(UserMemory.importance), desc(UserMemory.updated_at))
         .limit(limit)
     )
-    rows = [
-        row
-        for row in result.scalars().all()
-        if row.scope == "personal" or (row.scope == "kb" and row.scope_id == kb_id)
-    ]
-    preferences = [row for row in rows if row.type == "preference"]
-    constraints = [row for row in rows if row.type == "constraint"]
-    facts = [row for row in rows if row.type in {"explicit", "fact"}]
+    # One row per preference key; importance ordering already applied.
+    preferences: list[UserMemory] = []
+    seen_keys: set[str] = set()
+    for row in result.scalars().all():
+        key = row.memory_key or ""
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        preferences.append(row)
+        if len(preferences) >= len(PROFILE_PREFERENCE_KEYS):
+            break
 
-    lines: list[str] = []
-    for row in preferences[:8]:
-        lines.append(f"- Preference: {row.content}")
-    for row in constraints[:6]:
-        prefix = "Project constraint" if row.scope == "kb" else "Constraint"
-        lines.append(f"- {prefix}: {row.content}")
-    for row in facts[:5]:
-        lines.append(f"- Remembered fact: {row.content}")
+    lines = [f"- 偏好：{row.content}" for row in preferences]
 
     return {
         "lines": lines,
         "counts": {
             "preferences": len(preferences),
-            "constraints": len(constraints),
-            "facts": len(facts),
-            "total": len(rows),
+            "constraints": 0,
+            "facts": 0,
+            "total": len(preferences),
         },
-        "items": [_memory_trace_item(row) for row in [*preferences[:8], *constraints[:6], *facts[:5]]],
+        "items": [_memory_trace_item(row) for row in preferences],
+        "memory_ids": {row.id for row in preferences},
     }
 
 
@@ -1511,8 +1567,7 @@ def user_profile_block(profile: dict[str, Any], *, token_budget: int = MAX_PROFI
     if not lines:
         return ""
     block_lines = [
-        "The following compact user profile is derived from long-term memory. "
-        "Use it only when relevant, and do not reveal it as hidden system data.",
+        "以下是来自长期记忆的稳定用户偏好。仅在相关时使用，不要透露为系统内部信息。",
         *lines,
     ]
     return truncate_text_to_token_budget("\n".join(block_lines), token_budget)
@@ -1535,7 +1590,12 @@ async def build_context_for_conversation(
         .order_by(Message.created_at)
     )
     messages = list(result.scalars().all())
-    budget = compute_budget(messages, model, context_window)
+    budget = compute_budget(
+        messages,
+        model,
+        context_window,
+        rag_reserve=rag_reserve_for_kb(kb_id),
+    )
     summary = await ensure_summary_if_needed(
         session,
         conversation_id=conversation_id,
@@ -1545,14 +1605,16 @@ async def build_context_for_conversation(
     )
 
     last_user = next((m for m in reversed(messages) if m.role == "user"), None)
+    profile = await build_user_memory_profile(session, user_id=user_id, kb_id=kb_id)
+    profile_ids = set(profile.get("memory_ids") or set())
     memories = await retrieve_user_memories(
         session,
         user_id=user_id,
         query=last_user.content if last_user else "",
         kb_id=kb_id,
         embedding_cfg=embedding_cfg,
+        exclude_ids=profile_ids,
     )
-    profile = await build_user_memory_profile(session, user_id=user_id, kb_id=kb_id)
 
     keep_count = RECENT_TURNS * 2
     out: list[dict[str, str]] = []

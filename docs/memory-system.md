@@ -12,7 +12,7 @@ Memory 的目标不是保存全部聊天记录，而是在不让上下文无限�
 - 最近会话保留原文，较早会话压缩为摘要；
 - 长期记忆只保存明确或高置信度的稳定偏好、约束和事实；
 - 自动记忆在后台静默完成，不要求用户在聊天时确认；
-- 用户仍可通过 API 查看、编辑或删除已保存的长期记忆；
+- 用户仍可通过 API / 记忆管理页查看、编辑或删除已保存的长期记忆；
 - 密钥、密码、证件号、银行卡样式数字等敏感内容不得写入长期记忆。
 
 ## 2. 三层记忆模型
@@ -21,7 +21,7 @@ Memory 的目标不是保存全部聊天记录，而是在不让上下文无限�
 |---|---|---|---|
 | 短期记忆 | 最近对话消息 | 当前会话 | 原文消息 |
 | 中期记忆 | `ConversationSummary` | 单个会话 | 滚动摘要 |
-| 长期记忆 | `UserMemory` / `user_memories` | 跨会话、按用户隔离 | 与当前问题相关的记忆块 |
+| 长期记忆 | `UserMemory` / `user_memories` | 跨会话、按用户隔离 | Profile 稳定偏好 + 与当前问题相关的检索块 |
 
 ### 2.1 短期记忆
 
@@ -41,6 +41,8 @@ Memory 的目标不是保存全部聊天记录，而是在不让上下文无限�
 
 当前摘要优先使用独立、无工具的 LLM 调用增量维护六段式结构化摘要；未配置可用模型或调用失败时，才回退到确定性抽取摘要。两种路径都会受摘要 token 预算限制，且摘要内容仅作为数据，不能覆盖系统规则。
 
+达到 85%（`force_summarize`）时，即使较早消息较少（≥2 条）也会尝试写入摘要，避免 UI「即将压缩」状态只改标签不落库。
+
 随着会话继续，原本的“最近消息”会逐步变旧，并在后续压缩时纳入新的摘要覆盖范围，因此称为滚动摘要。
 
 ### 2.3 长期记忆：`UserMemory`
@@ -51,6 +53,13 @@ Memory 的目标不是保存全部聊天记录，而是在不让上下文无限�
 - 长期约束：项目或团队的技术规范；
 - 用户显式要求记住的信息；
 - 与当前知识库绑定的项目规则。
+
+注入时拆成两路，避免同一条记忆双写：
+
+| 块 | 内容 | 何时注入 |
+|---|---|---|
+| **Profile** | 仅 `response_language` / `response_style` / `response_max_chars` | 每轮必带（有则注入） |
+| **Memory 检索块** | 与当前问题相关的约束 / 事实 / 其他偏好；排除已进 Profile 的行 | 按查询混合检索，最多 6 条 |
 
 ## 3. 静默写入流程
 
@@ -110,6 +119,15 @@ extract_memory_candidates(content)
 
 问句不会触发隐式记忆，例如“这次可以用中文吗？”不会被保存。
 
+### 3.3 低频 LLM 补召回
+
+会话结束或闲置时，系统会再跑一遍整段对话的记忆抽取：
+
+- 前端切换 / 新建会话时调用 `POST /api/conversations/{id}/finalize`
+- 后台 `memory_maintenance` 对闲置会话做同样处理（默认约 24h）
+
+该路径在规则扫描之外，额外调用无工具 LLM（`source=auto_session`，置信度阈值约 0.72）补召回稳定偏好、约束和事实。实时聊天路径仍保持规则高精度，避免每条消息都烧抽取成本。
+
 ## 4. 数据模型
 
 `UserMemory` 当前包含以下关键字段：
@@ -118,12 +136,12 @@ extract_memory_candidates(content)
 |---|---|
 | `user_id` | 用户隔离 |
 | `scope` / `scope_id` | `personal` 或 `kb` 作用域；KB 规则只在对应知识库生效 |
-| `type` | `explicit`、`preference`、`constraint` 等类别 |
+| `type` | `explicit`、`preference`、`constraint`、`fact` 等类别 |
 | `memory_key` / `memory_value` | 机器可比较的结构化键值 |
 | `content` | 供模型理解的自然语言描述 |
-| `source` | `explicit`、`auto_rule`、`user_edited` |
+| `source` | `explicit`、`auto_rule`、`auto_session`、`user_edited` |
 | `confidence` / `importance` | 检索排序信号 |
-| `status` | `active`、`superseded`、`deleted` |
+| `status` | `active`、`superseded`、`deleted`、`expired` |
 | `supersedes_memory_id` | 新记忆覆盖旧记忆时的关联 |
 | `source_message_ids` | 来源消息，用于可追溯性 |
 | `embedding_json` / `embedding_fingerprint` | 记忆向量及其模型空间标识，用于语义检索 |
@@ -161,7 +179,9 @@ user_id + scope + scope_id + type + memory_key
 ```text
 当前用户问题
   ↓
-按 user_id 查询 active UserMemory
+构建 Profile（稳定 response_* 偏好）
+  ↓
+按 user_id 查询 active UserMemory（排除已进 Profile 的行与 response_* 键）
   ↓
 过滤不匹配的 KB 作用域
   ↓
@@ -169,10 +189,10 @@ user_id + scope + scope_id + type + memory_key
   ↓
 取最多 6 条 Memory
   ↓
-与会话摘要、最近消息组装
+与 Profile、会话摘要、最近消息组装
 ```
 
-偏好类问题（如“我的默认语言是什么”）会给 `preference` 类型额外加分；当前 KB 范围内的记忆也会获得作用域加分。
+偏好类问题（如“我的默认语言是什么”）会给非 Profile 的 `preference` 类型额外加分；当前 KB 范围内的记忆也会获得作用域加分。稳定回复偏好改由 Profile 每轮注入，不再占用检索名额。
 
 向量与 `UserMemory` 同行保存，适用于当前每个用户较小的记忆集合，不额外创建一套按用户拆分的向量库。向量的 `embedding_fingerprint` 必须与查询向量一致才会参与余弦计算；模型切换后的旧向量会在后续检索时渐进回填。Embedding 未配置、上游异常或回填失败时，系统自动退回关键词检索，聊天不会失败。
 
@@ -197,7 +217,8 @@ python -m src.infra.memory_maintenance
 
 ```text
 业务模式 System Prompt
-  + 长期记忆块
+  + Profile（稳定偏好）
+  + 长期记忆检索块
   + 滚动会话摘要
   + 最近消息
   + 当前用户问题
@@ -210,28 +231,41 @@ python -m src.infra.memory_maintenance
 - Anthropic Provider 使用顶层 `system` 参数；
 - 记忆和摘要不会以 `system` 角色残留在普通对话消息序列中。
 
+聊天完成后 SSE `done` 事件会带回 `memory_trace`（Profile / 检索记忆 / 摘要元数据），前端可按消息展示注入 Trace。
+
 ## 7. 上下文预算
 
-系统会预留输出、System Prompt/Tool Schema、RAG 和安全余量，再为历史消息分配预算。同时限制：
+系统会预留输出、System Prompt/Tool Schema 和安全余量，再为历史消息分配预算。**仅当会话绑定 KB 时**才额外预留 RAG（8,000 token）；普通聊天不再扣减该预留。
 
-- 长期记忆块：最多 1,200 token；
+同时限制：
+
+- Profile 块：最多 700 token；
+- 长期记忆检索块：最多 1,200 token；
 - 会话摘要：最多 2,600 token；
-- RAG 检索结果：最多 8,000 token；
+- RAG 检索结果：最多 8,000 token（仅 KB 模式）；
 - 最近消息：使用剩余实际 token 预算，优先保留最新内容。
 
 模型调用前还会重新测量最终 System Prompt、Tool Schema 和消息内容，避免固定预留与真实内容大小不一致。
 
-## 8. 管理 API
+上下文状态 API 的占用率（`percent` / `current_tokens`）使用**摘要压缩后的有效上下文**（摘要 token + 最近轮次），而不是原始全量历史；原始体积仍可通过 `raw_history_tokens` 查看。
+
+## 8. 管理 API 与前端
 
 静默写入不代表不可控。当前已有以下接口：
 
 | 方法 | 路径 | 作用 |
 |---|---|---|
-| `GET` | `/api/conversations/memories` | 查看当前用户的 active Memory |
+| `GET` | `/api/conversations/memories` | 查看当前用户的 Memory（可按 status 过滤） |
 | `PATCH` | `/api/conversations/memories/{memory_id}` | 编辑内容、重要性或状态 |
 | `DELETE` | `/api/conversations/memories/{memory_id}` | 逻辑删除记忆 |
+| `POST` | `/api/conversations/{id}/finalize` | 会话结束时的 LLM 记忆补召回 |
+| `GET` | `/api/conversations/{id}/context-status` | 上下文占用与压缩状态 |
 
-前端已提供 API 调用封装，后续可在设置页增加“我的记忆”管理视图，而不需要改变聊天中的静默体验。
+前端：
+
+- `/memories` 记忆管理页：查看、改重要性、删除
+- 设置页也可浏览记忆列表
+- 聊天消息可展示 Memory 注入 Trace（`memory_trace`）
 
 ## 9. 安全与隐私
 
@@ -243,15 +277,15 @@ python -m src.infra.memory_maintenance
 
 ## 10. 当前限制与后续方向
 
-当前实现是规则驱动的高精度 MVP，仍存在以下限制：
+当前实现仍存在以下限制：
 
-- 隐式识别规则覆盖面有限，尚未使用 LLM 分类或候选抽取；
+- 实时路径仍以规则为主；LLM 抽取仅在 finalize / idle 维护时运行；
 - 向量以 JSON 存在关系库中，适合小规模个人记忆；达到较大规模后应迁移至支持 metadata filter 的专用向量索引；
 - 过期与整合可由独立 Worker/Cron 覆盖长期不活跃用户；部署平台仍需负责单实例调度与重试；
 - `constraint` 使用内容哈希键；只有高度语义重复的记录会自动合并，真正冲突的约束仍需要更强的结构化主题识别；
-- Memory 管理页目前提供查看、修改重要性和删除；尚未提供导出、逐条过期时间编辑和注入 Trace；
+- 导出、逐条过期时间编辑仍待补齐；token 计量仍为启发式估计。
 
-下一阶段建议优先引入：结构化约束主题键、定时整合任务、Memory 注入 Trace 与离线评测。
+下一阶段建议优先引入：结构化约束主题键、真实 tokenizer、离线评测。
 
 ## 11. 关键代码位置
 
@@ -260,7 +294,10 @@ python -m src.infra.memory_maintenance
 | 记忆候选、检索、会话摘要、上下文预算 | `backend/src/conversations/context.py` |
 | Memory 数据模型 | `backend/src/conversations/models.py` |
 | 消息写入与 Memory 管理接口 | `backend/src/conversations/routes.py` |
+| 定时维护（闲置 finalize / 整合 / 向量回填） | `backend/src/infra/memory_maintenance.py` |
 | 既有数据库的增量迁移 | `backend/src/infra/database.py` |
 | 对话请求中构建上下文 | `backend/src/app.py` |
 | Provider 安全系统提示词组装 | `backend/src/agent/nodes.py` |
 | 前端 API 类型与调用封装 | `frontend/lib/conversations-api.ts` |
+| 记忆管理页 | `frontend/app/memories/page.tsx` |
+| 设计评审（修复依据） | `context-memory-review.md` |

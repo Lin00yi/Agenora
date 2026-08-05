@@ -77,7 +77,10 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   "claude-sonnet-4-6": 200_000,
   "claude-opus-4-7": 200_000,
 };
-const CONTEXT_FIXED_RESERVE = 2_048 + 6_000 + 8_000 + 2_000;
+const CONTEXT_OUTPUT_RESERVE = 2_048;
+const CONTEXT_SYSTEM_TOOL_RESERVE = 6_000;
+const CONTEXT_RAG_RESERVE = 8_000;
+const CONTEXT_SAFETY_RESERVE = 2_000;
 
 function getContextWindowForModel(model: string | null, fallbackModels: string[] = []) {
   if (model) return CONTEXT_WINDOWS[model] ?? DEFAULT_CONTEXT_WINDOW;
@@ -91,10 +94,19 @@ function getContextWindowForModel(model: string | null, fallbackModels: string[]
 function estimateContextStatus(
   messages: Message[],
   model: string | null,
-  fallbackModels: string[] = []
+  fallbackModels: string[] = [],
+  kbId: string | null = null
 ): ConversationContextStatus {
   const window = getContextWindowForModel(model, fallbackModels);
-  const available = Math.max(4_000, window - CONTEXT_FIXED_RESERVE);
+  const ragReserve = kbId ? CONTEXT_RAG_RESERVE : 0;
+  const available = Math.max(
+    4_000,
+    window -
+      CONTEXT_OUTPUT_RESERVE -
+      CONTEXT_SYSTEM_TOOL_RESERVE -
+      ragReserve -
+      CONTEXT_SAFETY_RESERVE
+  );
   const current = messages.reduce((total, message) => {
     const content = message.content ?? "";
     const cjk = [...content].filter((char) => char >= "\u4e00" && char <= "\u9fff").length;
@@ -109,6 +121,7 @@ function estimateContextStatus(
     label: "本地估算",
     description: `后端尚未提供上下文状态，已按当前消息和 ${model ?? "默认模型"} 的上下文窗口估算。`,
     current_tokens: current,
+    raw_history_tokens: current,
     available_tokens: available,
     context_window: window,
     ratio,
@@ -289,9 +302,11 @@ export function ChatPage({
       const msgs = normalizeMessages(cached);
       messagesCache.current.set(id, msgs);
       setCurrentMessages(msgs);
+      let cachedKbId: string | null = null;
       setSummaries((cur) => {
         const found = cur.find((c) => c.id === id);
         if (found) {
+          cachedKbId = found.kb_id;
           setCurrentKbId(found.kb_id);
           setCurrentModel(found.llm_model ?? null);
           setCurrentContextStatus(found.context_status ?? null);
@@ -308,7 +323,9 @@ export function ChatPage({
           );
         })
         .catch(() => {
-          setCurrentContextStatus(estimateContextStatus(cached, null, modelOptionsRef.current));
+          setCurrentContextStatus(
+            estimateContextStatus(cached, null, modelOptionsRef.current, cachedKbId)
+          );
         })
         .finally(() => {
           setContextStatusLoading(false);
@@ -352,7 +369,7 @@ export function ChatPage({
         .catch(() => {
           if (!detail.context_status) {
             setCurrentContextStatus(
-              estimateContextStatus(msgs, detail.llm_model, modelOptionsRef.current)
+              estimateContextStatus(msgs, detail.llm_model, modelOptionsRef.current, detail.kb_id)
             );
           }
         })
@@ -924,7 +941,12 @@ export function ChatPage({
             .catch(() => {
               const cachedMessages = messagesCache.current.get(snap.convId) ?? [];
               setCurrentContextStatus(
-                estimateContextStatus(cachedMessages, currentModel, modelOptionsRef.current)
+                estimateContextStatus(
+                  cachedMessages,
+                  currentModel,
+                  modelOptionsRef.current,
+                  currentKbId
+                )
               );
             });
         } catch (e) {

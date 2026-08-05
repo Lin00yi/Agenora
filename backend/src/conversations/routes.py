@@ -17,8 +17,10 @@ from src.conversations.context import (
     compute_budget,
     consolidate_user_memories,
     context_status_payload,
+    estimate_effective_context_tokens,
     extract_conversation_memories,
     get_latest_summary,
+    rag_reserve_for_kb,
     refresh_memory_embedding,
     store_user_memories,
 )
@@ -99,9 +101,19 @@ async def _build_context_status(
         select(Message).where(Message.conversation_id == conv.id).order_by(Message.created_at)
     )
     messages = list(result.scalars().all())
-    budget = compute_budget(messages, conv.llm_model, context_window)
+    budget = compute_budget(
+        messages,
+        conv.llm_model,
+        context_window,
+        rag_reserve=rag_reserve_for_kb(conv.kb_id),
+    )
     summary = await get_latest_summary(session, conv.id)
-    return context_status_payload(budget=budget, summary=summary)
+    effective = estimate_effective_context_tokens(messages, summary)
+    return context_status_payload(
+        budget=budget,
+        summary=summary,
+        effective_tokens=effective,
+    )
 
 
 def _derive_title(content: str) -> str:
