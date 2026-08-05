@@ -15,7 +15,7 @@ import type { ConversationContextStatus } from "@/lib/conversations-api";
 import type { KB } from "@/lib/kb-api";
 import { cn } from "@/lib/cn";
 import type { LlmSource } from "./types";
-import { formatTokenCount } from "./utils";
+import { formatContextUsagePercent, formatTokenCount, resolveContextUsagePercent } from "./utils";
 
 export function SmallAction({
   label,
@@ -219,12 +219,20 @@ export function ContextUsageIndicator({
     current_tokens: 0,
     available_tokens: 0,
     percent: 0,
+    ratio: 0,
     retained_recent_turns: 10,
     summary: null,
   };
-  const progress = Math.min(100, Math.max(0, status.percent));
+  const precisePercent = resolveContextUsagePercent(status);
+  const percentLabel = formatContextUsagePercent(precisePercent);
+  // Keep a faint ring when usage is non-zero but still under 0.5%, so the
+  // meter does not look empty next to a "1.9k / 979.9k" readout.
+  const ringPercent =
+    status.current_tokens > 0 && precisePercent > 0 && precisePercent < 0.5
+      ? 0.5
+      : precisePercent;
   const circumference = 2 * Math.PI * 8;
-  const dashOffset = loading ? 0 : circumference * (1 - progress / 100);
+  const dashOffset = loading ? 0 : circumference * (1 - ringPercent / 100);
   const isAttention = status.state === "approaching" || status.state === "ready" || status.state === "critical";
   const ringTone =
     status.state === "compressed"
@@ -241,7 +249,7 @@ export function ContextUsageIndicator({
     <div className="group relative shrink-0">
       <span
         aria-describedby="context-usage-detail"
-        aria-label={loading ? "正在读取上下文使用量" : `上下文使用量 ${progress}%，${status.label}`}
+        aria-label={loading ? "正在读取上下文使用量" : `上下文使用量 ${percentLabel}%，${status.label}`}
         className="kf-context-usage inline-flex size-[var(--control-h)] items-center justify-center rounded-lg border outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
         tabIndex={0}
       >
@@ -274,7 +282,7 @@ export function ContextUsageIndicator({
           <span className={cn("text-xs font-medium tabular-nums", ringTone)}>{status.label}</span>
         </div>
         <div className="mt-2 flex items-baseline justify-between gap-3 tabular-nums">
-          <span className="kf-context-tooltip-title text-lg font-semibold">{progress}%</span>
+          <span className="kf-context-tooltip-title text-lg font-semibold">{percentLabel}%</span>
           <span className="kf-context-tooltip-muted text-xs">
             {formatTokenCount(status.current_tokens)} / {formatTokenCount(status.available_tokens)}
           </span>

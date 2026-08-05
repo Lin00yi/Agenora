@@ -286,6 +286,30 @@ export function formatTokenCount(value: number) {
   return String(value);
 }
 
+/** Format context usage for display. Sub-1% values keep one decimal so a
+ * million-token window does not read as a broken "0%" meter. */
+export function formatContextUsagePercent(percent: number): string {
+  if (!Number.isFinite(percent) || percent <= 0) return "0";
+  const clamped = Math.min(100, percent);
+  if (clamped < 1) return clamped.toFixed(1);
+  return String(Math.round(clamped));
+}
+
+/** Precise usage percent from API ratio when present, else integer percent. */
+export function resolveContextUsagePercent(status: {
+  percent?: number;
+  ratio?: number;
+  current_tokens?: number;
+}): number {
+  if (typeof status.ratio === "number" && Number.isFinite(status.ratio)) {
+    return Math.min(100, Math.max(0, status.ratio * 100));
+  }
+  if (typeof status.percent === "number" && Number.isFinite(status.percent)) {
+    return Math.min(100, Math.max(0, status.percent));
+  }
+  return 0;
+}
+
 export function formatMessageStats(messages: Message[]) {
   const userCount = messages.filter((message) => message.role === "user").length;
   const assistantCount = messages.filter((message) => message.role === "assistant").length;
