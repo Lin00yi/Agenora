@@ -110,7 +110,12 @@ async def _build_context_status(
         rag_reserve=rag_reserve_for_kb(conv.kb_id),
     )
     summary = await get_latest_summary(session, conv.id)
-    effective = estimate_effective_context_tokens(messages, summary)
+    from src.infra.tokenizer import token_model_scope
+
+    with token_model_scope(conv.llm_model):
+        effective = estimate_effective_context_tokens(
+            messages, summary, model=conv.llm_model
+        )
     return context_status_payload(
         budget=budget,
         summary=summary,

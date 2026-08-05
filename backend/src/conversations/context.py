@@ -120,51 +120,40 @@ class MemoryCandidate:
     expires_in_days: int | None = None
 
 
-def estimate_tokens(text: str) -> int:
-    """Cheap multilingual token estimate.
+def estimate_tokens(text: str, *, model: str | None = None) -> int:
+    """Count tokens for context budgeting.
 
-    This intentionally overestimates a bit to reduce overflow risk before a
-    tokenizer-specific counter is added.
+    Prefers tiktoken (see ``src.infra.tokenizer``). Falls back to a CJK-aware
+    heuristic when the tokenizer package is unavailable.
     """
-    if not text:
-        return 0
-    cjk = sum(1 for ch in text if "\u4e00" <= ch <= "\u9fff")
-    other = max(len(text) - cjk, 0)
-    return max(1, int(cjk * 1.2 + other / 3.2))
+    from src.infra.tokenizer import count_tokens
+
+    return count_tokens(text, model=model)
 
 
-def estimate_messages_tokens(messages: list[Message] | list[dict[str, str]]) -> int:
+def estimate_messages_tokens(
+    messages: list[Message] | list[dict[str, str]],
+    *,
+    model: str | None = None,
+) -> int:
     total = 0
     for msg in messages:
         content = msg.content if isinstance(msg, Message) else msg.get("content", "")
-        total += estimate_tokens(content) + 6
+        total += estimate_tokens(content, model=model) + 6
     return total
 
 
-def truncate_text_to_token_budget(text: str, token_budget: int, *, suffix: str = "…[已截断]") -> str:
-    """Return a prefix that fits the cheap multilingual token estimate.
+def truncate_text_to_token_budget(
+    text: str,
+    token_budget: int,
+    *,
+    suffix: str = "…[已截断]",
+    model: str | None = None,
+) -> str:
+    """Return a prefix that fits ``token_budget`` under the active tokenizer."""
+    from src.infra.tokenizer import truncate_to_token_budget
 
-    This is a hard guard around individual context blocks. The estimator is
-    deliberately conservative, so a later tokenizer-specific implementation
-    can replace it without changing the allocation policy.
-    """
-    if token_budget <= 0:
-        return ""
-    if estimate_tokens(text) <= token_budget:
-        return text
-    suffix_tokens = estimate_tokens(suffix)
-    if suffix_tokens >= token_budget:
-        return ""
-
-    low, high = 0, len(text)
-    target = token_budget - suffix_tokens
-    while low < high:
-        middle = (low + high + 1) // 2
-        if estimate_tokens(text[:middle]) <= target:
-            low = middle
-        else:
-            high = middle - 1
-    return text[:low].rstrip() + suffix
+    return truncate_to_token_budget(text, token_budget, suffix=suffix, model=model)
 
 
 def trim_messages_to_token_budget(
@@ -196,10 +185,52 @@ def trim_messages_to_token_budget(
 
     kept = list(reversed(kept_reversed))
     # A standalone assistant reply has no preceding user turn and is less
-    # useful than the retained recent turns. Remove it for provider-safe chat
-    # history (Anthropic requires a user message first).
+    # useful than the retained recent turns. Prefer recovering the prior user
+    # turn (clipped) over returning an empty history.
     while kept and kept[0].role == "assistant":
-        kept.pop(0)
+        if len(kept) > 1:
+            kept.pop(0)
+            continue
+        orphan = kept[0]
+        orphan_index = next((i for i, item in enumerate(messages) if item.id == orphan.id), -1)
+        prior = messages[orphan_index - 1] if orphan_index > 0 else None
+        if prior is None or prior.role != "user":
+            break
+        assistant_cost = estimate_tokens(orphan.content or "") + 6
+        if assistant_cost + 40 <= token_budget:
+            user_room = max(1, token_budget - assistant_cost - 6)
+            user_text = truncate_text_to_token_budget(prior.content or "", user_room)
+            kept = [
+                Message(
+                    id=prior.id,
+                    conversation_id=prior.conversation_id,
+                    role="user",
+                    content=user_text,
+                ),
+                orphan,
+            ]
+        else:
+            user_cap = max(1, token_budget // 2 - 6)
+            user_text = truncate_text_to_token_budget(prior.content or "", user_cap)
+            used = estimate_tokens(user_text) + 6
+            asst_text = truncate_text_to_token_budget(
+                orphan.content or "", max(1, token_budget - used - 6)
+            )
+            kept = [
+                Message(
+                    id=prior.id,
+                    conversation_id=prior.conversation_id,
+                    role="user",
+                    content=user_text,
+                ),
+                Message(
+                    id=orphan.id,
+                    conversation_id=orphan.conversation_id,
+                    role="assistant",
+                    content=asst_text,
+                ),
+            ]
+        break
     return kept
 
 
@@ -254,13 +285,16 @@ def compute_budget(
     *,
     rag_reserve: int | None = None,
 ) -> ContextBudget:
+    from src.infra.tokenizer import token_model_scope
+
     window = context_window_for_model(model, configured_window)
     reserved_rag = RAG_RESERVE if rag_reserve is None else max(0, int(rag_reserve))
     available = max(
         4_000,
         window - MAX_OUTPUT_TOKENS - SYSTEM_AND_TOOL_RESERVE - reserved_rag - SAFETY_RESERVE,
     )
-    current = estimate_messages_tokens(messages)
+    with token_model_scope(model):
+        current = estimate_messages_tokens(messages, model=model)
     ratio = current / available if available else 1.0
     return ContextBudget(
         model=model,
@@ -277,18 +311,23 @@ def compute_budget(
 def estimate_effective_context_tokens(
     messages: list[Message],
     summary: ConversationSummary | None,
+    *,
+    model: str | None = None,
 ) -> int:
     """Estimate tokens that would enter the prompt after summary compression.
 
     Raw history can stay large after a rolling summary exists. Status meters
     should reflect the bounded prompt, not the uncompressed archive size.
     """
-    if not summary:
-        return estimate_messages_tokens(messages)
-    keep_count = RECENT_TURNS * 2
-    recent = messages[-keep_count:] if messages else []
-    summary_tokens = summary.token_count or estimate_tokens(summary.summary or "")
-    return summary_tokens + estimate_messages_tokens(recent)
+    from src.infra.tokenizer import token_model_scope
+
+    with token_model_scope(model):
+        if not summary:
+            return estimate_messages_tokens(messages, model=model)
+        keep_count = RECENT_TURNS * 2
+        recent = messages[-keep_count:] if messages else []
+        summary_tokens = summary.token_count or estimate_tokens(summary.summary or "", model=model)
+        return summary_tokens + estimate_messages_tokens(recent, model=model)
 
 
 def context_status_payload(
@@ -547,6 +586,8 @@ async def _cas_update_summary(
     )
     if not result.rowcount:
         await session.rollback()
+        # Drop identity-map copies so the caller reloads the winning row.
+        session.expire_all()
         return None
     await session.commit()
     await session.refresh(row)
@@ -1869,98 +1910,101 @@ async def build_context_for_conversation(
     llm_cfg: "UserLLMConfig | None" = None,
     embedding_cfg=None,
 ) -> BuiltContext:
+    from src.infra.tokenizer import token_model_scope
+
     result = await session.execute(
         select(Message)
         .where(Message.conversation_id == conversation_id)
         .order_by(Message.created_at)
     )
     messages = list(result.scalars().all())
-    budget = compute_budget(
-        messages,
-        model,
-        context_window,
-        rag_reserve=rag_reserve_for_kb(kb_id),
-    )
-    summary = await ensure_summary_if_needed(
-        session,
-        conversation_id=conversation_id,
-        messages=messages,
-        budget=budget,
-        llm_cfg=llm_cfg,
-    )
-
-    last_user = next((m for m in reversed(messages) if m.role == "user"), None)
-    profile = await build_user_memory_profile(session, user_id=user_id, kb_id=kb_id)
-    profile_ids = set(profile.get("memory_ids") or set())
-    memories = await retrieve_user_memories(
-        session,
-        user_id=user_id,
-        query=last_user.content if last_user else "",
-        kb_id=kb_id,
-        embedding_cfg=embedding_cfg,
-        exclude_ids=profile_ids,
-    )
-
-    keep_count = RECENT_TURNS * 2
-    out: list[dict[str, str]] = []
-    profile_text = user_profile_block(profile)
-    mem_text = memory_block(memories)
-    summary_text = (
-        truncate_text_to_token_budget(summary.summary, MAX_SUMMARY_CONTEXT_TOKENS)
-        if summary
-        else ""
-    )
-    # The history budget already leaves room for the system prompt, tool
-    # schemas, RAG results and safety margin. Memory and summary now consume
-    # a measured portion of that history budget instead of being unbounded.
-    recent_budget = max(
-        1_000,
-        budget.available_history_tokens
-        - estimate_tokens(profile_text)
-        - estimate_tokens(mem_text)
-        - estimate_tokens(summary_text),
-    )
-    recent_source = messages[-keep_count:] if summary else messages
-    recent = trim_messages_to_token_budget(recent_source, recent_budget)
-    if profile_text:
-        out.append(
-            {"role": "system", "content": profile_text, "_context_source": "profile"}
+    with token_model_scope(model):
+        budget = compute_budget(
+            messages,
+            model,
+            context_window,
+            rag_reserve=rag_reserve_for_kb(kb_id),
         )
-    if mem_text:
-        out.append(
-            {"role": "system", "content": mem_text, "_context_source": "memory"}
+        summary = await ensure_summary_if_needed(
+            session,
+            conversation_id=conversation_id,
+            messages=messages,
+            budget=budget,
+            llm_cfg=llm_cfg,
         )
-    if summary_text:
-        out.append(
-            {"role": "system", "content": summary_text, "_context_source": "summary"}
-        )
-    out.extend({"role": m.role, "content": m.content or ""} for m in recent)
 
-    return BuiltContext(
-        messages=out,
-        budget=budget,
-        summary=summary,
-        injected_memory_count=len(memories),
-        memory_trace={
-            "profile": {
-                "injected": bool(profile_text),
-                "counts": profile.get("counts", {}),
-                "items": profile.get("items", [])[:12],
+        last_user = next((m for m in reversed(messages) if m.role == "user"), None)
+        profile = await build_user_memory_profile(session, user_id=user_id, kb_id=kb_id)
+        profile_ids = set(profile.get("memory_ids") or set())
+        memories = await retrieve_user_memories(
+            session,
+            user_id=user_id,
+            query=last_user.content if last_user else "",
+            kb_id=kb_id,
+            embedding_cfg=embedding_cfg,
+            exclude_ids=profile_ids,
+        )
+
+        keep_count = RECENT_TURNS * 2
+        out: list[dict[str, str]] = []
+        profile_text = user_profile_block(profile)
+        mem_text = memory_block(memories)
+        summary_text = (
+            truncate_text_to_token_budget(summary.summary, MAX_SUMMARY_CONTEXT_TOKENS)
+            if summary
+            else ""
+        )
+        # The history budget already leaves room for the system prompt, tool
+        # schemas, RAG results and safety margin. Memory and summary now consume
+        # a measured portion of that history budget instead of being unbounded.
+        recent_budget = max(
+            1_000,
+            budget.available_history_tokens
+            - estimate_tokens(profile_text)
+            - estimate_tokens(mem_text)
+            - estimate_tokens(summary_text),
+        )
+        recent_source = messages[-keep_count:] if summary else messages
+        recent = trim_messages_to_token_budget(recent_source, recent_budget)
+        if profile_text:
+            out.append(
+                {"role": "system", "content": profile_text, "_context_source": "profile"}
+            )
+        if mem_text:
+            out.append(
+                {"role": "system", "content": mem_text, "_context_source": "memory"}
+            )
+        if summary_text:
+            out.append(
+                {"role": "system", "content": summary_text, "_context_source": "summary"}
+            )
+        out.extend({"role": m.role, "content": m.content or ""} for m in recent)
+
+        return BuiltContext(
+            messages=out,
+            budget=budget,
+            summary=summary,
+            injected_memory_count=len(memories),
+            memory_trace={
+                "profile": {
+                    "injected": bool(profile_text),
+                    "counts": profile.get("counts", {}),
+                    "items": profile.get("items", [])[:12],
+                },
+                "memories": {
+                    "injected_count": len(memories),
+                    "items": [_memory_trace_item(row) for row in memories],
+                },
+                "summary": (
+                    {
+                        "id": summary.id,
+                        "covered_message_count": summary.covered_message_count,
+                        "token_count": summary.token_count,
+                        "updated_at": summary.updated_at.isoformat() if summary.updated_at else None,
+                    }
+                    if summary
+                    else None
+                ),
+                "recent_message_count": len(recent),
             },
-            "memories": {
-                "injected_count": len(memories),
-                "items": [_memory_trace_item(row) for row in memories],
-            },
-            "summary": (
-                {
-                    "id": summary.id,
-                    "covered_message_count": summary.covered_message_count,
-                    "token_count": summary.token_count,
-                    "updated_at": summary.updated_at.isoformat() if summary.updated_at else None,
-                }
-                if summary
-                else None
-            ),
-            "recent_message_count": len(recent),
-        },
-    )
+        )

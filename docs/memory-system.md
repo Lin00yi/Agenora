@@ -253,6 +253,8 @@ python -m src.infra.memory_maintenance
 
 模型调用前还会重新测量最终 System Prompt、Tool Schema 和消息内容，避免固定预留与真实内容大小不一致。
 
+Token 计量使用 **tiktoken**（按模型族选择 `o200k_base` / `cl100k_base`；DeepSeek/Claude/BYOK 以 `cl100k_base` 为预算代理），并加约 3% 余量吸收跨 tokenizer 偏差。tiktoken 不可用时回退到 CJK 启发式估计。构建上下文与 `allocate_provider_context` 会通过 `token_model_scope` 绑定当前模型。
+
 上下文状态 API 的占用率（`percent` / `current_tokens`）使用**摘要压缩后的有效上下文**（摘要 token + 最近轮次），而不是原始全量历史；原始体积仍可通过 `raw_history_tokens` 查看。
 
 ## 8. 管理 API 与前端
@@ -290,9 +292,9 @@ python -m src.infra.memory_maintenance
 - 向量以 JSON 存在关系库中，适合小规模个人记忆；达到较大规模后应迁移至支持 metadata filter 的专用向量索引；
 - 过期与整合可由独立 Worker/Cron 覆盖长期不活跃用户；部署平台仍需负责单实例调度与重试；
 - 约束主题词表覆盖常见技术栈与策略；词表外约束仍用 `constraint.misc:<hash>`，需要时可扩展 `CONSTRAINT_TOPICS`；
-- token 计量仍为启发式估计。
+- DeepSeek/Claude 无官方公开 tokenizer 时仍用 tiktoken 代理，极端文本上可能与供应商计数有偏差。
 
-下一阶段建议优先引入：真实 tokenizer、离线评测小集。
+下一阶段建议优先引入：离线评测小集。
 
 ## 11. 关键代码位置
 

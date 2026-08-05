@@ -31,6 +31,8 @@ dependencies = [
   "trafilatura>=1.12",      # HTML → clean text from URLs
   # v2-M5 — web search for unbound chat
   "ddgs>=4.0",              # DuckDuckGo search (no API key required)
+  # Context budgeting — OpenAI/DeepSeek/Claude proxy via tiktoken
+  "tiktoken>=0.7",
 ]
 
 [project.optional-dependencies]

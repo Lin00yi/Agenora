@@ -417,11 +417,50 @@ def _trim_provider_messages(messages: list[dict[str, Any]], token_budget: int) -
         break
 
     kept = list(reversed(kept_reversed))
-    # Do not start an Anthropic/OpenAI history with an orphaned assistant turn.
-    # Tool exchanges are normally recent and remain together under the reserved
-    # budget; this guard only applies after an overflow trim.
+    # Do not start provider history with an orphaned assistant turn. If the
+    # assistant is the only survivor, recover the preceding user turn (clipped)
+    # so a tight budget cannot wipe the entire window.
     while kept and kept[0].get("role") == "assistant":
-        kept.pop(0)
+        if len(kept) > 1:
+            kept.pop(0)
+            continue
+        orphan = kept[0]
+        orphan_index = -1
+        for i in range(len(messages) - 1, -1, -1):
+            candidate = messages[i]
+            if candidate is orphan or (
+                candidate.get("role") == orphan.get("role")
+                and candidate.get("content") == orphan.get("content")
+            ):
+                orphan_index = i
+                break
+        prior = messages[orphan_index - 1] if orphan_index > 0 else None
+        if (
+            prior is None
+            or prior.get("role") != "user"
+            or not isinstance(prior.get("content"), str)
+            or not isinstance(orphan.get("content"), str)
+        ):
+            break
+        assistant_cost = estimate_tokens(orphan["content"]) + 6
+        if assistant_cost + 40 <= token_budget:
+            user_msg = dict(prior)
+            user_msg["content"] = truncate_text_to_token_budget(
+                prior["content"], max(1, token_budget - assistant_cost - 6)
+            )
+            kept = [user_msg, orphan]
+        else:
+            user_msg = dict(prior)
+            user_msg["content"] = truncate_text_to_token_budget(
+                prior["content"], max(1, token_budget // 2 - 6)
+            )
+            used = estimate_tokens(user_msg["content"]) + 6
+            asst_msg = dict(orphan)
+            asst_msg["content"] = truncate_text_to_token_budget(
+                orphan["content"], max(1, token_budget - used - 6)
+            )
+            kept = [user_msg, asst_msg]
+        break
     return kept
 
 
@@ -440,17 +479,22 @@ def allocate_provider_context(
     tool schemas are now measured on every model call. The remaining capacity
     is allocated to the newest complete conversation/tool messages.
     """
-    context_window = context_window_for_model(model, configured_context_window)
-    system_tokens = estimate_tokens(system_prompt)
-    tool_tokens = estimate_tokens(json.dumps(tools_schema, ensure_ascii=False, default=str))
-    output_budget = output_token_budget or MAX_OUTPUT_TOKENS
-    conversation_budget = context_window - output_budget - SAFETY_RESERVE
-    conversation_budget -= system_tokens + tool_tokens
-    # All configured models have a large context window. Keep a small minimum
-    # so the latest user instruction can still be represented if configuration
-    # text unexpectedly grows.
-    conversation_budget = max(1_000, conversation_budget)
-    return _trim_provider_messages(conversation_messages, conversation_budget)
+    from src.infra.tokenizer import token_model_scope
+
+    with token_model_scope(model):
+        context_window = context_window_for_model(model, configured_context_window)
+        system_tokens = estimate_tokens(system_prompt, model=model)
+        tool_tokens = estimate_tokens(
+            json.dumps(tools_schema, ensure_ascii=False, default=str), model=model
+        )
+        output_budget = output_token_budget or MAX_OUTPUT_TOKENS
+        conversation_budget = context_window - output_budget - SAFETY_RESERVE
+        conversation_budget -= system_tokens + tool_tokens
+        # All configured models have a large context window. Keep a small minimum
+        # so the latest user instruction can still be represented if configuration
+        # text unexpectedly grows.
+        conversation_budget = max(1_000, conversation_budget)
+        return _trim_provider_messages(conversation_messages, conversation_budget)
 
 
 def _prompt_reserve_tokens(system_prompt: str, tools_schema: list[dict[str, Any]]) -> int:

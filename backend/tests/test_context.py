@@ -936,7 +936,9 @@ async def test_summary_write_uses_cas_when_another_worker_wins(db, create_user, 
             session,
             conversation_id=conv.id,
             messages=rows,
-            budget=compute_budget(rows, "deepseek-chat"),
+            # Real tiktoken counts ASCII more tightly than the old heuristic; use a
+            # smaller window so this fixture still crosses the summarize threshold.
+            budget=compute_budget(rows, "deepseek-chat", 32_000),
         )
         stored = (
             await session.execute(
