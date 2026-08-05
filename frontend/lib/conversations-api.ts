@@ -54,12 +54,24 @@ export type ConversationContextStatus = {
   } | null;
 };
 
+export type CitationPayload = {
+  channel: "kb" | "web";
+  title: string;
+  source: string;
+  score?: number | null;
+  url?: string | null;
+  snippet?: string | null;
+  kb_id?: string | null;
+  doc_id?: string | null;
+};
+
 export type MessagePayload = {
   id: string;
   role: "user" | "assistant";
   content: string;
   tools: ToolEvent[] | null;
   memory_trace?: MemoryTrace | null;
+  citations?: CitationPayload[] | null;
   cost_usd: number | null;
   error: string | null;
   created_at: string | null;
@@ -313,6 +325,7 @@ export async function appendAssistantMessage(
     content: string;
     tools?: ToolEvent[];
     memory_trace?: MemoryTrace | null;
+    citations?: CitationPayload[] | null;
     cost_usd?: number;
     error?: string;
   }
@@ -326,6 +339,10 @@ export async function appendAssistantMessage(
         content: payload.content,
         tools: payload.tools && payload.tools.length > 0 ? payload.tools : undefined,
         memory_trace: payload.memory_trace ?? undefined,
+        citations:
+          payload.citations && payload.citations.length > 0
+            ? payload.citations
+            : undefined,
         cost_usd: payload.cost_usd,
         error: payload.error,
       }),

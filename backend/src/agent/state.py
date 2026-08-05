@@ -27,6 +27,7 @@ class AgentState(TypedDict, total=False):
     prompt_injection_risk: str               # low | medium | high
     prompt_injection_reasons: list[str]      # direct/indirect injection signals
     rag_suspicious_chunks: int               # KB chunks removed before kb_context
+    citations: list[dict[str, Any]]          # structured KB/web source cards for the UI
     final_report: str | None
     iterations: int                          # plan loop guard
     cost_usd: float

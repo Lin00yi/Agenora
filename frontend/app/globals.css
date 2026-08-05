@@ -601,10 +601,22 @@
     background: color-mix(in srgb, var(--chat-surface) 92%, transparent);
     color: var(--chat-ink);
     backdrop-filter: blur(10px);
+    line-height: 0;
+  }
+
+  .kf-chat .kf-workspace .kf-scroll-to-bottom svg {
+    display: block;
+    /* Optical center: Lucide ArrowDown sits slightly high in its viewBox. */
+    transform: translateY(0.5px);
   }
 
   .kf-chat .kf-workspace .kf-scroll-to-bottom:hover {
     background: var(--chat-surface);
+  }
+
+  .kf-chat .kf-workspace .kf-scroll-to-bottom:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--chat-accent) 45%, transparent);
+    outline-offset: 2px;
   }
 
   .kf-chat .kf-workspace .kf-composer.kf-composer-centered {

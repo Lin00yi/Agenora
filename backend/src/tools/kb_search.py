@@ -215,11 +215,14 @@ class KBSearchTool(Tool):
             return ToolResult(
                 text=f"知识库「{self.kb_name}」中没有找到与「{query}」相关的内容。",
                 latency_ms=0,
-                raw={"hits": 0, "kb_id": self.kb_id},
+                raw={"hits": 0, "kb_id": self.kb_id, "results": []},
             )
 
         # Format: per-chunk block with source filename + score for citation.
+        # Structured `results` mirror only chunks that actually entered the
+        # returned text (token-budget trimmed), so UI cards match evidence.
         blocks: list[str] = []
+        structured: list[dict[str, Any]] = []
         used_tokens = 0
         for i, c in enumerate(hits, start=1):
             p = c.get("payload", {}) or {}
@@ -238,16 +241,33 @@ class KBSearchTool(Tool):
                 )
             blocks.append(block)
             used_tokens += separator_tokens + estimate_tokens(block)
+            try:
+                score_f = float(score)
+            except (TypeError, ValueError):
+                score_f = 0.0
+            structured.append(
+                {
+                    "filename": filename,
+                    "score": score_f,
+                    "doc_id": p.get("doc_id"),
+                    "text_preview": text[:240],
+                }
+            )
 
         if not blocks:
             return ToolResult(
                 text=f"知识库「{self.kb_name}」中命中了内容，但结果超过上下文预算。请缩小查询范围。",
                 latency_ms=0,
-                raw={"hits": 0, "kb_id": self.kb_id, "truncated": True},
+                raw={"hits": 0, "kb_id": self.kb_id, "truncated": True, "results": []},
             )
 
         return ToolResult(
             text="\n\n---\n\n".join(blocks),
             latency_ms=0,
-            raw={"hits": len(blocks), "kb_id": self.kb_id, "truncated": len(blocks) < len(hits)},
+            raw={
+                "hits": len(blocks),
+                "kb_id": self.kb_id,
+                "truncated": len(blocks) < len(hits),
+                "results": structured,
+            },
         )

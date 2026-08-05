@@ -33,7 +33,7 @@ class WebSearchTool(Tool):
             "适合查询：最新新闻、近期数据、长尾事实、模型不掌握的内容。"
             f"当前搜索提供方：{self._provider_name}。"
             f"返回最大 {self._cap} 条结果（默认 {self._default}），每条含标题、URL、摘要。"
-            "回答用户时必须在内容中标注引用的 URL 来源。"
+            "回答用户时可用正文点出关键链接；完整来源列表由界面结构化卡片展示，不必在文末重复罗列。"
         )
         self.input_schema: dict[str, Any] = {
             "type": "object",
@@ -72,15 +72,22 @@ class WebSearchTool(Tool):
             return ToolResult(
                 text=f"未找到关于 '{query}' 的网络结果。",
                 latency_ms=0,
-                raw={"count": 0, "query": query, "provider": self._provider_name},
+                raw={
+                    "count": 0,
+                    "query": query,
+                    "provider": self._provider_name,
+                    "results": [],
+                },
             )
 
         lines: list[str] = []
+        structured: list[dict[str, str]] = []
         for i, result in enumerate(results, 1):
             title = result.title.strip()[:120]
             url = result.url.strip()
             body = result.body.strip()[:240]
             lines.append(f"[{i}] {title}\n    URL: {url}\n    摘要: {body}")
+            structured.append({"title": title, "url": url, "body": body})
 
         return ToolResult(
             text="\n\n".join(lines),
@@ -89,5 +96,6 @@ class WebSearchTool(Tool):
                 "count": len(results),
                 "query": query,
                 "provider": provider.name,
+                "results": structured,
             },
         )

@@ -89,18 +89,21 @@ class Message(Base):
     def to_public_dict(self) -> dict:
         tools: list | None = None
         memory_trace: dict | None = None
+        citations: list | None = None
         if self.tool_call_log:
             try:
                 parsed = json.loads(self.tool_call_log)
             except (ValueError, TypeError):
                 parsed = None
             if isinstance(parsed, dict) and (
-                "tools" in parsed or "memory_trace" in parsed
+                "tools" in parsed or "memory_trace" in parsed or "citations" in parsed
             ):
                 raw_tools = parsed.get("tools")
                 tools = raw_tools if isinstance(raw_tools, list) else []
                 raw_trace = parsed.get("memory_trace")
                 memory_trace = raw_trace if isinstance(raw_trace, dict) else None
+                raw_citations = parsed.get("citations")
+                citations = raw_citations if isinstance(raw_citations, list) else None
             elif isinstance(parsed, list):
                 tools = parsed
 
@@ -110,6 +113,7 @@ class Message(Base):
             "content": self.content or "",
             "tools": tools if tools is not None else ([] if self.role == "assistant" else None),
             "memory_trace": memory_trace,
+            "citations": citations,
             "cost_usd": self.cost_usd,
             "error": self.error or None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
@@ -119,19 +123,23 @@ class Message(Base):
     def encode_tool_call_log(
         tools: list | None,
         memory_trace: dict | None = None,
+        citations: list | None = None,
     ) -> str | None:
-        """Serialize tools (+ optional memory_trace) into tool_call_log JSON.
+        """Serialize tools (+ optional memory_trace / citations) into tool_call_log JSON.
 
-        Legacy rows store a bare tools list. New rows that carry a memory_trace
-        use ``{"tools": [...], "memory_trace": {...}}`` so we avoid a schema
-        migration while remaining backward-compatible on read.
+        Legacy rows store a bare tools list. Newer rows that carry extras use
+        ``{"tools": [...], "memory_trace": {...}, "citations": [...]}`` so we
+        avoid a schema migration while remaining backward-compatible on read.
         """
         tool_list = list(tools or [])
-        if memory_trace:
-            return json.dumps(
-                {"tools": tool_list, "memory_trace": memory_trace},
-                ensure_ascii=False,
-            )
+        citation_list = list(citations or [])
+        if memory_trace or citation_list:
+            payload: dict = {"tools": tool_list}
+            if memory_trace:
+                payload["memory_trace"] = memory_trace
+            if citation_list:
+                payload["citations"] = citation_list
+            return json.dumps(payload, ensure_ascii=False)
         if tool_list:
             return json.dumps(tool_list, ensure_ascii=False)
         return None

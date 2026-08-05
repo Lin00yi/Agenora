@@ -48,6 +48,7 @@ class AppendMessageRequest(BaseModel):
     content: str = Field(default="")
     tools: list[dict[str, Any]] | None = Field(default=None)
     memory_trace: dict[str, Any] | None = Field(default=None)
+    citations: list[dict[str, Any]] | None = Field(default=None)
     cost_usd: float | None = Field(default=None)
     error: str | None = Field(default=None, max_length=4096)
 
@@ -493,7 +494,9 @@ async def append_message(
         conversation_id=conv.id,
         role=req.role,
         content=content,
-        tool_call_log=Message.encode_tool_call_log(tools, req.memory_trace),
+        tool_call_log=Message.encode_tool_call_log(
+            tools, req.memory_trace, req.citations
+        ),
         cost_usd=req.cost_usd,
         error=error,
     )

@@ -1,7 +1,7 @@
 import type { ToolEvent } from "@/components/ThinkingChain";
 import type { Conversation, Message } from "@/lib/conversationStore";
 import type { KB } from "@/lib/kb-api";
-import type { ChatEvent, MemoryTrace, MemoryTraceItem } from "@/lib/sseClient";
+import type { ChatEvent, Citation, MemoryTrace, MemoryTraceItem } from "@/lib/sseClient";
 import type { SourceRow } from "./types";
 
 export function getKbStatusView(kb: KB) {
@@ -374,4 +374,172 @@ export function formatMessageTime(value?: number | null) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(value);
+}
+
+export function hasVisibleCitations(citations?: Citation[] | null) {
+  return Array.isArray(citations) && citations.length > 0;
+}
+
+export function mergeCitations(...groups: Array<Citation[] | null | undefined>): Citation[] {
+  const merged: Citation[] = [];
+  const index = new Map<string, number>();
+
+  for (const group of groups) {
+    if (!group?.length) continue;
+    for (const item of group) {
+      if (!item || (item.channel !== "kb" && item.channel !== "web")) continue;
+      const key = citationKey(item);
+      const existingIdx = index.get(key);
+      if (existingIdx != null) {
+        if (item.channel === "kb") {
+          const prev = merged[existingIdx];
+          const prevScore = typeof prev.score === "number" ? prev.score : -1;
+          const nextScore = typeof item.score === "number" ? item.score : -1;
+          if (nextScore > prevScore) merged[existingIdx] = { ...prev, ...item };
+        }
+        continue;
+      }
+      index.set(key, merged.length);
+      merged.push(item);
+    }
+  }
+  return merged;
+}
+
+export function groupCitationsByChannel(citations: Citation[]) {
+  const kb: Citation[] = [];
+  const web: Citation[] = [];
+  for (const item of citations) {
+    if (item.channel === "web") web.push(item);
+    else if (item.channel === "kb") kb.push(item);
+  }
+  return { kb, web };
+}
+
+export function formatCitationScore(score?: number | null) {
+  if (typeof score !== "number" || !Number.isFinite(score)) return null;
+  return score.toFixed(2);
+}
+
+function citationKey(item: Citation) {
+  if (item.channel === "web") {
+    return `web|${(item.url || item.title || "").trim().toLowerCase()}`;
+  }
+  const url = (item.url || "").trim().toLowerCase();
+  if (url) return `kb-url|${url}`;
+  return `kb|${item.kb_id || ""}|${item.doc_id || ""}|${item.source || item.title || ""}`;
+}
+
+/** Drop LLM-written trailing source lists when structured cards are shown. */
+export function stripHandwrittenSourceList(markdown: string): string {
+  const lines = markdown.replace(/\\n/g, "\n").split("\n");
+  const out: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (/^【[📚🌐]\s*来源[：:].*】$/.test(trimmed)) {
+      i += 1;
+      continue;
+    }
+
+    const headerMatch = trimmed.match(
+      /^(#{1,3}\s*)?(?:\*\*)?(来源|Sources?)(?:\*\*)?[：:](?:\*\*)?\s*(.*)$/i
+    );
+    if (headerMatch) {
+      const sameLineRest = headerMatch[3] || "";
+      let j = i + 1;
+      const consumedList: string[] = [];
+
+      if (sameLineRest && looksLikeUrlSource(sameLineRest)) {
+        while (j < lines.length && isSourceListItem(lines[j])) j += 1;
+        i = skipBlankLines(lines, j);
+        continue;
+      }
+
+      while (j < lines.length) {
+        const next = lines[j].trim();
+        if (next === "") {
+          if (
+            j + 1 < lines.length &&
+            isSourceListItem(lines[j + 1]) &&
+            consumedList.length > 0
+          ) {
+            j += 1;
+            continue;
+          }
+          break;
+        }
+        if (!isSourceListItem(lines[j])) break;
+        consumedList.push(lines[j]);
+        j += 1;
+      }
+
+      if (consumedList.length > 0) {
+        i = skipBlankLines(lines, j);
+        continue;
+      }
+    }
+
+    out.push(line);
+    i += 1;
+  }
+
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").replace(/[ \t]+\n/g, "\n").trimEnd();
+}
+
+export function resolveCitationHref(item: Citation): string | null {
+  const candidates = [item.url, item.title, item.source];
+  for (const raw of candidates) {
+    const value = (raw || "").trim();
+    if (!value) continue;
+    if (/^https?:\/\//i.test(value)) return value;
+    if (/^[a-z0-9.-]+\.[a-z]{2,}\//i.test(value)) return `https://${value}`;
+  }
+  return null;
+}
+
+export function citationCardTitle(item: Citation): string {
+  const href = resolveCitationHref(item);
+  const raw = (item.title || item.source || "").trim();
+  if (!href) return raw || (item.channel === "web" ? "网页" : "文档");
+  try {
+    const url = new URL(href);
+    const parts = url.pathname.split("/").filter(Boolean);
+    const last = parts[parts.length - 1] || url.hostname;
+    const rawLooksLikeUrl =
+      !raw ||
+      raw === href ||
+      raw === href.replace(/^https?:\/\//i, "") ||
+      raw.includes(url.hostname);
+    if (rawLooksLikeUrl) {
+      return parts.length > 0 ? `${url.hostname} / ${last}` : url.hostname;
+    }
+    return raw;
+  } catch {
+    return raw || href;
+  }
+}
+
+function isSourceListItem(line: string): boolean {
+  const trimmed = line.trim();
+  if (!/^([-*•+]|\d+\.)\s+/.test(trimmed)) return false;
+  return looksLikeUrlSource(trimmed);
+}
+
+function looksLikeUrlSource(text: string): boolean {
+  return (
+    /https?:\/\//i.test(text) ||
+    /`[^`]*[a-z0-9.-]+\.[a-z]{2,}[^`]*`/i.test(text) ||
+    /\[[^\]]+\]\(https?:\/\/[^)]+\)/i.test(text) ||
+    /[a-z0-9.-]+\.[a-z]{2,}\/[^\s`）)\]]+/i.test(text)
+  );
+}
+
+function skipBlankLines(lines: string[], start: number): number {
+  let i = start;
+  while (i < lines.length && lines[i].trim() === "") i += 1;
+  return i;
 }

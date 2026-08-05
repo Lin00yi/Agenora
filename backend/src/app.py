@@ -221,6 +221,7 @@ def _run_chat_session(
                 "messages": full_messages,
                 "iterations": 0,
                 "tool_call_log": [],
+                "citations": [],
                 "prompt_injection_risk": prompt_guard.level,
                 "prompt_injection_reasons": prompt_guard.reasons,
                 "rag_suspicious_chunks": 0,
@@ -238,6 +239,7 @@ def _run_chat_session(
                     "rate_remaining": remaining,
                     "kb_id": kb.id if kb else None,
                     "memory_trace": memory_trace,
+                    "citations": list(final_state.get("citations") or []),
                 }
             )
         except Exception as exc:  # noqa: BLE001

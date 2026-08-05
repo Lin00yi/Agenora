@@ -16,14 +16,17 @@ import type { ConversationContextStatus } from "@/lib/conversations-api";
 import type { Message } from "@/lib/conversationStore";
 import type { MemoryTrace } from "@/lib/sseClient";
 import { cn } from "@/lib/cn";
+import { SourceCards } from "./SourceCards";
 import {
   buildInjectedMemoryItems,
   formatMemoryTraceSummary,
   formatMessageTime,
   formatTokenCount,
   getAssistantStreamingStatus,
+  hasVisibleCitations,
   hasVisibleMemoryTrace,
   memoryTraceTypeLabel,
+  stripHandwrittenSourceList,
 } from "./utils";
 
 export function ChatMessage({ message }: { message: Message }) {
@@ -48,8 +51,13 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
   const hasContent = message.content.trim().length > 0;
   const hasTools = message.tools.length > 0;
   const hasMemoryContext = hasVisibleMemoryTrace(message.memory_trace);
+  const hasCitations = hasVisibleCitations(message.citations);
   const elapsedMs = useLiveElapsed(streaming, message.created_at);
   const status = getAssistantStreamingStatus(message, elapsedMs);
+  const displayMarkdown =
+    hasCitations && !streaming
+      ? stripHandwrittenSourceList(message.content)
+      : message.content;
   if (!hasContent && !streaming && !message.error && !hasTools) return null;
 
   return (
@@ -82,7 +90,7 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
           )}
           {hasContent && (
             <div id={`report-output-${message.id}`}>
-              <AnswerMarkdown markdown={message.content} streaming={streaming} />
+              <AnswerMarkdown markdown={displayMarkdown} streaming={streaming} />
             </div>
           )}
           {hasContent && streaming && (
@@ -94,9 +102,13 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
           )}
         </div>
 
+        {hasContent && !streaming && hasCitations ? (
+          <SourceCards citations={message.citations!} />
+        ) : null}
+
         {hasContent && !streaming && (
           <ExportActions
-            markdown={message.content}
+            markdown={displayMarkdown}
             cost={message.cost_usd}
             reportId={`report-output-${message.id}`}
           />

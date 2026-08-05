@@ -44,6 +44,7 @@ import {
   connectChat,
   type ChatEvent,
   type ChatMessage as SseChatMessage,
+  type Citation,
   type MemoryTrace,
 } from "@/lib/sseClient";
 import {
@@ -57,6 +58,7 @@ import {
   StarterPromptCards,
   DEFAULT_TITLE,
   formatMessageStats,
+  mergeCitations,
   updateToolEvent,
   type LlmSource,
 } from "@/components/chat";
@@ -174,6 +176,7 @@ function serverMsgToLocal(m: MessagePayload): Message {
     content: m.content,
     tools: m.tools ?? [],
     memory_trace: m.memory_trace ?? null,
+    citations: m.citations ?? null,
     cost_usd: m.cost_usd ?? undefined,
     error: m.error === STOPPED_GENERATION_MESSAGE ? undefined : m.error ?? undefined,
     created_at: ts,
@@ -276,6 +279,7 @@ export function ChatPage({
     content: string;
     tools: ToolEvent[];
     memory_trace: MemoryTrace | null;
+    citations: Citation[];
   } | null>(null);
 
   useEffect(() => {
@@ -882,6 +886,7 @@ export function ChatPage({
         content: "",
         tools: [],
         memory_trace: null,
+        citations: [],
       };
 
       const existing = summaries.find((c) => c.id === convId);
@@ -914,6 +919,7 @@ export function ChatPage({
             content: snap.content,
             tools: snap.tools,
             memory_trace: snap.memory_trace,
+            citations: snap.citations.length > 0 ? snap.citations : undefined,
             cost_usd: opts.costUsd,
             error: opts.error,
           });
@@ -924,6 +930,7 @@ export function ChatPage({
                     ...m,
                     id: result.id,
                     memory_trace: result.memory_trace ?? snap.memory_trace,
+                    citations: result.citations ?? snap.citations,
                   }
                 : m
             )
@@ -976,12 +983,19 @@ export function ChatPage({
               break;
             }
             case "tool_end": {
+              const incoming = evt.citations ?? [];
               if (streamingRef.current) {
                 streamingRef.current.tools = updateToolEvent(streamingRef.current.tools, evt, {
                   status: evt.ok ? "ok" : "error",
                   latency_ms: evt.latency_ms ?? null,
                   error: evt.error ?? null,
                 });
+                if (incoming.length > 0) {
+                  streamingRef.current.citations = mergeCitations(
+                    streamingRef.current.citations,
+                    incoming
+                  );
+                }
               }
               updateLastAssistant((m) => {
                 if (m.role !== "assistant") return m;
@@ -992,6 +1006,10 @@ export function ChatPage({
                     latency_ms: evt.latency_ms ?? null,
                     error: evt.error ?? null,
                   }),
+                  citations:
+                    incoming.length > 0
+                      ? mergeCitations(m.citations, incoming)
+                      : m.citations,
                 };
               });
               break;
@@ -1049,8 +1067,13 @@ export function ChatPage({
             case "done": {
               const costUsd = typeof evt.cost_usd === "number" ? evt.cost_usd : undefined;
               const memoryTrace = evt.memory_trace ?? null;
+              const finalCitations =
+                evt.citations && evt.citations.length > 0
+                  ? evt.citations
+                  : streamingRef.current?.citations ?? [];
               if (streamingRef.current) {
                 streamingRef.current.memory_trace = memoryTrace;
+                streamingRef.current.citations = finalCitations;
               }
               const snap = streamingRef.current;
               const emptyResponse = !snap?.content.trim();
@@ -1063,6 +1086,7 @@ export function ChatPage({
                         streaming: false,
                         cost_usd: costUsd,
                         memory_trace: memoryTrace,
+                        citations: finalCitations,
                       }
                     : m
                 );
@@ -1073,7 +1097,13 @@ export function ChatPage({
               }
               updateLastAssistant((m) =>
                 m.role === "assistant"
-                  ? { ...m, streaming: false, cost_usd: costUsd, memory_trace: memoryTrace }
+                  ? {
+                      ...m,
+                      streaming: false,
+                      cost_usd: costUsd,
+                      memory_trace: memoryTrace,
+                      citations: finalCitations,
+                    }
                   : m
               );
               void persistFinal({ costUsd });
@@ -1122,10 +1152,19 @@ export function ChatPage({
       void appendAssistantMessage(snap.convId, {
         content: snap.content,
         tools: snap.tools,
+        citations: snap.citations.length > 0 ? snap.citations : undefined,
       })
         .then((result) => {
           setMessagesForCurrent((prev) =>
-            prev.map((m) => (m.id === snap.msgId ? { ...m, id: result.id } : m))
+            prev.map((m) =>
+              m.id === snap.msgId
+                ? {
+                    ...m,
+                    id: result.id,
+                    citations: result.citations ?? snap.citations,
+                  }
+                : m
+            )
           );
           bumpSummary(snap.convId, {}, 1, true);
         })
@@ -1286,14 +1325,14 @@ export function ChatPage({
                   </div>
                   <div className="kf-thread-dock pointer-events-none absolute bottom-0 left-0 z-10" data-kf-region="thread-dock">
                     {showScrollToBottom ? (
-                      <div className="pointer-events-auto flex justify-center pb-2">
+                      <div className="pointer-events-none flex justify-center pb-2">
                         <button
                           type="button"
                           aria-label="滚动到底部"
-                          className="kf-scroll-to-bottom kf-press inline-flex size-9 items-center justify-center rounded-full border shadow-sm"
+                          className="kf-scroll-to-bottom kf-press pointer-events-auto inline-grid size-9 place-items-center rounded-full border p-0 shadow-sm"
                           onClick={() => scrollThreadToBottom("smooth")}
                         >
-                          <ArrowDown className="h-4 w-4" />
+                          <ArrowDown aria-hidden className="block h-4 w-4 shrink-0" strokeWidth={2} />
                         </button>
                       </div>
                     ) : null}

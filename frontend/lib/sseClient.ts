@@ -35,6 +35,18 @@ export type MemoryTrace = {
   recent_message_count?: number;
 };
 
+/** Structured evidence card from search_kb / web_search (not LLM prose). */
+export type Citation = {
+  channel: "kb" | "web";
+  title: string;
+  source: string;
+  score?: number | null;
+  url?: string | null;
+  snippet?: string | null;
+  kb_id?: string | null;
+  doc_id?: string | null;
+};
+
 export type ChatEvent = {
   event:
     | "tool_start"
@@ -54,6 +66,7 @@ export type ChatEvent = {
   reason?: string;
   cost_usd?: number;
   memory_trace?: MemoryTrace | null;
+  citations?: Citation[] | null;
   message?: string;
   kb_id?: string | null;
   /** v2-M2 BYOK gate: `llm_not_configured` | `embedding_not_configured` */

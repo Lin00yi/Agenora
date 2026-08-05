@@ -21,6 +21,7 @@ from src.infra.llm_adapters import create_tool_adapter
 from src.safety.tool_guard import is_tool_allowed
 from src.safety.prompt_injection import assess_prompt_injection, filter_untrusted_rag_text
 from src.tools.base import ToolRegistry
+from src.tools.citations import citations_from_tool_raw, merge_citations
 
 if TYPE_CHECKING:
     from src.settings_user import UserLLMConfig
@@ -1036,6 +1037,11 @@ async def kb_search_node(
 
         await emit({"event": "tool_start", "id": tool_id, "name": "search_kb", "input": args})
         result = await registry.call("search_kb", args)
+        citations = (
+            citations_from_tool_raw("search_kb", result.raw)
+            if result.error is None
+            else []
+        )
         await emit(
             {
                 "event": "tool_end",
@@ -1044,6 +1050,7 @@ async def kb_search_node(
                 "latency_ms": result.latency_ms,
                 "ok": result.error is None,
                 "error": result.error,
+                "citations": citations,
             }
         )
         tool_result = {
@@ -1053,6 +1060,7 @@ async def kb_search_node(
             "result": result.text if result.error is None else f"[tool error] {result.error}",
             "latency_ms": result.latency_ms,
             "error": "yes" if result.error is not None else None,
+            "citations": citations,
         }
         filtered_text = tool_result["result"]
         suspicious_count = 0
@@ -1081,10 +1089,12 @@ async def kb_search_node(
     )
     log = list(state.get("tool_call_log") or [])
     context_blocks: list[str] = []
+    turn_citations = list(state.get("citations") or [])
     rag_suspicious_chunks = int(state.get("rag_suspicious_chunks") or 0)
     prompt_reasons = list(state.get("prompt_injection_reasons") or [])
     for tool_result, context_item in pairs:
         log.append(tool_result)
+        turn_citations = merge_citations(turn_citations, tool_result.get("citations") or [])
         rag_suspicious_chunks += int(context_item.get("suspicious_count") or 0)
         prompt_reasons.extend(context_item.get("suspicious_reasons") or [])
         header = (
@@ -1106,6 +1116,7 @@ async def kb_search_node(
         "kb_context": "\n\n".join(context_blocks),
         "kb_search_done": True,
         "tool_call_log": log,
+        "citations": turn_citations,
         "rag_suspicious_chunks": rag_suspicious_chunks,
         "prompt_injection_risk": next_prompt_risk,
         "prompt_injection_reasons": sorted(set(prompt_reasons)),
@@ -1184,6 +1195,9 @@ async def call_tools_node(
         await emit({"event": "tool_start", "id": tc["id"], "name": name, "input": args})
 
         result = await registry.call(name, args)
+        citations = (
+            citations_from_tool_raw(name, result.raw) if result.error is None else []
+        )
         await emit(
             {
                 "event": "tool_end",
@@ -1192,6 +1206,7 @@ async def call_tools_node(
                 "latency_ms": result.latency_ms,
                 "ok": result.error is None,
                 "error": result.error,
+                "citations": citations,
             }
         )
         return {
@@ -1200,12 +1215,16 @@ async def call_tools_node(
             "content": result.text if result.error is None else f"[tool error] {result.error}",
             "is_error": result.error is not None,
             "raw": result.raw,
+            "citations": citations,
         }
 
     results = await asyncio.gather(*[_run(tc) for tc in pending])
 
     log = list(state.get("tool_call_log") or [])
+    turn_citations = list(state.get("citations") or [])
     for tc, r in zip(pending, results, strict=False):
+        cites = r.get("citations") or []
+        turn_citations = merge_citations(turn_citations, cites)
         log.append(
             {
                 "id": tc["id"],
@@ -1214,6 +1233,7 @@ async def call_tools_node(
                 "result": r["content"],
                 "latency_ms": 0,
                 "error": "yes" if r.get("is_error") else None,
+                "citations": cites,
             }
         )
 
@@ -1233,6 +1253,7 @@ async def call_tools_node(
         "messages": messages,
         "pending_tool_calls": [],
         "tool_call_log": log,
+        "citations": turn_citations,
         "final_report": final_report,
     }
 
