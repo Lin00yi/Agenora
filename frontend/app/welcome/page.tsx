@@ -17,12 +17,12 @@ import {
   Search,
   ShieldCheck,
   UsersRound,
-  Workflow,
   Zap,
 } from "lucide-react";
 
 import Brand, { APP_NAME } from "@/components/Brand";
 import ThemeToggle from "@/components/ThemeToggle";
+import { Button } from "@/components/ui/button";
 import { getToken } from "@/lib/auth";
 
 export default function WelcomePage() {
@@ -33,7 +33,7 @@ export default function WelcomePage() {
   }, []);
 
   return (
-    <div className="app-page min-h-screen text-fg">
+    <div className="app-page min-h-screen text-ink">
       <header className="app-page-header sticky top-0 z-30 border-b">
         <div className="mx-auto flex h-14 max-w-7xl items-center px-4 sm:px-6 lg:px-8">
           <Brand size="sm" showWordmark />
@@ -53,19 +53,23 @@ export default function WelcomePage() {
           <div className="ml-auto flex items-center gap-2">
             <ThemeToggle />
             {signedIn ? (
-              <Link href="/" className="admin-btn-primary px-4">
-                进入工作台
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-            ) : (
-              <>
-                <Link href="/login" className="admin-btn-secondary hidden px-4 sm:inline-flex">
-                  登录
-                </Link>
-                <Link href="/register" className="admin-btn-primary px-4">
-                  免费开始
+              <Button asChild>
+                <Link href="/">
+                  进入工作台
                   <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
+              </Button>
+            ) : (
+              <>
+                <Button asChild variant="outline" className="hidden sm:inline-flex">
+                  <Link href="/login">登录</Link>
+                </Button>
+                <Button asChild>
+                  <Link href="/register">
+                    免费开始
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </Button>
               </>
             )}
           </div>
@@ -73,38 +77,36 @@ export default function WelcomePage() {
       </header>
 
       <main>
-        <section className="border-b border-surface-border/70 bg-surface-2/25">
-          <div className="mx-auto grid max-w-7xl items-center gap-10 px-4 py-14 sm:px-6 lg:grid-cols-[0.92fr_1.08fr] lg:px-8">
-            <div>
-              <div className="inline-flex min-h-[36px] items-center gap-2 rounded-lg border border-surface-border/80 bg-surface px-3 text-xs font-medium text-muted shadow-sm">
-                <Database className="h-3.5 w-3.5 text-brand" />
-                私有知识库 · BYOK · 可自托管
-              </div>
-              <h1 className="mt-6 max-w-2xl text-3xl font-semibold leading-tight tracking-tight sm:text-5xl">
+        {/* Hero budget: Brand + headline + one sentence + CTA + one product visual */}
+        <section className="welcome-hero relative overflow-hidden border-b border-surface-border/70">
+          <div className="welcome-hero-wash pointer-events-none absolute inset-0" aria-hidden />
+          <div className="relative mx-auto grid max-w-7xl lg:min-h-[min(72vh,40rem)] lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+            <div className="flex flex-col justify-center px-4 py-14 sm:px-6 lg:px-8 lg:py-20">
+              <Brand size="lg" showWordmark className="welcome-hero-brand" />
+              <h1 className="mt-8 max-w-xl text-3xl font-semibold leading-[1.15] tracking-tight text-ink sm:text-4xl lg:text-[2.5rem]">
                 把分散资料变成可追问、可溯源的知识工作台
               </h1>
-              <p className="mt-5 max-w-xl text-base leading-8 text-muted">
-                上传文档、抓取网页、选择知识库后直接提问。{APP_NAME} 会展示检索过程、引用来源和生成状态，方便排查答案质量。
+              <p className="mt-5 max-w-lg text-base leading-7 text-muted sm:leading-8">
+                上传文档、抓取网页后直接提问。{APP_NAME} 展示检索过程与引用来源，答案可核查。
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <Link href={signedIn ? "/" : "/register"} className="admin-btn-primary min-h-[var(--control-h)] px-5">
-                  {signedIn ? "进入工作台" : "免费开始"}
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-                {!signedIn && (
-                  <Link href="/login" className="admin-btn-secondary min-h-[var(--control-h)] px-5">
-                    已有账号，去登录
+                <Button asChild className="min-h-[44px] px-5">
+                  <Link href={signedIn ? "/" : "/register"}>
+                    {signedIn ? "进入工作台" : "免费开始"}
+                    <ArrowRight className="h-4 w-4" />
                   </Link>
+                </Button>
+                {!signedIn && (
+                  <Button asChild variant="outline" className="min-h-[44px] px-5">
+                    <Link href="/login">已有账号，去登录</Link>
+                  </Button>
                 )}
-              </div>
-              <div className="mt-7 grid max-w-xl grid-cols-1 gap-2 text-xs text-muted sm:grid-cols-3">
-                <TrustPill icon={<ShieldCheck className="h-3.5 w-3.5" />} text="密钥加密存储" />
-                <TrustPill icon={<KeyRound className="h-3.5 w-3.5" />} text="本地账号体系" />
-                <TrustPill icon={<Workflow className="h-3.5 w-3.5" />} text="Docker 自托管" />
               </div>
             </div>
 
-            <ProductPreview />
+            <div className="welcome-hero-visual relative min-h-[22rem] border-t border-surface-border/70 lg:min-h-full lg:border-l lg:border-t-0">
+              <ProductPreview />
+            </div>
           </div>
         </section>
 
@@ -184,86 +186,41 @@ export default function WelcomePage() {
   );
 }
 
+/** Edge-aligned product plane — one conversation scene, no stat strip. */
 function ProductPreview() {
   return (
-    <div className="overflow-hidden rounded-lg border border-surface-border/80 bg-surface shadow-[0_18px_50px_rgb(15_23_42/0.14)]">
-      <div className="flex min-h-14 items-center justify-between gap-3 border-b border-surface-border/70 bg-surface px-4">
+    <div className="flex h-full min-h-[22rem] flex-col bg-surface lg:min-h-full">
+      <div className="flex h-14 shrink-0 items-center gap-3 border-b border-surface-border/70 px-5">
+        <Brand size="sm" showWordmark={false} />
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">企业知识工作台</div>
-          <div className="text-[11px] text-muted">knowflow.local / product-security</div>
+          <div className="truncate text-sm font-medium text-ink">产品资料库</div>
+          <div className="text-[11px] text-muted">混合检索 · 引用来源可见</div>
         </div>
-        <span className="chip chip-success min-h-7 shrink-0 px-2.5 text-[11px]">
-          运行正常
-        </span>
       </div>
-      <div className="grid gap-0 md:grid-cols-[240px_1fr]">
-        <aside className="border-b border-surface-border/70 bg-surface-2/45 p-4 md:border-b-0 md:border-r">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <div className="text-xs font-semibold tracking-wide text-muted">知识库</div>
-            <span className="chip chip-brand px-2 text-[11px]">3 活跃</span>
-          </div>
-          <div className="space-y-2">
-            <PreviewKbItem icon={<Database className="h-3.5 w-3.5" />} label="产品资料库" count={42} active />
-            <PreviewKbItem icon={<BookOpen className="h-3.5 w-3.5" />} label="研发规范" count={18} />
-            <PreviewKbItem icon={<UsersRound className="h-3.5 w-3.5" />} label="团队 Wiki" count={147} />
-          </div>
-          <div className="mt-4 rounded-lg border border-surface-border/80 bg-surface p-3 text-xs text-muted shadow-sm">
-            <div className="mb-2 flex items-center gap-2 font-medium text-fg">
-              <Search className="h-3.5 w-3.5 text-brand" />
-              检索配置
-            </div>
-            混合检索 · 重排已开启
-          </div>
-        </aside>
-        <section className="bg-surface p-4 sm:p-5">
-          <div className="grid gap-2 sm:grid-cols-3">
-            <PreviewStat label="文档" value="42" />
-            <PreviewStat label="分块" value="1,284" />
-            <PreviewStat label="来源" value="3" />
-          </div>
 
-          <div className="mt-3 rounded-lg border border-surface-border/80 bg-surface-2/45 px-4 py-3 text-sm shadow-sm">
-            <span className="font-medium text-fg">问题</span>
-            <div className="mt-1 text-muted">KnowFlow 如何保证企业数据安全？</div>
-          </div>
-          <div className="mt-3 rounded-lg border border-brand/25 bg-brand/5 p-4 text-sm leading-7 shadow-sm">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-xs font-medium text-brand">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                命中 3 个来源
-              </div>
-              <span className="chip chip-muted px-2 text-[11px] tabular-nums">
-                1.2s
-              </span>
-            </div>
-            系统会按知识库隔离数据，并展示引用来源。自托管部署时，资料、向量和密钥都保留在你的环境中。
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              <SourceChip title="安全白皮书" meta="PDF · p.8" />
-              <SourceChip title="权限管理说明" meta="MD · §2.1" />
-            </div>
-          </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-4 p-5 sm:p-6">
+        <div className="ml-auto max-w-[90%] rounded-lg border border-brand/25 bg-brand/8 px-4 py-3 text-sm leading-6 text-ink">
+          KnowFlow 如何保证企业数据安全？
+        </div>
 
-          <div className="mt-3 overflow-hidden rounded-lg border border-surface-border/80 bg-surface shadow-sm">
-            <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-3 bg-surface-2/70 px-3 py-2 text-[11px] font-semibold tracking-wide text-muted">
-              <span>流水线</span>
-              <span>耗时</span>
-              <span>状态</span>
+        <div className="mr-auto max-w-[95%] space-y-3">
+          <div className="rounded-lg border border-surface-border/80 bg-canvas px-4 py-3 text-sm leading-7 text-ink">
+            <div className="mb-2 flex items-center gap-2 text-xs font-medium text-brand">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              命中 2 个来源
             </div>
-            <PreviewPipeline name="混合检索" latency="420ms" status="完成" />
-            <PreviewPipeline name="重排 Top 12" latency="310ms" status="完成" />
-            <PreviewPipeline name="答案生成" latency="1.2s" status="完成" />
+            系统按知识库隔离数据，并展示引用来源。自托管时，资料、向量和密钥都保留在你的环境中。
           </div>
-        </section>
+          <div className="flex flex-wrap gap-2">
+            <SourceChip title="安全白皮书" meta="PDF · p.8" />
+            <SourceChip title="权限管理说明" meta="MD · §2.1" />
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted">
+            <Search className="h-3.5 w-3.5 text-brand" />
+            检索 420ms · 重排 310ms · 生成完成
+          </div>
+        </div>
       </div>
-    </div>
-  );
-}
-
-function TrustPill({ icon, text }: { icon: React.ReactNode; text: string }) {
-  return (
-    <div className="flex min-h-[var(--control-h)] items-center gap-2 rounded-lg border border-surface-border/80 bg-surface px-3 py-2 shadow-sm">
-      <span className="text-brand">{icon}</span>
-      <span>{text}</span>
     </div>
   );
 }
@@ -272,7 +229,7 @@ function SectionHeading({ eyebrow, title, desc }: { eyebrow: string; title: stri
   return (
     <div className="max-w-2xl">
       <div className="text-xs font-semibold tracking-wide text-brand">{eyebrow}</div>
-      <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h2>
+      <h2 className="mt-2 text-2xl font-semibold tracking-tight text-ink sm:text-3xl">{title}</h2>
       {desc && <p className="mt-3 text-sm leading-7 text-muted">{desc}</p>}
     </div>
   );
@@ -280,11 +237,11 @@ function SectionHeading({ eyebrow, title, desc }: { eyebrow: string; title: stri
 
 function FeatureCard({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
   return (
-    <div className="rounded-lg border border-surface-border/80 bg-surface p-5 shadow-sm transition-[background-color,border-color,box-shadow] hover:border-brand/35 hover:bg-surface-2/35 hover:shadow-md">
+    <div className="rounded-lg border border-surface-border/80 bg-surface p-5 shadow-soft transition-[background-color,border-color,box-shadow] hover:border-brand/35 hover:bg-surface-2/35 hover:shadow-md">
       <div className="admin-icon-tile admin-icon-tile-brand mb-4">
         {icon}
       </div>
-      <h3 className="font-semibold">{title}</h3>
+      <h3 className="font-semibold text-ink">{title}</h3>
       <p className="mt-2 text-sm leading-7 text-muted">{desc}</p>
     </div>
   );
@@ -292,14 +249,14 @@ function FeatureCard({ icon, title, desc }: { icon: React.ReactNode; title: stri
 
 function StepCard({ n, icon, title, desc }: { n: number; icon: React.ReactNode; title: string; desc: string }) {
   return (
-    <div className="rounded-lg border border-surface-border/80 bg-surface p-5 shadow-sm">
+    <div className="rounded-lg border border-surface-border/80 bg-surface p-5 shadow-soft">
       <div className="mb-4 flex items-center gap-3">
-        <span className="flex size-[var(--control-h)] items-center justify-center rounded-lg bg-brand text-sm font-semibold text-white shadow-sm">
+        <span className="flex size-[var(--control-h)] items-center justify-center rounded-lg bg-brand text-sm font-semibold text-on-brand shadow-sm">
           {n}
         </span>
         <span className="text-brand">{icon}</span>
       </div>
-      <h3 className="font-semibold">{title}</h3>
+      <h3 className="font-semibold text-ink">{title}</h3>
       <p className="mt-2 text-sm leading-7 text-muted">{desc}</p>
     </div>
   );
@@ -307,38 +264,12 @@ function StepCard({ n, icon, title, desc }: { n: number; icon: React.ReactNode; 
 
 function ScenarioCard({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
   return (
-    <div className="rounded-lg border border-surface-border/80 bg-surface p-5 shadow-sm transition-[background-color,border-color,box-shadow] hover:border-brand/35 hover:bg-surface-2/35 hover:shadow-md">
+    <div className="rounded-lg border border-surface-border/80 bg-surface p-5 shadow-soft transition-[background-color,border-color,box-shadow] hover:border-brand/35 hover:bg-surface-2/35 hover:shadow-md">
       <div className="admin-icon-tile admin-icon-tile-muted mb-4 text-brand">
         {icon}
       </div>
-      <h3 className="font-semibold">{title}</h3>
+      <h3 className="font-semibold text-ink">{title}</h3>
       <p className="mt-2 text-sm leading-7 text-muted">{desc}</p>
-    </div>
-  );
-}
-
-function PreviewKbItem({
-  icon,
-  label,
-  count,
-  active,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  count: number;
-  active?: boolean;
-}) {
-  return (
-    <div
-      className={`flex min-h-[var(--control-h)] items-center justify-between gap-3 rounded-lg border px-3 py-2 text-xs shadow-sm ${
-        active ? "border-brand/45 bg-brand/10 text-fg" : "border-surface-border/70 bg-surface text-muted"
-      }`}
-    >
-      <span className="flex min-w-0 items-center gap-2">
-        <span className={active ? "text-brand" : "text-muted"}>{icon}</span>
-        <span className="truncate">{label}</span>
-      </span>
-      <span className="tabular-nums">{count}</span>
     </div>
   );
 }
@@ -346,30 +277,11 @@ function PreviewKbItem({
 function SourceChip({ title, meta }: { title: string; meta: string }) {
   return (
     <div className="rounded-lg border border-surface-border/80 bg-surface px-3 py-2 text-xs shadow-sm">
-      <div className="flex items-center gap-1.5 font-medium text-fg">
+      <div className="flex items-center gap-1.5 font-medium text-ink">
         <CheckCircle2 className="h-3.5 w-3.5 text-brand" />
         {title}
       </div>
       <div className="mt-1 text-muted">{meta}</div>
-    </div>
-  );
-}
-
-function PreviewStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-h-[64px] rounded-lg border border-surface-border/80 bg-surface-2/45 px-3 py-2 shadow-sm">
-      <div className="text-[11px] uppercase text-muted">{label}</div>
-      <div className="mt-1 text-sm font-semibold">{value}</div>
-    </div>
-  );
-}
-
-function PreviewPipeline({ name, latency, status }: { name: string; latency: string; status: string }) {
-  return (
-    <div className="grid min-h-[var(--control-h)] grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-t border-surface-border/60 px-3 py-2 text-xs">
-      <span className="min-w-0 truncate font-medium">{name}</span>
-      <span className="tabular-nums text-muted">{latency}</span>
-      <span className="chip chip-success px-2">{status}</span>
     </div>
   );
 }

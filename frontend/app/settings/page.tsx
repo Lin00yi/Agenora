@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Bot, BrainCircuit, Globe2, KeyRound, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import Dialog from "@/components/Dialog";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import Select from "@/components/Select";
 import { getToken } from "@/lib/auth";
 import {
@@ -30,6 +30,7 @@ import {
 import { LoadingState, StateView } from "@/components/ui/state-view";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Switch } from "@/components/ui/switch";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
@@ -74,7 +75,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="app-page min-h-dvh text-fg">
+    <div className="app-page min-h-dvh text-ink">
       <header className="app-page-header border-b">
         <div className="mx-auto flex h-14 max-w-6xl items-center px-4 sm:px-6">
           <Link
@@ -247,14 +248,15 @@ function LLMCard({
           </div>
         </div>
         {initial?.configured && (
-          <button
+          <Button
             onClick={() => setClearOpen(true)}
-            className="admin-btn-secondary w-full shrink-0 sm:w-auto"
+            variant="outline"
+            className="w-full shrink-0 sm:w-auto"
             type="button"
           >
             <Trash2 className="h-4 w-4" />
             清除
-          </button>
+          </Button>
         )}
       </header>
 
@@ -304,10 +306,11 @@ function LLMCard({
                 className={cn(inputClass, "pl-9")}
               />
             </div>
-            <button
+            <Button
               onClick={handleProbe}
               disabled={!canProbe}
-              className="admin-btn-secondary h-[var(--control-h)] w-full shrink-0 sm:w-auto"
+              variant="outline"
+              className="h-[var(--control-h)] w-full shrink-0 sm:w-auto"
               type="button"
             >
               {probing ? (
@@ -315,7 +318,7 @@ function LLMCard({
               ) : (
                 "测试连接"
               )}
-            </button>
+            </Button>
           </div>
         </Field>
 
@@ -365,16 +368,16 @@ function LLMCard({
         <span className="min-w-0 flex-1 text-xs text-muted">
           {canSave ? "配置校验通过，可以保存" : "补全 Base URL、API Key、模型和上下文窗口后保存"}
         </span>
-        <button
+        <Button
+          type="button"
+          className={primaryActionClass}
           onClick={handleSave}
           disabled={!canSave}
-          className={primaryActionClass}
-          type="button"
         >
           {saving ? "保存中..." : "保存 LLM 配置"}
-        </button>
+        </Button>
       </div>
-      <Dialog
+      <ConfirmDialog
         open={clearOpen}
         onOpenChange={setClearOpen}
         title="清除 LLM 配置？"
@@ -463,7 +466,7 @@ function KbOptionsCard({
         <span className="min-w-0 flex-1 text-xs text-muted">
           {dirty ? "选项已变更，保存后会影响后续 KB 对话" : "当前选项与服务器配置一致"}
         </span>
-        <button
+        <Button
           type="button"
           onClick={onSave}
           disabled={saving || !dirty}
@@ -477,7 +480,7 @@ function KbOptionsCard({
           ) : (
             "保存 KB 选项"
           )}
-        </button>
+        </Button>
       </div>
     </section>
   );
@@ -545,14 +548,15 @@ function MemoryCard() {
             </p>
           </div>
         </div>
-        <button
+        <Button
           type="button"
-          className="admin-btn-secondary w-full shrink-0 sm:w-auto"
+          variant="outline"
+          className="w-full shrink-0 sm:w-auto"
           onClick={() => void refresh()}
           disabled={loading}
         >
           刷新
-        </button>
+        </Button>
       </header>
 
       <div className="px-5 py-5">
@@ -584,7 +588,7 @@ function MemoryCard() {
                       <p className="mt-1 text-xs text-muted">来源消息：{memory.source_message_ids.length} 条</p>
                     ) : null}
                   </div>
-                  <button
+                  <Button
                     type="button"
                     className={cn(secondaryActionClass, "mx-3 mb-3 text-muted hover:text-destructive sm:m-3")}
                     onClick={() => setDeleteTarget(memory)}
@@ -592,7 +596,7 @@ function MemoryCard() {
                     aria-label={`删除记忆：${memory.content}`}
                   >
                     <Trash2 className="h-4 w-4" /> 删除
-                  </button>
+                  </Button>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 border-t border-surface-border/60 bg-surface-2/35 px-3 py-3 text-xs">
                   <span className="text-muted">重要度</span>
@@ -623,7 +627,7 @@ function MemoryCard() {
       )}
       </div>
 
-      <Dialog
+      <ConfirmDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
           if (!open && !busyId) setDeleteTarget(null);
@@ -669,8 +673,12 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 const inputClass =
   "admin-input";
 
-const primaryActionClass =
-  "admin-btn-primary w-full shrink-0 sm:w-auto";
+const primaryActionClass = cn(
+  buttonVariants({ variant: "default" }),
+  "w-full shrink-0 sm:w-auto"
+);
 
-const secondaryActionClass =
-  "admin-btn-secondary w-full shrink-0 sm:w-auto";
+const secondaryActionClass = cn(
+  buttonVariants({ variant: "outline" }),
+  "w-full shrink-0 sm:w-auto"
+);

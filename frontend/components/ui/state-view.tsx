@@ -35,7 +35,7 @@ export function StateView({
       <span className="ak-state-icon" aria-hidden>
         <Icon className="size-5" />
       </span>
-      {title && <h2 className="text-pretty text-sm font-semibold text-fg">{title}</h2>}
+      {title && <h2 className="text-pretty text-sm font-semibold text-ink">{title}</h2>}
       {description && <p className="max-w-md text-pretty text-sm leading-6 text-muted">{description}</p>}
       {action && <div className="mt-1">{action}</div>}
     </section>
@@ -66,7 +66,7 @@ export function LoadingState({
       <div className="ak-loading-orbit" aria-hidden>
         <LoaderCircle className="size-5 animate-spin text-primary" />
       </div>
-      <h2 className="text-sm font-semibold text-fg">{label}</h2>
+      <h2 className="text-sm font-semibold text-ink">{label}</h2>
       <p className="text-sm text-muted">{description}</p>
       <div className="ak-skeleton-lines" aria-hidden>
         <span />

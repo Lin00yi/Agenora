@@ -23,6 +23,7 @@ const config: Config = {
         mono: ["Menlo", "Monaco", "Consolas", "monospace"],
       },
       colors: {
+        // shadcn semantic (full color values from CSS vars)
         background: "var(--background)",
         foreground: "var(--foreground)",
         card: {
@@ -56,12 +57,17 @@ const config: Config = {
         border: "var(--border)",
         input: "var(--input)",
         ring: "var(--ring)",
+        // KnowFlow semantic RGB tokens (design-system v4)
+        canvas: "rgb(var(--canvas) / <alpha-value>)",
+        ink: "rgb(var(--ink) / <alpha-value>)",
+        "ink-2": "rgb(var(--ink-2) / <alpha-value>)",
+        faint: "rgb(var(--faint) / <alpha-value>)",
         brand: "rgb(var(--brand) / <alpha-value>)",
-        "brand-dark": "rgb(var(--brand-dark) / <alpha-value>)",
+        "brand-strong": "rgb(var(--brand-strong) / <alpha-value>)",
+        "brand-cyan": "rgb(var(--brand-cyan) / <alpha-value>)",
+        "on-brand": "rgb(var(--on-brand) / <alpha-value>)",
+        composer: "rgb(var(--composer) / <alpha-value>)",
         subtle: "rgb(var(--text-subtle) / <alpha-value>)",
-        // Legacy aliases used across the app (gradual migration)
-        bg: "rgb(var(--bg) / <alpha-value>)",
-        fg: "rgb(var(--fg) / <alpha-value>)",
         surface: "rgb(var(--surface) / <alpha-value>)",
         "surface-2": "rgb(var(--surface-2) / <alpha-value>)",
         "surface-border": "rgb(var(--surface-border) / <alpha-value>)",
@@ -77,8 +83,8 @@ const config: Config = {
         sm: "calc(var(--radius) - 4px)",
       },
       boxShadow: {
-        soft: "0 1px 2px 0 rgb(var(--fg) / 0.04), 0 1px 1px 0 rgb(var(--fg) / 0.02)",
-        lift: "0 4px 12px -2px rgb(var(--fg) / 0.08), 0 2px 4px 0 rgb(var(--fg) / 0.04)",
+        soft: "0 1px 2px 0 rgb(var(--ink) / 0.04), 0 1px 1px 0 rgb(var(--ink) / 0.02)",
+        lift: "0 4px 12px -2px rgb(var(--ink) / 0.08), 0 2px 4px 0 rgb(var(--ink) / 0.04)",
       },
       ringWidth: {
         3: "3px",

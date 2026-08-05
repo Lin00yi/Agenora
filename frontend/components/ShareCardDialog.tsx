@@ -8,6 +8,8 @@ import { toast } from "sonner";
 
 import AppModal from "@/components/AppModal";
 import { APP_NAME } from "@/components/Brand";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 type Props = {
   open: boolean;
@@ -118,7 +120,7 @@ export default function ShareCardDialog({
         <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-muted">适合朋友圈、群聊、Slack 等场景分享</p>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-            <button
+            <Button
               type="button"
               onClick={onCopy}
               disabled={rendering}
@@ -130,8 +132,8 @@ export default function ShareCardDialog({
                 <Copy className="h-4 w-4" />
               )}
               复制到剪贴板
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               onClick={onDownload}
               disabled={rendering}
@@ -143,7 +145,7 @@ export default function ShareCardDialog({
                 <Download className="h-4 w-4" />
               )}
               下载图片
-            </button>
+            </Button>
           </div>
         </div>
       }
@@ -167,7 +169,7 @@ export default function ShareCardDialog({
             <div className="text-[10px] font-medium uppercase tracking-wider text-muted">
               问题
             </div>
-            <div className="mt-1 text-sm text-fg">{question}</div>
+            <div className="mt-1 text-sm text-ink">{question}</div>
           </div>
         )}
 
@@ -181,7 +183,7 @@ export default function ShareCardDialog({
 
         <div className="flex items-center justify-between border-t border-surface-border/70 bg-surface-2/45 px-5 py-3 text-[10px] text-muted">
           <span>
-            由 <b className="text-fg">{APP_NAME}</b> 生成 · 上传文档，秒级问答
+            由 <b className="text-ink">{APP_NAME}</b> 生成 · 上传文档，秒级问答
           </span>
           <span>{new Date().toLocaleDateString("zh-CN")}</span>
         </div>
@@ -190,8 +192,12 @@ export default function ShareCardDialog({
   );
 }
 
-const primaryActionClass =
-  "admin-btn-primary w-full shrink-0 px-4 text-sm sm:w-auto";
+const primaryActionClass = cn(
+  buttonVariants({ variant: "default" }),
+  "w-full shrink-0 px-4 text-sm sm:w-auto"
+);
 
-const secondaryActionClass =
-  "admin-btn-secondary w-full shrink-0 px-3 text-sm sm:w-auto";
+const secondaryActionClass = cn(
+  buttonVariants({ variant: "outline" }),
+  "w-full shrink-0 px-3 text-sm sm:w-auto"
+);

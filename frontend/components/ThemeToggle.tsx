@@ -37,8 +37,10 @@ export default function ThemeToggle({
         <SelectTrigger
           aria-label="外观主题"
           title="外观主题"
+          tone="plain"
+          layout="icon"
           className={cn(
-            "ak-theme-toggle-compact size-[var(--control-h)] shrink-0 !grid-cols-1 place-items-center gap-0 px-0 [&>svg:last-child]:hidden",
+            "ak-theme-toggle-compact size-[var(--control-h)] shrink-0",
             className
           )}
         >

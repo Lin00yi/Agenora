@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { Loader2, type LucideIcon } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 
 type AdminRowActionProps = {
@@ -29,10 +30,10 @@ export function AdminRowAction({
   href,
 }: AdminRowActionProps) {
   const className = cn(
-    "admin-row-action",
-    variant === "brand" && "admin-row-action-brand",
-    variant === "danger" && "admin-row-action-danger",
-    loading && "admin-row-action-loading"
+    variant === "brand" && "text-brand hover:text-brand hover:bg-brand/10",
+    variant === "danger" &&
+      "text-danger hover:border-danger/30 hover:bg-danger/10 hover:text-danger",
+    loading && "pointer-events-none opacity-70"
   );
 
   const content = (
@@ -48,22 +49,24 @@ export function AdminRowAction({
 
   if (href && !disabled && !loading) {
     return (
-      <Link href={href} className={className} title={title}>
-        {content}
-      </Link>
+      <Button variant="ghost" size="sm" className={className} asChild title={title}>
+        <Link href={href}>{content}</Link>
+      </Button>
     );
   }
 
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="sm"
       className={className}
       title={title}
       disabled={disabled || loading}
       onClick={onClick}
     >
       {content}
-    </button>
+    </Button>
   );
 }
 
@@ -88,9 +91,10 @@ export function AdminToolbarButton({
   className,
 }: AdminToolbarButtonProps) {
   return (
-    <button
+    <Button
       type={type}
-      className={cn("admin-toolbar-btn", className)}
+      variant="outline"
+      className={cn(className)}
       disabled={disabled || loading}
       onClick={onClick}
     >
@@ -101,6 +105,6 @@ export function AdminToolbarButton({
         />
       ) : null}
       {children}
-    </button>
+    </Button>
   );
 }

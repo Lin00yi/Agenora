@@ -15,12 +15,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import Dialog from "@/components/Dialog";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import AppModal from "@/components/AppModal";
 import Select from "@/components/Select";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 import { LoadingState, StateView } from "@/components/ui/state-view";
 import { getToken } from "@/lib/auth";
 import {
@@ -162,7 +163,7 @@ export default function MemoriesPage() {
   }
 
   return (
-    <div className="app-page min-h-dvh text-fg">
+    <div className="app-page min-h-dvh text-ink">
       <header className="app-page-header border-b">
         <div className="mx-auto flex h-14 max-w-5xl items-center px-4 sm:px-6">
           <Link href="/" className="app-nav-link app-nav-link-compact">
@@ -191,11 +192,11 @@ export default function MemoriesPage() {
                 </p>
               </div>
               <p className="shrink-0 text-sm tabular-nums text-muted">
-                有效 <span className="font-semibold text-fg">{stats.active}</span>
+                有效 <span className="font-semibold text-ink">{stats.active}</span>
                 <span className="mx-2 text-surface-border">·</span>
-                本页 <span className="font-semibold text-fg">{stats.total}</span>
+                本页 <span className="font-semibold text-ink">{stats.total}</span>
                 <span className="mx-2 text-surface-border">·</span>
-                已向量化 <span className="font-semibold text-fg">{stats.embedded}</span>
+                已向量化 <span className="font-semibold text-ink">{stats.embedded}</span>
               </p>
             </div>
           </div>
@@ -234,9 +235,10 @@ export default function MemoriesPage() {
                   aria-label="按范围筛选"
                   className="h-[var(--control-h)] min-h-[var(--control-h)] w-full min-w-0 lg:w-[7.5rem]"
                 />
-                <button
+                <Button
                   type="button"
-                  className="admin-btn-secondary h-[var(--control-h)] min-h-[var(--control-h)]"
+                  variant="outline"
+                  className="h-[var(--control-h)] min-h-[var(--control-h)]"
                   onClick={() => void refresh(status)}
                   disabled={refreshing}
                 >
@@ -246,7 +248,7 @@ export default function MemoriesPage() {
                     <RefreshCw className="h-4 w-4" />
                   )}
                   刷新
-                </button>
+                </Button>
               </div>
             </div>
           </section>
@@ -286,7 +288,7 @@ export default function MemoriesPage() {
         onDone={() => setBusyId(null)}
       />
 
-      <Dialog
+      <ConfirmDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
           if (!open && !busyId) setDeleteTarget(null);
@@ -338,7 +340,7 @@ function MemoryRow({
             <MemoryChip tone="neutral">{memory.scope === "kb" ? "知识库" : "全局"}</MemoryChip>
           </div>
 
-          <p className="line-clamp-2 break-words text-[15px] font-medium leading-6 text-fg">
+          <p className="line-clamp-2 break-words text-[15px] font-medium leading-6 text-ink">
             {memory.content}
           </p>
 
@@ -373,7 +375,7 @@ function MemoryRow({
 
           <button
             type="button"
-            className="mt-2 inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-muted transition hover:bg-surface-2 hover:text-fg"
+            className="mt-2 inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-muted transition hover:bg-surface-2 hover:text-ink"
             onClick={() => setDetailsOpen((open) => !open)}
             aria-expanded={detailsOpen}
           >
@@ -421,7 +423,7 @@ function DetailItem({
   return (
     <div className="min-w-0">
       <div className="mb-0.5 text-muted">{label}</div>
-      <div className={cn("truncate font-medium text-fg", mono && "font-mono text-[11px]")}>
+      <div className={cn("truncate font-medium text-ink", mono && "font-mono text-[11px]")}>
         {value}
       </div>
     </div>
@@ -452,7 +454,7 @@ function MemoryChip({
         tone === "accent" &&
           "border-brand/30 bg-brand/15 text-brand dark:text-sky-300",
         tone === "neutral" &&
-          "border-surface-border/80 bg-surface-2/70 text-fg/85"
+          "border-surface-border/80 bg-surface-2/70 text-ink/85"
       )}
     >
       {children}
@@ -541,13 +543,13 @@ function MemoryEditDialog({
       busy={busy}
       footer={
         <>
-          <button type="button" className="admin-btn-secondary" onClick={onClose} disabled={busy}>
+          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
             取消
-          </button>
-          <button type="button" className="admin-btn-primary" onClick={save} disabled={busy}>
+          </Button>
+          <Button type="button" onClick={save} disabled={busy}>
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
             保存
-          </button>
+          </Button>
         </>
       }
     >
@@ -565,7 +567,7 @@ function MemoryEditDialog({
 
         <button
           type="button"
-          className="inline-flex h-8 items-center gap-1 text-xs font-medium text-muted transition hover:text-fg"
+          className="inline-flex h-8 items-center gap-1 text-xs font-medium text-muted transition hover:text-ink"
           onClick={() => setAdvancedOpen((open) => !open)}
           aria-expanded={advancedOpen}
         >

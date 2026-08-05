@@ -3,26 +3,47 @@
 @tailwind utilities;
 
 /* ============================================================
-   Legacy app tokens (RGB triples) - NOT overwritten by shadcn
-   Use via tailwind: bg-brand, text-subtle, bg-bg, etc.
+   KnowFlow design tokens v4 — single source of truth (RGB channels)
+   Semantic names only. shadcn vars in @layer base bind here.
+   Spec: frontend/design-system.md
    ============================================================ */
 :root {
-  --bg: 246 248 251;
-  --fg: 21 32 51;
-  --text-subtle: 91 103 124;
-  --brand: 37 99 235;
-  --brand-dark: 29 78 216;
-
+  /* Canvas & surface */
+  --canvas: 246 248 251;
   --surface: 255 255 255;
   --surface-2: 241 245 249;
-
+  --composer: 250 252 254;
   --surface-border: 221 227 237;
   --surface-border-strong: 194 205 220;
 
+  /* Ink */
+  --ink: 21 32 51;
+  --ink-2: 51 65 85;
+  --text-subtle: 91 103 124;
+  --faint: 148 163 184;
+
+  /* Brand (blue → cyan) */
+  --brand: 37 99 235;
+  --brand-strong: 29 78 216;
+  --brand-cyan: 14 165 233;
+  --on-brand: 255 255 255;
+
+  /* Semantic */
   --success: 22 163 74;
   --warning: 217 119 6;
   --danger: 220 38 38;
   --info: 37 99 235;
+
+  /* Chat full-color aliases (for color-mix / direct paint) */
+  --chat-canvas: rgb(var(--canvas));
+  --chat-surface: rgb(var(--surface));
+  --chat-soft: rgb(var(--surface-2));
+  --chat-ink: rgb(var(--ink));
+  --chat-muted: rgb(var(--text-subtle));
+  --chat-line: rgb(var(--surface-border));
+  --chat-accent: rgb(var(--brand));
+  --chat-accent-strong: rgb(var(--brand-strong));
+  --chat-on-accent: rgb(var(--on-brand));
 
   /* Shared motion vocabulary: deliberate, fast, and consistent. */
   --ease-out: ease-out;
@@ -35,374 +56,106 @@
   /* Control sizing: default interactive controls vs dense/inline compact. */
   --control-h: 36px;
   --control-h-sm: 28px;
+  --radius: 0.5rem;
 }
 
-/* Chat workspace theme bridge.
-   The redesigned chat page originally used hardcoded dark Tailwind utilities.
-   These scoped rules let the existing layout respond to the app theme without
-   affecting admin/settings/auth pages. */
-@layer components {
-  .ak-chat {
-    --ak-bg: 246 248 251;
-    --ak-sidebar: 255 255 255;
-    --ak-topbar: 255 255 255;
-    --ak-surface: 255 255 255;
-    --ak-surface-2: 241 245 249;
-    --ak-panel: 246 248 251;
-    --ak-card: 255 255 255;
-    --ak-composer: 250 252 254;
-    --ak-border: 221 227 237;
-    --ak-text: 15 23 42;
-    --ak-text-2: 51 65 85;
-    --ak-muted: 100 116 139;
-    --ak-faint: 148 163 184;
-    --ak-tint: 15 23 42 / 0.028;
-    --ak-hover: 15 23 42 / 0.055;
-    --ak-main-bg: rgb(var(--ak-bg));
-    background: rgb(var(--ak-bg)) !important;
-    color: rgb(var(--ak-text)) !important;
-  }
-
-  .dark .ak-chat {
-    --ak-bg: 9 14 24;
-    --ak-sidebar: 12 18 30;
-    --ak-topbar: 11 20 34;
-    --ak-surface: 17 28 43;
-    --ak-surface-2: 13 23 38;
-    --ak-panel: 10 18 31;
-    --ak-card: 17 28 43;
-    --ak-composer: 8 16 28;
-    --ak-border: 255 255 255 / 0.12;
-    --ak-text: 241 245 249;
-    --ak-text-2: 203 213 225;
-    --ak-muted: 148 163 184;
-    --ak-faint: 71 85 105;
-    --ak-tint: 255 255 255 / 0.05;
-    --ak-hover: 255 255 255 / 0.08;
-    --ak-main-bg: rgb(var(--ak-bg));
-  }
-
-  .ak-chat [class*="bg-[#08101c]"],
-  .ak-chat [class*="bg-[#0a121f]"],
-  .ak-chat [class*="bg-[#0b1422]"],
-  .ak-chat [class*="bg-[#0d1726]"],
-  .ak-chat [class*="bg-[#111c2b]"] {
-    background-color: rgb(var(--ak-surface)) !important;
+/* Chat workspace styles — semantic tokens (design-system v4).
+   Paint via --chat-* aliases; layout vars --chat-composer-offset / --chat-thread-scrollbar.
+   Unlayered so Chat paint beats Tailwind utilities without !important. */
+.ak-chat {
+    background: rgb(var(--canvas));
+    color: rgb(var(--ink));
   }
 
   .ak-chat .ak-sidebar {
-    background-color: rgb(var(--ak-sidebar) / 0.98) !important;
-    border-color: rgb(var(--ak-border)) !important;
+    background-color: color-mix(in srgb, rgb(var(--surface)) 98%, transparent);
+    border-color: rgb(var(--surface-border));
   }
 
   .ak-chat .ak-topbar {
-    background-color: rgb(var(--ak-topbar) / 0.94) !important;
+    background-color: color-mix(in srgb, rgb(var(--surface)) 94%, transparent);
   }
 
   .ak-chat .ak-main {
-    background: var(--ak-main-bg) !important;
-  }
-
-  .ak-chat .ak-insight {
-    background: color-mix(in srgb, var(--chat-surface, #ffffff) 92%, var(--chat-canvas, #f6f8fb)) !important;
-    border-left: 1px solid var(--chat-line, rgb(var(--ak-border))) !important;
-    color: var(--chat-ink, rgb(var(--ak-text))) !important;
-  }
-
-  .ak-chat .ak-insight section {
-    border-color: var(--chat-line, rgb(var(--ak-border))) !important;
-  }
-
-  .ak-chat .ak-insight-section {
-    border-color: var(--chat-line) !important;
-  }
-
-  .ak-chat .ak-insight-heading,
-  .ak-chat .ak-step-title,
-  .ak-chat .ak-tool-title,
-  .ak-chat .ak-trace-value,
-  .ak-chat .ak-info-value {
-    color: var(--chat-ink) !important;
-  }
-
-  .ak-chat .ak-step-meta,
-  .ak-chat .ak-tool-meta,
-  .ak-chat .ak-tool-detail,
-  .ak-chat .ak-trace-label,
-  .ak-chat .ak-trace-title,
-  .ak-chat .ak-trace-score,
-  .ak-chat .ak-trace-body,
-  .ak-chat .ak-info-label,
-  .ak-chat .ak-empty-panel {
-    color: var(--chat-muted) !important;
-  }
-
-  .ak-chat .ak-insight-accent,
-  .ak-chat .ak-step-check,
-  .ak-chat .ak-step-dot,
-  .ak-chat .ak-trace-type,
-  .ak-chat .ak-info-link {
-    color: var(--chat-accent) !important;
-  }
-
-  .ak-chat .ak-info-link:hover {
-    color: color-mix(in srgb, var(--chat-accent) 82%, var(--chat-ink)) !important;
-  }
-
-  .ak-chat .ak-insight-timeline-line {
-    background: var(--chat-line) !important;
-  }
-
-  .ak-chat .ak-insight .ak-step-node {
-    border-color: var(--chat-line) !important;
-    background: var(--chat-surface) !important;
-  }
-
-  .ak-chat .ak-insight .ak-step-node-running,
-  .ak-chat .ak-insight .ak-step-node-done {
-    border-color: color-mix(in srgb, var(--chat-accent) 56%, var(--chat-line)) !important;
-    background: color-mix(in srgb, var(--chat-accent) 12%, var(--chat-surface)) !important;
-  }
-
-  .ak-chat .ak-step-card-active {
-    border-color: color-mix(in srgb, var(--chat-accent) 34%, var(--chat-line)) !important;
-    background: color-mix(in srgb, var(--chat-accent) 8%, var(--chat-surface)) !important;
-  }
-
-  .ak-chat .ak-tool-list,
-  .ak-chat .ak-trace-card,
-  .ak-chat .ak-memory-summary,
-  .ak-chat .ak-empty-panel {
-    border-color: var(--chat-line) !important;
-    background: color-mix(in srgb, var(--chat-soft) 80%, transparent) !important;
-  }
-
-  .ak-chat .ak-tool-row {
-    border-color: var(--chat-line) !important;
-  }
-
-  .ak-chat .ak-copy-id-button {
-    border-color: var(--chat-line) !important;
-    background: color-mix(in srgb, var(--chat-soft) 78%, transparent) !important;
-    color: var(--chat-muted) !important;
-  }
-
-  .ak-chat .ak-copy-id-button:hover {
-    border-color: color-mix(in srgb, var(--chat-accent) 36%, var(--chat-line)) !important;
-    background: color-mix(in srgb, var(--chat-accent) 8%, var(--chat-surface)) !important;
-    color: var(--chat-accent) !important;
-  }
-
-  .ak-chat .ak-insight h2,
-  .ak-chat .ak-insight .text-slate-100,
-  .ak-chat .ak-insight .text-slate-200,
-  .ak-chat .ak-insight .text-slate-300 {
-    color: var(--chat-ink, rgb(var(--ak-text))) !important;
-  }
-
-  .ak-chat .ak-insight .text-slate-400,
-  .ak-chat .ak-insight .text-slate-500,
-  .ak-chat .ak-insight .text-slate-600 {
-    color: var(--chat-muted, rgb(var(--ak-muted))) !important;
-  }
-
-  .ak-chat .ak-insight [class*="border-white/"] {
-    border-color: var(--chat-line, rgb(var(--ak-border))) !important;
-  }
-
-  .ak-chat .ak-insight [class*="bg-white/"],
-  .ak-chat .ak-insight [class*="bg-black/"],
-  .ak-chat .ak-insight [class*="bg-slate-700"] {
-    background-color: var(--chat-soft, rgb(var(--ak-surface-2))) !important;
+    background: rgb(var(--canvas));
   }
 
   .ak-chat .ak-composer {
-    background-color: rgb(var(--ak-composer) / 0.94) !important;
+    background-color: color-mix(in srgb, rgb(var(--composer)) 94%, transparent);
   }
 
-  .ak-chat .ak-card,
   .ak-chat .ak-composer-box,
   .ak-chat .ak-popover {
-    background-color: rgb(var(--ak-card)) !important;
-    border-color: rgb(var(--ak-border)) !important;
-    box-shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 14px 34px rgb(15 23 42 / 0.06) !important;
+    background-color: rgb(var(--surface));
+    border-color: rgb(var(--surface-border));
+    box-shadow: 0 1px 2px rgb(var(--ink) / 0.04), 0 14px 34px rgb(var(--ink) / 0.06);
   }
 
-  .dark .ak-chat .ak-card,
   .dark .ak-chat .ak-composer-box,
   .dark .ak-chat .ak-popover {
-    box-shadow: 0 18px 46px rgb(0 0 0 / 0.28) !important;
+    box-shadow: 0 18px 46px rgb(0 0 0 / 0.28);
   }
 
-  .ak-chat [class*="bg-[radial-gradient"] {
-    background: var(--ak-main-bg) !important;
-  }
-
-  .ak-chat [class*="bg-white/"],
-  .ak-chat [class*="bg-black/"] {
-    background-color: rgb(var(--ak-tint)) !important;
-  }
-
-  .ak-chat [class*="hover:bg-white"]:hover,
-  .ak-chat [class*="hover:bg-black"]:hover {
-    background-color: rgb(var(--ak-hover)) !important;
-  }
-
-  .ak-chat .ak-sidebar [class*="bg-white/"] {
-    background-color: rgb(15 23 42 / 0.035) !important;
-  }
-
-  .ak-chat .ak-sidebar [class*="bg-black/"] {
-    background-color: rgb(15 23 42 / 0.025) !important;
-  }
-
-  .ak-chat .ak-composer [class*="bg-white/"] {
-    background-color: rgb(255 255 255 / 0.72) !important;
-  }
-
-  .ak-chat .ak-composer .ak-control,
+  /* Composer / toolbar controls — brand-aligned, not emerald leftovers */
   .ak-chat .ak-control {
-    background-color: rgb(249 252 255 / 0.96) !important;
-    border-color: rgb(var(--ak-border)) !important;
-    color: rgb(var(--ak-text-2)) !important;
+    background-color: rgb(var(--surface-2));
+    border-color: rgb(var(--surface-border));
+    color: rgb(var(--ink-2));
+    transition:
+      background-color var(--duration-press) var(--ease-out),
+      border-color var(--duration-press) var(--ease-out),
+      color var(--duration-press) var(--ease-out);
   }
 
-  .ak-chat .ak-composer .ak-control:hover,
   .ak-chat .ak-control:hover {
-    background-color: rgb(255 255 255) !important;
+    background-color: rgb(var(--surface));
+    border-color: color-mix(in srgb, rgb(var(--brand)) 30%, rgb(var(--surface-border)));
+    color: rgb(var(--ink));
   }
 
-  .ak-chat .ak-composer .ak-control:disabled,
-  .ak-chat .ak-composer .ak-control [disabled],
   .ak-chat .ak-control:disabled,
   .ak-chat .ak-control [disabled] {
-    background-color: transparent !important;
-    color: rgb(var(--ak-text-2)) !important;
-    opacity: 0.72 !important;
+    background-color: transparent;
+    color: rgb(var(--ink-2));
+    opacity: 0.72;
   }
 
-  .ak-chat .ak-composer .ak-control:has(select:disabled),
-  .ak-chat .ak-composer .ak-control:has(option:disabled) {
-    background-color: rgb(249 252 255 / 0.96) !important;
+  .ak-chat .ak-control:has(select:disabled),
+  .ak-chat .ak-control:has(option:disabled) {
+    background-color: rgb(var(--surface-2));
   }
 
-  .ak-chat .ak-composer .ak-control select,
   .ak-chat .ak-control select {
-    background-color: transparent !important;
-    color: rgb(var(--ak-text-2)) !important;
-  }
-
-  .ak-chat .ak-control-primary:not(:disabled) {
-    background-color: rgb(16 185 129) !important;
-    color: white !important;
-  }
-
-  .ak-chat .ak-control-primary:disabled {
-    background-color: rgb(148 211 190) !important;
-    color: rgb(255 255 255 / 0.82) !important;
-    opacity: 1 !important;
-  }
-
-  .dark .ak-chat .ak-composer .ak-control,
-  .dark .ak-chat .ak-control {
-    background-color: rgb(15 26 42 / 0.94) !important;
-    border-color: rgb(255 255 255 / 0.12) !important;
-    color: rgb(var(--ak-text-2)) !important;
-  }
-
-  .dark .ak-chat .ak-composer .ak-control:hover,
-  .dark .ak-chat .ak-control:hover {
-    background-color: rgb(20 34 53 / 0.98) !important;
-  }
-
-  .dark .ak-chat .ak-composer .ak-control:has(select:disabled),
-  .dark .ak-chat .ak-composer .ak-control:has(option:disabled) {
-    background-color: rgb(15 26 42 / 0.94) !important;
-  }
-
-  .ak-chat [class*="border-white/"],
-  .ak-chat [class*="border-slate-600"] {
-    border-color: rgb(var(--ak-border)) !important;
-  }
-
-  .ak-chat .text-slate-100 {
-    color: rgb(var(--ak-text)) !important;
-  }
-
-  .ak-chat .text-slate-200,
-  .ak-chat .text-slate-300 {
-    color: rgb(var(--ak-text-2)) !important;
-  }
-
-  .ak-chat .text-slate-400,
-  .ak-chat .text-slate-500 {
-    color: rgb(var(--ak-muted)) !important;
-  }
-
-  .ak-chat .text-slate-600 {
-    color: rgb(var(--ak-faint)) !important;
-  }
-
-  .ak-chat [class*="hover:text-slate"]:hover {
-    color: rgb(var(--ak-text)) !important;
-  }
-
-  .ak-chat [class*="bg-slate-700"] {
-    background-color: rgb(var(--ak-border)) !important;
-    color: rgb(var(--ak-muted)) !important;
+    background-color: transparent;
+    color: inherit;
   }
 
   .ak-chat select,
   .ak-chat option,
   .ak-chat textarea,
   .ak-chat input {
-    color: rgb(var(--ak-text)) !important;
+    color: rgb(var(--ink));
   }
 
   .ak-chat select,
   .ak-chat option {
-    background-color: rgb(var(--ak-surface)) !important;
+    background-color: rgb(var(--surface));
   }
 
   .ak-chat ::placeholder {
-    color: rgb(var(--ak-muted)) !important;
+    color: rgb(var(--text-subtle));
   }
 
-  /* Chat-only visual refresh. These rules are scoped to the conversation
-     workspace so admin/settings/auth pages keep their own system treatment. */
-  .ak-chat {
-    --chat-canvas: #f6f8fb;
-    --chat-surface: #ffffff;
-    --chat-soft: #f1f5f9;
-    --chat-ink: #152033;
-    --chat-muted: #5b677c;
-    --chat-line: #dde5ed;
-    --chat-accent: #2563eb;
-    --chat-accent-strong: #1d4ed8;
-    --chat-on-accent: #ffffff;
-  }
-
-  .dark .ak-chat {
-    --chat-canvas: #090e18;
-    --chat-surface: #111827;
-    --chat-soft: #182233;
-    --chat-ink: #ecf2fa;
-    --chat-muted: #9aa8bb;
-    --chat-line: #2c384b;
-    --chat-accent: #60a5fa;
-    --chat-accent-strong: #93c5fd;
-    --chat-on-accent: #07111f;
-  }
-
+  /* Chat visual refresh — colors from global --chat-* (semantic aliases). */
   .ak-chat .ak-workspace {
     background:
       linear-gradient(180deg, color-mix(in srgb, var(--chat-accent) 8%, transparent), transparent 18rem),
-      var(--chat-canvas) !important;
-    color: var(--chat-ink) !important;
+      var(--chat-canvas);
+    color: var(--chat-ink);
   }
 
   .ak-chat .ak-chat-root {
-    color: var(--chat-ink) !important;
+    color: var(--chat-ink);
   }
 
   .ak-chat .ak-mobile-overlay {
@@ -414,9 +167,9 @@
   }
 
   .ak-chat .ak-chat-header {
-    background: color-mix(in srgb, var(--chat-canvas) 88%, transparent) !important;
-    border-bottom: 1px solid var(--chat-line) !important;
-    color: var(--chat-ink) !important;
+    background: color-mix(in srgb, var(--chat-canvas) 88%, transparent);
+    border-bottom: 1px solid var(--chat-line);
+    color: var(--chat-ink);
   }
 
   .ak-chat .ak-header-help {
@@ -439,9 +192,9 @@
 
   .ak-chat .ak-mobile-sidebar-action,
   .ak-chat .ak-small-action {
-    border-color: var(--chat-line) !important;
-    background: color-mix(in srgb, var(--chat-surface) 82%, transparent) !important;
-    color: var(--chat-muted) !important;
+    border-color: var(--chat-line);
+    background: color-mix(in srgb, var(--chat-surface) 82%, transparent);
+    color: var(--chat-muted);
     box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
     transition:
       background-color var(--duration-press) var(--ease-out),
@@ -452,53 +205,53 @@
 
   .ak-chat .ak-mobile-sidebar-action:hover,
   .ak-chat .ak-small-action:hover {
-    border-color: color-mix(in srgb, var(--chat-accent) 36%, var(--chat-line)) !important;
-    background: color-mix(in srgb, var(--chat-accent) 8%, var(--chat-surface)) !important;
-    color: var(--chat-ink) !important;
+    border-color: color-mix(in srgb, var(--chat-accent) 36%, var(--chat-line));
+    background: color-mix(in srgb, var(--chat-accent) 8%, var(--chat-surface));
+    color: var(--chat-ink);
     box-shadow: 0 8px 18px color-mix(in srgb, var(--chat-accent) 10%, transparent);
   }
 
   .ak-chat .ak-small-action:disabled {
-    border-color: var(--chat-line) !important;
-    background: color-mix(in srgb, var(--chat-soft) 74%, transparent) !important;
-    color: var(--chat-muted) !important;
+    border-color: var(--chat-line);
+    background: color-mix(in srgb, var(--chat-soft) 74%, transparent);
+    color: var(--chat-muted);
     box-shadow: none;
   }
 
   .ak-chat .ak-sidebar-shell {
     background:
       linear-gradient(180deg, color-mix(in srgb, var(--chat-accent) 7%, transparent), transparent 15rem),
-      color-mix(in srgb, var(--chat-surface) 94%, var(--chat-canvas)) !important;
-    border-color: var(--chat-line) !important;
-    color: var(--chat-ink) !important;
+      color-mix(in srgb, var(--chat-surface) 94%, var(--chat-canvas));
+    border-color: var(--chat-line);
+    color: var(--chat-ink);
   }
 
   .dark .ak-chat .ak-sidebar-shell {
     background:
       linear-gradient(180deg, color-mix(in srgb, var(--chat-accent) 10%, transparent), transparent 16rem),
-      color-mix(in srgb, var(--chat-surface) 92%, #050914) !important;
+      color-mix(in srgb, var(--chat-surface) 92%, var(--chat-canvas));
   }
 
   .ak-chat .ak-sidebar-primary-action {
     min-height: var(--control-h);
-    border-color: color-mix(in srgb, var(--chat-accent) 74%, var(--chat-line)) !important;
-    background: linear-gradient(180deg, color-mix(in srgb, var(--chat-accent) 92%, white), var(--chat-accent)) !important;
-    color: var(--chat-on-accent) !important;
-    box-shadow: 0 10px 24px color-mix(in srgb, var(--chat-accent) 24%, transparent) !important;
+    border-color: color-mix(in srgb, var(--chat-accent) 74%, var(--chat-line));
+    background: linear-gradient(180deg, color-mix(in srgb, var(--chat-accent) 92%, white), var(--chat-accent));
+    color: var(--chat-on-accent);
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--chat-accent) 24%, transparent);
   }
 
   .ak-chat .ak-sidebar-primary-action:hover {
     transform: translateY(-1px);
-    box-shadow: 0 14px 28px color-mix(in srgb, var(--chat-accent) 30%, transparent) !important;
+    box-shadow: 0 14px 28px color-mix(in srgb, var(--chat-accent) 30%, transparent);
   }
 
   .ak-chat .ak-sidebar-icon-action,
   .ak-chat .ak-sidebar-row-action,
   .ak-chat .ak-sidebar-load-more {
     min-height: var(--control-h);
-    border-color: var(--chat-line) !important;
-    background: color-mix(in srgb, var(--chat-surface) 82%, transparent) !important;
-    color: var(--chat-muted) !important;
+    border-color: var(--chat-line);
+    background: color-mix(in srgb, var(--chat-surface) 82%, transparent);
+    color: var(--chat-muted);
   }
 
   .ak-chat .ak-sidebar-icon-action,
@@ -509,9 +262,9 @@
   .ak-chat .ak-sidebar-icon-action:hover,
   .ak-chat .ak-sidebar-row-action:hover,
   .ak-chat .ak-sidebar-load-more:hover {
-    border-color: color-mix(in srgb, var(--chat-accent) 38%, var(--chat-line)) !important;
-    background: color-mix(in srgb, var(--chat-accent) 8%, var(--chat-surface)) !important;
-    color: var(--chat-ink) !important;
+    border-color: color-mix(in srgb, var(--chat-accent) 38%, var(--chat-line));
+    background: color-mix(in srgb, var(--chat-accent) 8%, var(--chat-surface));
+    color: var(--chat-ink);
   }
 
   .ak-chat .ak-sidebar-icon-action:focus-visible,
@@ -531,23 +284,24 @@
   }
 
   .ak-chat .ak-sidebar-row {
-    color: var(--chat-muted) !important;
+    border-color: transparent;
+    color: var(--chat-muted);
   }
 
   .ak-chat .ak-sidebar-row-idle {
-    color: color-mix(in srgb, var(--chat-muted) 92%, var(--chat-ink)) !important;
+    color: color-mix(in srgb, var(--chat-muted) 92%, var(--chat-ink));
   }
 
   .ak-chat .ak-sidebar-row:hover {
-    border-color: color-mix(in srgb, var(--chat-accent) 20%, var(--chat-line)) !important;
-    background: color-mix(in srgb, var(--chat-accent) 6%, var(--chat-surface)) !important;
-    color: var(--chat-ink) !important;
+    border-color: color-mix(in srgb, var(--chat-accent) 20%, var(--chat-line));
+    background: color-mix(in srgb, var(--chat-accent) 6%, var(--chat-surface));
+    color: var(--chat-ink);
   }
 
   .ak-chat .ak-sidebar-row-active {
-    border-color: color-mix(in srgb, var(--chat-accent) 34%, var(--chat-line)) !important;
-    background: color-mix(in srgb, var(--chat-accent) 10%, var(--chat-surface)) !important;
-    color: var(--chat-ink) !important;
+    border-color: color-mix(in srgb, var(--chat-accent) 34%, var(--chat-line));
+    background: color-mix(in srgb, var(--chat-accent) 10%, var(--chat-surface));
+    color: var(--chat-ink);
     box-shadow: inset 3px 0 0 var(--chat-accent);
   }
 
@@ -557,53 +311,53 @@
   .ak-chat .ak-user-role,
   .ak-chat .ak-user-chevron,
   .ak-chat .ak-sidebar-search-input {
-    color: var(--chat-muted) !important;
+    color: var(--chat-muted);
   }
 
   .ak-chat .ak-sidebar-search-input:focus {
-    color: var(--chat-ink) !important;
+    color: var(--chat-ink);
   }
 
   .ak-chat .ak-sidebar-meta-separator,
   .ak-chat .ak-sidebar-separator,
   .ak-chat .ak-sidebar-skeleton,
   .ak-chat .ak-composer-skeleton {
-    background: color-mix(in srgb, var(--chat-line) 58%, transparent) !important;
+    background: color-mix(in srgb, var(--chat-line) 58%, transparent);
   }
 
   .ak-chat .ak-sidebar-row-action {
-    background: transparent !important;
+    background: transparent;
   }
 
   .ak-chat .ak-sidebar-row-action:hover {
-    border-color: color-mix(in srgb, rgb(var(--danger)) 30%, var(--chat-line)) !important;
-    background: color-mix(in srgb, rgb(var(--danger)) 10%, var(--chat-surface)) !important;
-    color: rgb(var(--danger)) !important;
+    border-color: color-mix(in srgb, rgb(var(--danger)) 30%, var(--chat-line));
+    background: color-mix(in srgb, rgb(var(--danger)) 10%, var(--chat-surface));
+    color: rgb(var(--danger));
   }
 
   .ak-chat .ak-sidebar-status-badge,
   .ak-chat .ak-sidebar-empty,
   .ak-chat .ak-sidebar-kbd {
-    border-color: var(--chat-line) !important;
-    background: color-mix(in srgb, var(--chat-soft) 82%, transparent) !important;
-    color: var(--chat-muted) !important;
+    border-color: var(--chat-line);
+    background: color-mix(in srgb, var(--chat-soft) 82%, transparent);
+    color: var(--chat-muted);
   }
 
   .ak-chat .ak-sidebar-status-muted {
-    border-color: var(--chat-line) !important;
-    background: color-mix(in srgb, var(--chat-soft) 78%, transparent) !important;
-    color: var(--chat-muted) !important;
+    border-color: var(--chat-line);
+    background: color-mix(in srgb, var(--chat-soft) 78%, transparent);
+    color: var(--chat-muted);
   }
 
   .ak-chat .ak-sidebar-load-more:disabled {
-    background: color-mix(in srgb, var(--chat-soft) 70%, transparent) !important;
+    background: color-mix(in srgb, var(--chat-soft) 70%, transparent);
   }
 
   .ak-chat .ak-user-popover,
   .ak-chat .ak-user-trigger {
-    border-color: var(--chat-line) !important;
-    background: color-mix(in srgb, var(--chat-surface) 94%, transparent) !important;
-    color: var(--chat-ink) !important;
+    border-color: var(--chat-line);
+    background: color-mix(in srgb, var(--chat-surface) 94%, transparent);
+    color: var(--chat-ink);
   }
 
   .ak-chat .ak-user-trigger {
@@ -616,144 +370,136 @@
   }
 
   .ak-chat .ak-user-popover {
-    box-shadow: 0 18px 46px rgb(36 49 60 / 0.16) !important;
+    box-shadow: 0 18px 46px rgb(36 49 60 / 0.16);
   }
 
   .dark .ak-chat .ak-user-popover {
-    box-shadow: 0 22px 52px rgb(0 0 0 / 0.36) !important;
+    box-shadow: 0 22px 52px rgb(0 0 0 / 0.36);
   }
 
   .ak-chat .ak-user-trigger:hover,
   .ak-chat .ak-user-trigger-open {
-    border-color: color-mix(in srgb, var(--chat-accent) 34%, var(--chat-line)) !important;
-    background: color-mix(in srgb, var(--chat-accent) 7%, var(--chat-surface)) !important;
+    border-color: color-mix(in srgb, var(--chat-accent) 34%, var(--chat-line));
+    background: color-mix(in srgb, var(--chat-accent) 7%, var(--chat-surface));
   }
 
   .ak-chat .ak-user-trigger .ak-theme-toggle-compact {
-    border-color: var(--chat-line) !important;
-    background: color-mix(in srgb, var(--chat-surface) 92%, transparent) !important;
-    color: var(--chat-ink) !important;
-    box-shadow: none !important;
+    border-color: var(--chat-line);
+    background: color-mix(in srgb, var(--chat-surface) 92%, transparent);
+    color: var(--chat-ink);
+    box-shadow: none;
   }
 
   .ak-chat .ak-user-trigger .ak-theme-toggle-compact:hover {
-    background: var(--chat-surface) !important;
+    background: var(--chat-surface);
   }
 
   .ak-chat .ak-user-avatar {
-    border-color: color-mix(in srgb, var(--chat-accent) 36%, var(--chat-line)) !important;
-    background: color-mix(in srgb, var(--chat-accent) 88%, #0f172a) !important;
-    color: #ffffff !important;
+    border-color: color-mix(in srgb, var(--chat-accent) 36%, var(--chat-line));
+    background: color-mix(in srgb, var(--chat-accent) 88%, rgb(var(--ink)));
+    color: var(--chat-on-accent);
   }
 
   .ak-chat .ak-user-menu-item {
-    color: var(--chat-ink) !important;
+    color: var(--chat-ink);
   }
 
   .ak-chat .ak-user-menu-icon {
-    color: var(--chat-muted) !important;
+    color: var(--chat-muted);
   }
 
   .ak-chat .ak-user-menu-item:hover {
-    background: color-mix(in srgb, var(--chat-accent) 8%, var(--chat-surface)) !important;
+    background: color-mix(in srgb, var(--chat-accent) 8%, var(--chat-surface));
   }
 
   .ak-chat .ak-user-menu-item:hover .ak-user-menu-icon {
-    color: var(--chat-accent) !important;
+    color: var(--chat-accent);
   }
 
   .ak-chat .ak-user-menu-item-danger {
-    color: rgb(var(--danger)) !important;
+    color: rgb(var(--danger));
   }
 
   .ak-chat .ak-user-menu-item-danger:hover {
-    background: color-mix(in srgb, rgb(var(--danger)) 10%, var(--chat-surface)) !important;
+    background: color-mix(in srgb, rgb(var(--danger)) 10%, var(--chat-surface));
   }
 
-  .ak-chat .ak-workspace .ak-card,
   .ak-chat .ak-workspace .ak-composer-box {
-    background: var(--chat-surface) !important;
-    border-color: var(--chat-line) !important;
-    box-shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 16px 36px rgb(15 23 42 / 0.07) !important;
+    background: var(--chat-surface);
+    border-color: var(--chat-line);
+    box-shadow: 0 1px 2px rgb(var(--ink) / 0.04), 0 16px 36px rgb(var(--ink) / 0.07);
   }
 
-  .dark .ak-chat .ak-workspace .ak-card,
   .dark .ak-chat .ak-workspace .ak-composer-box {
-    box-shadow: 0 18px 46px rgb(0 0 0 / 0.22) !important;
+    box-shadow: 0 18px 46px rgb(0 0 0 / 0.22);
   }
 
   .ak-chat .ak-workspace .ak-answer { color: var(--chat-ink); }
   .ak-chat .ak-workspace .ak-answer-markdown,
   .ak-chat .ak-workspace .ak-answer-strong,
   .ak-chat .ak-workspace .ak-answer-heading {
-    color: var(--chat-ink) !important;
+    color: var(--chat-ink);
   }
   .ak-chat .ak-workspace .ak-answer-list-item::marker {
-    color: var(--chat-accent) !important;
+    color: var(--chat-accent);
   }
   .ak-chat .ak-workspace .ak-answer-code {
-    background: color-mix(in srgb, var(--chat-accent) 12%, transparent) !important;
-    color: var(--chat-ink) !important;
+    background: color-mix(in srgb, var(--chat-accent) 12%, transparent);
+    color: var(--chat-ink);
   }
   .ak-chat .ak-workspace .ak-message-time,
   .ak-chat .ak-workspace .ak-streaming-status,
   .ak-chat .ak-workspace .ak-empty-description {
-    color: var(--chat-muted) !important;
+    color: var(--chat-muted);
   }
-  .ak-chat .ak-status-dot-muted { background: var(--chat-muted) !important; }
-  .ak-chat .ak-status-text-muted { color: var(--chat-muted) !important; }
-  .ak-chat .ak-status-dot-accent { background: var(--chat-accent) !important; }
-  .ak-chat .ak-status-text-accent { color: var(--chat-accent) !important; }
+  .ak-chat .ak-status-dot-muted { background: var(--chat-muted); }
+  .ak-chat .ak-status-text-muted { color: var(--chat-muted); }
+  .ak-chat .ak-status-dot-accent { background: var(--chat-accent); }
+  .ak-chat .ak-status-text-accent { color: var(--chat-accent); }
   .ak-chat .ak-status-badge-saved {
-    border-color: color-mix(in srgb, var(--chat-accent) 18%, var(--chat-line)) !important;
-    background: color-mix(in srgb, var(--chat-accent) 6%, var(--chat-surface)) !important;
-    color: color-mix(in srgb, var(--chat-accent) 78%, var(--chat-ink)) !important;
+    border-color: color-mix(in srgb, var(--chat-accent) 18%, var(--chat-line));
+    background: color-mix(in srgb, var(--chat-accent) 6%, var(--chat-surface));
+    color: color-mix(in srgb, var(--chat-accent) 78%, var(--chat-ink));
   }
   .ak-chat .ak-status-badge-current {
-    border-color: color-mix(in srgb, var(--chat-accent) 28%, var(--chat-line)) !important;
-    background: color-mix(in srgb, var(--chat-accent) 10%, var(--chat-surface)) !important;
-    color: var(--chat-accent) !important;
+    border-color: color-mix(in srgb, var(--chat-accent) 28%, var(--chat-line));
+    background: color-mix(in srgb, var(--chat-accent) 10%, var(--chat-surface));
+    color: var(--chat-accent);
   }
   .ak-chat .ak-streaming-cursor {
-    background: var(--chat-accent) !important;
+    background: var(--chat-accent);
   }
-  .ak-chat .ak-workspace .text-slate-100,
-  .ak-chat .ak-workspace .text-slate-200 { color: var(--chat-ink) !important; }
-  .ak-chat .ak-workspace .text-slate-300,
-  .ak-chat .ak-workspace .text-slate-400,
-  .ak-chat .ak-workspace .text-slate-500 { color: var(--chat-muted) !important; }
-  .ak-chat .ak-workspace .ak-answer .text-slate-300,
-  .ak-chat .ak-workspace .ak-answer .text-slate-200 { color: var(--chat-ink) !important; }
-  .ak-chat .ak-workspace .ak-answer .text-slate-400,
-  .ak-chat .ak-workspace .ak-answer .text-slate-500 { color: var(--chat-muted) !important; }
-  .ak-chat .ak-workspace .ak-answer .marker\:text-emerald-400::marker { color: var(--chat-accent) !important; }
-  .ak-chat .ak-workspace .ak-answer code { background: color-mix(in srgb, var(--chat-accent) 12%, transparent); color: var(--chat-ink) !important; }
+
+  .ak-chat .ak-workspace .ak-answer code {
+    background: color-mix(in srgb, var(--chat-accent) 12%, transparent);
+    color: var(--chat-ink);
+  }
 
   .ak-chat .ak-workspace .ak-message-user {
-    border: 1px solid color-mix(in srgb, var(--chat-accent) 26%, var(--chat-line)) !important;
-    background: color-mix(in srgb, var(--chat-accent) 10%, var(--chat-surface)) !important;
+    border: 1px solid color-mix(in srgb, var(--chat-accent) 26%, var(--chat-line));
+    background: color-mix(in srgb, var(--chat-accent) 10%, var(--chat-surface));
     box-shadow: 0 8px 20px rgb(36 49 60 / 0.06);
-    color: var(--chat-ink) !important;
+    color: var(--chat-ink);
   }
 
   .dark .ak-chat .ak-workspace .ak-message-user {
-    background: color-mix(in srgb, var(--chat-accent) 14%, var(--chat-surface)) !important;
+    background: color-mix(in srgb, var(--chat-accent) 14%, var(--chat-surface));
     box-shadow: 0 12px 28px rgb(0 0 0 / 0.18);
   }
 
-  .ak-chat .ak-workspace .text-emerald-300,
-  .ak-chat .ak-workspace .text-emerald-200 { color: var(--chat-accent) !important; }
-
-  .ak-chat .ak-workspace .rounded-lg.border.bg-surface { border-color: var(--chat-line); background: var(--chat-soft); }
+  .ak-chat .ak-workspace .rounded-lg.border.bg-surface {
+    border-color: var(--chat-line);
+    background: var(--chat-soft);
+  }
 
   .ak-chat .ak-workspace .ak-composer {
-    background: color-mix(in srgb, var(--chat-canvas) 86%, transparent) !important;
-    border-top: 0 !important;
+    background: color-mix(in srgb, var(--chat-canvas) 86%, transparent);
+    border-top: 0;
   }
 
   .ak-chat .ak-workspace .ak-thread {
-    --ak-composer-offset: 11.75rem;
-    --ak-thread-scrollbar: 10px;
+    --chat-composer-offset: 11.75rem;
+    --chat-thread-scrollbar: 10px;
   }
 
   .ak-chat .ak-workspace .ak-thread-scroll {
@@ -764,7 +510,7 @@
   }
 
   .ak-chat .ak-workspace .ak-thread-scroll::-webkit-scrollbar {
-    width: var(--ak-thread-scrollbar);
+    width: var(--chat-thread-scrollbar);
   }
 
   .ak-chat .ak-workspace .ak-thread-scroll::-webkit-scrollbar-track {
@@ -786,12 +532,12 @@
 
   .ak-chat .ak-workspace .ak-thread-inner {
     min-height: 100%;
-    padding-bottom: calc(var(--ak-composer-offset) + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(var(--chat-composer-offset) + env(safe-area-inset-bottom, 0px));
   }
 
   .ak-chat .ak-workspace .ak-thread-dock {
     /* Keep clear of the thread scrollbar so the fade never masks the thumb. */
-    right: var(--ak-thread-scrollbar);
+    right: var(--chat-thread-scrollbar);
     padding-top: 2.75rem;
     background: linear-gradient(
       to top,
@@ -802,7 +548,7 @@
   }
 
   .ak-chat .ak-workspace .ak-composer.ak-composer-docked {
-    background: transparent !important;
+    background: transparent;
   }
 
   .ak-chat .ak-workspace .ak-scroll-to-bottom {
@@ -817,12 +563,12 @@
   }
 
   .ak-chat .ak-workspace .ak-composer.ak-composer-centered {
-    background: transparent !important;
-    border-top: 0 !important;
+    background: transparent;
+    border-top: 0;
   }
   .ak-chat .ak-workspace .ak-composer-centered .ak-composer-box {
     max-width: 880px;
-    box-shadow: 0 20px 48px rgb(53 76 142 / 0.12) !important;
+    box-shadow: 0 20px 48px rgb(53 76 142 / 0.12);
   }
   .ak-chat .ak-workspace .ak-starter-prompts { margin: 0 auto; width: min(100%, 880px); }
   .ak-chat .ak-workspace .ak-starter-card {
@@ -860,9 +606,9 @@
   .ak-chat .ak-workspace .ak-empty-prompt,
   .ak-chat .ak-workspace .ak-source-strip,
   .ak-chat .ak-workspace .ak-source-row {
-    border-color: var(--chat-line) !important;
-    background: color-mix(in srgb, var(--chat-surface) 88%, transparent) !important;
-    color: var(--chat-muted) !important;
+    border-color: var(--chat-line);
+    background: color-mix(in srgb, var(--chat-surface) 88%, transparent);
+    color: var(--chat-muted);
   }
 
   .ak-chat .ak-workspace .ak-empty-stat {
@@ -873,162 +619,161 @@
   .ak-chat .ak-workspace .ak-empty-stat-value,
   .ak-chat .ak-workspace .ak-source-strip-title,
   .ak-chat .ak-workspace .ak-source-title {
-    color: var(--chat-ink) !important;
+    color: var(--chat-ink);
   }
 
   .ak-chat .ak-workspace .ak-empty-stat-icon,
   .ak-chat .ak-workspace .ak-source-strip-title {
-    color: var(--chat-accent) !important;
+    color: var(--chat-accent);
   }
 
   .ak-chat .ak-workspace .ak-empty-prompt:hover {
-    border-color: color-mix(in srgb, var(--chat-accent) 38%, var(--chat-line)) !important;
-    background: color-mix(in srgb, var(--chat-accent) 8%, var(--chat-surface)) !important;
-    color: var(--chat-ink) !important;
+    border-color: color-mix(in srgb, var(--chat-accent) 38%, var(--chat-line));
+    background: color-mix(in srgb, var(--chat-accent) 8%, var(--chat-surface));
+    color: var(--chat-ink);
   }
 
   .ak-chat .ak-workspace .ak-source-row {
-    background: color-mix(in srgb, var(--chat-soft) 62%, var(--chat-surface)) !important;
+    background: color-mix(in srgb, var(--chat-soft) 62%, var(--chat-surface));
   }
 
   .ak-chat .ak-workspace .ak-source-score {
-    border-color: color-mix(in srgb, var(--chat-accent) 28%, var(--chat-line)) !important;
-    background: color-mix(in srgb, var(--chat-accent) 10%, var(--chat-surface)) !important;
-    color: var(--chat-accent) !important;
+    border-color: color-mix(in srgb, var(--chat-accent) 28%, var(--chat-line));
+    background: color-mix(in srgb, var(--chat-accent) 10%, var(--chat-surface));
+    color: var(--chat-accent);
   }
 
   .ak-chat .ak-workspace .ak-source-meta {
-    color: var(--chat-muted) !important;
+    color: var(--chat-muted);
   }
 
   .ak-chat .ak-workspace .ak-live-badge {
-    border-color: color-mix(in srgb, var(--chat-accent) 30%, var(--chat-line)) !important;
-    background: color-mix(in srgb, var(--chat-accent) 10%, var(--chat-surface)) !important;
-    color: var(--chat-accent) !important;
+    border-color: color-mix(in srgb, var(--chat-accent) 30%, var(--chat-line));
+    background: color-mix(in srgb, var(--chat-accent) 10%, var(--chat-surface));
+    color: var(--chat-accent);
   }
 
   .ak-chat .ak-workspace .ak-answer-error {
-    border-color: color-mix(in srgb, rgb(var(--danger)) 32%, var(--chat-line)) !important;
-    background: color-mix(in srgb, rgb(var(--danger)) 10%, var(--chat-surface)) !important;
-    color: rgb(var(--danger)) !important;
+    border-color: color-mix(in srgb, rgb(var(--danger)) 32%, var(--chat-line));
+    background: color-mix(in srgb, rgb(var(--danger)) 10%, var(--chat-surface));
+    color: rgb(var(--danger));
   }
 
   .ak-chat .ak-workspace .ak-composer .ak-control,
-  .ak-chat .ak-workspace .ak-composer .ak-control:has(select:disabled),
-  .dark .ak-chat .ak-workspace .ak-composer .ak-control,
-  .dark .ak-chat .ak-workspace .ak-composer .ak-control:has(select:disabled) {
-    background: var(--chat-soft) !important;
-    border-color: var(--chat-line) !important;
-    color: var(--chat-ink) !important;
+  .ak-chat .ak-workspace .ak-composer .ak-control:has(select:disabled) {
+    background: var(--chat-soft);
+    border-color: var(--chat-line);
+    color: var(--chat-ink);
   }
 
-  .ak-chat .ak-workspace .ak-composer .ak-control:hover,
-  .dark .ak-chat .ak-workspace .ak-composer .ak-control:hover { background: var(--chat-surface) !important; }
+  .ak-chat .ak-workspace .ak-composer .ak-control:hover {
+    background: var(--chat-surface);
+  }
 
   .ak-chat .ak-workspace .ak-composer .ak-stop-button {
     min-height: var(--control-h);
     min-width: var(--control-h);
-    border-color: var(--chat-line) !important;
-    background: var(--chat-soft) !important;
-    color: var(--chat-ink) !important;
+    border-color: var(--chat-line);
+    background: var(--chat-soft);
+    color: var(--chat-ink);
   }
 
   .ak-chat .ak-workspace .ak-composer .ak-stop-button:hover {
-    border-color: color-mix(in srgb, var(--chat-accent) 36%, var(--chat-line)) !important;
-    background: var(--chat-surface) !important;
-  }
-
-  .ak-chat .ak-workspace .ak-composer .ak-control-primary:not(:disabled) {
-    background: var(--chat-accent) !important;
-    box-shadow: 0 10px 24px color-mix(in srgb, var(--chat-accent) 32%, transparent) !important;
+    border-color: color-mix(in srgb, var(--chat-accent) 36%, var(--chat-line));
+    background: var(--chat-surface);
   }
 
   .ak-chat .ak-workspace .ak-context-usage { color: var(--chat-muted); }
   .ak-chat .ak-workspace .ak-context-usage {
     min-height: var(--control-h);
     min-width: var(--control-h);
-    border-color: var(--chat-line) !important;
-    background: var(--chat-soft) !important;
+    border-color: var(--chat-line);
+    background: var(--chat-soft);
     box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18);
   }
   .ak-chat .ak-workspace .ak-context-usage:hover {
-    border-color: color-mix(in srgb, var(--chat-accent) 36%, var(--chat-line)) !important;
-    background: var(--chat-surface) !important;
-    color: var(--chat-ink) !important;
+    border-color: color-mix(in srgb, var(--chat-accent) 36%, var(--chat-line));
+    background: var(--chat-surface);
+    color: var(--chat-ink);
   }
-  .ak-chat .ak-workspace .ak-context-ring { color: var(--chat-accent) !important; }
-  .ak-chat .ak-workspace .ak-context-ring-muted { color: var(--chat-muted) !important; }
-  .ak-chat .ak-workspace .ak-context-track { color: color-mix(in srgb, var(--chat-muted) 24%, transparent) !important; }
+  .ak-chat .ak-workspace .ak-context-ring { color: var(--chat-accent); }
+  .ak-chat .ak-workspace .ak-context-ring-brand { color: var(--chat-accent); }
+  .ak-chat .ak-workspace .ak-context-ring-warning { color: rgb(252 211 77); }
+  .ak-chat .ak-workspace .ak-context-ring-muted { color: var(--chat-muted); }
+  .ak-chat .ak-workspace .ak-context-track { color: color-mix(in srgb, var(--chat-muted) 24%, transparent); }
   .ak-chat .ak-workspace .ak-context-usage:focus-visible { --tw-ring-color: var(--chat-accent); }
   .ak-chat .ak-workspace .ak-composer [role="tooltip"],
   .ak-chat .ak-workspace .ak-context-tooltip {
-    background: var(--chat-surface) !important;
-    border-color: var(--chat-line) !important;
-    color: var(--chat-ink) !important;
-    box-shadow: 0 18px 42px rgb(36 49 60 / 0.14) !important;
+    background: var(--chat-surface);
+    border-color: var(--chat-line);
+    color: var(--chat-ink);
+    box-shadow: 0 18px 42px rgb(36 49 60 / 0.14);
   }
 
   .dark .ak-chat .ak-workspace .ak-context-tooltip {
-    box-shadow: 0 20px 48px rgb(0 0 0 / 0.34) !important;
+    box-shadow: 0 20px 48px rgb(0 0 0 / 0.34);
   }
 
   .ak-chat .ak-workspace .ak-context-tooltip-title {
-    color: var(--chat-ink) !important;
+    color: var(--chat-ink);
   }
 
   .ak-chat .ak-workspace .ak-context-tooltip-muted {
-    color: var(--chat-muted) !important;
+    color: var(--chat-muted);
   }
 
   .ak-chat .ak-workspace .ak-context-tooltip-summary {
-    border-color: var(--chat-line) !important;
+    border-color: var(--chat-line);
   }
 
   .ak-chat .ak-workspace .ak-composer-box:focus-within {
-    border-color: color-mix(in srgb, var(--chat-accent) 48%, var(--chat-line)) !important;
-    box-shadow: 0 18px 42px rgb(38 52 80 / 0.1), 0 0 0 3px color-mix(in srgb, var(--chat-accent) 12%, transparent) !important;
+    border-color: color-mix(in srgb, var(--chat-accent) 48%, var(--chat-line));
+    box-shadow: 0 18px 42px rgb(38 52 80 / 0.1), 0 0 0 3px color-mix(in srgb, var(--chat-accent) 12%, transparent);
   }
 
   .ak-chat .ak-workspace .ak-composer-input {
-    color: var(--chat-ink) !important;
+    color: var(--chat-ink);
   }
 
   .ak-chat .ak-workspace .ak-composer-input::placeholder,
   .ak-chat .ak-workspace .ak-composer-disclaimer {
-    color: var(--chat-muted) !important;
+    color: var(--chat-muted);
   }
 
   .ak-chat .ak-workspace .ak-model-trigger {
-    background: var(--chat-soft) !important;
-    border-color: var(--chat-line) !important;
-    color: var(--chat-ink) !important;
+    background: var(--chat-soft);
+    border-color: var(--chat-line);
+    color: var(--chat-ink);
   }
   .ak-chat .ak-workspace .ak-model-trigger:hover,
   .ak-chat .ak-workspace .ak-model-trigger[aria-expanded="true"] {
-    background: var(--chat-surface) !important;
-    border-color: color-mix(in srgb, var(--chat-accent) 36%, var(--chat-line)) !important;
+    background: var(--chat-surface);
+    border-color: color-mix(in srgb, var(--chat-accent) 36%, var(--chat-line));
   }
   .ak-chat .ak-workspace .ak-model-trigger:focus-visible {
-    border-color: color-mix(in srgb, var(--chat-accent) 58%, var(--chat-line)) !important;
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--chat-accent) 18%, transparent) !important;
+    border-color: color-mix(in srgb, var(--chat-accent) 58%, var(--chat-line));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--chat-accent) 18%, transparent);
   }
 
   .ak-model-content {
     width: 220px;
-    border-color: oklch(0.42 0.035 270 / 0.52) !important;
-    background: #101a2b !important;
-    color: #eef3ff !important;
-    box-shadow: 0 22px 54px rgb(0 0 0 / 0.34) !important;
+    border-color: rgb(var(--surface-border));
+    background: rgb(var(--surface));
+    color: rgb(var(--ink));
+    box-shadow: 0 22px 54px rgb(var(--ink) / 0.16);
+  }
+  .dark .ak-model-content {
+    box-shadow: 0 22px 54px rgb(0 0 0 / 0.34);
   }
   .ak-model-content [data-slot="select-item"] {
-    color: #eef3ff !important;
+    color: rgb(var(--ink));
   }
   .ak-model-content [data-slot="select-item"]:focus {
-    background: rgb(139 163 255 / 0.14) !important;
-    color: #eef3ff !important;
+    background: color-mix(in srgb, rgb(var(--brand)) 14%, rgb(var(--surface)));
+    color: rgb(var(--ink));
   }
   .ak-model-content [data-slot="select-item"][data-state="checked"] {
-    color: #9fb4ff !important;
+    color: rgb(var(--brand));
   }
 
   /* Enterprise chat controls: keep the sidebar, composer, context hints, and
@@ -1045,32 +790,29 @@
     box-shadow: inset 0 1px 0 color-mix(in srgb, white 7%, transparent);
   }
 
-  .ak-chat .ak-sidebar .ak-sidebar-brand > div {
-    background: var(--chat-accent) !important;
-    box-shadow: 0 8px 18px color-mix(in srgb, var(--chat-accent) 24%, transparent) !important;
+  .ak-chat .ak-sidebar .ak-sidebar-brand {
+    color: var(--chat-ink);
   }
-
-  .ak-chat .ak-sidebar .ak-sidebar-brand { color: var(--chat-ink) !important; }
 
   .ak-chat .ak-sidebar .ak-sidebar-new {
-    border-color: color-mix(in srgb, var(--chat-accent) 76%, var(--chat-line)) !important;
-    background: linear-gradient(180deg, color-mix(in srgb, var(--chat-accent) 92%, white), var(--chat-accent)) !important;
-    box-shadow: 0 10px 24px color-mix(in srgb, var(--chat-accent) 24%, transparent) !important;
+    border-color: color-mix(in srgb, var(--chat-accent) 76%, var(--chat-line));
+    background: linear-gradient(180deg, color-mix(in srgb, var(--chat-accent) 92%, white), var(--chat-accent));
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--chat-accent) 24%, transparent);
   }
 
-  .ak-chat .ak-sidebar .ak-sidebar-new > button:first-child { background: transparent !important; }
+  .ak-chat .ak-sidebar .ak-sidebar-new > button:first-child { background: transparent; }
   .ak-chat .ak-sidebar .ak-sidebar-new > button:last-child:hover {
-    background: color-mix(in srgb, var(--chat-accent-strong) 18%, transparent) !important;
+    background: color-mix(in srgb, var(--chat-accent-strong) 18%, transparent);
   }
 
   .ak-chat .ak-sidebar .ak-sidebar-search {
-    border-color: var(--chat-line) !important;
-    background: color-mix(in srgb, var(--chat-soft) 58%, transparent) !important;
-    color: var(--chat-muted) !important;
+    border-color: var(--chat-line);
+    background: color-mix(in srgb, var(--chat-soft) 58%, transparent);
+    color: var(--chat-muted);
   }
   .ak-chat .ak-sidebar .ak-sidebar-search:focus-within {
-    border-color: color-mix(in srgb, var(--chat-accent) 58%, var(--chat-line)) !important;
-    background: color-mix(in srgb, var(--chat-surface) 96%, transparent) !important;
+    border-color: color-mix(in srgb, var(--chat-accent) 58%, var(--chat-line));
+    background: color-mix(in srgb, var(--chat-surface) 96%, transparent);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--chat-accent) 12%, transparent);
   }
 
@@ -1078,28 +820,28 @@
   .ak-chat .ak-workspace .ak-empty-heading { color: var(--chat-ink); }
   .ak-chat .ak-workspace .ak-empty-heading span {
     margin-left: 0.18em;
-    background: linear-gradient(100deg, var(--chat-accent), color-mix(in srgb, var(--chat-accent-strong) 64%, #0891b2));
+    background: linear-gradient(100deg, var(--chat-accent), color-mix(in srgb, var(--chat-accent-strong) 64%, rgb(var(--brand-cyan))));
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
   }
   .ak-chat .ak-workspace .ak-context-notice {
-    border-color: var(--chat-line) !important;
-    background: color-mix(in srgb, var(--chat-accent) 8%, var(--chat-surface)) !important;
-    color: color-mix(in srgb, var(--chat-muted) 78%, var(--chat-ink)) !important;
-    box-shadow: 0 8px 24px color-mix(in srgb, var(--chat-accent) 10%, transparent) !important;
+    border-color: var(--chat-line);
+    background: color-mix(in srgb, var(--chat-accent) 8%, var(--chat-surface));
+    color: color-mix(in srgb, var(--chat-muted) 78%, var(--chat-ink));
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--chat-accent) 10%, transparent);
   }
   .ak-chat .ak-workspace .ak-send-button {
     min-height: var(--control-h);
     min-width: var(--control-h);
     border: 1px solid transparent;
-    background: linear-gradient(180deg, color-mix(in srgb, var(--chat-accent) 94%, white), var(--chat-accent)) !important;
-    color: var(--chat-on-accent) !important;
-    box-shadow: 0 10px 22px color-mix(in srgb, var(--chat-accent) 28%, transparent) !important;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--chat-accent) 94%, white), var(--chat-accent));
+    color: var(--chat-on-accent);
+    box-shadow: 0 10px 22px color-mix(in srgb, var(--chat-accent) 28%, transparent);
   }
   .ak-chat .ak-workspace .ak-send-button:not(:disabled):hover {
     transform: translateY(-1px);
-    box-shadow: 0 14px 28px color-mix(in srgb, var(--chat-accent) 34%, transparent) !important;
+    box-shadow: 0 14px 28px color-mix(in srgb, var(--chat-accent) 34%, transparent);
     filter: none;
   }
   .ak-chat .ak-workspace .ak-send-button:focus-visible {
@@ -1107,61 +849,18 @@
     outline-offset: 3px;
   }
   .ak-chat .ak-workspace .ak-send-button:disabled {
-    border-color: var(--chat-line) !important;
-    background: var(--chat-soft) !important;
-    color: color-mix(in srgb, var(--chat-muted) 72%, var(--chat-ink)) !important;
-    box-shadow: none !important;
+    border-color: var(--chat-line);
+    background: var(--chat-soft);
+    color: color-mix(in srgb, var(--chat-muted) 72%, var(--chat-ink));
+    box-shadow: none;
     opacity: 1;
     cursor: not-allowed;
-  }
-
-  .ak-chat .ak-insight-badge {
-    display: inline-flex;
-    min-height: 1.5rem;
-    align-items: center;
-    gap: 0.25rem;
-    justify-content: center;
-    border: 1px solid var(--chat-line);
-    border-radius: 0.375rem;
-    background: color-mix(in srgb, var(--chat-soft) 82%, transparent);
-    padding: 0.125rem 0.5rem;
-    color: var(--chat-muted);
-    font-size: 0.75rem;
-    font-weight: 500;
-    letter-spacing: 0;
-    line-height: 1rem;
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.14);
-  }
-
-  .ak-chat .ak-insight-badge-muted {
-    border-color: color-mix(in srgb, var(--chat-line) 88%, transparent);
-    background: color-mix(in srgb, var(--chat-soft) 72%, transparent);
-    color: var(--chat-muted);
-  }
-
-  .ak-chat .ak-insight-badge-count {
-    border-color: color-mix(in srgb, var(--chat-accent) 28%, var(--chat-line));
-    background: color-mix(in srgb, var(--chat-accent) 9%, var(--chat-surface));
-    color: color-mix(in srgb, var(--chat-accent) 84%, var(--chat-ink));
-    font-variant-numeric: tabular-nums;
-  }
-
-  .ak-chat .ak-insight-badge-state {
-    border-color: color-mix(in srgb, var(--chat-accent) 32%, var(--chat-line));
-    background: color-mix(in srgb, var(--chat-accent) 11%, var(--chat-surface));
-    color: color-mix(in srgb, var(--chat-accent) 86%, var(--chat-ink));
-    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--chat-accent) 16%, transparent);
-  }
-
-  .ak-chat .ak-trace-stat {
-    border-color: var(--chat-line) !important;
-    background: color-mix(in srgb, var(--chat-soft) 86%, transparent) !important;
   }
 
   .ak-export-action {
     border-color: rgb(var(--surface-border) / 0.8);
     background: rgb(var(--surface));
-    color: rgb(var(--fg));
+    color: rgb(var(--ink));
     box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
   }
 
@@ -1191,28 +890,28 @@
   }
 
   .ak-brand-panel {
-    background: color-mix(in srgb, rgb(var(--fg)) 92%, rgb(var(--brand)) 8%);
-    color: #ffffff;
+    background: color-mix(in srgb, rgb(var(--ink)) 92%, rgb(var(--brand)) 8%);
+    color: rgb(var(--on-brand));
   }
 
   .dark .ak-brand-panel {
     background: color-mix(in srgb, rgb(var(--surface)) 94%, rgb(var(--brand)) 6%);
-    color: rgb(var(--fg));
+    color: rgb(var(--ink));
   }
 
   .ak-brand-panel-gradient {
     background:
       linear-gradient(145deg,
-        color-mix(in srgb, rgb(var(--brand)) 16%, rgb(var(--fg))) 0%,
-        color-mix(in srgb, rgb(var(--fg)) 94%, #020617) 54%,
-        color-mix(in srgb, rgb(var(--brand)) 22%, rgb(var(--fg))) 100%);
+        color-mix(in srgb, rgb(var(--brand)) 16%, rgb(var(--ink))) 0%,
+        color-mix(in srgb, rgb(var(--ink)) 94%, rgb(var(--canvas))) 54%,
+        color-mix(in srgb, rgb(var(--brand)) 22%, rgb(var(--ink))) 100%);
   }
 
   .dark .ak-brand-panel-gradient {
     background:
       linear-gradient(145deg,
         color-mix(in srgb, rgb(var(--brand)) 14%, rgb(var(--surface))) 0%,
-        color-mix(in srgb, rgb(var(--surface)) 92%, #020617) 58%,
+        color-mix(in srgb, rgb(var(--surface)) 92%, rgb(var(--canvas))) 58%,
         color-mix(in srgb, rgb(var(--brand)) 20%, rgb(var(--surface))) 100%);
   }
 
@@ -1233,7 +932,7 @@
   }
 
   .dark .ak-brand-panel-muted {
-    color: color-mix(in srgb, rgb(var(--fg)) 72%, transparent);
+    color: color-mix(in srgb, rgb(var(--ink)) 72%, transparent);
   }
 
   .ak-brand-panel-card {
@@ -1334,7 +1033,7 @@
   .app-theme-toggle-item:hover {
     border-color: rgb(var(--surface-border));
     background: rgb(var(--surface-2));
-    color: rgb(var(--fg));
+    color: rgb(var(--ink));
   }
 
   .app-theme-toggle-item[data-state="on"] {
@@ -1343,20 +1042,35 @@
     color: rgb(var(--brand));
     box-shadow: none;
   }
+
+.ak-theme-toggle-compact {
+  border-color: rgb(var(--surface-border) / 0.8);
+  background: color-mix(in srgb, rgb(var(--surface)) 95%, transparent);
+  color: rgb(var(--ink));
+  box-shadow: none;
+}
+.ak-theme-toggle-compact:hover {
+  background: rgb(var(--surface));
 }
 
 .dark {
-  --bg: 9 14 24;
-  --fg: 236 242 250;
-  --text-subtle: 148 162 184;
-  --brand: 96 165 250;
-  --brand-dark: 59 130 246;
-
+  /* Semantic tokens */
+  --canvas: 9 14 24;
   --surface: 17 24 39;
   --surface-2: 24 34 51;
-
+  --composer: 8 16 28;
   --surface-border: 44 56 75;
   --surface-border-strong: 65 80 105;
+
+  --ink: 236 242 250;
+  --ink-2: 203 213 225;
+  --text-subtle: 154 168 187;
+  --faint: 71 85 105;
+
+  --brand: 96 165 250;
+  --brand-strong: 147 197 253;
+  --brand-cyan: 56 189 248;
+  --on-brand: 7 17 31;
 
   --success: 34 197 94;
   --warning: 251 146 60;
@@ -1401,11 +1115,11 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgb(var(--fg) / 0.12);
+  background: rgb(var(--ink) / 0.12);
   border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--fg) / 0.22);
+  background: rgb(var(--ink) / 0.22);
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -1482,31 +1196,6 @@ body {
     }
   }
 
-  .btn {
-    @apply inline-flex h-[var(--control-h)] cursor-pointer items-center justify-center gap-1.5 rounded-lg
-           border px-3 text-sm font-medium shadow-sm
-           transition-[transform,background-color,border-color,color,box-shadow] duration-200 ease-ui-out
-           disabled:opacity-50 disabled:cursor-not-allowed
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30
-           active:scale-[0.97];
-  }
-  .btn-primary {
-    @apply border-transparent bg-brand text-white shadow-sm
-           hover:bg-brand-dark hover:shadow-md;
-  }
-  .btn-ghost {
-    @apply border-surface-border/70 bg-surface text-fg hover:border-surface-border hover:bg-surface-2;
-  }
-  .btn-danger {
-    @apply border-danger/30 bg-transparent text-danger hover:bg-danger/10;
-  }
-  .btn-sm {
-    @apply min-h-8 gap-1 rounded-md px-2.5 py-1.5 text-xs;
-  }
-  .btn-icon {
-    @apply h-9 w-9 gap-0 rounded-lg p-0;
-  }
-
   .card {
     @apply rounded-lg border border-surface-border/80 bg-surface shadow-[0_1px_2px_rgb(15_23_42/0.04),0_12px_28px_rgb(15_23_42/0.035)];
   }
@@ -1517,10 +1206,10 @@ body {
 
   .chip {
     @apply inline-flex h-6 items-center gap-1 rounded-md border border-surface-border/80
-           bg-surface-2/70 px-2 text-[11px] font-medium leading-none tracking-wide text-fg/85;
+           bg-surface-2/70 px-2 text-[11px] font-medium leading-none tracking-wide text-ink/85;
   }
   .chip-brand {
-    @apply border-brand/30 bg-brand/15 text-brand dark:text-sky-300;
+    @apply border-brand/30 bg-brand/15 text-brand;
   }
   .chip-success {
     @apply border-success/30 bg-success/15 text-success dark:text-emerald-300;
@@ -1532,7 +1221,7 @@ body {
     @apply border-danger/30 bg-danger/15 text-danger dark:text-red-300;
   }
   .chip-info {
-    @apply border-info/30 bg-info/15 text-info dark:text-sky-300;
+    @apply border-info/30 bg-info/15 text-info;
   }
   .chip-muted {
     @apply border-surface-border/80 bg-surface-2/80 text-muted;
@@ -1540,7 +1229,7 @@ body {
 
   .app-nav-link {
     @apply inline-flex h-[var(--control-h)] items-center gap-1.5 rounded-md px-3 text-sm font-medium text-muted
-           transition-colors hover:bg-surface-2 hover:text-fg
+           transition-colors hover:bg-surface-2 hover:text-ink
            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30;
   }
   .app-nav-link-compact {
@@ -1568,7 +1257,7 @@ body {
     @apply text-brand hover:border-brand/20 hover:bg-brand/10;
   }
   .app-mini-link-muted {
-    @apply text-muted hover:border-surface-border hover:bg-surface-2 hover:text-fg;
+    @apply text-muted hover:border-surface-border hover:bg-surface-2 hover:text-ink;
   }
 
   .input-shell {
@@ -1584,7 +1273,7 @@ body {
     border-color: rgb(var(--surface-border) / 0.9);
     border-radius: 0.75rem;
     background-color: rgb(var(--surface));
-    box-shadow: 0 1px 2px rgb(var(--fg) / 0.03);
+    box-shadow: 0 1px 2px rgb(var(--ink) / 0.03);
     transition: border-color var(--duration-press) var(--ease-out),
       box-shadow var(--duration-press) var(--ease-out),
       background-color var(--duration-press) var(--ease-out);
@@ -1598,25 +1287,39 @@ body {
   .app-gradient-bg,
   .app-page {
     background:
-      linear-gradient(180deg, rgb(255 255 255 / 0.72), rgb(255 255 255 / 0) 16rem),
+      linear-gradient(180deg, rgb(var(--surface) / 0.72), transparent 16rem),
       linear-gradient(135deg, rgb(var(--brand) / 0.065), transparent 34%),
-      rgb(var(--bg));
+      rgb(var(--canvas));
   }
   .dark .app-gradient-bg,
   .dark .app-page {
     background:
-      linear-gradient(180deg, rgb(255 255 255 / 0.055), rgb(255 255 255 / 0) 18rem),
+      linear-gradient(180deg, rgb(255 255 255 / 0.055), transparent 18rem),
       linear-gradient(135deg, rgb(var(--brand) / 0.11), transparent 36%),
-      rgb(var(--bg));
+      rgb(var(--canvas));
+  }
+
+  .welcome-hero-wash {
+    background:
+      linear-gradient(180deg, color-mix(in srgb, rgb(var(--brand)) 7%, transparent), transparent 55%),
+      linear-gradient(105deg, color-mix(in srgb, rgb(var(--brand-cyan)) 6%, transparent), transparent 42%);
+  }
+  .dark .welcome-hero-wash {
+    background:
+      linear-gradient(180deg, color-mix(in srgb, rgb(var(--brand)) 12%, transparent), transparent 58%),
+      linear-gradient(105deg, color-mix(in srgb, rgb(var(--brand-cyan)) 8%, transparent), transparent 44%);
+  }
+  .welcome-hero-visual {
+    background: rgb(var(--surface));
   }
 
   .app-page-header {
     position: sticky;
     top: 0;
     z-index: 20;
-    border-color: rgb(var(--surface-border) / 0.82) !important;
-    background: rgb(var(--surface) / 0.86) !important;
-    box-shadow: 0 1px 0 rgb(15 23 42 / 0.03);
+    border-color: rgb(var(--surface-border) / 0.82);
+    background: color-mix(in srgb, rgb(var(--surface)) 86%, transparent);
+    box-shadow: 0 1px 0 rgb(var(--ink) / 0.03);
     backdrop-filter: blur(18px) saturate(1.1);
   }
   .app-page-content { max-width: 72rem; }
@@ -1624,7 +1327,7 @@ body {
   .filter-tab {
     @apply inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium
            text-muted transition-[background-color,color] duration-200 ease-ui-out
-           hover:bg-surface-2 hover:text-fg;
+           hover:bg-surface-2 hover:text-ink;
   }
   .filter-tab-active {
     @apply bg-brand/15 text-brand ring-1 ring-brand/25;
@@ -1637,7 +1340,7 @@ body {
     @apply rounded-lg border border-surface-border/70 bg-surface transition-[background-color,border-color,box-shadow,opacity] duration-200 ease-ui-out;
   }
   .dark .chunk-card {
-    @apply border-surface-border bg-surface shadow-[0_1px_0_rgb(var(--fg)/0.04)];
+    @apply border-surface-border bg-surface shadow-[0_1px_0_rgb(var(--ink)/0.04)];
   }
   .chunk-card-selected {
     @apply border-brand/50 bg-brand/5 ring-1 ring-brand/20;
@@ -1653,7 +1356,7 @@ body {
   }
 
   .search-highlight {
-    @apply rounded bg-brand/20 px-0.5 text-brand-dark dark:bg-brand/25 dark:text-brand;
+    @apply rounded bg-brand/20 px-0.5 text-brand-strong dark:bg-brand/25 dark:text-brand;
   }
 
   .stat-pill {
@@ -1663,19 +1366,16 @@ body {
     @apply border-surface-border bg-surface-2/80;
   }
 
-  /* Admin / table management pages (doc & chunk lists) */
+  /* Admin / table management pages — semantic canvas/surface tokens */
   .admin-page {
-    @apply bg-bg;
-  }
-  .dark .admin-page {
-    @apply bg-bg;
+    @apply bg-canvas text-ink;
   }
 
   .admin-panel {
-    @apply rounded-lg border border-surface-border/80 bg-surface shadow-[0_1px_2px_rgb(15_23_42/0.04),0_14px_32px_rgb(15_23_42/0.045)];
+    @apply rounded-lg border border-surface-border/80 bg-surface shadow-soft;
   }
   .dark .admin-panel {
-    @apply border-surface-border shadow-[0_1px_0_rgb(var(--fg)/0.04)];
+    @apply border-surface-border shadow-[0_1px_0_rgb(var(--ink)/0.04)];
   }
 
   .admin-table {
@@ -1710,34 +1410,9 @@ body {
     @apply transition-colors hover:bg-surface-2/55 dark:hover:bg-surface-2/35;
   }
 
-  .admin-btn-primary {
-    @apply inline-flex h-[var(--control-h)] items-center justify-center gap-1.5 rounded-lg
-           border border-transparent bg-brand px-3.5 text-sm font-medium text-white
-           shadow-[0_8px_18px_rgb(var(--brand)/0.18)] transition hover:bg-brand-dark hover:shadow-[0_12px_24px_rgb(var(--brand)/0.24)]
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30
-           cursor-pointer disabled:cursor-not-allowed
-           disabled:border-surface-border/80 disabled:bg-surface-2 disabled:text-muted disabled:shadow-none disabled:opacity-100;
-  }
-  .admin-btn-secondary {
-    @apply inline-flex h-[var(--control-h)] items-center justify-center gap-1.5 rounded-lg
-           border border-surface-border bg-surface px-3.5 text-sm font-medium text-fg
-           shadow-sm transition hover:border-brand/30 hover:bg-surface-2
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/25
-           cursor-pointer disabled:cursor-not-allowed
-           disabled:border-surface-border/70 disabled:bg-surface-2/80 disabled:text-muted disabled:opacity-100;
-  }
-  .admin-btn-danger {
-    @apply inline-flex h-[var(--control-h)] items-center justify-center gap-1.5 rounded-lg
-           border border-danger/30 bg-danger/10 px-3.5 text-sm font-medium text-danger
-           shadow-sm transition hover:border-danger/45 hover:bg-danger/15
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/25
-           cursor-pointer disabled:cursor-not-allowed
-           disabled:border-surface-border/70 disabled:bg-surface-2 disabled:text-muted disabled:opacity-100;
-  }
-
   .admin-input {
     @apply block h-[var(--control-h)] w-full rounded-lg border border-surface-border/80 bg-surface
-           px-3 text-sm text-fg shadow-sm outline-none
+           px-3 text-sm text-ink shadow-sm outline-none
            transition-[background-color,border-color,box-shadow]
            hover:border-brand/35 focus:border-brand focus:ring-2 focus:ring-brand/20
            disabled:cursor-not-allowed disabled:opacity-60;
@@ -1769,7 +1444,7 @@ body {
     @apply inline-flex size-[var(--control-h)] shrink-0 cursor-pointer items-center justify-center rounded-md
            border border-transparent text-muted
            transition-[background-color,border-color,color,box-shadow] duration-200 ease-ui-out
-           hover:border-surface-border hover:bg-surface-2 hover:text-fg
+           hover:border-surface-border hover:bg-surface-2 hover:text-ink
            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30
            disabled:cursor-not-allowed disabled:opacity-60;
   }
@@ -1777,7 +1452,7 @@ body {
     @apply rounded-lg;
   }
   .admin-icon-action-surface {
-    @apply border-surface-border/80 bg-surface shadow-sm hover:bg-surface-2 hover:text-fg;
+    @apply border-surface-border/80 bg-surface shadow-sm hover:bg-surface-2 hover:text-ink;
   }
   .admin-icon-action-brand {
     @apply hover:border-brand/25 hover:bg-brand/10 hover:text-brand focus-visible:ring-brand/30;
@@ -1787,37 +1462,7 @@ body {
            hover:border-danger/30 hover:bg-danger/10 hover:text-danger focus-visible:ring-danger/25;
   }
   .admin-icon-action-soft {
-    @apply opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100;
-  }
-
-  .admin-toolbar-btn {
-    @apply inline-flex h-[var(--control-h)] items-center justify-center gap-1.5 rounded-lg
-           border border-surface-border/80 bg-surface px-3 text-sm font-medium text-fg
-           shadow-sm transition-[background-color,border-color,color,box-shadow,transform] duration-200 ease-ui-out
-           hover:border-surface-border hover:bg-surface-2 hover:shadow
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30
-           cursor-pointer disabled:cursor-not-allowed disabled:opacity-50;
-  }
-  .dark .admin-toolbar-btn {
-    @apply border-surface-border bg-surface-2/80 hover:bg-surface-2;
-  }
-
-  .admin-row-action {
-    @apply inline-flex min-h-[36px] items-center gap-1.5 rounded-md border border-transparent
-           px-3 text-xs font-medium text-muted
-           transition-[background-color,border-color,color,box-shadow,transform] duration-200 ease-ui-out
-           hover:border-surface-border/80 hover:bg-surface-2 hover:text-fg hover:shadow-sm
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30
-           cursor-pointer disabled:cursor-not-allowed disabled:opacity-50;
-  }
-  .admin-row-action-brand {
-    @apply hover:border-brand/30 hover:bg-brand/10 hover:text-brand;
-  }
-  .admin-row-action-danger {
-    @apply hover:border-danger/30 hover:bg-danger/10 hover:text-danger;
-  }
-  .admin-row-action-loading {
-    @apply pointer-events-none opacity-70;
+    @apply opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 sm:focus-visible:opacity-100;
   }
 
   .admin-select-trigger {
@@ -1829,7 +1474,7 @@ body {
     @apply inline-flex h-6 items-center rounded-md border px-2 text-[11px] font-medium leading-none tracking-wide;
   }
   .status-tag-enabled {
-    @apply border-brand/30 bg-brand/15 text-brand dark:text-sky-300;
+    @apply border-brand/30 bg-brand/15 text-brand;
   }
   .status-tag-disabled {
     @apply border-surface-border/80 bg-surface-2/80 text-muted;
@@ -1840,7 +1485,7 @@ body {
   }
   .admin-section-nav-item {
     @apply inline-flex h-[var(--control-h)] shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-3 text-sm font-semibold text-muted
-           transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30;
+           transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30;
   }
   .admin-section {
     @apply space-y-3;
@@ -1912,13 +1557,13 @@ body {
   border-color: rgb(var(--surface-border));
 }
 .prose-tg code {
-  background: rgb(var(--fg) / 0.06);
+  background: rgb(var(--ink) / 0.06);
   padding: 0.1rem 0.35rem;
   border-radius: 6px;
   font-size: 0.875rem;
 }
 .prose-tg pre {
-  background: rgb(var(--fg) / 0.04);
+  background: rgb(var(--ink) / 0.04);
   padding: 0.75rem 1rem;
   border-radius: 12px;
   overflow-x: auto;
@@ -1952,7 +1597,7 @@ body {
   padding: 0.4rem 0.6rem;
 }
 .prose-tg th {
-  background: rgb(var(--fg) / 0.04);
+  background: rgb(var(--ink) / 0.04);
   font-weight: 600;
 }
 
@@ -1961,72 +1606,45 @@ body {
     --font-heading: var(--font-sans);
     --font-sans: var(--font-sans);
   }
+  /* shadcn / Radix theme — bound to semantic RGB tokens (no parallel oklch palette) */
   :root {
-    --background: oklch(0.985 0.006 250);
-    --foreground: oklch(0.24 0.028 250);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.24 0.028 250);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.24 0.028 250);
-    --primary: oklch(0.58 0.19 255);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.96 0.01 250);
-    --secondary-foreground: oklch(0.24 0.028 250);
-    --muted: oklch(0.96 0.01 250);
-    --muted-foreground: oklch(0.52 0.032 250);
-    --accent: oklch(0.94 0.035 210);
-    --accent-foreground: oklch(0.24 0.028 250);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.90 0.014 250);
-    --input: oklch(0.90 0.014 250);
-    --ring: oklch(0.58 0.19 255);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --radius: 0.5rem;
-    --sidebar: oklch(0.985 0.002 286);
-    --sidebar-foreground: oklch(0.21 0.006 286);
-    --sidebar-primary: oklch(0.58 0.19 255);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.965 0.018 250);
-    --sidebar-accent-foreground: oklch(0.21 0.006 286);
-    --sidebar-border: oklch(0.91 0.004 286);
-    --sidebar-ring: oklch(0.58 0.19 255);
+    --background: rgb(var(--canvas));
+    --foreground: rgb(var(--ink));
+    --card: rgb(var(--surface));
+    --card-foreground: rgb(var(--ink));
+    --popover: rgb(var(--surface));
+    --popover-foreground: rgb(var(--ink));
+    --primary: rgb(var(--brand));
+    --primary-foreground: rgb(var(--on-brand));
+    --secondary: rgb(var(--surface-2));
+    --secondary-foreground: rgb(var(--ink));
+    --muted: rgb(var(--surface-2));
+    --muted-foreground: rgb(var(--text-subtle));
+    --accent: color-mix(in srgb, rgb(var(--brand-cyan)) 14%, rgb(var(--surface-2)));
+    --accent-foreground: rgb(var(--ink));
+    --destructive: rgb(var(--danger));
+    --border: rgb(var(--surface-border));
+    --input: rgb(var(--surface-border));
+    --ring: rgb(var(--brand));
+    --chart-1: rgb(var(--brand));
+    --chart-2: rgb(var(--brand-cyan));
+    --chart-3: rgb(var(--success));
+    --chart-4: rgb(var(--warning));
+    --chart-5: rgb(var(--text-subtle));
+    --sidebar: rgb(var(--surface));
+    --sidebar-foreground: rgb(var(--ink));
+    --sidebar-primary: rgb(var(--brand));
+    --sidebar-primary-foreground: rgb(var(--on-brand));
+    --sidebar-accent: rgb(var(--surface-2));
+    --sidebar-accent-foreground: rgb(var(--ink));
+    --sidebar-border: rgb(var(--surface-border));
+    --sidebar-ring: rgb(var(--brand));
   }
   .dark {
-    --background: oklch(0.18 0.018 250);
-    --foreground: oklch(0.97 0.006 250);
-    --card: oklch(0.225 0.022 250);
-    --card-foreground: oklch(0.97 0.006 250);
-    --popover: oklch(0.225 0.022 250);
-    --popover-foreground: oklch(0.97 0.006 250);
-    --primary: oklch(0.72 0.15 255);
-    --primary-foreground: oklch(0.18 0.018 250);
-    --secondary: oklch(0.29 0.022 250);
-    --secondary-foreground: oklch(0.97 0.009 270);
-    --muted: oklch(0.29 0.022 250);
-    --muted-foreground: oklch(0.70 0.024 250);
-    --accent: oklch(0.31 0.05 210);
-    --accent-foreground: oklch(0.97 0.006 250);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(0.42 0.027 250);
-    --input: oklch(0.34 0.024 250);
-    --ring: oklch(0.72 0.15 255);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.21 0.006 286);
-    --sidebar-foreground: oklch(0.97 0.002 286);
-    --sidebar-primary: oklch(0.72 0.15 255);
-    --sidebar-primary-foreground: oklch(0.16 0.005 286);
-    --sidebar-accent: oklch(0.27 0.03 250);
-    --sidebar-accent-foreground: oklch(0.97 0.002 286);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.72 0.14 163);
+    /* Semantic RGB channels already flip under .dark; shadcn bindings inherit.
+       Only override paint that needs different alpha / mix in dark. */
+    --accent: color-mix(in srgb, rgb(var(--brand-cyan)) 18%, rgb(var(--surface-2)));
+    --sidebar-border: rgb(var(--surface-border) / 0.9);
   }
   * {
     @apply border-border;

@@ -107,7 +107,7 @@ function Section({
 }
 
 const toneClass: Record<string, string> = {
-  default: "text-fg",
+  default: "text-ink",
   success: "text-success",
   danger: "text-danger",
   accent: "text-brand",

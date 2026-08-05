@@ -9,16 +9,16 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/80",
+        default: "bg-brand text-on-brand hover:bg-brand-strong",
         outline:
-          "border-surface-border/80 bg-surface text-fg hover:border-brand/35 hover:bg-surface-2 hover:text-fg aria-expanded:border-brand/35 aria-expanded:bg-surface-2 aria-expanded:text-fg dark:border-surface-border/80 dark:bg-surface dark:hover:bg-surface-2",
+          "border-surface-border/80 bg-surface text-ink hover:border-brand/35 hover:bg-surface-2 hover:text-ink aria-expanded:border-brand/35 aria-expanded:bg-surface-2 aria-expanded:text-ink dark:border-surface-border/80 dark:bg-surface dark:hover:bg-surface-2",
         secondary:
-          "border-surface-border/80 bg-surface-2 text-fg hover:border-brand/30 hover:bg-surface aria-expanded:border-brand/35 aria-expanded:bg-surface-2 aria-expanded:text-fg",
+          "border-surface-border/80 bg-surface-2 text-ink hover:border-brand/30 hover:bg-surface aria-expanded:border-brand/35 aria-expanded:bg-surface-2 aria-expanded:text-ink",
         ghost:
-          "text-muted hover:bg-surface-2 hover:text-fg aria-expanded:bg-surface-2 aria-expanded:text-fg dark:hover:bg-surface-2/70",
+          "text-muted hover:bg-surface-2 hover:text-ink aria-expanded:bg-surface-2 aria-expanded:text-ink dark:hover:bg-surface-2/70",
         destructive:
-          "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
-        link: "text-primary underline-offset-4 hover:underline",
+          "border-danger/30 bg-danger/10 text-danger hover:border-danger/45 hover:bg-danger/15 focus-visible:border-danger/40 focus-visible:ring-danger/25",
+        link: "text-brand underline-offset-4 hover:underline",
       },
       size: {
         default:

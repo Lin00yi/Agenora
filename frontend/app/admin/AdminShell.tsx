@@ -7,6 +7,8 @@ import { BookOpen, ChevronLeft, Home, LayoutDashboard, Users } from "lucide-reac
 
 import { getToken, getUser, refreshMe } from "@/lib/auth";
 import { cn } from "@/lib/cn";
+import Brand from "@/components/Brand";
+import { Button } from "@/components/ui/button";
 import { LoadingState, StateView } from "@/components/ui/state-view";
 import ThemeToggle from "@/components/ThemeToggle";
 
@@ -63,12 +65,12 @@ export default function AdminShell({
 
   if (forbidden) {
     return (
-      <div className="app-page min-h-dvh text-fg">
+      <div className="app-page min-h-dvh text-ink">
         <header className="app-page-header border-b">
           <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4 sm:px-6">
             <Link
               href="/"
-              className="inline-flex items-center gap-1 text-sm text-muted transition hover:text-fg"
+              className="inline-flex items-center gap-1 text-sm text-muted transition hover:text-ink"
             >
               <ChevronLeft className="h-4 w-4" />
               <span>返回对话</span>
@@ -82,9 +84,9 @@ export default function AdminShell({
             title="没有后台管理权限"
             description="当前账号不是管理员，无法访问后台看板、用户管理和全局知识库管理。"
             action={
-              <Link href="/" className="admin-btn-primary">
-                返回对话
-              </Link>
+              <Button asChild>
+                <Link href="/">返回对话</Link>
+              </Button>
             }
           />
         </main>
@@ -107,7 +109,7 @@ export default function AdminShell({
   ];
 
   return (
-    <div className="app-page min-h-dvh text-fg">
+    <div className="app-page min-h-dvh text-ink">
       <header className="app-page-header border-b">
         <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 sm:px-6">
           <Link
@@ -117,8 +119,9 @@ export default function AdminShell({
           >
             <Home className="h-4 w-4" />
           </Link>
+          <Brand size="sm" showWordmark className="hidden sm:inline-flex" />
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-sm font-semibold">{title}</h1>
+            <h1 className="truncate text-sm font-semibold text-ink">{title}</h1>
             <p className="hidden text-xs text-muted sm:block">平台管理</p>
           </div>
           <ThemeToggle />
@@ -133,10 +136,10 @@ export default function AdminShell({
                 href={t.href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "inline-flex min-h-[var(--control-h)] shrink-0 items-center gap-2 rounded-md border border-transparent px-3.5 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30",
+                  "inline-flex min-h-[var(--control-h)] shrink-0 items-center gap-2 rounded-lg border border-transparent px-3.5 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30",
                   active
-                    ? "border-brand/25 bg-brand/10 text-fg shadow-sm"
-                    : "text-muted hover:border-surface-border/80 hover:bg-surface hover:text-fg"
+                    ? "border-brand/25 bg-brand/10 text-ink shadow-sm"
+                    : "text-muted hover:border-surface-border/80 hover:bg-surface hover:text-ink"
                 )}
               >
                 <Icon className="h-4 w-4" />

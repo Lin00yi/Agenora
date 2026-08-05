@@ -109,7 +109,7 @@ export default function ThinkingChain({ events }: { events: ToolEvent[] }) {
                 <span className="mt-0.5">{STATUS_ICON[group.status]}</span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="truncate text-sm font-medium text-fg/85">
+                    <span className="truncate text-sm font-medium text-ink/85">
                       {formatGroupTitle(group)}
                     </span>
                     {group.latencyMs != null && (

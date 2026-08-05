@@ -43,7 +43,7 @@ function DropdownMenuContent({
         data-slot="dropdown-menu-content"
         sideOffset={sideOffset}
         align={align}
-        className={cn("ak-motion-enter z-50 max-h-(--radix-dropdown-menu-content-available-height) w-(--radix-dropdown-menu-trigger-width) min-w-36 origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-lg border border-surface-border/80 bg-surface p-1 text-fg shadow-[0_18px_48px_rgb(15_23_42/0.18)] ring-1 ring-surface-border/45 duration-popover ease-ui-out data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:overflow-hidden data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 dark:border-surface-border/90 dark:bg-surface dark:shadow-[0_22px_54px_rgb(0_0_0/0.34)]", className )}
+        className={cn("ak-motion-enter z-50 max-h-(--radix-dropdown-menu-content-available-height) w-(--radix-dropdown-menu-trigger-width) min-w-36 origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-lg border border-surface-border/80 bg-surface p-1 text-ink shadow-[0_18px_48px_rgb(15_23_42/0.18)] ring-1 ring-surface-border/45 duration-popover ease-ui-out data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:overflow-hidden data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 dark:border-surface-border/90 dark:bg-surface dark:shadow-[0_22px_54px_rgb(0_0_0/0.34)]", className )}
         {...props}
       />
     </DropdownMenuPrimitive.Portal>
@@ -73,7 +73,7 @@ function DropdownMenuItem({
       data-inset={inset}
       data-variant={variant}
       className={cn(
-        "group/dropdown-menu-item relative flex min-h-[var(--control-h)] cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-fg outline-hidden select-none focus:bg-brand/10 focus:text-fg not-data-[variant=destructive]:focus:**:text-fg data-inset:pl-8 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:focus:bg-brand/15 dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive",
+        "group/dropdown-menu-item relative flex min-h-[var(--control-h)] cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-ink outline-hidden select-none focus:bg-brand/10 focus:text-ink not-data-[variant=destructive]:focus:**:text-ink data-inset:pl-8 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:focus:bg-brand/15 dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive",
         className
       )}
       {...props}
@@ -95,7 +95,7 @@ function DropdownMenuCheckboxItem({
       data-slot="dropdown-menu-checkbox-item"
       data-inset={inset}
       className={cn(
-        "relative flex min-h-[var(--control-h)] cursor-pointer items-center gap-2 rounded-md py-2 pr-8 pl-3 text-sm text-fg outline-hidden select-none focus:bg-brand/10 focus:text-fg focus:**:text-fg data-inset:pl-8 data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-disabled:opacity-50 dark:focus:bg-brand/15 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative flex min-h-[var(--control-h)] cursor-pointer items-center gap-2 rounded-md py-2 pr-8 pl-3 text-sm text-ink outline-hidden select-none focus:bg-brand/10 focus:text-ink focus:**:text-ink data-inset:pl-8 data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-disabled:opacity-50 dark:focus:bg-brand/15 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       checked={checked}
@@ -139,7 +139,7 @@ function DropdownMenuRadioItem({
       data-slot="dropdown-menu-radio-item"
       data-inset={inset}
       className={cn(
-        "relative flex min-h-[var(--control-h)] cursor-pointer items-center gap-2 rounded-md py-2 pr-8 pl-3 text-sm text-fg outline-hidden select-none focus:bg-brand/10 focus:text-fg focus:**:text-fg data-inset:pl-8 data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-disabled:opacity-50 dark:focus:bg-brand/15 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative flex min-h-[var(--control-h)] cursor-pointer items-center gap-2 rounded-md py-2 pr-8 pl-3 text-sm text-ink outline-hidden select-none focus:bg-brand/10 focus:text-ink focus:**:text-ink data-inset:pl-8 data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-disabled:opacity-50 dark:focus:bg-brand/15 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
@@ -199,7 +199,7 @@ function DropdownMenuShortcut({
     <span
       data-slot="dropdown-menu-shortcut"
       className={cn(
-        "ml-auto text-xs tracking-widest text-muted group-focus/dropdown-menu-item:text-fg",
+        "ml-auto text-xs tracking-widest text-muted group-focus/dropdown-menu-item:text-ink",
         className
       )}
       {...props}
@@ -226,7 +226,7 @@ function DropdownMenuSubTrigger({
       data-slot="dropdown-menu-sub-trigger"
       data-inset={inset}
       className={cn(
-        "flex min-h-[var(--control-h)] cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-fg outline-hidden select-none focus:bg-brand/10 focus:text-fg not-data-[variant=destructive]:focus:**:text-fg data-inset:pl-8 data-open:bg-brand/10 data-open:text-fg dark:focus:bg-brand/15 dark:data-open:bg-brand/15 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "flex min-h-[var(--control-h)] cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-ink outline-hidden select-none focus:bg-brand/10 focus:text-ink not-data-[variant=destructive]:focus:**:text-ink data-inset:pl-8 data-open:bg-brand/10 data-open:text-ink dark:focus:bg-brand/15 dark:data-open:bg-brand/15 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
@@ -244,7 +244,7 @@ function DropdownMenuSubContent({
   return (
     <DropdownMenuPrimitive.SubContent
       data-slot="dropdown-menu-sub-content"
-      className={cn("ak-motion-enter z-50 min-w-36 origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-lg border border-surface-border/80 bg-surface p-1 text-fg shadow-[0_18px_48px_rgb(15_23_42/0.18)] ring-1 ring-surface-border/45 duration-popover ease-ui-out data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 dark:border-surface-border/90 dark:bg-surface dark:shadow-[0_22px_54px_rgb(0_0_0/0.34)]", className )}
+      className={cn("ak-motion-enter z-50 min-w-36 origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-lg border border-surface-border/80 bg-surface p-1 text-ink shadow-[0_18px_48px_rgb(15_23_42/0.18)] ring-1 ring-surface-border/45 duration-popover ease-ui-out data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 dark:border-surface-border/90 dark:bg-surface dark:shadow-[0_22px_54px_rgb(0_0_0/0.34)]", className )}
       {...props}
     />
   )

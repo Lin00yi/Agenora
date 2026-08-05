@@ -35,7 +35,7 @@ export function AdminPageShell({
   className?: string;
 }) {
   return (
-    <div className={cn("app-page admin-page min-h-dvh text-fg", className)}>
+    <div className={cn("app-page admin-page min-h-dvh text-ink", className)}>
       <header className="app-page-header border-b">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6">
           <nav
@@ -53,7 +53,7 @@ export function AdminPageShell({
                     {item.label}
                   </Link>
                 ) : (
-                  <span className="inline-flex min-h-7 max-w-full items-center truncate px-1.5 font-medium text-fg">
+                  <span className="inline-flex min-h-7 max-w-full items-center truncate px-1.5 font-medium text-ink">
                     {item.label}
                   </span>
                 )}
@@ -67,7 +67,7 @@ export function AdminPageShell({
       <main className="app-page-content mx-auto px-4 py-7 sm:px-6 sm:py-10">
         <div className="mb-5 flex flex-col gap-3 border-b border-surface-border/70 pb-5 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
-            <h1 className="text-2xl font-semibold tracking-tight text-fg">{title}</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-ink">{title}</h1>
             {subtitle && (
               <p className="mt-1.5 text-sm leading-6 text-muted">{subtitle}</p>
             )}
@@ -182,7 +182,7 @@ export function AdminSection({
     <section id={id} className={cn("admin-section scroll-mt-24", className)}>
       <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-sm font-semibold text-fg">
+          <div className="flex items-center gap-2 text-sm font-semibold text-ink">
             {Icon ? <Icon className="h-4 w-4 text-brand" aria-hidden /> : null}
             <h2>{title}</h2>
           </div>

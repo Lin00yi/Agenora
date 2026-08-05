@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import Dialog from "@/components/Dialog";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import AppModal from "@/components/AppModal";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
@@ -123,8 +123,8 @@ export default function SystemSettingsDialog({
                   className={cn(
                     "flex h-[var(--control-h)] shrink-0 cursor-pointer items-center gap-2 rounded-md border border-transparent px-3 text-sm font-medium transition-[background-color,border-color,color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 sm:w-full sm:px-2",
                     active
-                      ? "border-brand/25 bg-surface text-fg shadow-sm"
-                      : "text-muted hover:border-surface-border/80 hover:bg-surface/75 hover:text-fg"
+                      ? "border-brand/25 bg-surface text-ink shadow-sm"
+                      : "text-muted hover:border-surface-border/80 hover:bg-surface/75 hover:text-ink"
                   )}
                   aria-pressed={active}
                   type="button"
@@ -160,7 +160,7 @@ export default function SystemSettingsDialog({
         </div>
       </AppModal>
 
-      <Dialog
+      <ConfirmDialog
         open={confirmClear}
         onOpenChange={setConfirmClear}
         title="清空所有对话？"
@@ -171,7 +171,7 @@ export default function SystemSettingsDialog({
         busy={clearing}
       />
 
-      <Dialog
+      <ConfirmDialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
         title="删除账号？"

@@ -47,10 +47,11 @@ import {
 } from "@/lib/kb-api";
 import { toastApiError } from "@/lib/byok-toast";
 import { cn } from "@/lib/cn";
-import Dialog from "@/components/Dialog";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import AppModal from "@/components/AppModal";
 import Select from "@/components/Select";
 import { StateView } from "@/components/ui/state-view";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -443,12 +444,12 @@ export default function DocumentDetailPage({
           className="w-full max-w-md"
           action={
             <div className="flex flex-wrap justify-center gap-2">
-              <Link href={`/kbs/${kbId}`} className="admin-btn-primary">
-                返回文档列表
-              </Link>
-              <Link href="/kbs" className="admin-btn-secondary">
-                返回知识库列表
-              </Link>
+              <Button asChild>
+                <Link href={`/kbs/${kbId}`}>返回文档列表</Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/kbs">返回知识库列表</Link>
+              </Button>
             </div>
           }
         />
@@ -489,13 +490,12 @@ export default function DocumentDetailPage({
       }
       actions={
         <>
-          <Link href={`/kbs/${kbId}`} className="admin-btn-secondary">
-            返回文档
-          </Link>
+          <Button asChild variant="outline">
+            <Link href={`/kbs/${kbId}`}>返回文档</Link>
+          </Button>
           {canWrite && (
-            <button
+            <Button
               type="button"
-              className="admin-btn-primary"
               disabled={anyPending}
               onClick={() => void onReingest()}
             >
@@ -506,7 +506,7 @@ export default function DocumentDetailPage({
                 )}
               />
               {isPending("reingest") ? "重建中…" : "重建向量"}
-            </button>
+            </Button>
           )}
         </>
       }
@@ -516,7 +516,7 @@ export default function DocumentDetailPage({
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             <span className={cn("chip", docStatus.badge)}>{docStatus.label}</span>
             <span className="text-sm text-muted">
-              <span className="font-semibold tabular-nums text-fg">{doc.chunks_count}</span> 分块
+              <span className="font-semibold tabular-nums text-ink">{doc.chunks_count}</span> 分块
             </span>
             <span aria-hidden className="text-surface-border">·</span>
             <span className="text-sm tabular-nums text-muted">
@@ -595,16 +595,17 @@ export default function DocumentDetailPage({
               />
             </label>
             <div className="flex items-end gap-2 md:justify-end">
-              <button
+              <Button
                 type="submit"
-                className="admin-btn-secondary h-[var(--control-h)]"
+                variant="outline"
+                className="h-[var(--control-h)]"
                 disabled={anyPending}
               >
                 {isPending("doc-chunk-settings") ? "保存中..." : "保存"}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="admin-btn-primary h-[var(--control-h)]"
+                className="h-[var(--control-h)]"
                 disabled={anyPending}
                 onClick={() => void onReingest()}
                 title="重新入库后，已保存的切分策略才会应用到现有分块。"
@@ -613,7 +614,7 @@ export default function DocumentDetailPage({
                   className={cn("h-4 w-4", isPending("reingest") && "animate-spin")}
                 />
                 重新 ingest
-              </button>
+              </Button>
             </div>
           </form>
           <p className="px-4 py-3 text-xs leading-5 text-muted">
@@ -705,13 +706,9 @@ export default function DocumentDetailPage({
                 >
                   批量禁用
                 </AdminToolbarButton>
-                <button
-                  type="button"
-                  className="admin-toolbar-btn"
-                  onClick={() => setSelected([])}
-                >
+                <AdminToolbarButton onClick={() => setSelected([])}>
                   清空选择
-                </button>
+                </AdminToolbarButton>
               </div>
             </div>
           ) : null
@@ -721,25 +718,25 @@ export default function DocumentDetailPage({
             <span>共 {total} 条</span>
             {totalPages > 1 && (
               <div className="flex items-center gap-2">
-                <button
+                <Button
                   type="button"
-                  className="admin-toolbar-btn"
+                  variant="outline"
                   disabled={page <= 1}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                 >
                   上一页
-                </button>
+                </Button>
                 <span>
                   {page} / {totalPages}
                 </span>
-                <button
+                <Button
                   type="button"
-                  className="admin-toolbar-btn"
+                  variant="outline"
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => p + 1)}
                 >
                   下一页
-                </button>
+                </Button>
               </div>
             )}
           </div>
@@ -783,7 +780,7 @@ export default function DocumentDetailPage({
                         {c.enabled ? "启用" : "禁用"}
                       </span>
                     </div>
-                    <p className="mt-2 line-clamp-4 rounded-md border border-surface-border/55 bg-surface-2/35 px-3 py-2 text-sm leading-relaxed text-fg">
+                    <p className="mt-2 line-clamp-4 rounded-md border border-surface-border/55 bg-surface-2/35 px-3 py-2 text-sm leading-relaxed text-ink">
                       {c.text}
                     </p>
                     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
@@ -818,15 +815,16 @@ export default function DocumentDetailPage({
                     />
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <button
+                        <Button
                           type="button"
-                          className="admin-row-action"
+                          variant="ghost"
+                          size="sm"
                           title="更多操作"
                           aria-label={`chunk #${c.chunk_idx + 1} 更多操作`}
                           disabled={anyPending}
                         >
                           <MoreHorizontal className="h-3.5 w-3.5" aria-hidden />
-                        </button>
+                        </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-36">
                         <DropdownMenuItem
@@ -909,7 +907,7 @@ export default function DocumentDetailPage({
                   )}
                   <td className="tabular-nums text-muted">{c.chunk_idx}</td>
                   <td>
-                      <p className="line-clamp-3 max-w-3xl text-sm leading-relaxed text-fg">
+                      <p className="line-clamp-3 max-w-3xl text-sm leading-relaxed text-ink">
                         {c.text}
                       </p>
                   </td>
@@ -957,15 +955,16 @@ export default function DocumentDetailPage({
                         />
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <button
+                            <Button
                               type="button"
-                              className="admin-row-action"
+                              variant="ghost"
+                              size="sm"
                               title="更多操作"
                               aria-label={`chunk #${c.chunk_idx + 1} 更多操作`}
                               disabled={anyPending}
                             >
                               <MoreHorizontal className="h-3.5 w-3.5" aria-hidden />
-                            </button>
+                            </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-36">
                             <DropdownMenuItem
@@ -1024,21 +1023,20 @@ export default function DocumentDetailPage({
         busy={anyPending}
         footer={
           <>
-            <button
+            <Button
               type="button"
-              className="admin-btn-secondary"
+              variant="outline"
               onClick={() => setEditingChunk(null)}
             >
               取消
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="admin-btn-primary"
               disabled={anyPending}
               onClick={() => void onSaveChunk()}
             >
               {isPending(`edit:${editingChunk?.id ?? ""}`) ? "保存中…" : "保存"}
-            </button>
+            </Button>
           </>
         }
       >
@@ -1066,24 +1064,23 @@ export default function DocumentDetailPage({
         busy={anyPending}
         footer={
           <>
-            <button
+            <Button
               type="button"
-              className="admin-btn-secondary"
+              variant="outline"
               onClick={() => {
                 setSplittingChunk(null);
                 setSplitOffset("");
               }}
             >
               取消
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="admin-btn-primary"
               disabled={anyPending}
               onClick={() => void onSplitChunk()}
             >
               {splittingChunk && isPending(`split:${splittingChunk.id}`) ? "切分中…" : "切分"}
-            </button>
+            </Button>
           </>
         }
       >
@@ -1107,7 +1104,7 @@ export default function DocumentDetailPage({
         </div>
       </AppModal>
 
-      <Dialog
+      <ConfirmDialog
         open={deleteTarget != null}
         onOpenChange={(open) => {
           if (!open && !isPending(`delete:${deleteTarget?.id ?? ""}`)) {
@@ -1122,7 +1119,7 @@ export default function DocumentDetailPage({
         onConfirm={confirmDeleteChunk}
       />
 
-      <Dialog
+      <ConfirmDialog
         open={mergeTarget != null}
         onOpenChange={(open) => {
           if (!open && !isPending(`merge:${mergeTarget?.chunk.id ?? ""}`)) {

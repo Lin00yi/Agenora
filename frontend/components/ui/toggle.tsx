@@ -7,7 +7,7 @@ import { Toggle as TogglePrimitive } from "radix-ui"
 import { cn } from "@/lib/utils"
 
 const toggleVariants = cva(
-  "group/toggle inline-flex cursor-pointer items-center justify-center gap-1 rounded-lg text-sm font-medium text-muted whitespace-nowrap transition-[transform,background-color,color,box-shadow] duration-press ease-ui-out outline-none hover:bg-surface-2 hover:text-fg focus-visible:border-brand focus-visible:ring-[3px] focus-visible:ring-brand/20 active:scale-[0.97] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 aria-pressed:bg-surface-2 aria-pressed:text-fg data-[state=on]:bg-surface-2 data-[state=on]:text-fg dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/toggle inline-flex cursor-pointer items-center justify-center gap-1 rounded-lg text-sm font-medium text-muted whitespace-nowrap transition-[transform,background-color,color,box-shadow] duration-press ease-ui-out outline-none hover:bg-surface-2 hover:text-ink focus-visible:border-brand focus-visible:ring-[3px] focus-visible:ring-brand/20 active:scale-[0.97] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 aria-pressed:bg-surface-2 aria-pressed:text-ink data-[state=on]:bg-surface-2 data-[state=on]:text-ink dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {

@@ -6,14 +6,17 @@ import { toast } from "sonner";
 
 import { listKbs, deleteKb, type AdminKb } from "@/lib/admin-api";
 import { cn } from "@/lib/cn";
-import Dialog from "@/components/Dialog";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import AdminShell from "../AdminShell";
 import { PageSkeleton, StateView } from "@/components/ui/state-view";
 
 const PAGE_SIZE = 50;
 
-const paginationButtonClass =
-  "admin-btn-secondary shrink-0";
+const paginationButtonClass = cn(
+  buttonVariants({ variant: "outline" }),
+  "shrink-0"
+);
 
 /**
  * /admin/kbs — cross-user knowledge base management (06-01).
@@ -91,10 +94,10 @@ function KbsTable() {
           </h2>
           <p className="mt-2 text-sm text-muted">共 {total} 个知识库，包含用户资料库和系统示例库。</p>
         </div>
-        <button type="button" className="admin-btn-secondary" onClick={() => load(offset)}>
+        <Button type="button" variant="outline" onClick={() => load(offset)}>
           <RefreshCw className="h-4 w-4" />
           刷新
-        </button>
+        </Button>
       </div>
 
       <div className="admin-panel overflow-x-auto">
@@ -179,29 +182,29 @@ function KbsTable() {
 
       {total > PAGE_SIZE && (
         <div className="flex items-center justify-end gap-2 text-sm">
-          <button
+          <Button
             type="button"
             className={paginationButtonClass}
             disabled={offset === 0}
             onClick={() => load(Math.max(0, offset - PAGE_SIZE))}
           >
             上一页
-          </button>
+          </Button>
           <span className="text-xs text-muted">
             {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} / {total}
           </span>
-          <button
+          <Button
             type="button"
             className={paginationButtonClass}
             disabled={offset + PAGE_SIZE >= total}
             onClick={() => load(offset + PAGE_SIZE)}
           >
             下一页
-          </button>
+          </Button>
         </div>
       )}
 
-      <Dialog
+      <ConfirmDialog
         open={deleteTarget != null}
         onOpenChange={(o) => !o && setDeleteTarget(null)}
         title={`删除知识库「${deleteTarget?.name ?? ""}」？`}

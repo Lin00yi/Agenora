@@ -1,6 +1,7 @@
 "use client";
 
 import type { ToolEvent } from "@/components/ThinkingChain";
+import type { MemoryTrace } from "@/lib/sseClient";
 
 /**
  * Conversation type definitions + small pure helpers.
@@ -21,8 +22,9 @@ export type Message =
   | {
       id: string;
       role: "assistant";
-      content: string;          // markdown report
-      tools: ToolEvent[];        // tool call timeline
+      content: string; // markdown report
+      tools: ToolEvent[]; // tool call timeline
+      memory_trace?: MemoryTrace | null;
       streaming?: boolean;
       cost_usd?: number;
       error?: string;

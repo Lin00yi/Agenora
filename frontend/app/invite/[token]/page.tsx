@@ -15,6 +15,7 @@ import {
   type InvitationPreview,
 } from "@/lib/kb-api";
 import { LoadingState, StateView } from "@/components/ui/state-view";
+import { Button } from "@/components/ui/button";
 
 /**
  * v2-M9: invitation landing page.
@@ -73,7 +74,7 @@ export default function InvitePage({
   };
 
   return (
-    <div className="app-page flex min-h-dvh items-center justify-center bg-surface-2/25 px-4 py-10 text-fg">
+    <div className="app-page flex min-h-dvh items-center justify-center bg-surface-2/25 px-4 py-10 text-ink">
       <div className="w-full max-w-xl">
         <div className="mb-6 flex flex-col items-center gap-3">
           <Brand size="md" showWordmark={false} />
@@ -109,9 +110,9 @@ export default function InvitePage({
                 title="链接无法使用"
                 description={error}
                 action={
-                  <Link href="/kbs" className="admin-btn-primary min-h-[var(--control-h)] px-4 text-sm">
-                    返回知识库列表
-                  </Link>
+                  <Button asChild className="min-h-[var(--control-h)] px-4 text-sm">
+                    <Link href="/kbs">返回知识库列表</Link>
+                  </Button>
                 }
                 className="min-h-56 border-0 bg-surface shadow-none"
               />
@@ -149,7 +150,7 @@ export default function InvitePage({
                     <div className="grid gap-2 border-t border-surface-border/70 pt-3 text-xs text-muted sm:grid-cols-2">
                       {preview.max_uses != null && (
                         <div className="rounded-lg border border-surface-border/70 bg-surface px-3 py-2">
-                          <div className="font-medium text-fg">使用次数</div>
+                          <div className="font-medium text-ink">使用次数</div>
                           <div className="mt-1 tabular-nums">
                             {preview.uses_count}/{preview.max_uses} 次
                           </div>
@@ -157,7 +158,7 @@ export default function InvitePage({
                       )}
                       {preview.expires_at && (
                         <div className="rounded-lg border border-surface-border/70 bg-surface px-3 py-2">
-                          <div className="font-medium text-fg">有效期</div>
+                          <div className="font-medium text-ink">有效期</div>
                           <div className="mt-1">{new Date(preview.expires_at).toLocaleString()}</div>
                         </div>
                       )}
@@ -166,18 +167,18 @@ export default function InvitePage({
                 </div>
 
                 <div className="mt-2 flex w-full flex-col-reverse gap-2 sm:flex-row">
-                  <Link href="/kbs" className="admin-btn-secondary min-h-[44px] flex-1 justify-center px-4 text-sm">
-                    取消
-                  </Link>
-                  <button
+                  <Button asChild variant="outline" className="min-h-[44px] flex-1 justify-center px-4 text-sm">
+                    <Link href="/kbs">取消</Link>
+                  </Button>
+                  <Button
                     onClick={onAccept}
                     disabled={accepting}
-                    className="admin-btn-primary min-h-[44px] flex-1 justify-center px-4 text-sm"
+                    className="min-h-[44px] flex-1 justify-center px-4 text-sm"
                     type="button"
                   >
                     <CheckCircle className="h-4 w-4" />
                     {accepting ? "处理中…" : "接受邀请"}
-                  </button>
+                  </Button>
                 </div>
               </div>
             ) : null}

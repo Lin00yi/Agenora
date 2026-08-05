@@ -14,15 +14,18 @@ import { useRouter, useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import ThemeToggle from "@/components/ThemeToggle";
-import Dialog from "@/components/Dialog";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import ExportActions from "@/components/ExportActions";
 import ModelSelect from "@/components/Select";
 import SystemSettingsDialog from "@/components/SystemSettingsDialog";
+import { Button } from "@/components/ui/button";
+import { LoadingState, StateView } from "@/components/ui/state-view";
 import {
   ArrowUp,
   BookOpen,
   ChevronDown,
   ChevronLeft,
+  ChevronRight,
   ArrowDown,
   BrainCircuit,
   Circle,
@@ -31,6 +34,7 @@ import {
   LoaderCircle,
   LockKeyhole,
   LogOut,
+  MoreHorizontal,
   Paperclip,
   Plus,
   Search,
@@ -46,6 +50,14 @@ import { toast } from "sonner";
 
 import Brand, { APP_NAME } from "@/components/Brand";
 import ThinkingChain, { type ToolEvent } from "@/components/ThinkingChain";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { getToken, getUser, logout, type User } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import {
@@ -75,9 +87,7 @@ import {
   type ChatEvent,
   type ChatMessage,
   type MemoryTrace,
-  type MemoryTraceItem,
 } from "@/lib/sseClient";
-import { LoadingState, StateView } from "@/components/ui/state-view";
 
 const DEFAULT_TITLE = "\u65b0\u5bf9\u8bdd";
 const EMPTY_ASSISTANT_RESPONSE = "\u672c\u8f6e\u6ca1\u6709\u751f\u6210\u53ef\u5c55\u793a\u5185\u5bb9\uff0c\u8bf7\u91cd\u8bd5\u3002";
@@ -193,6 +203,7 @@ function serverMsgToLocal(m: MessagePayload): Message {
     role: "assistant",
     content: m.content,
     tools: m.tools ?? [],
+    memory_trace: m.memory_trace ?? null,
     cost_usd: m.cost_usd ?? undefined,
     error: m.error === STOPPED_GENERATION_MESSAGE ? undefined : m.error ?? undefined,
     created_at: ts,
@@ -270,7 +281,6 @@ export function ChatPage({
   const [currentModel, setCurrentModel] = useState<string | null>(null);
   const [currentContextStatus, setCurrentContextStatus] =
     useState<ConversationContextStatus | null>(null);
-  const [currentMemoryTrace, setCurrentMemoryTrace] = useState<MemoryTrace | null>(null);
   const [contextStatusLoading, setContextStatusLoading] = useState(false);
   const [modelOptions, setModelOptions] = useState<string[]>([]);
   const [llmReady, setLlmReady] = useState(false);
@@ -295,6 +305,7 @@ export function ChatPage({
     msgId: string;
     content: string;
     tools: ToolEvent[];
+    memory_trace: MemoryTrace | null;
   } | null>(null);
 
   useEffect(() => {
@@ -315,7 +326,6 @@ export function ChatPage({
   const loadConversation = useCallback(async (id: string) => {
     setMissingConversationId(null);
     setCurrentId(id);
-    setCurrentMemoryTrace(null);
     setContextStatusLoading(true);
     const cached = messagesCache.current.get(id);
     if (cached) {
@@ -399,7 +409,6 @@ export function ChatPage({
       setCurrentKbId(null);
       setCurrentModel(null);
       setCurrentContextStatus(null);
-      setCurrentMemoryTrace(null);
       setMissingConversationId(id);
       setContextStatusLoading(false);
       return false;
@@ -594,7 +603,6 @@ export function ChatPage({
           setCurrentKbId(null);
           setCurrentModel(null);
           setCurrentContextStatus(null);
-          setCurrentMemoryTrace(null);
         }
       } catch (e) {
         if (!cancelled) {
@@ -640,7 +648,6 @@ export function ChatPage({
           setCurrentKbId(null);
           setCurrentModel(null);
           setCurrentContextStatus(null);
-          setCurrentMemoryTrace(null);
         }
       });
     };
@@ -722,7 +729,6 @@ export function ChatPage({
       setCurrentKbId(kbId);
       setCurrentModel(null);
       setCurrentContextStatus(null);
-      setCurrentMemoryTrace(null);
       setComposerValue("");
       window.history.pushState(null, "", "/c");
     });
@@ -803,7 +809,6 @@ export function ChatPage({
             setCurrentKbId(null);
             setCurrentModel(null);
             setCurrentContextStatus(null);
-            setCurrentMemoryTrace(null);
             window.history.replaceState(null, "", "/c");
           }
         });
@@ -858,7 +863,6 @@ export function ChatPage({
           setCurrentKbId(created.kb_id);
           setCurrentModel(created.llm_model ?? null);
           setCurrentContextStatus(created.context_status ?? null);
-          setCurrentMemoryTrace(null);
           window.history.replaceState(null, "", conversationHref(created.id));
         } catch (e) {
           toast.error((e as Error)?.message ?? "\u521b\u5efa\u4f1a\u8bdd\u5931\u8d25");
@@ -903,6 +907,7 @@ export function ChatPage({
         msgId: aiId,
         content: "",
         tools: [],
+        memory_trace: null,
       };
 
       const existing = summaries.find((c) => c.id === convId);
@@ -918,7 +923,6 @@ export function ChatPage({
         true
       );
 
-      setCurrentMemoryTrace(null);
       setComposerValue("");
 
       const persistFinal = async (opts: { error?: string; costUsd?: number }) => {
@@ -935,11 +939,20 @@ export function ChatPage({
           const result = await appendAssistantMessage(snap.convId, {
             content: snap.content,
             tools: snap.tools,
+            memory_trace: snap.memory_trace,
             cost_usd: opts.costUsd,
             error: opts.error,
           });
           setMessagesForCurrent((prev) =>
-            prev.map((m) => (m.id === snap.msgId ? { ...m, id: result.id } : m))
+            prev.map((m) =>
+              m.id === snap.msgId
+                ? {
+                    ...m,
+                    id: result.id,
+                    memory_trace: result.memory_trace ?? snap.memory_trace,
+                  }
+                : m
+            )
           );
           bumpSummary(snap.convId, {}, 1, true);
           getConversationContextStatus(snap.convId)
@@ -1056,7 +1069,10 @@ export function ChatPage({
             }
             case "done": {
               const costUsd = typeof evt.cost_usd === "number" ? evt.cost_usd : undefined;
-              if (evt.memory_trace) setCurrentMemoryTrace(evt.memory_trace);
+              const memoryTrace = evt.memory_trace ?? null;
+              if (streamingRef.current) {
+                streamingRef.current.memory_trace = memoryTrace;
+              }
               const snap = streamingRef.current;
               const emptyResponse = !snap?.content.trim();
               if (emptyResponse) {
@@ -1067,6 +1083,7 @@ export function ChatPage({
                         error: EMPTY_ASSISTANT_RESPONSE,
                         streaming: false,
                         cost_usd: costUsd,
+                        memory_trace: memoryTrace,
                       }
                     : m
                 );
@@ -1076,7 +1093,9 @@ export function ChatPage({
                 break;
               }
               updateLastAssistant((m) =>
-                m.role === "assistant" ? { ...m, streaming: false, cost_usd: costUsd } : m
+                m.role === "assistant"
+                  ? { ...m, streaming: false, cost_usd: costUsd, memory_trace: memoryTrace }
+                  : m
               );
               void persistFinal({ costUsd });
               cleanupRef.current = null;
@@ -1165,7 +1184,7 @@ export function ChatPage({
         />
       )}
 
-      <div className="grid h-full grid-cols-1 lg:grid-cols-[286px_minmax(0,1fr)_320px]">
+      <div className="grid h-full grid-cols-1 lg:grid-cols-[286px_minmax(0,1fr)]">
         <DarkSidebar
           open={sidebarOpen}
           conversations={sidebarConversations}
@@ -1192,6 +1211,17 @@ export function ChatPage({
           <TopBar
             title={currentConversation?.title ?? DEFAULT_TITLE}
             onOpenSidebar={() => setSidebarOpen(true)}
+            conversation={currentConversation}
+            kbName={currentKb?.name ?? "通用对话"}
+            modelLabel={
+              currentModel ||
+              (llmSource === "system"
+                ? "系统默认"
+                : llmSource === "user"
+                  ? "默认模型"
+                  : "未配置")
+            }
+            messageStats={formatMessageStats(visibleMessages)}
           />
 
           <div className="min-h-0 flex-1">
@@ -1205,13 +1235,9 @@ export function ChatPage({
                       description="这个会话可能已被删除、你没有访问权限，或链接已经失效。"
                       className="w-full max-w-md"
                       action={
-                        <button
-                          type="button"
-                          className="admin-btn-primary"
-                          onClick={() => handleNew(null)}
-                        >
+                        <Button type="button" onClick={() => handleNew(null)}>
                           新建对话
-                        </button>
+                        </Button>
                       }
                     />
                   </div>
@@ -1303,15 +1329,6 @@ export function ChatPage({
             </main>
           </div>
         </div>
-        <RightInsightPanel
-          panePhase={panePhase}
-          currentKbName={currentKb?.name ?? "\u901a\u7528\u5bf9\u8bdd"}
-          currentConversation={currentConversation}
-          currentModel={currentModel}
-          llmSource={llmSource}
-          memoryTrace={currentMemoryTrace}
-          messages={visibleMessages}
-        />
       </div>
       {user && (
         <SystemSettingsDialog
@@ -1664,7 +1681,7 @@ function DarkSidebar({
             <div
               key={conversation.id}
               className={cn(
-                "ak-sidebar-row group flex min-h-12 items-center gap-2 rounded-lg border border-transparent px-3 py-2 text-sm transition-[background-color,border-color,color]",
+                "ak-sidebar-row group flex min-h-12 items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-[background-color,border-color,color]",
                 conversation.id === currentId
                   ? "ak-sidebar-row-active"
                   : "ak-sidebar-row-idle"
@@ -1734,7 +1751,7 @@ function DarkSidebar({
 
       <div ref={userMenuRef} className="relative mt-3 shrink-0">
         {userMenuOpen && (
-          <div className="ak-popover ak-user-popover absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-lg border shadow-[0_18px_48px_rgba(0,0,0,0.26)]">
+          <div className="ak-popover ak-user-popover absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-lg border">
             <button
               className="ak-user-menu-item flex min-h-[var(--control-h)] w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left text-sm transition"
               onClick={() => {
@@ -1824,7 +1841,7 @@ function DarkSidebar({
           <ThemeToggle compact />
         </div>
       </div>
-      <Dialog
+      <ConfirmDialog
         open={deleteTarget !== null}
         onOpenChange={(next) => {
           if (!next) setDeleteTarget(null);
@@ -1846,12 +1863,20 @@ function DarkSidebar({
 function TopBar({
   title,
   onOpenSidebar,
+  conversation = null,
+  kbName = "通用对话",
+  modelLabel = "-",
+  messageStats = "-",
 }: {
   title: string;
   onOpenSidebar: () => void;
+  conversation?: Conversation | null;
+  kbName?: string;
+  modelLabel?: string;
+  messageStats?: string;
 }) {
   return (
-    <header className="ak-topbar ak-chat-header grid h-[64px] shrink-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-3 px-4 xl:px-7">
+    <header className="ak-topbar ak-chat-header grid h-[64px] shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 xl:px-7">
       <button
         className="ak-mobile-sidebar-action inline-flex size-[var(--control-h)] cursor-pointer items-center justify-center rounded-lg border lg:hidden"
         onClick={onOpenSidebar}
@@ -1864,7 +1889,64 @@ function TopBar({
       <div className="min-w-0">
         <h1 className="truncate text-[15px] font-semibold tracking-[-0.01em]">{title}</h1>
       </div>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="ak-topbar-menu-trigger inline-flex size-[var(--control-h)] cursor-pointer items-center justify-center rounded-lg border border-transparent text-muted transition hover:border-surface-border/80 hover:bg-surface-2/60 hover:text-ink"
+            aria-label="会话信息"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-72">
+          <DropdownMenuLabel>会话信息</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <div className="space-y-2 px-2 py-1.5 text-xs">
+            <SessionMetaRow label="会话 ID" value={conversation?.id?.slice(0, 8) ?? "-"} />
+            <SessionMetaRow label="创建时间" value={formatTime(conversation?.created_at)} />
+            <SessionMetaRow label="最近更新" value={formatTime(conversation?.updated_at)} />
+            <SessionMetaRow label="消息统计" value={messageStats} />
+            <SessionMetaRow label="知识库" value={kbName} />
+            <SessionMetaRow label="模型" value={modelLabel} />
+          </div>
+          {conversation?.id ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={() => {
+                  void navigator.clipboard.writeText(conversation.id);
+                  toast.success("已复制会话 ID");
+                }}
+              >
+                <Copy className="h-3.5 w-3.5" />
+                复制完整会话 ID
+              </DropdownMenuItem>
+              {conversation.kb_id ? (
+                <DropdownMenuItem asChild>
+                  <Link href={`/kbs/${conversation.kb_id}`}>
+                    <Database className="h-3.5 w-3.5" />
+                    打开知识库
+                  </Link>
+                </DropdownMenuItem>
+              ) : null}
+            </>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </header>
+  );
+}
+
+function SessionMetaRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <span className="shrink-0 text-muted">{label}</span>
+      <span className="min-w-0 truncate text-right text-ink" title={value}>
+        {value}
+      </span>
+    </div>
   );
 }
 
@@ -1973,6 +2055,7 @@ function DarkAssistantMessage({ message }: { message: Extract<Message, { role: "
   const streaming = !!message.streaming;
   const hasContent = message.content.trim().length > 0;
   const hasTools = message.tools.length > 0;
+  const hasMemoryContext = hasVisibleMemoryTrace(message.memory_trace);
   const elapsedMs = useLiveElapsed(streaming, message.created_at);
   const status = getAssistantStreamingStatus(message, elapsedMs);
   if (!hasContent && !streaming && !message.error && !hasTools) return null;
@@ -1980,6 +2063,11 @@ function DarkAssistantMessage({ message }: { message: Extract<Message, { role: "
   return (
     <div className="flex items-start">
       <div className="min-w-0 flex-1">
+        {!streaming && hasMemoryContext ? (
+          <div className="mb-3">
+            <MemoryContextTrace trace={message.memory_trace!} />
+          </div>
+        ) : null}
         <div className="ak-answer px-1 py-1 sm:px-2">
           {message.error && (
             <div className="ak-answer-error mb-3 rounded-lg border px-3 py-2 text-sm">
@@ -2143,7 +2231,7 @@ function ContextCompressionNotice({
   if (!contextStatus || contextStatus.state === "normal") return null;
   const isCompressed = contextStatus.state === "compressed";
   return (
-    <div className="ak-context-notice mx-auto flex w-fit max-w-full items-center gap-2 rounded-lg border px-3 py-2 text-xs shadow-[0_10px_28px_rgba(0,0,0,0.18)]">
+    <div className="ak-context-notice mx-auto flex w-fit max-w-full items-center gap-2 rounded-lg border px-3 py-2 text-xs">
       <ShieldCheck
         className={cn(
           "h-3.5 w-3.5",
@@ -2369,7 +2457,7 @@ function Composer({
 
   return (
     <div className={cn("ak-composer", centered ? "ak-composer-centered mt-6 px-0 pb-8" : "ak-composer-docked px-5 pb-3 pt-1")}>
-      <div className="ak-composer-box mx-auto max-w-[860px] rounded-lg border focus-within:border-brand/40">
+      <div className="ak-composer-box mx-auto max-w-[860px] rounded-lg border">
         <textarea
           ref={textareaRef}
           value={value}
@@ -2396,6 +2484,7 @@ function Composer({
             <Database className="h-4 w-4 shrink-0 text-brand" />
             <ModelSelect
               aria-label="选择知识库"
+              tone="plain"
               className="h-[var(--control-h)] min-w-[108px] flex-1 border-0 bg-transparent px-0 py-0 text-sm text-current shadow-none hover:bg-transparent focus-visible:ring-0 disabled:cursor-not-allowed disabled:text-muted"
               contentAlign="start"
               contentClassName="ak-model-content"
@@ -2428,6 +2517,7 @@ function Composer({
               <ModelSelect
                 aria-label="\u6a21\u578b\u9009\u62e9"
                 className="ak-model-trigger h-[var(--control-h)] min-w-[132px] max-w-[200px] text-sm"
+                tone="plain"
                 contentAlign="end"
                 contentClassName="ak-model-content"
                 contentPosition="popper"
@@ -2496,9 +2586,9 @@ function ContextUsageIndicator({
   const isAttention = status.state === "approaching" || status.state === "ready" || status.state === "critical";
   const ringTone =
     status.state === "compressed"
-      ? "text-brand"
+      ? "ak-context-ring-brand"
       : isAttention
-        ? "text-amber-300"
+        ? "ak-context-ring-warning"
         : "ak-context-ring-muted";
   const detail =
     status.state === "compressed"
@@ -2558,165 +2648,103 @@ function ContextUsageIndicator({
   );
 }
 
-function RightInsightPanel({
-  panePhase = "in",
-  currentKbName,
-  currentConversation,
-  currentModel,
-  llmSource,
-  memoryTrace,
-  messages,
-}: {
-  panePhase?: "in" | "out";
-  currentKbName: string;
-  currentConversation: Conversation | null;
-  currentModel: string | null;
-  llmSource: LlmSource;
-  memoryTrace: MemoryTrace | null;
-  messages: Message[];
-}) {
-  const messageStats = formatMessageStats(messages);
-  const modelLabel = currentModel || (llmSource === "system" ? "\u7cfb\u7edf\u9ed8\u8ba4" : llmSource === "user" ? "\u9ed8\u8ba4\u6a21\u578b" : "\u672a\u914d\u7f6e");
+function hasVisibleMemoryTrace(trace?: MemoryTrace | null) {
+  if (!trace) return false;
+  return Boolean(
+    trace.profile?.injected ||
+      (trace.memories?.injected_count ?? 0) > 0 ||
+      trace.summary ||
+      (trace.profile?.items?.length ?? 0) > 0 ||
+      (trace.memories?.items?.length ?? 0) > 0
+  );
+}
+
+function MemoryContextTrace({ trace }: { trace: MemoryTrace }) {
+  const [open, setOpen] = useState(false);
+  const memoryCount = trace.memories?.injected_count ?? 0;
+  const profileLabel = trace.profile?.injected ? "画像已注入" : "无画像";
+  const summaryLabel = trace.summary ? "摘要已注入" : "无摘要";
+  const summaryText = `本轮上下文 · 记忆 ${memoryCount} · ${profileLabel} · ${summaryLabel}`;
+  const recalled = trace.memories?.items?.slice(0, 4) ?? [];
+  const profileItems = trace.profile?.items?.slice(0, 3) ?? [];
 
   return (
-    <aside
-      className="ak-insight ak-chat-pane hidden min-w-0 flex-col overflow-y-auto lg:flex"
-      data-phase={panePhase}
-    >
-      <section className="ak-insight-section border-b p-5">
-        <div className="flex items-center gap-2">
-          <BrainCircuit className="ak-insight-accent h-4 w-4" />
-          <h2 className="ak-insight-heading text-base font-semibold">记忆注入</h2>
-          <span className="ak-insight-badge ak-insight-badge-count">
-            {memoryTrace?.memories?.injected_count ?? 0}
+    <div className="overflow-hidden rounded-lg border border-surface-border/80 bg-surface shadow-soft">
+      <button
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="flex min-h-11 w-full cursor-pointer items-center justify-between gap-3 bg-surface-2/45 px-3.5 py-2 text-sm transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+        type="button"
+      >
+        <span className="flex min-w-0 items-center gap-2 text-muted">
+          {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          <span className="admin-icon-tile admin-icon-tile-brand size-7 rounded-md shadow-none">
+            <BrainCircuit className="h-3.5 w-3.5" />
           </span>
-        </div>
-        {memoryTrace ? (
-          <div className="mt-4 space-y-4">
-            <div className="grid grid-cols-3 gap-2 text-center text-xs">
-              <TraceStat
-                label="画像"
-                value={memoryTrace.profile?.injected ? "已注入" : "未注入"}
-              />
-              <TraceStat
-                label="记忆"
-                value={String(memoryTrace.memories?.injected_count ?? 0)}
-              />
-              <TraceStat
-                label="摘要"
-                value={memoryTrace.summary ? "已注入" : "无"}
-              />
+          <span className="truncate">{summaryText}</span>
+        </span>
+      </button>
+
+      {open ? (
+        <div className="space-y-3 border-t border-surface-border/70 p-3 text-sm">
+          {recalled.length > 0 ? (
+            <div>
+              <div className="mb-2 text-xs font-medium text-muted">记忆召回</div>
+              <ul className="space-y-2">
+                {recalled.map((item) => (
+                  <li
+                    key={item.id}
+                    className="rounded-lg border border-surface-border/70 bg-surface-2/45 px-3 py-2.5"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-xs font-medium">
+                        {memoryTraceTypeLabel(item.type)}
+                      </span>
+                      <span className="shrink-0 text-[11px] text-muted">
+                        {Math.round((item.importance ?? 0) * 100)}%
+                      </span>
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted">
+                      {item.content}
+                    </p>
+                  </li>
+                ))}
+              </ul>
             </div>
-            {memoryTrace.profile?.items && memoryTrace.profile.items.length > 0 && (
-              <TraceList
-                title="画像聚合"
-                items={memoryTrace.profile.items.slice(0, 3)}
-              />
-            )}
-            {memoryTrace.memories?.items && memoryTrace.memories.items.length > 0 && (
-              <TraceList
-                title="记忆召回"
-                items={memoryTrace.memories.items.slice(0, 4)}
-              />
-            )}
-            {memoryTrace.summary && (
-              <p className="ak-memory-summary rounded-lg border px-3 py-2 text-xs leading-5">
-                摘要覆盖 {memoryTrace.summary.covered_message_count} 条历史消息 /
-                约 {formatTokenCount(memoryTrace.summary.token_count)}
-              </p>
-            )}
-          </div>
-        ) : (
-          <div className="ak-empty-panel mt-4 rounded-lg border border-dashed px-3 py-5 text-sm leading-6">
-            发起一轮对话后，这里会显示画像、长期记忆和摘要的注入 Trace。
-          </div>
-        )}
-      </section>
+          ) : null}
 
-      <section className="flex-1 p-5">
-        <div className="flex items-center justify-between">
-          <h2 className="ak-insight-heading text-base font-semibold">{"\u4f1a\u8bdd\u4fe1\u606f"}</h2>
-          {currentConversation?.id && (
-            <button
-              className="ak-copy-id-button inline-flex h-[var(--control-h-sm)] cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs transition"
-              onClick={() => {
-                void navigator.clipboard.writeText(currentConversation.id);
-                toast.success("\u5df2\u590d\u5236\u4f1a\u8bdd ID");
-              }}
-              type="button"
-            >
-              <Copy className="h-3.5 w-3.5" />
-              {"\u590d\u5236 ID"}
-            </button>
-          )}
-        </div>
-        <dl className="mt-5 space-y-4 text-sm">
-          <InfoRow
-            label="会话 ID"
-            value={currentConversation?.id.slice(0, 8) ?? "-"}
-            title={currentConversation?.id}
-          />
-          <InfoRow label="创建时间" value={formatTime(currentConversation?.created_at)} />
-          <InfoRow label="最近更新" value={formatTime(currentConversation?.updated_at)} />
-          <InfoRow label="消息统计" value={messageStats} />
-          <InfoRow
-            label="知识库"
-            value={
-              currentConversation?.kb_id ? (
-                <Link
-                  className="ak-info-link truncate text-right transition"
-                  href={`/kbs/${currentConversation.kb_id}`}
-                  title={currentKbName}
-                >
-                  {currentKbName}
-                </Link>
-              ) : (
-                "\u901a\u7528\u5bf9\u8bdd"
-              )
-            }
-          />
-          <InfoRow label="模型" value={modelLabel} />
-        </dl>
-      </section>
-    </aside>
-  );
-}
-
-function TraceStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="ak-trace-stat rounded-lg border px-2 py-2">
-      <div className="ak-trace-label text-[11px]">{label}</div>
-      <div className="ak-trace-value mt-1 truncate font-medium" title={value}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function TraceList({ title, items }: { title: string; items: MemoryTraceItem[] }) {
-  return (
-    <div>
-      <div className="ak-trace-title mb-2 text-xs font-medium">{title}</div>
-      <div className="space-y-2">
-        {items.map((item) => (
-          <div
-            className="ak-trace-card rounded-lg border px-3 py-2"
-            key={item.id}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="ak-trace-type truncate text-xs font-medium">
-                {memoryTraceTypeLabel(item.type)}
-              </span>
-              <span className="ak-trace-score shrink-0 text-[11px]">
-                {Math.round((item.importance ?? 0) * 100)}%
-              </span>
+          {profileItems.length > 0 ? (
+            <div>
+              <div className="mb-2 text-xs font-medium text-muted">
+                画像摘要
+                {trace.profile?.counts?.total
+                  ? ` · 共 ${trace.profile.counts.total} 项`
+                  : ""}
+              </div>
+              <ul className="space-y-1.5">
+                {profileItems.map((item) => (
+                  <li key={item.id} className="truncate text-xs leading-5 text-muted">
+                    <span className="text-ink/80">{memoryTraceTypeLabel(item.type)}</span>
+                    {" · "}
+                    {item.content}
+                  </li>
+                ))}
+              </ul>
             </div>
-            <p className="ak-trace-body mt-1 line-clamp-2 text-xs leading-5">
-              {item.content}
+          ) : null}
+
+          {trace.summary ? (
+            <p className="rounded-lg border border-surface-border/70 bg-surface-2/45 px-3 py-2 text-xs leading-5 text-muted">
+              摘要覆盖 {trace.summary.covered_message_count} 条历史消息 / 约{" "}
+              {formatTokenCount(trace.summary.token_count)}
             </p>
-          </div>
-        ))}
-      </div>
+          ) : null}
+
+          {recalled.length === 0 && profileItems.length === 0 && !trace.summary ? (
+            <p className="text-xs leading-5 text-muted">本轮未注入可展示的记忆内容。</p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -2727,25 +2755,6 @@ function memoryTraceTypeLabel(type: string) {
   if (type === "fact") return "事实";
   if (type === "explicit") return "显式";
   return type;
-}
-
-function InfoRow({
-  label,
-  value,
-  title,
-}: {
-  label: string;
-  value: ReactNode;
-  title?: string;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <dt className="ak-info-label">{label}</dt>
-      <dd className="ak-info-value min-w-0 truncate text-right" title={title}>
-        {value}
-      </dd>
-    </div>
-  );
 }
 
 function formatTokenCount(value: number) {

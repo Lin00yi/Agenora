@@ -32,6 +32,7 @@ export type SelectOption = {
 type SelectProps = {
   options: SelectOption[];
   size?: "sm" | "md";
+  tone?: "default" | "plain";
   placeholderOption?: SelectOption;
   value?: string;
   defaultValue?: string;
@@ -52,6 +53,7 @@ const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(
   {
     options,
     size = "md",
+    tone = "default",
     placeholderOption,
     className,
     contentClassName,
@@ -94,6 +96,7 @@ const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(
         title={title}
         aria-label={ariaLabel}
         size={size === "sm" ? "sm" : "default"}
+        tone={tone}
         className={cn("w-full min-w-[8rem]", className)}
       >
         <SelectValue placeholder={placeholderOption?.label ?? "请选择"} />

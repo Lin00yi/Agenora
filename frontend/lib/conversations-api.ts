@@ -2,6 +2,7 @@
 
 import { authFetch } from "./auth";
 import type { ToolEvent } from "@/components/ThinkingChain";
+import type { MemoryTrace } from "@/lib/sseClient";
 
 /**
  * Conversations API client (v2-M3).
@@ -56,6 +57,7 @@ export type MessagePayload = {
   role: "user" | "assistant";
   content: string;
   tools: ToolEvent[] | null;
+  memory_trace?: MemoryTrace | null;
   cost_usd: number | null;
   error: string | null;
   created_at: string | null;
@@ -280,6 +282,7 @@ export async function appendAssistantMessage(
   payload: {
     content: string;
     tools?: ToolEvent[];
+    memory_trace?: MemoryTrace | null;
     cost_usd?: number;
     error?: string;
   }
@@ -292,6 +295,7 @@ export async function appendAssistantMessage(
         role: "assistant",
         content: payload.content,
         tools: payload.tools && payload.tools.length > 0 ? payload.tools : undefined,
+        memory_trace: payload.memory_trace ?? undefined,
         cost_usd: payload.cost_usd,
         error: payload.error,
       }),

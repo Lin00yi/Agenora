@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import Brand, { APP_NAME } from "@/components/Brand";
 import BrandPanel from "@/components/BrandPanel";
 import ThemeToggle from "@/components/ThemeToggle";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { register } from "@/lib/auth";
@@ -121,10 +122,10 @@ export default function RegisterPage() {
                   </div>
                 </div>
 
-                <button
+                <Button
                   type="submit"
                   disabled={loading}
-                  className="admin-btn-primary min-h-[44px] w-full"
+                  className="min-h-[44px] w-full"
                 >
                   {loading ? (
                     "创建中..."
@@ -134,7 +135,7 @@ export default function RegisterPage() {
                       创建账号
                     </>
                   )}
-                </button>
+                </Button>
 
                 <p className="text-center text-[11px] leading-relaxed text-muted">
                   请使用你能接收邀请的邮箱注册。管理员可在后台调整账号权限。

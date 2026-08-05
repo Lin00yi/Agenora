@@ -35,7 +35,8 @@ import {
 } from "@/lib/settings-api";
 import { toastApiError } from "@/lib/byok-toast";
 import { cn } from "@/lib/cn";
-import Dialog from "@/components/Dialog";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import AppModal from "@/components/AppModal";
 import Select from "@/components/Select";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -83,7 +84,7 @@ export default function KbsPage() {
   };
 
   return (
-    <div className="app-page min-h-dvh text-fg">
+    <div className="app-page min-h-dvh text-ink">
       <header className="app-page-header border-b">
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4 sm:px-6">
           <Link
@@ -101,7 +102,7 @@ export default function KbsPage() {
       <main className="app-page-content mx-auto max-w-5xl px-4 py-7 sm:px-6 sm:py-10">
         <div className="mb-6 flex flex-col gap-3 border-b border-surface-border/70 pb-5 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
-            <h2 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-fg">
+            <h2 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-ink">
               <span className="admin-icon-tile admin-icon-tile-brand rounded-md">
                 <BookOpen className="h-5 w-5" />
               </span>
@@ -111,14 +112,14 @@ export default function KbsPage() {
               创建与管理资料库；新建时可单独配置 embedding / reranker。
             </p>
           </div>
-          <button
+          <Button
             onClick={() => setCreateOpen(true)}
-            className="admin-btn-primary w-full sm:w-auto"
+            className="w-full sm:w-auto"
             type="button"
           >
             <Plus className="h-4 w-4" />
             新建知识库
-          </button>
+          </Button>
         </div>
 
         {loading ? (
@@ -128,10 +129,10 @@ export default function KbsPage() {
             title="还没有知识库"
             description="从一个资料库开始，把文档变成可追问、可引用的答案。"
             action={
-              <button onClick={() => setCreateOpen(true)} className="admin-btn-primary" type="button">
+              <Button onClick={() => setCreateOpen(true)} type="button">
                 <Plus className="h-4 w-4" />
                 新建知识库
-              </button>
+              </Button>
             }
           />
         ) : (
@@ -202,7 +203,7 @@ export default function KbsPage() {
                       <button
                         onClick={() => setPendingDelete(kb)}
                         className={cn(
-                          "admin-icon-action size-8 shrink-0 text-muted/70 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:group-focus-within:opacity-100",
+                          "admin-icon-action size-8 shrink-0 text-muted/70 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 sm:focus-visible:opacity-100",
                           "hover:bg-danger/15 hover:text-danger"
                         )}
                         aria-label="删除知识库"
@@ -227,7 +228,7 @@ export default function KbsPage() {
         onByokRedirect={(p) => router.push(p)}
       />
 
-      <Dialog
+      <ConfirmDialog
         open={pendingDelete != null}
         onOpenChange={(o) => !o && setPendingDelete(null)}
         title={`删除知识库「${pendingDelete?.name ?? ""}」？`}
@@ -535,15 +536,15 @@ function CreateKbDialog({
             <span />
           )}
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
-            <button
+            <Button
               type="button"
               onClick={onClose}
               disabled={creating}
               className={secondaryActionClass}
             >
               取消
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
               form="create-kb-form"
               disabled={
@@ -556,7 +557,7 @@ function CreateKbDialog({
             >
               <Plus className="h-4 w-4" />
               {creating ? "创建中…" : "创建知识库"}
-            </button>
+            </Button>
           </div>
         </div>
       }
@@ -691,14 +692,14 @@ function CreateKbDialog({
               <span className="text-xs text-muted">
                 {embedVerified ? "Embedding 已验证。" : "先验证连接，再选择或确认模型。"}
               </span>
-              <button
+              <Button
                 type="button"
                 onClick={onTestEmbedding}
                 disabled={embedProbing || !embedBaseUrl}
                 className={secondaryActionClass}
               >
                 {embedProbing ? "测试中…" : "测试连接 / 拉取模型"}
-              </button>
+              </Button>
             </div>
             <div>
               <label className="mb-1 block text-xs text-muted">模型</label>
@@ -734,7 +735,7 @@ function CreateKbDialog({
               )}
               {embedDim != null && (
                 <p className="mt-1 text-xs text-muted">
-                  向量维度：<span className="text-fg">{embedDim}</span>
+                  向量维度：<span className="text-ink">{embedDim}</span>
                 </p>
               )}
               {embedDim == null && embedModels.length > 0 && (
@@ -852,14 +853,14 @@ function CreateKbDialog({
                     </div>
                   )}
                   <div className="flex justify-end">
-                    <button
+                    <Button
                       type="button"
                       onClick={onTestReranker}
                       disabled={rerankerProbing || !rerankerBaseUrl}
                       className={secondaryActionClass}
                     >
                       {rerankerProbing ? "测试中…" : "测试连接 / 拉取模型"}
-                    </button>
+                    </Button>
                   </div>
                   <div>
                     <label className="mb-1 block text-xs text-muted">模型</label>
@@ -907,11 +908,15 @@ function CreateKbDialog({
 const inputClass =
   "admin-input";
 
-const primaryActionClass =
-  "admin-btn-primary w-full shrink-0 sm:w-auto";
+const primaryActionClass = cn(
+  buttonVariants({ variant: "default" }),
+  "w-full shrink-0 sm:w-auto"
+);
 
-const secondaryActionClass =
-  "admin-btn-secondary w-full shrink-0 sm:w-auto";
+const secondaryActionClass = cn(
+  buttonVariants({ variant: "outline" }),
+  "w-full shrink-0 sm:w-auto"
+);
 
 function FormField({
   label,

@@ -63,10 +63,11 @@ import {
 } from "@/lib/kb-api";
 import { toastApiError } from "@/lib/byok-toast";
 import { cn } from "@/lib/cn";
-import Dialog from "@/components/Dialog";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import AppModal from "@/components/AppModal";
 import Select from "@/components/Select";
 import { LoadingState, StateView } from "@/components/ui/state-view";
+import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
@@ -407,7 +408,11 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
           variant="error"
           title="找不到这个知识库"
           description="它可能已被删除、你没有访问权限，或链接已失效。"
-          action={<Link href="/kbs" className="admin-btn-secondary min-h-[var(--control-h)] px-4 text-sm">返回知识库列表</Link>}
+          action={
+            <Button asChild variant="outline" className="min-h-[var(--control-h)] px-4 text-sm">
+              <Link href="/kbs">返回知识库列表</Link>
+            </Button>
+          }
           className="w-full max-w-md"
         />
       </div>
@@ -439,9 +444,9 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
       subtitle={`${kb.name}（${kb.id.slice(0, 8)}…）`}
       actions={
         <>
-          <Link href="/kbs" className="admin-btn-secondary">
-            返回知识库
-          </Link>
+          <Button asChild variant="outline">
+            <Link href="/kbs">返回知识库</Link>
+          </Button>
           {canWrite && !kb.is_system && (
             <>
               <input
@@ -452,15 +457,14 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                 onChange={onFileChange}
                 className="hidden"
               />
-              <button
+              <Button
                 type="button"
-                className="admin-btn-primary"
                 disabled={uploadingFiles.length > 0}
                 onClick={() => fileInput.current?.click()}
               >
                 <Plus className="h-4 w-4" />
                 上传文档
-              </button>
+              </Button>
             </>
           )}
         </>
@@ -517,11 +521,11 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                 )}
                 <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs tabular-nums text-muted">
                   <span>
-                    <span className="font-semibold text-fg">{kb.documents.length}</span> 文档
+                    <span className="font-semibold text-ink">{kb.documents.length}</span> 文档
                   </span>
                   <span aria-hidden className="text-surface-border">·</span>
                   <span>
-                    <span className="font-semibold text-fg">{kb.chunks_count}</span> 分块
+                    <span className="font-semibold text-ink">{kb.chunks_count}</span> 分块
                   </span>
                   <span aria-hidden className="text-surface-border">·</span>
                   <span className="max-w-[18rem] truncate font-mono text-[11px]">
@@ -589,13 +593,14 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                 placeholder="从 URL 抓取并 ingest..."
                 className={cn(kbDetailInputClass, "min-w-0 flex-1")}
               />
-              <button
+              <Button
                 type="submit"
                 disabled={!url.trim() || submittingUrl}
-                className="admin-btn-secondary min-h-[var(--control-h)] shrink-0 px-4 text-sm"
+                variant="outline"
+                className="min-h-[var(--control-h)] shrink-0 px-4 text-sm"
               >
                 {submittingUrl ? "提交中..." : "抓取"}
-              </button>
+              </Button>
             </div>
           </form>
         ) : null}
@@ -654,25 +659,27 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
               <span>共 {filteredDocuments.length} 条</span>
               {docTotalPages > 1 && (
                 <div className="flex items-center gap-2">
-                  <button
+                  <Button
                     type="button"
-                    className="admin-btn-secondary !px-2 !py-1 text-xs"
+                    variant="outline"
+                    size="xs"
                     disabled={docPage <= 1}
                     onClick={() => setDocPage((p) => Math.max(1, p - 1))}
                   >
                     上一页
-                  </button>
+                  </Button>
                   <span>
                     {docPage} / {docTotalPages}
                   </span>
-                  <button
+                  <Button
                     type="button"
-                    className="admin-btn-secondary !px-2 !py-1 text-xs"
+                    variant="outline"
+                    size="xs"
                     disabled={docPage >= docTotalPages}
                     onClick={() => setDocPage((p) => p + 1)}
                   >
                     下一页
-                  </button>
+                  </Button>
                 </div>
               )}
             </div>
@@ -763,14 +770,15 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                         {canWrite && (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <button
+                              <Button
                                 type="button"
-                                className="admin-row-action"
+                                variant="ghost"
+                                size="sm"
                                 title="更多操作"
                                 aria-label={`${d.filename} 更多操作`}
                               >
                                 <MoreHorizontal className="h-3.5 w-3.5" aria-hidden />
-                              </button>
+                              </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-40">
                               {d.status === "done" && (
@@ -875,14 +883,15 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                           {canWrite && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <button
+                                <Button
                                   type="button"
-                                  className="admin-row-action"
+                                  variant="ghost"
+                                  size="sm"
                                   title="更多操作"
                                   aria-label={`${d.filename} 更多操作`}
                                 >
                                   <MoreHorizontal className="h-3.5 w-3.5" aria-hidden />
-                                </button>
+                                </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-40">
                                 {d.status === "done" && (
@@ -1016,13 +1025,14 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                   />
                 </label>
               </div>
-              <button
+              <Button
                 type="submit"
                 disabled={chunkBusy}
-                className="admin-btn-secondary mt-3 min-h-[var(--control-h)] px-4 text-sm"
+                variant="outline"
+                className="mt-3 min-h-[var(--control-h)] px-4 text-sm"
               >
                 保存分块参数
-              </button>
+              </Button>
             </form>
 
             <div className="border-t border-surface-border/70 bg-surface-2/25 px-4 py-4">
@@ -1031,15 +1041,16 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                 启用后会用 BM25 + 向量两路融合检索，关键词查询命中明显改善。
                 重建会丢弃当前分块并重新入库所有文档（约 30-90 秒），期间该知识库临时无召回。
               </p>
-              <button
+              <Button
                 onClick={() => setPendingRebuild(true)}
                 disabled={rebuildingKb}
-                className="admin-btn-secondary mt-3 min-h-[var(--control-h)] px-4 text-sm"
+                variant="outline"
+                className="mt-3 min-h-[var(--control-h)] px-4 text-sm"
                 type="button"
               >
                 <RefreshCw className={cn("h-4 w-4", rebuildingKb && "animate-spin")} />
                 重建索引（启用混合检索）
-              </button>
+              </Button>
             </div>
           </section>
           </AdminSection>
@@ -1066,20 +1077,21 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                 </p>
               </div>
             </div>
-            <button
+            <Button
               onClick={() => setPendingDeleteKb(true)}
               disabled={deletingKb}
-              className="admin-btn-danger mt-4 min-h-[var(--control-h)] px-4 text-sm"
+              variant="destructive"
+              className="mt-4 min-h-[var(--control-h)] px-4 text-sm"
               type="button"
             >
               <Trash2 className="h-4 w-4" />
               删除整个知识库
-            </button>
+            </Button>
           </div>
           </AdminSection>
         )}
 
-      <Dialog
+      <ConfirmDialog
         open={pendingDelete != null}
         onOpenChange={(o) => !o && setPendingDelete(null)}
         title="删除文档？"
@@ -1089,7 +1101,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
             {pendingDelete ? (
               <div className="rounded-lg border border-surface-border/70 bg-surface-2 px-3 py-2">
                 <div className="text-xs font-medium text-muted">文档</div>
-                <div className="mt-1 max-h-24 overflow-y-auto break-all text-sm text-fg">
+                <div className="mt-1 max-h-24 overflow-y-auto break-all text-sm text-ink">
                   {pendingDelete.filename}
                 </div>
               </div>
@@ -1102,7 +1114,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
         busy={deleting}
       />
 
-      <Dialog
+      <ConfirmDialog
         open={pendingDeleteKb}
         onOpenChange={(o) => !o && setPendingDeleteKb(false)}
         title={`删除知识库「${kb.name}」？`}
@@ -1113,7 +1125,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
         busy={deletingKb}
       />
 
-      <Dialog
+      <ConfirmDialog
         open={pendingRebuild}
         onOpenChange={(o) => !o && setPendingRebuild(false)}
         title={`重建索引「${kb.name}」？`}
@@ -1188,14 +1200,14 @@ function MembersSection({ kbId, isOwner }: { kbId: string; isOwner: boolean }) {
       bodyClassName="bg-surface/35"
       toolbar={
         isOwner ? (
-          <button
+          <Button
             onClick={() => setInviteOpen(true)}
-            className="admin-btn-primary min-h-[var(--control-h)] px-3 text-sm"
+            className="min-h-[var(--control-h)] px-3 text-sm"
             type="button"
           >
             <UserPlus className="h-4 w-4" />
             邀请
-          </button>
+          </Button>
         ) : null
       }
     >
@@ -1309,7 +1321,7 @@ function MembersSection({ kbId, isOwner }: { kbId: string; isOwner: boolean }) {
         />
       )}
 
-      <Dialog
+      <ConfirmDialog
         open={pendingRemove != null}
         onOpenChange={(o) => !o && setPendingRemove(null)}
         title={`移除 ${pendingRemove?.email ?? ""}？`}
@@ -1455,8 +1467,8 @@ function InviteDialog({
           className={cn(
             "inline-flex h-[var(--control-h)] cursor-pointer items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-[background-color,color,box-shadow]",
             tab === "email"
-              ? "bg-surface text-fg shadow-sm"
-              : "text-muted hover:bg-surface/70 hover:text-fg"
+              ? "bg-surface text-ink shadow-sm"
+              : "text-muted hover:bg-surface/70 hover:text-ink"
           )}
         >
           <UserPlus className="h-3.5 w-3.5" />
@@ -1468,8 +1480,8 @@ function InviteDialog({
           className={cn(
             "inline-flex h-[var(--control-h)] cursor-pointer items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-[background-color,color,box-shadow]",
             tab === "link"
-              ? "bg-surface text-fg shadow-sm"
-              : "text-muted hover:bg-surface/70 hover:text-fg"
+              ? "bg-surface text-ink shadow-sm"
+              : "text-muted hover:bg-surface/70 hover:text-ink"
           )}
         >
           <Link2 className="h-3.5 w-3.5" />
@@ -1508,13 +1520,13 @@ function InviteDialog({
                 />
               </label>
             </div>
-            <button
+            <Button
               type="submit"
               disabled={emailBusy || !email.trim()}
-              className="admin-btn-primary w-full"
+              className="w-full"
             >
               {emailBusy ? "邀请中..." : "发送邀请"}
-            </button>
+            </Button>
           </form>
         ) : (
           <div className="space-y-5">
@@ -1555,14 +1567,14 @@ function InviteDialog({
                   />
                 </label>
               </div>
-              <button
+              <Button
                 onClick={onCreateLink}
                 disabled={linkBusy}
-                className="admin-btn-primary w-full"
+                className="w-full"
                 type="button"
               >
                 {linkBusy ? "生成中..." : "生成新链接"}
-              </button>
+              </Button>
             </div>
 
             {invitations.length > 0 && (

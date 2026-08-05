@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import Brand, { APP_NAME } from "@/components/Brand";
 import BrandPanel from "@/components/BrandPanel";
 import ThemeToggle from "@/components/ThemeToggle";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { login } from "@/lib/auth";
@@ -107,10 +108,10 @@ export default function LoginPage() {
                   </div>
                 </div>
 
-                <button
+                <Button
                   type="submit"
                   disabled={loading}
-                  className="admin-btn-primary min-h-[44px] w-full"
+                  className="min-h-[44px] w-full"
                 >
                   {loading ? (
                     "登录中..."
@@ -120,7 +121,7 @@ export default function LoginPage() {
                       登录
                     </>
                   )}
-                </button>
+                </Button>
               </form>
 
               <p className="border-t border-surface-border/70 bg-surface-2/35 px-7 py-4 text-center text-sm text-muted sm:px-8">

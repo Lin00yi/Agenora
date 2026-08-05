@@ -88,21 +88,53 @@ class Message(Base):
 
     def to_public_dict(self) -> dict:
         tools: list | None = None
+        memory_trace: dict | None = None
         if self.tool_call_log:
             try:
-                tools = json.loads(self.tool_call_log)
+                parsed = json.loads(self.tool_call_log)
             except (ValueError, TypeError):
-                tools = None
+                parsed = None
+            if isinstance(parsed, dict) and (
+                "tools" in parsed or "memory_trace" in parsed
+            ):
+                raw_tools = parsed.get("tools")
+                tools = raw_tools if isinstance(raw_tools, list) else []
+                raw_trace = parsed.get("memory_trace")
+                memory_trace = raw_trace if isinstance(raw_trace, dict) else None
+            elif isinstance(parsed, list):
+                tools = parsed
 
         return {
             "id": self.id,
             "role": self.role,
             "content": self.content or "",
             "tools": tools if tools is not None else ([] if self.role == "assistant" else None),
+            "memory_trace": memory_trace,
             "cost_usd": self.cost_usd,
             "error": self.error or None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
+
+    @staticmethod
+    def encode_tool_call_log(
+        tools: list | None,
+        memory_trace: dict | None = None,
+    ) -> str | None:
+        """Serialize tools (+ optional memory_trace) into tool_call_log JSON.
+
+        Legacy rows store a bare tools list. New rows that carry a memory_trace
+        use ``{"tools": [...], "memory_trace": {...}}`` so we avoid a schema
+        migration while remaining backward-compatible on read.
+        """
+        tool_list = list(tools or [])
+        if memory_trace:
+            return json.dumps(
+                {"tools": tool_list, "memory_trace": memory_trace},
+                ensure_ascii=False,
+            )
+        if tool_list:
+            return json.dumps(tool_list, ensure_ascii=False)
+        return None
 
 
 class ConversationSummary(Base):

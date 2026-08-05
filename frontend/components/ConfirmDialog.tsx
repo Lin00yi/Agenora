@@ -27,7 +27,7 @@ export type ConfirmDialogProps = {
   className?: string;
 };
 
-/** App-level confirm dialog. Prefer this for destructive / irreversible actions. */
+/** App-level confirm dialog for destructive / irreversible actions. */
 export function ConfirmDialog({
   open,
   onOpenChange,
@@ -69,11 +69,6 @@ export function ConfirmDialog({
           <AlertDialogAction
             variant={danger ? "destructive" : "default"}
             disabled={busy}
-            className={
-              danger
-                ? "border-transparent bg-[rgb(var(--danger))] text-white hover:bg-[rgb(var(--danger))]/90 focus-visible:ring-[rgb(var(--danger))]/25 dark:bg-[rgb(var(--danger))] dark:hover:bg-[rgb(var(--danger))]/90"
-                : undefined
-            }
             onClick={(e) => {
               e.preventDefault();
               void onConfirm();
@@ -85,9 +80,4 @@ export function ConfirmDialog({
       </AlertDialogContent>
     </AlertDialog>
   );
-}
-
-/** @deprecated Prefer ConfirmDialog. Kept as default export for existing imports. */
-export default function Dialog(props: ConfirmDialogProps) {
-  return <ConfirmDialog {...props} />;
 }
