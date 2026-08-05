@@ -72,6 +72,14 @@ RECENT_TURNS = 10
 PROFILE_PREFERENCE_KEYS = frozenset(
     {"response_language", "response_style", "response_max_chars"}
 )
+# Hybrid memory recall: keep the gate strict so short off-topic queries
+# (e.g. "还有什么卡？") do not pull high-importance unrelated facts.
+MEMORY_SEMANTIC_MIN = 0.55
+MEMORY_RETRIEVAL_LIMIT = 4
+MEMORY_IMPORTANCE_WEIGHT = 0.25
+MEMORY_CONFIDENCE_WEIGHT = 0.25
+MEMORY_INJECT_DEDUPE_COSINE = 0.88
+MEMORY_CONSOLIDATE_SEMANTIC = 0.88
 
 SENSITIVE_PATTERNS = [
     re.compile(r"sk-[A-Za-z0-9_\-]{16,}"),
@@ -683,7 +691,7 @@ async def retrieve_user_memories(
     user_id: str,
     query: str,
     kb_id: str | None = None,
-    limit: int = 6,
+    limit: int = MEMORY_RETRIEVAL_LIMIT,
     embedding_cfg=None,
     exclude_ids: set[str] | frozenset[str] | None = None,
 ) -> list[UserMemory]:
@@ -740,20 +748,61 @@ async def retrieve_user_memories(
         vector = _memory_vector(row)
         if query_vector and fingerprint == row.embedding_fingerprint and vector:
             semantic_score = max(0.0, _cosine_similarity(query_vector, vector))
-        type_bonus = 1.5 if wants_preferences and row.type == "preference" else 0.0
+        keyword_hit = keyword_score > 0
+        semantic_hit = semantic_score >= MEMORY_SEMANTIC_MIN
+        # Preference-seeking queries may boost preference rows, but type_bonus
+        # alone must not admit every preference without keyword/semantic signal.
+        preference_boost = wants_preferences and row.type == "preference"
+        if not (keyword_hit or semantic_hit):
+            continue
+        type_bonus = 1.5 if preference_boost else 0.0
         scope_bonus = 0.75 if row.scope == "kb" and row.scope_id == kb_id else 0.0
-        if keyword_score > 0 or semantic_score >= 0.35 or type_bonus > 0:
-            score = (
-                keyword_score * 4
-                + semantic_score * 5
-                + type_bonus
-                + scope_bonus
-                + float(row.importance or 0.5)
-                + float(row.confidence or 0.0)
-            )
-            scored.append((score, row))
+        relevance = (
+            keyword_score * 4
+            + semantic_score * 5
+            + type_bonus
+            + scope_bonus
+        )
+        if relevance <= 0:
+            continue
+        score = (
+            relevance
+            + float(row.importance or 0.5) * MEMORY_IMPORTANCE_WEIGHT
+            + float(row.confidence or 0.0) * MEMORY_CONFIDENCE_WEIGHT
+        )
+        scored.append((score, row))
     scored.sort(key=lambda item: item[0], reverse=True)
-    return [row for _, row in scored[:limit]]
+    deduped = _dedupe_scored_memories(scored)
+    return [row for _, row in deduped[:limit]]
+
+
+def _dedupe_scored_memories(
+    scored: list[tuple[float, UserMemory]],
+    *,
+    cosine_threshold: float = MEMORY_INJECT_DEDUPE_COSINE,
+) -> list[tuple[float, UserMemory]]:
+    """Keep the higher-scoring row when near-duplicate explicits both match."""
+    kept: list[tuple[float, UserMemory]] = []
+    for score, row in scored:
+        row_vector = _memory_vector(row)
+        duplicate = False
+        for _, existing in kept:
+            if (
+                existing.type != row.type
+                or existing.scope != row.scope
+                or existing.scope_id != row.scope_id
+                or (existing.embedding_fingerprint or "") != (row.embedding_fingerprint or "")
+            ):
+                continue
+            existing_vector = _memory_vector(existing)
+            if not row_vector or not existing_vector:
+                continue
+            if _cosine_similarity(row_vector, existing_vector) >= cosine_threshold:
+                duplicate = True
+                break
+        if not duplicate:
+            kept.append((score, row))
+    return kept
 
 
 def _memory_vector(row: UserMemory) -> list[float] | None:
@@ -1491,7 +1540,7 @@ async def consolidate_user_memories(
     session: AsyncSession,
     *,
     user_id: str,
-    semantic_threshold: float = 0.96,
+    semantic_threshold: float = MEMORY_CONSOLIDATE_SEMANTIC,
 ) -> dict[str, int]:
     """Idempotently expire, de-duplicate and resolve structured conflicts.
 

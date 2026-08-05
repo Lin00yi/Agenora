@@ -647,6 +647,96 @@ async def test_memory_retrieval_hybridly_recalls_semantic_match_without_keyword_
     assert [memory.content for memory in memories] == ["项目的数据持久化统一使用 PostgreSQL。"]
 
 
+@pytest.mark.asyncio
+async def test_memory_retrieval_rejects_weak_semantic_even_with_high_importance(
+    db, create_user, monkeypatch
+):
+    """High importance must not rescue a weak semantic match on an off-topic query."""
+    import src.infra.embedding as embedding
+    from src.infra.database import get_session_factory
+
+    user = await create_user("weak-semantic-memory@example.com")
+    monkeypatch.setattr(embedding, "embed", lambda _text, cfg=None: _async_value([1.0, 0.0]))
+    monkeypatch.setattr(embedding, "embedding_fingerprint", lambda cfg=None: "test-space")
+    # cosine([1,0], [0.4, 0.916515]) ≈ 0.40 < MEMORY_SEMANTIC_MIN (0.55)
+    factory = get_session_factory()
+    async with factory() as session:
+        session.add(
+            UserMemory(
+                id=str(uuid.uuid4()),
+                user_id=user.id,
+                type="explicit",
+                scope="personal",
+                content="后续使用 golang 来实现代码。",
+                status="active",
+                importance=0.95,
+                confidence=0.95,
+                embedding_json="[0.4,0.916515139]",
+                embedding_fingerprint="test-space",
+            )
+        )
+        await session.commit()
+        memories = await retrieve_user_memories(
+            session,
+            user_id=user.id,
+            query="还有什么卡？",
+            embedding_cfg=object(),
+        )
+
+    assert memories == []
+
+
+@pytest.mark.asyncio
+async def test_memory_retrieval_dedupes_near_duplicate_explicits(
+    db, create_user, monkeypatch
+):
+    """Near-duplicate bilingual explicits collapse to one inject slot."""
+    import src.infra.embedding as embedding
+    from src.infra.database import get_session_factory
+
+    user = await create_user("dedupe-retrieve-memory@example.com")
+    monkeypatch.setattr(embedding, "embed", lambda _text, cfg=None: _async_value([1.0, 0.0]))
+    monkeypatch.setattr(embedding, "embedding_fingerprint", lambda cfg=None: "test-space")
+    factory = get_session_factory()
+    async with factory() as session:
+        session.add_all(
+            [
+                UserMemory(
+                    id=str(uuid.uuid4()),
+                    user_id=user.id,
+                    type="explicit",
+                    scope="personal",
+                    content="后续使用golang来实现代码。",
+                    status="active",
+                    importance=0.8,
+                    embedding_json="[1.0,0.0]",
+                    embedding_fingerprint="test-space",
+                ),
+                UserMemory(
+                    id=str(uuid.uuid4()),
+                    user_id=user.id,
+                    type="explicit",
+                    scope="personal",
+                    content="User explicitly requested to use Golang for future code implementation.",
+                    status="active",
+                    importance=0.9,
+                    embedding_json="[0.999,0.001]",
+                    embedding_fingerprint="test-space",
+                ),
+            ]
+        )
+        await session.commit()
+        memories = await retrieve_user_memories(
+            session,
+            user_id=user.id,
+            query="代码实现用什么语言？",
+            embedding_cfg=object(),
+        )
+
+    assert len(memories) == 1
+    assert "Golang" in memories[0].content or "golang" in memories[0].content.lower()
+
+
 async def _async_value(value):
     return value
 
