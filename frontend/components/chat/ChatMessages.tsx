@@ -17,16 +17,14 @@ import type { Message } from "@/lib/conversationStore";
 import type { MemoryTrace } from "@/lib/sseClient";
 import { cn } from "@/lib/cn";
 import {
-  buildMessageSources,
-  formatDuration,
+  buildInjectedMemoryItems,
+  formatMemoryTraceSummary,
   formatMessageTime,
   formatTokenCount,
   getAssistantStreamingStatus,
-  getLatestToolDoneAt,
   hasVisibleMemoryTrace,
   memoryTraceTypeLabel,
 } from "./utils";
-import type { SourceRow } from "./types";
 
 export function ChatMessage({ message }: { message: Message }) {
   if (message.role === "user") {
@@ -57,11 +55,16 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
   return (
     <div className="flex items-start">
       <div className="min-w-0 flex-1">
-        {!streaming && hasMemoryContext ? (
-          <div className="mb-3">
-            <MemoryContextTrace trace={message.memory_trace!} />
+        {/* Process chips stay above the answer; quiet by default. */}
+        {(hasTools || (!streaming && hasMemoryContext)) && (
+          <div className="mb-3 space-y-2">
+            {hasTools ? <ThinkingChain events={message.tools} /> : null}
+            {!streaming && hasMemoryContext ? (
+              <MemoryContextTrace trace={message.memory_trace!} />
+            ) : null}
           </div>
-        ) : null}
+        )}
+
         <div className="kf-answer px-1 py-1 sm:px-2">
           {message.error && (
             <div className="kf-answer-error mb-3 rounded-lg border px-3 py-2 text-sm">
@@ -90,22 +93,13 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
             </div>
           )}
         </div>
-        {hasTools && (
-          <div className="mt-4">
-            <ThinkingChain events={message.tools} />
-          </div>
-        )}
-        {hasContent && (
-          <>
-            <SourceStrip sources={buildMessageSources(message)} />
-            {!streaming && (
-              <ExportActions
-                markdown={message.content}
-                cost={message.cost_usd}
-                reportId={`report-output-${message.id}`}
-              />
-            )}
-          </>
+
+        {hasContent && !streaming && (
+          <ExportActions
+            markdown={message.content}
+            cost={message.cost_usd}
+            reportId={`report-output-${message.id}`}
+          />
         )}
       </div>
     </div>
@@ -153,32 +147,6 @@ function AnswerMarkdown({ markdown, streaming }: { markdown: string; streaming: 
   );
 }
 
-function SourceStrip({ sources }: { sources: SourceRow[] }) {
-  if (sources.length === 0) return null;
-
-  return (
-    <div className="kf-source-strip mt-5 rounded-lg border p-2">
-      <div className="kf-source-strip-title mb-2 text-sm font-medium">{"\u5de5\u5177\u8c03\u7528"}</div>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {sources.map((source) => (
-          <div
-            className="kf-source-row flex min-w-0 items-center gap-2 rounded-md border px-2 py-2"
-            key={source.title}
-          >
-            <span className="kf-source-score flex min-h-8 min-w-[var(--control-h)] shrink-0 items-center justify-center rounded-md border px-1.5 text-[10px] font-semibold">
-              {source.score}
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="kf-source-title truncate text-xs">{source.title}</div>
-              <div className="kf-source-meta truncate text-xs">{source.meta}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function ContextCompressionNotice({
   contextStatus,
 }: {
@@ -205,86 +173,59 @@ export function ContextCompressionNotice({
 
 function MemoryContextTrace({ trace }: { trace: MemoryTrace }) {
   const [open, setOpen] = useState(false);
-  const memoryCount = trace.memories?.injected_count ?? 0;
-  const profileLabel = trace.profile?.injected ? "画像已注入" : "无画像";
-  const summaryLabel = trace.summary ? "摘要已注入" : "无摘要";
-  const summaryText = `本轮上下文 · 记忆 ${memoryCount} · ${profileLabel} · ${summaryLabel}`;
-  const recalled = trace.memories?.items?.slice(0, 4) ?? [];
-  const profileItems = trace.profile?.items?.slice(0, 3) ?? [];
+  const items = buildInjectedMemoryItems(trace);
+  const summaryText = formatMemoryTraceSummary(trace);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-surface-border/80 bg-surface shadow-soft">
+    <div className="overflow-hidden rounded-lg border border-surface-border/70 bg-surface/80">
       <button
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="flex min-h-11 w-full cursor-pointer items-center justify-between gap-3 bg-surface-2/45 px-3.5 py-2 text-sm transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+        className="flex min-h-9 w-full cursor-pointer items-center justify-between gap-3 px-3 py-1.5 text-sm transition-colors hover:bg-surface-2/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
         type="button"
       >
         <span className="flex min-w-0 items-center gap-2 text-muted">
-          {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-          <span className="admin-icon-tile admin-icon-tile-brand size-7 rounded-md shadow-none">
-            <BrainCircuit className="h-3.5 w-3.5" />
-          </span>
-          <span className="truncate">{summaryText}</span>
+          {open ? (
+            <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+          )}
+          <BrainCircuit className="h-3.5 w-3.5 shrink-0 text-brand/80" />
+          <span className="truncate text-xs sm:text-sm">{summaryText}</span>
         </span>
       </button>
 
       {open ? (
-        <div className="space-y-3 border-t border-surface-border/70 p-3 text-sm">
-          {recalled.length > 0 ? (
-            <div>
-              <div className="mb-2 text-xs font-medium text-muted">记忆召回</div>
-              <ul className="space-y-2">
-                {recalled.map((item) => (
-                  <li
-                    key={item.id}
-                    className="rounded-lg border border-surface-border/70 bg-surface-2/45 px-3 py-2.5"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-xs font-medium">
-                        {memoryTraceTypeLabel(item.type)}
-                      </span>
-                      <span className="shrink-0 text-[11px] text-muted">
-                        {Math.round((item.importance ?? 0) * 100)}%
-                      </span>
-                    </div>
-                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted">
-                      {item.content}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          {profileItems.length > 0 ? (
-            <div>
-              <div className="mb-2 text-xs font-medium text-muted">
-                画像摘要
-                {trace.profile?.counts?.total
-                  ? ` · 共 ${trace.profile.counts.total} 项`
-                  : ""}
-              </div>
-              <ul className="space-y-1.5">
-                {profileItems.map((item) => (
-                  <li key={item.id} className="truncate text-xs leading-5 text-muted">
-                    <span className="text-ink/80">{memoryTraceTypeLabel(item.type)}</span>
-                    {" · "}
-                    {item.content}
-                  </li>
-                ))}
-              </ul>
-            </div>
+        <div className="space-y-2 border-t border-surface-border/60 px-3 py-2.5 text-sm">
+          {items.length > 0 ? (
+            <ul className="space-y-1.5">
+              {items.slice(0, 6).map((item) => (
+                <li
+                  key={item.id}
+                  className="rounded-md border border-surface-border/60 bg-surface-2/35 px-2.5 py-2"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-xs font-medium text-ink/85">
+                      {memoryTraceTypeLabel(item.type)}
+                    </span>
+                    <span className="shrink-0 text-[11px] tabular-nums text-muted">
+                      重要度 {Math.round((item.importance ?? 0) * 100)}%
+                    </span>
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted">{item.content}</p>
+                </li>
+              ))}
+            </ul>
           ) : null}
 
           {trace.summary ? (
-            <p className="rounded-lg border border-surface-border/70 bg-surface-2/45 px-3 py-2 text-xs leading-5 text-muted">
-              摘要覆盖 {trace.summary.covered_message_count} 条历史消息 / 约{" "}
+            <p className="rounded-md border border-surface-border/60 bg-surface-2/35 px-2.5 py-2 text-xs leading-5 text-muted">
+              会话摘要已注入 · 覆盖 {trace.summary.covered_message_count} 条历史 / 约{" "}
               {formatTokenCount(trace.summary.token_count)}
             </p>
           ) : null}
 
-          {recalled.length === 0 && profileItems.length === 0 && !trace.summary ? (
+          {items.length === 0 && !trace.summary ? (
             <p className="text-xs leading-5 text-muted">本轮未注入可展示的记忆内容。</p>
           ) : null}
         </div>

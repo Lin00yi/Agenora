@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Ban,
   ChevronDown,
@@ -61,8 +61,22 @@ const STATUS_ICON: Record<ToolEvent["status"], React.ReactNode> = {
 export default function ThinkingChain({ events }: { events: ToolEvent[] }) {
   const hasRunning = events.some((event) => event.status === "running");
   const [open, setOpen] = useState(hasRunning);
+  const wasRunningRef = useRef(hasRunning);
   const [, force] = useState(0);
   const groups = useMemo(() => groupToolEvents(events), [events]);
+
+  useEffect(() => {
+    if (hasRunning) {
+      setOpen(true);
+      wasRunningRef.current = true;
+      return;
+    }
+    // Collapse once tools finish so the answer stays the visual focus.
+    if (wasRunningRef.current) {
+      setOpen(false);
+      wasRunningRef.current = false;
+    }
+  }, [hasRunning]);
 
   useEffect(() => {
     if (!hasRunning) return;
@@ -73,36 +87,38 @@ export default function ThinkingChain({ events }: { events: ToolEvent[] }) {
   const summary = formatChainSummary(groups, hasRunning);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-surface-border/80 bg-surface shadow-soft">
+    <div className="overflow-hidden rounded-lg border border-surface-border/70 bg-surface/80">
       <button
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="flex min-h-11 w-full cursor-pointer items-center justify-between gap-3 bg-surface-2/45 px-3.5 py-2 text-sm transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+        className="flex min-h-9 w-full cursor-pointer items-center justify-between gap-3 px-3 py-1.5 text-sm transition-colors hover:bg-surface-2/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
         type="button"
       >
         <span className="flex min-w-0 items-center gap-2 text-muted">
-          {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-          <span className="admin-icon-tile admin-icon-tile-brand size-7 rounded-md shadow-none">
-            {hasRunning ? (
-              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Search className="h-3.5 w-3.5" />
-            )}
-          </span>
-          <span className="truncate">{summary.text}</span>
+          {open ? (
+            <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+          )}
+          {hasRunning ? (
+            <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-brand" />
+          ) : (
+            <Search className="h-3.5 w-3.5 shrink-0 text-brand/80" />
+          )}
+          <span className="truncate text-xs sm:text-sm">{summary.text}</span>
         </span>
         {summary.duration && (
-          <span className="shrink-0 rounded-md border border-surface-border/70 bg-surface px-2 py-1 text-xs tabular-nums text-muted shadow-sm">
+          <span className="shrink-0 rounded-md border border-surface-border/60 bg-surface px-1.5 py-0.5 text-[11px] tabular-nums text-muted">
             {summary.duration}
           </span>
         )}
       </button>
 
       {open && (
-        <ul className="space-y-2 border-t border-surface-border/70 p-3 text-sm">
+        <ul className="space-y-2 border-t border-surface-border/60 px-3 py-2.5 text-sm">
           {groups.map((group) => (
             <li
-              className="rounded-lg border border-surface-border/70 bg-surface-2/45 px-3 py-2.5 shadow-[inset_0_1px_0_rgb(255_255_255/0.32)] dark:shadow-none"
+              className="rounded-md border border-surface-border/60 bg-surface-2/35 px-2.5 py-2"
               key={group.name}
             >
               <div className="flex items-start gap-2">
@@ -113,7 +129,7 @@ export default function ThinkingChain({ events }: { events: ToolEvent[] }) {
                       {formatGroupTitle(group)}
                     </span>
                     {group.latencyMs != null && (
-                      <span className="shrink-0 rounded-md border border-surface-border/70 bg-surface px-2 py-0.5 text-xs tabular-nums text-muted">
+                      <span className="shrink-0 text-[11px] tabular-nums text-muted">
                         {formatDuration(group.latencyMs)}
                       </span>
                     )}
@@ -123,7 +139,7 @@ export default function ThinkingChain({ events }: { events: ToolEvent[] }) {
               </div>
 
               {group.detailRows.length > 0 && (
-                <ul className="mt-2.5 space-y-1.5 border-l border-surface-border/80 pl-3 text-xs text-muted">
+                <ul className="mt-2 space-y-1.5 border-l border-surface-border/70 pl-3 text-xs text-muted">
                   {group.detailRows.map((row, index) => (
                     <li className="flex items-start gap-3" key={`${row.text}-${index}`}>
                       <span className="mt-[0.45rem] h-1 w-1 shrink-0 rounded-full bg-brand/70" />
@@ -192,12 +208,12 @@ function formatChainSummary(groups: ToolGroup[], hasRunning: boolean): ChainSumm
   if (groups.length === 1) {
     const group = groups[0];
     return {
-      text: `${formatGroupTitle(group)} \u00b7 ${formatGroupMeta(group)}`,
+      text: `${formatGroupTitle(group)} · ${formatGroupMeta(group)}`,
       duration,
     };
   }
   return {
-    text: `${hasRunning ? "\u6b63\u5728\u4f7f\u7528\u5de5\u5177" : "\u5df2\u4f7f\u7528\u5de5\u5177"} \u00b7 ${groups.length} \u7ec4 \u00b7 ${calls} \u6b21\u8c03\u7528`,
+    text: `${hasRunning ? "正在使用工具" : "已使用工具"} · ${groups.length} 组 · ${calls} 次调用`,
     duration,
   };
 }
@@ -213,29 +229,29 @@ function formatGroupTitle(group: ToolGroup): string {
   const base = NAME_LABEL[group.name] ?? group.name;
   if (group.status === "running") {
     return group.events.length > 1 && isSearchTool(group.name)
-      ? `\u6b63\u5728\u5e76\u884c${base}`
-      : `\u6b63\u5728${base}`;
+      ? `正在并行${base}`
+      : `正在${base}`;
   }
   if (group.status === "ok") {
     return group.events.length > 1 && isSearchTool(group.name)
-      ? `\u5df2\u5e76\u884c${base}`
-      : `\u5df2${base}`;
+      ? `已并行${base}`
+      : `已${base}`;
   }
-  if (group.status === "blocked") return `${base} \u5df2\u963b\u6b62`;
-  return `${base} \u5931\u8d25`;
+  if (group.status === "blocked") return `${base} 已阻止`;
+  return `${base} 失败`;
 }
 
 function formatGroupMeta(group: ToolGroup): string {
-  const unit = isSearchTool(group.name) ? "\u6761\u67e5\u8be2" : "\u6b21\u8c03\u7528";
+  const unit = isSearchTool(group.name) ? "条查询" : "次调用";
   const status =
     group.status === "ok"
-      ? "\u5168\u90e8\u5b8c\u6210"
+      ? "全部完成"
       : group.status === "running"
-        ? "\u8fdb\u884c\u4e2d"
+        ? "进行中"
         : group.status === "blocked"
-          ? "\u90e8\u5206\u963b\u6b62"
-          : "\u90e8\u5206\u5931\u8d25";
-  return `${group.events.length} ${unit} \u00b7 ${status}`;
+          ? "部分阻止"
+          : "部分失败";
+  return `${group.events.length} ${unit} · ${status}`;
 }
 
 function isSearchTool(name: string): boolean {
@@ -251,7 +267,7 @@ function formatToolInputSummary(event: ToolEvent): string {
   if (typeof city === "string" && city.trim()) return city.trim();
   return formatToolInput(input)
     .map((row) => `${row.label}: ${row.value}`)
-    .join(" \u00b7 ");
+    .join(" · ");
 }
 
 function formatToolDetailRow(event: ToolEvent): DetailRow {
@@ -269,20 +285,19 @@ function formatToolDetailRow(event: ToolEvent): DetailRow {
 }
 
 function formatRunningDuration(event: ToolEvent): string {
-  if (!event.t0) return "\u8fdb\u884c\u4e2d";
-  return `${formatDuration(Math.max(0, Date.now() - event.t0))} \u8fdb\u884c\u4e2d`;
+  if (!event.t0) return "进行中";
+  return `${formatDuration(Math.max(0, Date.now() - event.t0))} 进行中`;
 }
 
 function getStatusText(status: ToolEvent["status"]): string {
-  if (status === "ok") return "\u5df2\u5b8c\u6210";
-  if (status === "running") return "\u8fdb\u884c\u4e2d";
-  if (status === "blocked") return "\u5df2\u963b\u6b62";
-  return "\u5931\u8d25";
+  if (status === "ok") return "已完成";
+  if (status === "running") return "进行中";
+  if (status === "blocked") return "已阻止";
+  return "失败";
 }
 
 function detailDurationClass(status: ToolEvent["status"]): string {
-  const base =
-    "chip shrink-0 py-0 text-[11px] tabular-nums leading-4";
+  const base = "chip shrink-0 py-0 text-[11px] tabular-nums leading-4";
   if (status === "ok") return `${base} chip-brand`;
   if (status === "running") return `${base} chip-brand`;
   if (status === "blocked") return `${base} chip-warning`;
@@ -294,11 +309,11 @@ function formatToolInput(input?: Record<string, unknown>): { label: string; valu
   const rows: { label: string; value: string }[] = [];
   const consumed = new Set<string>();
 
-  addStringRow(rows, consumed, input, "query", "\u67e5\u8be2");
-  addStringRow(rows, consumed, input, "city", "\u57ce\u5e02");
-  addStringRow(rows, consumed, input, "date", "\u65e5\u671f");
+  addStringRow(rows, consumed, input, "query", "查询");
+  addStringRow(rows, consumed, input, "city", "城市");
+  addStringRow(rows, consumed, input, "date", "日期");
   addScalarRow(rows, consumed, input, "limit", "TopK");
-  addScalarRow(rows, consumed, input, "max_results", "\u6570\u91cf");
+  addScalarRow(rows, consumed, input, "max_results", "数量");
 
   for (const [key, value] of Object.entries(input)) {
     if (consumed.has(key) || value == null) continue;

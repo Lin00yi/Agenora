@@ -1,7 +1,7 @@
 import type { ToolEvent } from "@/components/ThinkingChain";
 import type { Conversation, Message } from "@/lib/conversationStore";
 import type { KB } from "@/lib/kb-api";
-import type { ChatEvent, MemoryTrace } from "@/lib/sseClient";
+import type { ChatEvent, MemoryTrace, MemoryTraceItem } from "@/lib/sseClient";
 import type { SourceRow } from "./types";
 
 export function getKbStatusView(kb: KB) {
@@ -270,6 +270,47 @@ export function hasVisibleMemoryTrace(trace?: MemoryTrace | null) {
       (trace.profile?.items?.length ?? 0) > 0 ||
       (trace.memories?.items?.length ?? 0) > 0
   );
+}
+
+/** Deduped list of memories actually injected this turn (profile + recall). */
+export function buildInjectedMemoryItems(trace: MemoryTrace): MemoryTraceItem[] {
+  const seenIds = new Set<string>();
+  const seenKeys = new Set<string>();
+  const seenContent = new Set<string>();
+  const out: MemoryTraceItem[] = [];
+
+  const push = (item: MemoryTraceItem) => {
+    const key = (item.key || "").trim();
+    const norm = item.content.trim().toLowerCase().replace(/\s+/g, "");
+    if (seenIds.has(item.id)) return;
+    if (key && seenKeys.has(key)) return;
+    if (norm && seenContent.has(norm)) return;
+    seenIds.add(item.id);
+    if (key) seenKeys.add(key);
+    if (norm) seenContent.add(norm);
+    out.push(item);
+  };
+
+  for (const item of trace.profile?.items ?? []) push(item);
+  for (const item of trace.memories?.items ?? []) push(item);
+  return out;
+}
+
+export function formatMemoryTraceSummary(trace: MemoryTrace): string {
+  const items = buildInjectedMemoryItems(trace);
+  const parts: string[] = [];
+
+  if (items.length > 0) {
+    parts.push(items.length === 1 ? "用了 1 条记忆" : `用了 ${items.length} 条记忆`);
+    const hints = Array.from(
+      new Set(items.slice(0, 3).map((item) => memoryTraceTypeLabel(item.type)))
+    );
+    if (hints.length > 0) parts.push(hints.join(" · "));
+  }
+  if (trace.summary) {
+    parts.push("含会话摘要");
+  }
+  return parts.join(" · ") || "本轮上下文";
 }
 
 export function memoryTraceTypeLabel(type: string) {
