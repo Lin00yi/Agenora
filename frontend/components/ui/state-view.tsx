@@ -24,15 +24,15 @@ export function StateView({
   return (
     <section
       className={cn(
-        "ak-state-view",
-        density === "compact" && "ak-state-view-compact",
-        variant === "error" && "ak-state-view-error",
-        variant === "notice" && "ak-state-view-notice",
+        "kf-state-view",
+        density === "compact" && "kf-state-view-compact",
+        variant === "error" && "kf-state-view-error",
+        variant === "notice" && "kf-state-view-notice",
         className
       )}
       role={variant === "error" ? "alert" : undefined}
     >
-      <span className="ak-state-icon" aria-hidden>
+      <span className="kf-state-icon" aria-hidden>
         <Icon className="size-5" />
       </span>
       {title && <h2 className="text-pretty text-sm font-semibold text-ink">{title}</h2>}
@@ -55,20 +55,20 @@ export function LoadingState({
 }) {
   if (compact) {
     return (
-      <div className={cn("ak-inline-loading", className)} role="status" aria-live="polite">
+      <div className={cn("kf-inline-loading", className)} role="status" aria-live="polite">
         <LoaderCircle className="size-4 animate-spin text-primary" aria-hidden />
         <span>{label}…</span>
       </div>
     );
   }
   return (
-    <section className={cn("ak-loading-state", className)} role="status" aria-live="polite" aria-busy="true">
-      <div className="ak-loading-orbit" aria-hidden>
+    <section className={cn("kf-loading-state", className)} role="status" aria-live="polite" aria-busy="true">
+      <div className="kf-loading-orbit" aria-hidden>
         <LoaderCircle className="size-5 animate-spin text-primary" />
       </div>
       <h2 className="text-sm font-semibold text-ink">{label}</h2>
       <p className="text-sm text-muted">{description}</p>
-      <div className="ak-skeleton-lines" aria-hidden>
+      <div className="kf-skeleton-lines" aria-hidden>
         <span />
         <span />
         <span />
@@ -79,13 +79,13 @@ export function LoadingState({
 
 export function PageSkeleton({ className }: { className?: string }) {
   return (
-    <div className={cn("ak-page-skeleton", className)} role="status" aria-label="正在加载页面" aria-busy="true">
-      <div className="ak-skeleton h-5 w-32" />
-      <div className="ak-skeleton h-8 w-56" />
+    <div className={cn("kf-page-skeleton", className)} role="status" aria-label="正在加载页面" aria-busy="true">
+      <div className="kf-skeleton h-5 w-32" />
+      <div className="kf-skeleton h-8 w-56" />
       <div className="grid gap-3 sm:grid-cols-3">
-        <div className="ak-skeleton h-28" />
-        <div className="ak-skeleton h-28" />
-        <div className="ak-skeleton h-28" />
+        <div className="kf-skeleton h-28" />
+        <div className="kf-skeleton h-28" />
+        <div className="kf-skeleton h-28" />
       </div>
     </div>
   );

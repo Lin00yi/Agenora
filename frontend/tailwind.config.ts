@@ -13,14 +13,14 @@ const config: Config = {
     extend: {
       fontFamily: {
         sans: [
-          "-apple-system",
-          "BlinkMacSystemFont",
+          "var(--font-sans-latin)",
+          "var(--font-sans-cjk)",
           "PingFang SC",
           "Microsoft YaHei",
           "system-ui",
           "sans-serif",
         ],
-        mono: ["Menlo", "Monaco", "Consolas", "monospace"],
+        mono: ["var(--font-mono)", "ui-monospace", "Menlo", "Monaco", "Consolas", "monospace"],
       },
       colors: {
         // shadcn semantic (full color values from CSS vars)
@@ -57,7 +57,27 @@ const config: Config = {
         border: "var(--border)",
         input: "var(--input)",
         ring: "var(--ring)",
-        // KnowFlow semantic RGB tokens (design-system v4)
+        // KnowFlow v5 — kf tokens (canonical) + v4 aliases
+        kf: {
+          canvas: "rgb(var(--kf-canvas) / <alpha-value>)",
+          surface: "rgb(var(--kf-surface) / <alpha-value>)",
+          "surface-2": "rgb(var(--kf-surface-2) / <alpha-value>)",
+          composer: "rgb(var(--kf-composer) / <alpha-value>)",
+          border: "rgb(var(--kf-border) / <alpha-value>)",
+          "border-strong": "rgb(var(--kf-border-strong) / <alpha-value>)",
+          ink: "rgb(var(--kf-ink) / <alpha-value>)",
+          "ink-2": "rgb(var(--kf-ink-2) / <alpha-value>)",
+          muted: "rgb(var(--kf-muted) / <alpha-value>)",
+          faint: "rgb(var(--kf-faint) / <alpha-value>)",
+          brand: "rgb(var(--kf-brand) / <alpha-value>)",
+          "brand-strong": "rgb(var(--kf-brand-strong) / <alpha-value>)",
+          "brand-accent": "rgb(var(--kf-brand-accent) / <alpha-value>)",
+          "on-brand": "rgb(var(--kf-on-brand) / <alpha-value>)",
+          success: "rgb(var(--kf-success) / <alpha-value>)",
+          warning: "rgb(var(--kf-warning) / <alpha-value>)",
+          danger: "rgb(var(--kf-danger) / <alpha-value>)",
+          info: "rgb(var(--kf-info) / <alpha-value>)",
+        },
         canvas: "rgb(var(--canvas) / <alpha-value>)",
         ink: "rgb(var(--ink) / <alpha-value>)",
         "ink-2": "rgb(var(--ink-2) / <alpha-value>)",

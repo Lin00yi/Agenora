@@ -39,7 +39,7 @@ function DialogOverlay({
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
       className={cn(
-        "app-modal-overlay ak-motion-enter fixed inset-0 isolate z-50 duration-popover ease-ui-out data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+        "app-modal-overlay kf-motion-enter fixed inset-0 isolate z-50 duration-popover ease-ui-out data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
         className
       )}
       {...props}
@@ -61,7 +61,7 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "ak-motion-enter app-modal-panel fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-surface-border/80 bg-surface p-5 text-sm text-ink shadow-[0_24px_70px_rgb(15_23_42/0.22)] ring-1 ring-surface-border/45 duration-popover ease-ui-out outline-none sm:max-w-lg data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 dark:border-surface-border/90 dark:bg-surface dark:shadow-[0_28px_74px_rgb(0_0_0/0.42)]",
+          "kf-motion-enter app-modal-panel fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-surface-border/80 bg-surface p-5 text-sm text-ink shadow-[0_24px_70px_rgb(15_23_42/0.22)] ring-1 ring-surface-border/45 duration-popover ease-ui-out outline-none sm:max-w-lg data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 dark:border-surface-border/90 dark:bg-surface dark:shadow-[0_28px_74px_rgb(0_0_0/0.42)]",
           className
         )}
         {...props}

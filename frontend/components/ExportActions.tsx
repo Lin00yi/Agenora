@@ -44,7 +44,7 @@ export default function ExportActions({
 
   return (
     <>
-      <div className="ak-export-actions mt-4 flex flex-wrap items-center gap-2 text-sm">
+      <div className="kf-export-actions mt-4 flex flex-wrap items-center gap-2 text-sm">
         <button onClick={copy} className={exportActionClass} type="button">
           <Copy className="h-4 w-4" />
           复制 Markdown
@@ -58,7 +58,7 @@ export default function ExportActions({
           分享
         </button>
         {cost != null && (
-          <span className="ak-export-cost basis-full text-xs tabular-nums sm:ml-auto sm:basis-auto">
+          <span className="kf-export-cost basis-full text-xs tabular-nums sm:ml-auto sm:basis-auto">
             本次成本约 ${cost.toFixed(4)}
           </span>
         )}
@@ -75,4 +75,4 @@ export default function ExportActions({
 }
 
 const exportActionClass =
-  "ak-export-action inline-flex h-[var(--control-h)] cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm font-medium transition-[background-color,border-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30";
+  "kf-export-action inline-flex h-[var(--control-h)] cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm font-medium transition-[background-color,border-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30";

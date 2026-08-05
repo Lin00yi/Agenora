@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import {
   useCallback,
   useEffect,
@@ -8,56 +7,15 @@ import {
   useRef,
   useState,
   Suspense,
-  type ReactNode,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import ThemeToggle from "@/components/ThemeToggle";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
-import ExportActions from "@/components/ExportActions";
-import ModelSelect from "@/components/Select";
 import SystemSettingsDialog from "@/components/SystemSettingsDialog";
 import { Button } from "@/components/ui/button";
-import { LoadingState, StateView } from "@/components/ui/state-view";
-import {
-  ArrowUp,
-  BookOpen,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  ArrowDown,
-  BrainCircuit,
-  Circle,
-  Copy,
-  Database,
-  LoaderCircle,
-  LockKeyhole,
-  LogOut,
-  MoreHorizontal,
-  Paperclip,
-  Plus,
-  Search,
-  Settings,
-  Shield,
-  ShieldCheck,
-  SlidersHorizontal,
-  Square,
-  Trash2,
-  X,
-} from "lucide-react";
+import { StateView } from "@/components/ui/state-view";
+import { ArrowDown } from "lucide-react";
 import { toast } from "sonner";
-
-import Brand, { APP_NAME } from "@/components/Brand";
-import ThinkingChain, { type ToolEvent } from "@/components/ThinkingChain";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { APP_NAME } from "@/components/Brand";
+import { type ToolEvent } from "@/components/ThinkingChain";
 import { getToken, getUser, logout, type User } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import {
@@ -85,11 +43,24 @@ import { listKbs, type KB } from "@/lib/kb-api";
 import {
   connectChat,
   type ChatEvent,
-  type ChatMessage,
+  type ChatMessage as SseChatMessage,
   type MemoryTrace,
 } from "@/lib/sseClient";
+import {
+  ChatLoadingShell,
+  ChatSidebar,
+  ChatTopBar,
+  ChatMessage,
+  Composer,
+  ContextCompressionNotice,
+  EmptyWorkbench,
+  StarterPromptCards,
+  DEFAULT_TITLE,
+  formatMessageStats,
+  updateToolEvent,
+  type LlmSource,
+} from "@/components/chat";
 
-const DEFAULT_TITLE = "\u65b0\u5bf9\u8bdd";
 const EMPTY_ASSISTANT_RESPONSE = "\u672c\u8f6e\u6ca1\u6709\u751f\u6210\u53ef\u5c55\u793a\u5185\u5bb9\uff0c\u8bf7\u91cd\u8bd5\u3002";
 const STOPPED_GENERATION_MESSAGE = "\u7528\u6237\u5df2\u505c\u6b62\u751f\u6210";
 const DEFAULT_CONTEXT_WINDOW = 16_000;
@@ -107,20 +78,6 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   "claude-opus-4-7": 200_000,
 };
 const CONTEXT_FIXED_RESERVE = 2_048 + 6_000 + 8_000 + 2_000;
-const EMPTY_PROMPTS = [
-  "KnowFlow \u5982\u4f55\u4fdd\u8bc1\u6570\u636e\u7684\u5b89\u5168\u6027\uff1f\u662f\u5426\u652f\u6301\u672c\u5730\u90e8\u7f72\u548c\u79c1\u6709\u5316\uff1f",
-  "\u603b\u7ed3\u8fd9\u4e2a\u77e5\u8bc6\u5e93\u6700\u8fd1\u4e0a\u4f20\u8d44\u6599\u7684\u6838\u5fc3\u7ed3\u8bba",
-  "\u5e2e\u6211\u627e\u51fa\u6743\u9650\u914d\u7f6e\u548c BYOK \u76f8\u5173\u8bf4\u660e",
-];
-
-type SourceRow = {
-  title: string;
-  meta: string;
-  score: string;
-  detail?: string[];
-};
-
-type LlmSource = "user" | "system" | "missing";
 
 function getContextWindowForModel(model: string | null, fallbackModels: string[] = []) {
   if (model) return CONTEXT_WINDOWS[model] ?? DEFAULT_CONTEXT_WINDOW;
@@ -881,13 +838,13 @@ export function ChatPage({
         return;
       }
 
-      const priorHistory: ChatMessage[] = currentMessages
+      const priorHistory: SseChatMessage[] = currentMessages
         .filter((m) => {
           if (m.role === "user") return true;
           return !!m.content && !m.error && !m.streaming;
         })
         .map((m) => ({ role: m.role, content: m.content }));
-      const messagesForBackend: ChatMessage[] = [
+      const messagesForBackend: SseChatMessage[] = [
         ...priorHistory,
         { role: "user", content: trimmed },
       ];
@@ -1171,21 +1128,28 @@ export function ChatPage({
   }
 
   return (
-    <div className="relative h-dvh w-screen overflow-hidden">
+    <div className="relative h-dvh w-screen overflow-hidden" data-kf-root>
       {showChatApp && (
-      <div className="ak-chat ak-chat-root ak-page-transition h-dvh w-screen overflow-hidden">
+      <div
+        className="kf-chat kf-chat-root kf-page-transition h-dvh w-screen overflow-hidden"
+        data-kf-shell
+      >
       {sidebarOpen && (
         <button
           aria-label="关闭侧栏遮罩"
           tabIndex={-1}
-          className="ak-mobile-overlay fixed inset-0 z-30 lg:hidden"
+          className="kf-mobile-overlay fixed inset-0 z-30 lg:hidden"
+          data-kf-region="overlay"
           onClick={() => setSidebarOpen(false)}
           type="button"
         />
       )}
 
-      <div className="grid h-full grid-cols-1 lg:grid-cols-[286px_minmax(0,1fr)]">
-        <DarkSidebar
+      <div
+        className="grid h-full grid-cols-1 lg:grid-cols-[286px_minmax(0,1fr)]"
+        data-kf-layout="chat"
+      >
+        <ChatSidebar
           open={sidebarOpen}
           conversations={sidebarConversations}
           conversationTotal={conversationTotal}
@@ -1204,11 +1168,13 @@ export function ChatPage({
           onLogout={handleLogout}
         />
 
-        <div
-          className="ak-chat-pane flex h-[100dvh] max-h-[100dvh] min-h-0 min-w-0 flex-col overflow-hidden"
+        <section
+          className="kf-chat-pane flex h-[100dvh] max-h-[100dvh] min-h-0 min-w-0 flex-col overflow-hidden"
+          data-kf-region="pane"
           data-phase={panePhase}
+          aria-label="对话工作区"
         >
-          <TopBar
+          <ChatTopBar
             title={currentConversation?.title ?? DEFAULT_TITLE}
             onOpenSidebar={() => setSidebarOpen(true)}
             conversation={currentConversation}
@@ -1224,8 +1190,11 @@ export function ChatPage({
             messageStats={formatMessageStats(visibleMessages)}
           />
 
-          <div className="min-h-0 flex-1">
-            <main className="ak-main ak-workspace flex h-full min-h-0 min-w-0 flex-col">
+          <div className="min-h-0 flex-1" data-kf-region="workspace-host">
+            <main
+              className="kf-main kf-workspace flex h-full min-h-0 min-w-0 flex-col"
+              data-kf-region="workspace"
+            >
               {missingConversationId ? (
                 <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
                   <div className="mx-auto flex min-h-full w-full max-w-[860px] items-center justify-center">
@@ -1274,28 +1243,32 @@ export function ChatPage({
                   </div>
                 </div>
               ) : (
-                <div className="ak-thread relative min-h-0 flex-1">
+                <div className="kf-thread relative min-h-0 flex-1" data-kf-region="thread">
                   <div
                     ref={scrollRef}
                     onScroll={onThreadScroll}
-                    className="ak-thread-scroll absolute inset-0 overflow-y-auto"
+                    className="kf-thread-scroll absolute inset-0 overflow-y-auto"
+                    data-kf-region="thread-scroll"
+                    role="log"
+                    aria-live="polite"
+                    aria-relevant="additions"
                   >
-                    <div className="ak-thread-inner mx-auto flex w-full max-w-[860px] flex-col gap-7 px-5 pt-5">
+                    <div className="kf-thread-inner mx-auto flex w-full max-w-[860px] flex-col gap-7 px-5 pt-5" data-kf-region="thread-inner">
                       <ContextCompressionNotice contextStatus={currentContextStatus} />
                       {visibleMessages.length === 0 ? (
                         <EmptyWorkbench currentKbName={currentKb?.name ?? "\u901a\u7528\u5bf9\u8bdd"} onPick={handleSend} />
                       ) : (
-                        visibleMessages.map((message) => <DarkMessage key={message.id} message={message} />)
+                        visibleMessages.map((message) => <ChatMessage key={message.id} message={message} />)
                       )}
                     </div>
                   </div>
-                  <div className="ak-thread-dock pointer-events-none absolute bottom-0 left-0 z-10">
+                  <div className="kf-thread-dock pointer-events-none absolute bottom-0 left-0 z-10" data-kf-region="thread-dock">
                     {showScrollToBottom ? (
                       <div className="pointer-events-auto flex justify-center pb-2">
                         <button
                           type="button"
                           aria-label="滚动到底部"
-                          className="ak-scroll-to-bottom ak-press inline-flex size-9 items-center justify-center rounded-full border shadow-sm"
+                          className="kf-scroll-to-bottom kf-press inline-flex size-9 items-center justify-center rounded-full border shadow-sm"
                           onClick={() => scrollThreadToBottom("smooth")}
                         >
                           <ArrowDown className="h-4 w-4" />
@@ -1328,7 +1301,7 @@ export function ChatPage({
               )}
             </main>
           </div>
-        </div>
+        </section>
       </div>
       {user && (
         <SystemSettingsDialog
@@ -1344,7 +1317,7 @@ export function ChatPage({
         <div
           className={cn(
             showChatApp ? "pointer-events-none absolute inset-0 z-50" : "h-full",
-            bootPhase === "leaving" && "ak-chat-boot-leave"
+            bootPhase === "leaving" && "kf-chat-boot-leave"
           )}
           aria-hidden={bootPhase === "leaving"}
         >
@@ -1358,7 +1331,6 @@ export function ChatPage({
     </div>
   );
 }
-
 function SearchParamChatPage() {
   const searchParams = useSearchParams();
   return <ChatPage routeConversationId={searchParams.get("conversation")} />;
@@ -1374,1416 +1346,4 @@ export default function Page() {
       <SearchParamChatPage />
     </Suspense>
   );
-}
-
-function ChatLoadingShell({
-  label,
-  description,
-  animated = true,
-}: {
-  label: string;
-  description?: string;
-  animated?: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        "ak-chat ak-chat-root h-dvh w-screen overflow-hidden",
-        animated && "ak-page-transition"
-      )}
-    >      <div className="grid h-full grid-cols-1 lg:grid-cols-[286px_minmax(0,1fr)]">
-        <aside
-          aria-hidden="true"
-          className="ak-sidebar ak-sidebar-shell hidden h-full min-h-0 w-[286px] flex-col overflow-hidden border-r px-3 py-4 lg:flex"
-        >
-          <div className="ak-sidebar-top rounded-lg px-2 pb-3 pt-2">
-            <Brand className="ak-sidebar-brand" size="md" />
-            <div className="ak-sidebar-new ak-sidebar-primary-action mt-5 h-[var(--control-h)] rounded-lg border" />
-            <div className="ak-sidebar-search mt-4 h-[var(--control-h)] rounded-lg border" />
-          </div>
-          <div className="ak-sidebar-separator my-4 h-px" />
-          <div className="space-y-2 px-1">
-            <div className="ak-sidebar-skeleton h-4 w-28 rounded" />
-            <div className="ak-sidebar-skeleton h-12 rounded-lg" />
-            <div className="ak-sidebar-skeleton h-12 rounded-lg" />
-            <div className="ak-sidebar-skeleton h-12 rounded-lg" />
-          </div>
-          <div className="ak-user-trigger mt-auto h-[58px] rounded-lg border" />
-        </aside>
-
-        <div className="flex h-[100dvh] max-h-[100dvh] min-h-0 min-w-0 flex-col overflow-hidden">
-          <TopBar title={DEFAULT_TITLE} onOpenSidebar={() => {}} />
-          <main className="ak-main ak-workspace flex h-full min-h-0 min-w-0 flex-col">
-            <div className="ak-thread relative min-h-0 flex-1">
-              <div className="ak-thread-scroll absolute inset-0 overflow-y-auto">
-                <div className="ak-thread-inner mx-auto flex min-h-full w-full max-w-[860px] items-center justify-center px-5 pt-5">
-                  <LoadingState
-                    label={label}
-                    description={description}
-                    className="w-full max-w-md"
-                  />
-                </div>
-              </div>
-              <div
-                aria-hidden="true"
-                className="ak-thread-dock pointer-events-none absolute bottom-0 left-0 z-10"
-              >
-                <div className="ak-composer ak-composer-docked px-5 pb-3 pt-1">
-                  <div className="ak-composer-box mx-auto h-[105px] max-w-[860px] rounded-lg border" />
-                  <div className="ak-composer-skeleton mx-auto mt-2 h-4 w-48 rounded" />
-                </div>
-              </div>
-            </div>
-          </main>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function getKbStatusView(kb: KB) {
-  const counts = kb.document_status_counts;
-  const failed = counts?.failed ?? 0;
-  const running = (counts?.pending ?? 0) + (counts?.ingesting ?? 0);
-  if (failed > 0) {
-    return {
-      label: "\u9700\u5904\u7406",
-      detail: `${failed} \u4e2a\u6587\u6863\u5f02\u5e38`,
-      dot: "bg-red-400",
-      tone: "text-red-300",
-    };
-  }
-  if (running > 0) {
-    return {
-      label: "\u5904\u7406\u4e2d",
-      detail: `${running} \u4e2a\u6587\u6863\u6392\u961f/\u89e3\u6790`,
-      dot: "bg-amber-300",
-      tone: "text-amber-200",
-    };
-  }
-  if (kb.documents_count === 0) {
-    return {
-      label: "\u7a7a\u5e93",
-      detail: "\u7b49\u5f85\u4e0a\u4f20\u8d44\u6599",
-      dot: "ak-status-dot-muted",
-      tone: "ak-status-text-muted",
-    };
-  }
-  if (kb.chunks_count > 0) {
-    return {
-      label: "\u53ef\u68c0\u7d22",
-      detail: `${kb.chunks_count.toLocaleString()} 分块`,
-      dot: "ak-status-dot-accent",
-      tone: "ak-status-text-accent",
-    };
-  }
-  return {
-    label: "\u5f85\u7d22\u5f15",
-    detail: `${kb.documents_count.toLocaleString()} \u4e2a\u6587\u6863`,
-    dot: "ak-status-dot-accent",
-    tone: "ak-status-text-accent",
-  };
-}
-
-function formatConversationTime(value?: number | null) {
-  if (!value) return "";
-  const diff = Date.now() - value;
-  const minute = 60 * 1000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  if (diff < minute) return "\u521a\u521a";
-  if (diff < hour) return `${Math.max(1, Math.floor(diff / minute))} \u5206\u949f\u524d`;
-  if (diff < day) return `${Math.floor(diff / hour)} \u5c0f\u65f6\u524d`;
-  if (diff < 7 * day) return `${Math.floor(diff / day)} \u5929\u524d`;
-  return new Date(value).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" });
-}
-
-function getConversationStatusView(conversation: Conversation, currentId: string | null, busy: boolean) {
-  const active = conversation.id === currentId;
-  const messageCount = conversation.messages.length || conversation.message_count || 0;
-  if (active && busy) {
-    return {
-      label: "\u751f\u6210\u4e2d",
-      dot: "bg-amber-300",
-      tone: "border-amber-300/20 bg-amber-300/10 text-amber-200",
-    };
-  }
-  if (active) {
-    return {
-      label: "\u5f53\u524d",
-      dot: "ak-status-dot-accent",
-      tone: "ak-status-badge-current",
-    };
-  }
-  if (messageCount === 0) {
-    return {
-      label: "\u7a7a\u4f1a\u8bdd",
-      dot: "ak-status-dot-muted",
-      tone: "ak-sidebar-status-muted",
-    };
-  }
-  return {
-    label: "\u5df2\u4fdd\u5b58",
-    dot: "ak-status-dot-accent",
-    tone: "ak-status-badge-saved",
-  };
-}
-
-function DarkSidebar({
-  open,
-  conversations,
-  conversationTotal,
-  conversationHasMore,
-  conversationLoadingMore,
-  currentId,
-  currentKbId,
-  user,
-  busy,
-  onClose,
-  onNew,
-  onSelectConversation,
-  onDeleteConversation,
-  onLoadMoreConversations,
-  onOpenAccountSettings,
-  onLogout,
-}: {
-  open: boolean;
-  conversations: Conversation[];
-  conversationTotal: number;
-  conversationHasMore: boolean;
-  conversationLoadingMore: boolean;
-  currentId: string | null;
-  currentKbId: string | null;
-  user: User | null;
-  busy: boolean;
-  onClose: () => void;
-  onNew: (kbId?: string | null) => void;
-  onSelectConversation: (id: string) => void;
-  onDeleteConversation: (id: string) => void;
-  onLoadMoreConversations: () => void;
-  onOpenAccountSettings: () => void;
-  onLogout: () => void;
-}) {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const userMenuRef = useRef<HTMLDivElement | null>(null);
-  const filteredConversations = conversations.filter((conversation) =>
-    conversation.title.toLowerCase().includes(searchTerm.trim().toLowerCase())
-  );
-  const handleConversationScroll = useCallback(
-    (event: { currentTarget: HTMLDivElement }) => {
-      const target = event.currentTarget;
-      const nearBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 80;
-      if (nearBottom && conversationHasMore && !conversationLoadingMore) {
-        onLoadMoreConversations();
-      }
-    },
-    [conversationHasMore, conversationLoadingMore, onLoadMoreConversations]
-  );
-
-  useEffect(() => {
-    if (!userMenuOpen) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setUserMenuOpen(false);
-    };
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (!target) return;
-      if (userMenuRef.current?.contains(target)) return;
-      if (target.closest?.('[data-slot="select-content"]')) return;
-      setUserMenuOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("mousedown", onPointerDown);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("mousedown", onPointerDown);
-    };
-  }, [userMenuOpen]);
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        searchInputRef.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  return (
-    <aside
-      className={cn(
-        "ak-sidebar ak-sidebar-shell ak-motion-enter fixed inset-y-0 left-0 z-40 flex h-full min-h-0 w-[286px] flex-col overflow-hidden border-r px-3 py-4 shadow-[0_24px_64px_rgba(0,0,0,0.28)] transition-transform duration-surface ease-ui-drawer lg:relative lg:z-auto lg:translate-x-0 lg:shadow-none",
-        open ? "translate-x-0" : "-translate-x-full"
-      )}
-    >
-      <div className="ak-sidebar-top rounded-lg px-2 pb-3 pt-2">
-        <div className="flex items-center justify-between">
-          <Brand className="ak-sidebar-brand" size="md" />
-          <button
-            aria-label="关闭侧栏"
-            className="ak-sidebar-icon-action ak-press inline-flex size-[var(--control-h)] items-center justify-center rounded-lg border lg:hidden"
-            onClick={onClose}
-            type="button"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <button
-          className="ak-sidebar-new ak-sidebar-primary-action ak-press mt-5 flex h-[var(--control-h)] w-full items-center justify-center gap-2 rounded-lg border text-sm font-medium"
-          onClick={() => onNew(currentKbId)}
-          type="button"
-        >
-          <Plus className="h-4 w-4" />
-          {"\u65b0\u5efa\u5bf9\u8bdd"}
-        </button>
-
-        <div className="ak-sidebar-search mt-4 flex h-[var(--control-h)] items-center gap-2 rounded-lg border px-3 text-sm">
-          <Search className="h-4 w-4" />
-          <input
-            className="ak-sidebar-search-input min-w-0 flex-1 bg-transparent text-sm outline-none"
-            ref={searchInputRef}
-            aria-label="搜索历史对话"
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="搜索对话"
-          />
-          <kbd aria-hidden="true" className="ak-sidebar-kbd rounded border px-1.5 py-0.5 text-[10px]">
-            Ctrl K
-          </kbd>
-        </div>
-
-      </div>
-
-      <div className="ak-sidebar-separator my-4 h-px" />
-
-      <div
-        className="min-h-0 basis-0 flex-1 overflow-y-auto pr-1"
-        onScroll={handleConversationScroll}
-      >
-        <div className="ak-sidebar-section-label flex items-center justify-between px-2 pb-2 text-sm">
-          <span>{"\u6700\u8fd1\u5bf9\u8bdd"}</span>
-          <span className="ak-sidebar-count text-xs tabular-nums">
-            {filteredConversations.length}/{conversationTotal}
-          </span>
-        </div>
-        <div className="space-y-1">
-          {filteredConversations.map((conversation) => {
-            const statusView = getConversationStatusView(conversation, currentId, busy);
-            const messageCount = conversation.messages.length || conversation.message_count || 0;
-            const showStatusTag = conversation.id === currentId && busy;
-            return (
-            <div
-              key={conversation.id}
-              className={cn(
-                "ak-sidebar-row group flex min-h-12 items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-[background-color,border-color,color]",
-                conversation.id === currentId
-                  ? "ak-sidebar-row-active"
-                  : "ak-sidebar-row-idle"
-              )}
-            >
-              <button
-                className="min-w-0 flex-1 cursor-pointer text-left"
-                onClick={() => onSelectConversation(conversation.id)}
-                type="button"
-                title={conversation.title}
-              >
-                <span className="block truncate">{conversation.title}</span>
-                <span className="ak-sidebar-meta mt-0.5 flex items-center gap-2 text-[11px]">
-                  <span className={cn("h-1.5 w-1.5 rounded-sm", statusView.dot)} />
-                  <span>{formatConversationTime(conversation.updated_at)}</span>
-                  <span className="ak-sidebar-meta-separator h-1 w-1 rounded-sm" />
-                  <span>{messageCount}{" \u6761\u6d88\u606f"}</span>
-                </span>
-              </button>
-              {showStatusTag && (
-                <span
-                  className={cn(
-                    "ak-sidebar-status-badge shrink-0 rounded-md border px-1.5 py-0.5 text-[11px] group-hover:hidden",
-                    statusView.tone
-                  )}
-                >
-                  {statusView.label}
-                </span>
-              )}
-              <button
-                aria-label="删除会话"
-                className="ak-sidebar-row-action hidden size-8 shrink-0 cursor-pointer items-center justify-center rounded-md group-hover:flex"
-                onClick={() => {
-                  setDeleteTarget(conversation);
-                }}
-                type="button"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </div>
-            );
-          })}
-          {filteredConversations.length === 0 && (
-            <div className="ak-sidebar-empty rounded-lg border border-dashed px-3 py-4 text-sm">
-              {searchTerm ? "\u6ca1\u6709\u5339\u914d\u7684\u5bf9\u8bdd\u3002" : "\u8fd8\u6ca1\u6709\u5bf9\u8bdd\uff0c\u5148\u95ee\u4e00\u4e2a\u95ee\u9898\u3002"}
-            </div>
-          )}
-          {(conversationHasMore || conversationLoadingMore) && (
-            <button
-              className="ak-sidebar-load-more flex min-h-[var(--control-h)] w-full cursor-pointer items-center justify-center gap-2 rounded-lg border text-xs transition disabled:cursor-wait disabled:opacity-70"
-              disabled={conversationLoadingMore}
-              onClick={onLoadMoreConversations}
-              type="button"
-            >
-              {conversationLoadingMore ? (
-                <>
-                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                  {"\u6b63\u5728\u52a0\u8f7d"}
-                </>
-              ) : (
-                "\u52a0\u8f7d\u66f4\u591a\u5bf9\u8bdd"
-              )}
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div ref={userMenuRef} className="relative mt-3 shrink-0">
-        {userMenuOpen && (
-          <div className="ak-popover ak-user-popover absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-lg border">
-            <button
-              className="ak-user-menu-item flex min-h-[var(--control-h)] w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left text-sm transition"
-              onClick={() => {
-                setUserMenuOpen(false);
-                onOpenAccountSettings();
-              }}
-              type="button"
-            >
-              <Settings className="ak-user-menu-icon h-4 w-4" />
-              账号设置
-            </button>
-            <Link
-              className="ak-user-menu-item flex min-h-[var(--control-h)] items-center gap-2 px-3 py-2.5 text-sm transition"
-              href="/settings"
-              onClick={() => setUserMenuOpen(false)}
-            >
-              <SlidersHorizontal className="ak-user-menu-icon h-4 w-4" />
-              模型设置
-            </Link>
-            <Link
-              className="ak-user-menu-item flex min-h-[var(--control-h)] items-center gap-2 px-3 py-2.5 text-sm transition"
-              href="/kbs"
-              onClick={() => setUserMenuOpen(false)}
-            >
-              <BookOpen className="ak-user-menu-icon h-4 w-4" />
-              我的知识库
-            </Link>
-            <Link
-              className="ak-user-menu-item flex min-h-[var(--control-h)] items-center gap-2 px-3 py-2.5 text-sm transition"
-              href="/memories"
-              onClick={() => setUserMenuOpen(false)}
-            >
-              <BrainCircuit className="ak-user-menu-icon h-4 w-4" />
-              记忆系统
-            </Link>
-            {user?.is_admin && (
-              <Link
-                className="ak-user-menu-item flex min-h-[var(--control-h)] items-center gap-2 px-3 py-2.5 text-sm transition"
-                href="/admin"
-                onClick={() => setUserMenuOpen(false)}
-              >
-                <Shield className="ak-user-menu-icon h-4 w-4" />
-                后台管理
-              </Link>
-            )}
-            <div className="ak-sidebar-separator h-px" />
-            <button
-              className="ak-user-menu-item-danger flex min-h-[var(--control-h)] w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left text-sm transition"
-              onClick={() => {
-                setUserMenuOpen(false);
-                onLogout();
-              }}
-              type="button"
-            >
-              <LogOut className="h-4 w-4" />
-              退出登录
-            </button>
-          </div>
-        )}
-        <div
-          className={cn(
-            "ak-user-trigger flex min-h-[52px] w-full items-center gap-1.5 rounded-lg border p-1.5 transition",
-            userMenuOpen && "ak-user-trigger-open"
-          )}
-        >
-          <button
-            aria-expanded={userMenuOpen}
-            aria-haspopup="menu"
-            aria-label="用户菜单"
-            className="flex min-h-[var(--control-h)] min-w-0 flex-1 cursor-pointer items-center justify-between gap-2 rounded-md px-0.5 text-left transition"
-            onClick={() => setUserMenuOpen((open) => !open)}
-            type="button"
-          >
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="ak-user-avatar flex size-[var(--control-h)] shrink-0 items-center justify-center rounded-lg border text-sm font-semibold shadow-sm">
-                {(user?.display_name?.[0] || user?.email?.[0] || "Z").toUpperCase()}
-              </span>
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-medium text-[color:var(--chat-ink)]">
-                  {user?.display_name || user?.email || "\u7528\u6237"}
-                </span>
-                <span className="ak-user-role block text-xs">{user?.is_admin ? "\u7ba1\u7406\u5458" : "\u6210\u5458"}</span>
-              </span>
-            </span>
-            <ChevronDown className={cn("ak-user-chevron h-4 w-4 shrink-0 transition", userMenuOpen && "rotate-180")} />
-          </button>
-          <ThemeToggle compact />
-        </div>
-      </div>
-      <ConfirmDialog
-        open={deleteTarget !== null}
-        onOpenChange={(next) => {
-          if (!next) setDeleteTarget(null);
-        }}
-        title={`删除对话「${deleteTarget?.title ?? ""}」？`}
-        description="此操作不可恢复。"
-        confirmLabel="删除"
-        variant="danger"
-        onConfirm={() => {
-          if (!deleteTarget) return;
-          onDeleteConversation(deleteTarget.id);
-          setDeleteTarget(null);
-        }}
-      />
-    </aside>
-  );
-}
-
-function TopBar({
-  title,
-  onOpenSidebar,
-  conversation = null,
-  kbName = "通用对话",
-  modelLabel = "-",
-  messageStats = "-",
-}: {
-  title: string;
-  onOpenSidebar: () => void;
-  conversation?: Conversation | null;
-  kbName?: string;
-  modelLabel?: string;
-  messageStats?: string;
-}) {
-  return (
-    <header className="ak-topbar ak-chat-header grid h-[64px] shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 xl:px-7">
-      <button
-        className="ak-mobile-sidebar-action inline-flex size-[var(--control-h)] cursor-pointer items-center justify-center rounded-lg border lg:hidden"
-        onClick={onOpenSidebar}
-        type="button"
-        aria-label="打开侧栏"
-      >
-        <ChevronLeft className="h-5 w-5 rotate-180" />
-      </button>
-
-      <div className="min-w-0">
-        <h1 className="truncate text-[15px] font-semibold tracking-[-0.01em]">{title}</h1>
-      </div>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            className="ak-topbar-menu-trigger inline-flex size-[var(--control-h)] cursor-pointer items-center justify-center rounded-lg border border-transparent text-muted transition hover:border-surface-border/80 hover:bg-surface-2/60 hover:text-ink"
-            aria-label="会话信息"
-          >
-            <MoreHorizontal className="h-4 w-4" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-72">
-          <DropdownMenuLabel>会话信息</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <div className="space-y-2 px-2 py-1.5 text-xs">
-            <SessionMetaRow label="会话 ID" value={conversation?.id?.slice(0, 8) ?? "-"} />
-            <SessionMetaRow label="创建时间" value={formatTime(conversation?.created_at)} />
-            <SessionMetaRow label="最近更新" value={formatTime(conversation?.updated_at)} />
-            <SessionMetaRow label="消息统计" value={messageStats} />
-            <SessionMetaRow label="知识库" value={kbName} />
-            <SessionMetaRow label="模型" value={modelLabel} />
-          </div>
-          {conversation?.id ? (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onSelect={() => {
-                  void navigator.clipboard.writeText(conversation.id);
-                  toast.success("已复制会话 ID");
-                }}
-              >
-                <Copy className="h-3.5 w-3.5" />
-                复制完整会话 ID
-              </DropdownMenuItem>
-              {conversation.kb_id ? (
-                <DropdownMenuItem asChild>
-                  <Link href={`/kbs/${conversation.kb_id}`}>
-                    <Database className="h-3.5 w-3.5" />
-                    打开知识库
-                  </Link>
-                </DropdownMenuItem>
-              ) : null}
-            </>
-          ) : null}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </header>
-  );
-}
-
-function SessionMetaRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-start justify-between gap-3">
-      <span className="shrink-0 text-muted">{label}</span>
-      <span className="min-w-0 truncate text-right text-ink" title={value}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function EmptyWorkbench({
-  currentKbName,
-  onPick,
-  centered = false,
-}: {
-  currentKbName: string;
-  onPick: (q: string) => void;
-  centered?: boolean;
-}) {
-  return (
-    <div className={cn("flex items-center justify-center", centered ? "pt-12 sm:pt-20" : "min-h-full py-2")}>
-      <section className="ak-empty-workbench w-full max-w-[720px] px-5 py-8 sm:px-10">
-        <div className="text-center">
-          <div className="text-sm font-medium text-[color:var(--chat-accent)]">{"\u5df2\u8fde\u63a5 "}{currentKbName}</div>
-          <h1 className="ak-empty-heading mt-4 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">
-            {"\u628a\u95ee\u9898\u53d8\u6210"}<span>{"\u6e05\u6670\u7b54\u6848"}</span>
-          </h1>
-          <p className="ak-empty-description mx-auto mt-4 max-w-lg text-sm leading-6">
-            {"\u4ece\u77e5\u8bc6\u5e93\u4e2d\u68c0\u7d22\u3001\u63a8\u7406\u5e76\u5f15\u7528\u53ef\u8ffd\u6eaf\u7684\u7b54\u6848\u3002"}
-          </p>
-        </div>
-
-        {!centered && (
-          <>
-            <div className="mt-8 grid gap-3 sm:grid-cols-3">
-              <EmptyStat icon={<Database className="h-4 w-4" />} label="知识库" value={currentKbName} />
-              <EmptyStat icon={<SlidersHorizontal className="h-4 w-4" />} label="检索模式" value="混合检索" />
-              <EmptyStat icon={<ShieldCheck className="h-4 w-4" />} label="数据策略" value="BYOK / 私有化" />
-            </div>
-
-            <div className="mt-5 flex flex-wrap gap-2">
-              {EMPTY_PROMPTS.map((item) => (
-                <button
-                  className="ak-empty-prompt rounded-lg border px-3 py-2 text-sm transition"
-                  key={item}
-                  onClick={() => onPick(item)}
-                  type="button"
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-      </section>
-    </div>
-  );
-}
-
-function StarterPromptCards({ onPick }: { onPick: (q: string) => void }) {
-  const cards = [
-    { icon: <BookOpen className="h-4 w-4" />, title: "资料总结", prompt: EMPTY_PROMPTS[1] },
-    { icon: <ShieldCheck className="h-4 w-4" />, title: "权限与安全", prompt: EMPTY_PROMPTS[2] },
-    { icon: <SlidersHorizontal className="h-4 w-4" />, title: "开始探索", prompt: EMPTY_PROMPTS[0] },
-  ];
-  return (
-    <div className="ak-starter-prompts grid gap-3 pb-8 sm:grid-cols-3">
-      {cards.map((card) => (
-        <button key={card.title} className="ak-starter-card text-left" onClick={() => onPick(card.prompt)} type="button">
-          <span className="ak-starter-icon">{card.icon}</span>
-          <span className="min-w-0">
-            <span className="block text-sm font-medium">{card.title}</span>
-            <span className="mt-1 block truncate text-xs">{card.prompt}</span>
-          </span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function EmptyStat({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
-  return (
-    <div className="ak-empty-stat rounded-lg border px-3 py-3">
-      <div className="flex items-center gap-2 text-xs">
-        <span className="ak-empty-stat-icon">{icon}</span>
-        {label}
-      </div>
-      <div className="ak-empty-stat-value mt-2 truncate text-sm font-medium" title={value}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function DarkMessage({ message }: { message: Message }) {
-  if (message.role === "user") {
-    return (
-      <div className="flex items-start justify-end">
-        <div className="flex max-w-[78%] flex-col items-end">
-          <div className="ak-message-user max-w-full whitespace-pre-wrap break-words rounded-lg px-4 py-2.5 text-left text-[15px] leading-7 sm:px-5 sm:py-3">
-            {message.content}
-          </div>
-          <div className="ak-message-time mt-1.5 text-xs">{formatMessageTime(message.created_at)}</div>
-        </div>
-      </div>
-    );
-  }
-
-  return <DarkAssistantMessage message={message} />;
-}
-
-function DarkAssistantMessage({ message }: { message: Extract<Message, { role: "assistant" }> }) {
-  const streaming = !!message.streaming;
-  const hasContent = message.content.trim().length > 0;
-  const hasTools = message.tools.length > 0;
-  const hasMemoryContext = hasVisibleMemoryTrace(message.memory_trace);
-  const elapsedMs = useLiveElapsed(streaming, message.created_at);
-  const status = getAssistantStreamingStatus(message, elapsedMs);
-  if (!hasContent && !streaming && !message.error && !hasTools) return null;
-
-  return (
-    <div className="flex items-start">
-      <div className="min-w-0 flex-1">
-        {!streaming && hasMemoryContext ? (
-          <div className="mb-3">
-            <MemoryContextTrace trace={message.memory_trace!} />
-          </div>
-        ) : null}
-        <div className="ak-answer px-1 py-1 sm:px-2">
-          {message.error && (
-            <div className="ak-answer-error mb-3 rounded-lg border px-3 py-2 text-sm">
-              {message.error}
-            </div>
-          )}
-          {!hasContent && streaming && (
-            <div className="ak-streaming-status flex flex-wrap items-center gap-2 text-sm">
-              <LoaderCircle className="h-4 w-4 animate-spin text-[color:var(--chat-accent)]" />
-              <span>{status.label}</span>
-              <span className="ak-live-badge rounded-md border px-2 py-0.5 text-xs tabular-nums">
-                {status.elapsed}
-              </span>
-            </div>
-          )}
-          {hasContent && (
-            <div id={`report-output-${message.id}`}>
-              <AnswerMarkdown markdown={message.content} streaming={streaming} />
-            </div>
-          )}
-          {hasContent && streaming && (
-            <div className="ak-live-badge mt-3 inline-flex items-center gap-2 rounded-md border px-2.5 py-1 text-xs tabular-nums">
-              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-              <span>{status.label}</span>
-              <span>{status.elapsed}</span>
-            </div>
-          )}
-        </div>
-        {hasTools && (
-          <div className="mt-4">
-            <ThinkingChain events={message.tools} />
-          </div>
-        )}
-        {hasContent && (
-          <>
-            <SourceStrip sources={buildMessageSources(message)} />
-            {!streaming && (
-              <ExportActions
-                markdown={message.content}
-                cost={message.cost_usd}
-                reportId={`report-output-${message.id}`}
-              />
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function useLiveElapsed(active: boolean, startedAt: number) {
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (!active) return;
-    setNow(Date.now());
-    const id = window.setInterval(() => setNow(Date.now()), 250);
-    return () => window.clearInterval(id);
-  }, [active, startedAt]);
-
-  return Math.max(0, (active ? now : Date.now()) - startedAt);
-}
-
-function getAssistantStreamingStatus(
-  message: Extract<Message, { role: "assistant" }>,
-  elapsedMs: number
-) {
-  const hasContent = message.content.trim().length > 0;
-  const hasTools = message.tools.length > 0;
-  const toolsRunning = message.tools.some((tool) => tool.status === "running");
-  const allToolsSettled = hasTools && !toolsRunning;
-  const latestToolDoneAt = getLatestToolDoneAt(message.tools);
-  const waitAfterToolsMs =
-    allToolsSettled && latestToolDoneAt != null ? Math.max(0, Date.now() - latestToolDoneAt) : null;
-
-  if (hasContent) {
-    return { label: "正在生成回答", elapsed: `耗时 ${formatDuration(elapsedMs)}` };
-  }
-  if (allToolsSettled) {
-    return {
-      label: "工具完成，正在生成回答",
-      elapsed:
-        waitAfterToolsMs == null
-          ? `耗时 ${formatDuration(elapsedMs)}`
-          : `等待 ${formatDuration(waitAfterToolsMs)} / 耗时 ${formatDuration(elapsedMs)}`,
-    };
-  }
-  if (hasTools) {
-    return { label: "正在检索知识库", elapsed: `耗时 ${formatDuration(elapsedMs)}` };
-  }
-  return { label: "正在检索并生成回答", elapsed: `耗时 ${formatDuration(elapsedMs)}` };
-}
-
-function getLatestToolDoneAt(tools: ToolEvent[]) {
-  return tools.reduce<number | null>((latest, tool) => {
-    if (tool.status === "running" || tool.t0 == null || tool.latency_ms == null) return latest;
-    const doneAt = tool.t0 + tool.latency_ms;
-    return latest == null ? doneAt : Math.max(latest, doneAt);
-  }, null);
-}
-
-function AnswerMarkdown({ markdown, streaming }: { markdown: string; streaming: boolean }) {
-  return (
-    <div className="ak-answer-markdown text-[15px] leading-7">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          p: ({ children }) => <p className="mb-4 last:mb-0">{children}</p>,
-          ul: ({ children }) => <ul className="mb-4 list-disc space-y-1 pl-5">{children}</ul>,
-          ol: ({ children }) => <ol className="mb-4 list-decimal space-y-1 pl-5">{children}</ol>,
-          li: ({ children }) => <li className="ak-answer-list-item pl-1">{children}</li>,
-          strong: ({ children }) => <strong className="ak-answer-strong font-semibold">{children}</strong>,
-          h1: ({ children }) => <h1 className="ak-answer-heading mb-3 text-xl font-semibold">{children}</h1>,
-          h2: ({ children }) => <h2 className="ak-answer-heading mb-3 mt-5 text-lg font-semibold">{children}</h2>,
-          h3: ({ children }) => <h3 className="ak-answer-heading mb-2 mt-4 text-base font-semibold">{children}</h3>,
-          code: ({ children }) => (
-            <code className="ak-answer-code rounded px-1.5 py-0.5 text-sm">
-              {children}
-            </code>
-          ),
-        }}
-      >
-        {markdown.replace(/\\n/g, "\n")}
-      </ReactMarkdown>
-      {streaming && <span className="ak-streaming-cursor inline-block h-4 w-1.5 animate-pulse" />}
-    </div>
-  );
-}
-
-function SourceStrip({ sources }: { sources: SourceRow[] }) {
-  if (sources.length === 0) return null;
-
-  return (
-    <div className="ak-source-strip mt-5 rounded-lg border p-2">
-      <div className="ak-source-strip-title mb-2 text-sm font-medium">{"\u5de5\u5177\u8c03\u7528"}</div>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {sources.map((source) => (
-          <div
-            className="ak-source-row flex min-w-0 items-center gap-2 rounded-md border px-2 py-2"
-            key={source.title}
-          >
-            <span className="ak-source-score flex min-h-8 min-w-[var(--control-h)] shrink-0 items-center justify-center rounded-md border px-1.5 text-[10px] font-semibold">
-              {source.score}
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="ak-source-title truncate text-xs">{source.title}</div>
-              <div className="ak-source-meta truncate text-xs">{source.meta}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ContextCompressionNotice({
-  contextStatus,
-}: {
-  contextStatus: ConversationContextStatus | null;
-}) {
-  if (!contextStatus || contextStatus.state === "normal") return null;
-  const isCompressed = contextStatus.state === "compressed";
-  return (
-    <div className="ak-context-notice mx-auto flex w-fit max-w-full items-center gap-2 rounded-lg border px-3 py-2 text-xs">
-      <ShieldCheck
-        className={cn(
-          "h-3.5 w-3.5",
-          isCompressed ? "text-brand" : "text-amber-300"
-        )}
-      />
-      <span className="truncate">
-        {isCompressed
-          ? `已自动压缩长期上下文，保留最近 ${contextStatus.retained_recent_turns} 轮对话`
-          : contextStatus.description}
-      </span>
-    </div>
-  );
-}
-
-function buildMessageSources(message: Extract<Message, { role: "assistant" }>): SourceRow[] {
-  if (message.tools.length === 0) return [];
-  return aggregateToolSources(message.tools, 4);
-}
-
-function updateToolEvent(
-  tools: ToolEvent[],
-  evt: ChatEvent,
-  patch: Partial<ToolEvent>
-): ToolEvent[] {
-  const index = findToolEventIndex(tools, evt);
-  if (index < 0) return tools;
-  return tools.map((tool, i) => (i === index ? { ...tool, ...patch } : tool));
-}
-
-function findToolEventIndex(tools: ToolEvent[], evt: ChatEvent): number {
-  if (evt.id) {
-    const byId = tools.findIndex((tool) => tool.id === evt.id);
-    if (byId >= 0) return byId;
-  }
-  for (let i = tools.length - 1; i >= 0; i--) {
-    if (tools[i].name === evt.name && tools[i].status === "running") return i;
-  }
-  return -1;
-}
-
-function aggregateToolSources(tools: ToolEvent[], maxRows: number): SourceRow[] {
-  const groups = new Map<string, ToolEvent[]>();
-  for (const tool of tools) {
-    groups.set(tool.name, [...(groups.get(tool.name) ?? []), tool]);
-  }
-  return Array.from(groups.entries())
-    .slice(0, maxRows)
-    .map(([name, group]) => buildToolSourceRow(name, group));
-}
-
-function buildToolSourceRow(name: string, group: ToolEvent[]): SourceRow {
-  if (group.length === 1) {
-    const tool = group[0];
-    return {
-      title: getToolLabelClean(tool.name),
-      meta: getToolMetaClean(tool),
-      score: getToolStatusLabelClean(tool.status),
-    };
-  }
-
-  const status = getAggregateToolStatus(group);
-  const slowest = group.reduce<number | null>((max, tool) => {
-    if (tool.latency_ms == null) return max;
-    return max == null ? tool.latency_ms : Math.max(max, tool.latency_ms);
-  }, null);
-  const querySummaries = group.map(getToolInputSummary).filter(Boolean).slice(0, 3);
-  const action = name === "search_kb" ? "\u67e5\u8be2" : "\u8c03\u7528";
-  const duration = slowest == null ? "" : ` \u00b7 \u6700\u6162 ${formatDuration(slowest)}`;
-
-  return {
-    title: getToolLabelClean(name),
-    meta: `${group.length} \u6b21${action} \u00b7 ${getAggregateToolMeta(status)}${duration}`,
-    score: getToolStatusLabelClean(status),
-    detail: querySummaries.length > 0 ? querySummaries : undefined,
-  };
-}
-
-function getAggregateToolStatus(group: ToolEvent[]): ToolEvent["status"] {
-  if (group.some((tool) => tool.status === "running")) return "running";
-  if (group.some((tool) => tool.status === "error")) return "error";
-  if (group.some((tool) => tool.status === "blocked")) return "blocked";
-  return "ok";
-}
-
-function getAggregateToolMeta(status: ToolEvent["status"]) {
-  if (status === "ok") return "\u5168\u90e8\u5b8c\u6210";
-  if (status === "running") return "\u6b63\u5728\u6267\u884c";
-  if (status === "blocked") return "\u90e8\u5206\u963b\u585e";
-  return "\u90e8\u5206\u5931\u8d25";
-}
-
-function getToolInputSummary(tool: ToolEvent): string {
-  const query = tool.input?.query;
-  if (typeof query === "string" && query.trim()) return query.trim();
-  const city = tool.input?.city;
-  if (typeof city === "string" && city.trim()) return city.trim();
-  return "";
-}
-
-function getToolLabelClean(name: string): string {
-  const labels: Record<string, string> = {
-    search_kb: "\u77e5\u8bc6\u5e93\u68c0\u7d22",
-    generate_kb_report: "\u77e5\u8bc6\u5e93\u62a5\u544a",
-    web_search: "\u7f51\u7edc\u641c\u7d22",
-    get_weather: "\u5929\u6c14\u67e5\u8be2",
-    search_restaurant_kb: "\u672c\u5730\u77e5\u8bc6\u68c0\u7d22",
-    amap_search: "\u5730\u56fe\u641c\u7d22",
-    generate_travel_report: "\u65c5\u884c\u62a5\u544a",
-  };
-  return labels[name] ?? name;
-}
-
-function getToolStatusLabelClean(status: ToolEvent["status"]) {
-  if (status === "ok") return "\u5b8c\u6210";
-  if (status === "running") return "\u8fdb\u884c\u4e2d";
-  if (status === "blocked") return "\u963b\u585e";
-  return "\u5931\u8d25";
-}
-
-function getToolMetaClean(tool: ToolEvent) {
-  if (tool.status === "running") return "\u6b63\u5728\u6267\u884c";
-  if (tool.status === "ok") {
-    return tool.latency_ms ? `\u5df2\u5b8c\u6210 \u00b7 ${formatDuration(tool.latency_ms)}` : "\u5df2\u5b8c\u6210";
-  }
-  if (tool.status === "blocked") return tool.reason || "\u8c03\u7528\u88ab\u7b56\u7565\u963b\u6b62";
-  return normalizeToolError(tool.error);
-}
-
-function normalizeToolError(error?: string | null) {
-  if (!error) return "\u8c03\u7528\u5931\u8d25";
-  const lower = error.toLowerCase();
-  if (lower.includes("timed out") || lower.includes("timeout")) {
-    return "\u8bf7\u6c42\u8d85\u65f6\uff0c\u5df2\u8df3\u8fc7\u8be5\u7ed3\u679c";
-  }
-  if (lower.includes("network") || lower.includes("fetch") || lower.includes("request")) {
-    return "\u7f51\u7edc\u8bf7\u6c42\u5931\u8d25\uff0c\u5df2\u8df3\u8fc7\u8be5\u7ed3\u679c";
-  }
-  return error.length > 48 ? `${error.slice(0, 48)}...` : error;
-}
-
-function formatDuration(ms: number) {
-  if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${ms}ms`;
-}
-
-function SmallAction({
-  label,
-  icon,
-  disabled = false,
-  onClick,
-}: {
-  label: string;
-  icon?: ReactNode;
-  disabled?: boolean;
-  onClick?: () => void;
-}) {
-  return (
-    <button
-      className={cn(
-        "ak-small-action inline-flex size-[var(--control-h)] cursor-pointer items-center justify-center rounded-md border px-2 text-xs transition",
-        disabled
-          ? "cursor-not-allowed opacity-45"
-          : ""
-      )}
-      disabled={disabled}
-      onClick={onClick}
-      title={disabled ? `${label}\u6682\u672a\u63a5\u5165` : label}
-      type="button"
-    >
-      {icon ?? <Circle className="h-3.5 w-3.5" />}
-    </button>
-  );
-}
-
-function Composer({
-  value,
-  textareaRef,
-  busy,
-  currentKbId,
-  kbs,
-  currentModel,
-  modelOptions,
-  llmReady,
-  llmSource,
-  contextStatus,
-  contextStatusLoading,
-  kbLocked,
-  onChange,
-  onSubmit,
-  onStop,
-  onSelectKb,
-  onModelChange,
-  centered = false,
-}: {
-  value: string;
-  textareaRef: React.RefObject<HTMLTextAreaElement>;
-  busy: boolean;
-  currentKbId: string | null;
-  kbs: KB[];
-  currentModel: string | null;
-  modelOptions: string[];
-  llmReady: boolean;
-  llmSource: LlmSource;
-  contextStatus: ConversationContextStatus | null;
-  contextStatusLoading: boolean;
-  kbLocked: boolean;
-  onChange: (value: string) => void;
-  onSubmit: () => void;
-  onStop: () => void;
-  onSelectKb: (id: string | null) => void;
-  onModelChange: (model: string | null) => void;
-  centered?: boolean;
-}) {
-  const visibleModelOptions =
-    currentModel && !modelOptions.includes(currentModel)
-      ? [currentModel, ...modelOptions]
-      : modelOptions;
-  const showModelSelector = visibleModelOptions.length > 1;
-  const defaultModelLabel = llmReady
-    ? "\u81ea\u52a8"
-    : "\u672a\u914d\u7f6e\u6a21\u578b";
-
-  return (
-    <div className={cn("ak-composer", centered ? "ak-composer-centered mt-6 px-0 pb-8" : "ak-composer-docked px-5 pb-3 pt-1")}>
-      <div className="ak-composer-box mx-auto max-w-[860px] rounded-lg border">
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (busy) return;
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              onSubmit();
-            }
-          }}
-          rows={1}
-          aria-label="输入消息"
-          data-testid="composer-input"
-          placeholder="向当前会话提问，知识库将为会话增强"
-          disabled={busy}
-          className={cn("ak-composer-input block max-h-[160px] w-full resize-none bg-transparent px-5 py-4 text-[15px] leading-6 outline-none disabled:cursor-not-allowed disabled:opacity-70", centered ? "min-h-[112px] text-base" : "min-h-[44px] px-4 py-3")}
-        />
-        <div className="flex flex-wrap items-center gap-2 px-3 pb-3 pt-1">
-          <div
-            className="ak-control inline-flex h-[var(--control-h)] max-w-[240px] items-center gap-1.5 rounded-lg border px-2.5 text-sm"
-            title={kbLocked ? "当前会话由首条消息的知识库锁定" : "选择通用对话或知识库"}
-          >
-            <Database className="h-4 w-4 shrink-0 text-brand" />
-            <ModelSelect
-              aria-label="选择知识库"
-              tone="plain"
-              className="h-[var(--control-h)] min-w-[108px] flex-1 border-0 bg-transparent px-0 py-0 text-sm text-current shadow-none hover:bg-transparent focus-visible:ring-0 disabled:cursor-not-allowed disabled:text-muted"
-              contentAlign="start"
-              contentClassName="ak-model-content"
-              contentPosition="popper"
-              disabled={kbLocked || busy}
-              onChange={(e) => onSelectKb(e.target.value || null)}
-              options={[
-                { value: "", label: "通用对话" },
-                ...kbs.map((kb) => ({ value: kb.id, label: kb.name })),
-              ]}
-              title={kbLocked ? "当前会话由首条消息的知识库锁定" : "选择通用对话或知识库"}
-              value={currentKbId ?? ""}
-            />
-            {kbLocked && <LockKeyhole className="h-3.5 w-3.5 shrink-0 text-muted" />}
-          </div>
-          <Link
-            className="ak-control ak-press inline-flex size-[var(--control-h)] items-center justify-center rounded-lg border"
-            href={currentKbId ? `/kbs/${currentKbId}` : "/kbs"}
-            aria-label={currentKbId ? "\u6253\u5f00\u77e5\u8bc6\u5e93\u4e0a\u4f20\u8d44\u6599" : "\u9009\u62e9\u77e5\u8bc6\u5e93\u540e\u4e0a\u4f20\u8d44\u6599"}
-            title={currentKbId ? "\u6253\u5f00\u77e5\u8bc6\u5e93\u4e0a\u4f20\u8d44\u6599" : "\u9009\u62e9\u77e5\u8bc6\u5e93\u540e\u4e0a\u4f20\u8d44\u6599"}
-          >
-            <Paperclip className="h-4 w-4" />
-          </Link>
-          <div className="ml-auto flex min-w-0 items-center gap-2">
-            <ContextUsageIndicator
-              contextStatus={contextStatus}
-              loading={contextStatusLoading}
-            />
-            {showModelSelector && (
-              <ModelSelect
-                aria-label="\u6a21\u578b\u9009\u62e9"
-                className="ak-model-trigger h-[var(--control-h)] min-w-[132px] max-w-[200px] text-sm"
-                tone="plain"
-                contentAlign="end"
-                contentClassName="ak-model-content"
-                contentPosition="popper"
-                disabled={busy}
-                onChange={(event) => onModelChange(event.target.value || null)}
-                options={visibleModelOptions.map((model) => ({ value: model, label: model }))}
-                placeholderOption={{ value: "", label: defaultModelLabel }}
-                title="\u6a21\u578b\u9009\u62e9"
-                value={currentModel ?? ""}
-              />
-            )}
-          </div>
-          {busy ? (
-            <button
-              className="ak-stop-button ak-press inline-flex h-[var(--control-h)] min-w-[var(--control-h)] cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-3 text-sm font-medium"
-              aria-label="停止生成"
-              data-testid="composer-stop"
-              onClick={onStop}
-              type="button"
-            >
-              <Square className="h-3.5 w-3.5 fill-current" />
-              <span className="hidden sm:inline">{"\u505c\u6b62"}</span>
-            </button>
-          ) : (
-            <button
-              className="ak-send-button ak-press inline-flex size-[var(--control-h)] items-center justify-center rounded-lg transition disabled:cursor-not-allowed"
-              aria-label="发送消息"
-              data-testid="composer-send"
-              disabled={!value.trim()}
-              onClick={onSubmit}
-              title="发送消息"
-              type="button"
-            >
-              <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
-            </button>
-          )}
-        </div>
-      </div>
-      <p className="ak-composer-disclaimer mt-2 text-center text-xs">{"\u5185\u5bb9\u7531 AI \u751f\u6210\uff0c\u8bf7\u4ed4\u7ec6\u7504\u522b"}</p>
-    </div>
-  );
-}
-
-function ContextUsageIndicator({
-  contextStatus,
-  loading,
-}: {
-  contextStatus: ConversationContextStatus | null;
-  loading: boolean;
-}) {
-  const status = contextStatus ?? {
-    state: "normal" as const,
-    label: loading ? "正在读取" : "暂无数据",
-    description: loading
-      ? "正在读取当前会话的上下文使用情况。"
-      : "暂时无法读取上下文状态，请刷新后重试。",
-    current_tokens: 0,
-    available_tokens: 0,
-    percent: 0,
-    retained_recent_turns: 10,
-    summary: null,
-  };
-  const progress = Math.min(100, Math.max(0, status.percent));
-  const circumference = 2 * Math.PI * 8;
-  const dashOffset = loading ? 0 : circumference * (1 - progress / 100);
-  const isAttention = status.state === "approaching" || status.state === "ready" || status.state === "critical";
-  const ringTone =
-    status.state === "compressed"
-      ? "ak-context-ring-brand"
-      : isAttention
-        ? "ak-context-ring-warning"
-        : "ak-context-ring-muted";
-  const detail =
-    status.state === "compressed"
-      ? `已自动压缩长期上下文，保留最近 ${status.retained_recent_turns} 轮对话。`
-      : status.description;
-
-  return (
-    <div className="group relative shrink-0">
-      <span
-        aria-describedby="context-usage-detail"
-        aria-label={loading ? "正在读取上下文使用量" : `上下文使用量 ${progress}%，${status.label}`}
-        className="ak-context-usage inline-flex size-[var(--control-h)] items-center justify-center rounded-lg border outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
-        tabIndex={0}
-      >
-        <svg
-          aria-hidden="true"
-          className={cn("size-4 -rotate-90", loading && "animate-spin motion-reduce:animate-none")}
-          viewBox="0 0 20 20"
-        >
-          <circle className="ak-context-track stroke-current" cx="10" cy="10" fill="none" r="8" strokeWidth="2.25" />
-          <circle
-            className={cn("ak-context-ring stroke-current", ringTone)}
-            cx="10"
-            cy="10"
-            fill="none"
-            r="8"
-            strokeDasharray={loading ? `16 ${circumference}` : circumference}
-            strokeDashoffset={dashOffset}
-            strokeLinecap="round"
-            strokeWidth="2.25"
-          />
-        </svg>
-      </span>
-      <div
-        className="ak-context-tooltip pointer-events-none absolute bottom-full right-0 z-20 mb-2 w-72 translate-y-1 rounded-lg border p-3 text-left opacity-0 transition-[opacity,transform] duration-150 ease-out group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100"
-        id="context-usage-detail"
-        role="tooltip"
-      >
-        <div className="flex items-center justify-between gap-3">
-          <span className="ak-context-tooltip-title text-sm font-medium">上下文使用</span>
-          <span className={cn("text-xs font-medium tabular-nums", ringTone)}>{status.label}</span>
-        </div>
-        <div className="mt-2 flex items-baseline justify-between gap-3 tabular-nums">
-          <span className="ak-context-tooltip-title text-lg font-semibold">{progress}%</span>
-          <span className="ak-context-tooltip-muted text-xs">
-            {formatTokenCount(status.current_tokens)} / {formatTokenCount(status.available_tokens)}
-          </span>
-        </div>
-        <p className="ak-context-tooltip-muted mt-2 text-xs leading-5">{detail}</p>
-        {status.summary && (
-          <p className="ak-context-tooltip-summary ak-context-tooltip-muted mt-2 border-t pt-2 text-xs leading-5">
-            已覆盖 {status.summary.covered_message_count} 条历史消息 / 摘要约 {formatTokenCount(status.summary.token_count)}
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function hasVisibleMemoryTrace(trace?: MemoryTrace | null) {
-  if (!trace) return false;
-  return Boolean(
-    trace.profile?.injected ||
-      (trace.memories?.injected_count ?? 0) > 0 ||
-      trace.summary ||
-      (trace.profile?.items?.length ?? 0) > 0 ||
-      (trace.memories?.items?.length ?? 0) > 0
-  );
-}
-
-function MemoryContextTrace({ trace }: { trace: MemoryTrace }) {
-  const [open, setOpen] = useState(false);
-  const memoryCount = trace.memories?.injected_count ?? 0;
-  const profileLabel = trace.profile?.injected ? "画像已注入" : "无画像";
-  const summaryLabel = trace.summary ? "摘要已注入" : "无摘要";
-  const summaryText = `本轮上下文 · 记忆 ${memoryCount} · ${profileLabel} · ${summaryLabel}`;
-  const recalled = trace.memories?.items?.slice(0, 4) ?? [];
-  const profileItems = trace.profile?.items?.slice(0, 3) ?? [];
-
-  return (
-    <div className="overflow-hidden rounded-lg border border-surface-border/80 bg-surface shadow-soft">
-      <button
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        className="flex min-h-11 w-full cursor-pointer items-center justify-between gap-3 bg-surface-2/45 px-3.5 py-2 text-sm transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-        type="button"
-      >
-        <span className="flex min-w-0 items-center gap-2 text-muted">
-          {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-          <span className="admin-icon-tile admin-icon-tile-brand size-7 rounded-md shadow-none">
-            <BrainCircuit className="h-3.5 w-3.5" />
-          </span>
-          <span className="truncate">{summaryText}</span>
-        </span>
-      </button>
-
-      {open ? (
-        <div className="space-y-3 border-t border-surface-border/70 p-3 text-sm">
-          {recalled.length > 0 ? (
-            <div>
-              <div className="mb-2 text-xs font-medium text-muted">记忆召回</div>
-              <ul className="space-y-2">
-                {recalled.map((item) => (
-                  <li
-                    key={item.id}
-                    className="rounded-lg border border-surface-border/70 bg-surface-2/45 px-3 py-2.5"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-xs font-medium">
-                        {memoryTraceTypeLabel(item.type)}
-                      </span>
-                      <span className="shrink-0 text-[11px] text-muted">
-                        {Math.round((item.importance ?? 0) * 100)}%
-                      </span>
-                    </div>
-                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted">
-                      {item.content}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          {profileItems.length > 0 ? (
-            <div>
-              <div className="mb-2 text-xs font-medium text-muted">
-                画像摘要
-                {trace.profile?.counts?.total
-                  ? ` · 共 ${trace.profile.counts.total} 项`
-                  : ""}
-              </div>
-              <ul className="space-y-1.5">
-                {profileItems.map((item) => (
-                  <li key={item.id} className="truncate text-xs leading-5 text-muted">
-                    <span className="text-ink/80">{memoryTraceTypeLabel(item.type)}</span>
-                    {" · "}
-                    {item.content}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          {trace.summary ? (
-            <p className="rounded-lg border border-surface-border/70 bg-surface-2/45 px-3 py-2 text-xs leading-5 text-muted">
-              摘要覆盖 {trace.summary.covered_message_count} 条历史消息 / 约{" "}
-              {formatTokenCount(trace.summary.token_count)}
-            </p>
-          ) : null}
-
-          {recalled.length === 0 && profileItems.length === 0 && !trace.summary ? (
-            <p className="text-xs leading-5 text-muted">本轮未注入可展示的记忆内容。</p>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function memoryTraceTypeLabel(type: string) {
-  if (type === "preference") return "偏好";
-  if (type === "constraint") return "约束";
-  if (type === "fact") return "事实";
-  if (type === "explicit") return "显式";
-  return type;
-}
-
-function formatTokenCount(value: number) {
-  if (!Number.isFinite(value) || value <= 0) return "-";
-  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
-  return String(value);
-}
-
-function formatMessageStats(messages: Message[]) {
-  const userCount = messages.filter((message) => message.role === "user").length;
-  const assistantCount = messages.filter((message) => message.role === "assistant").length;
-  return `${userCount} \u8f6e \u00b7 ${messages.length} \u6761`;
-}
-
-function formatTime(value?: number | null) {
-  if (!value) return "-";
-  return new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(value);
-}
-
-function formatMessageTime(value?: number | null) {
-  if (!value) return "";
-  return new Intl.DateTimeFormat("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(value);
 }

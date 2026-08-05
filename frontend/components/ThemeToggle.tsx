@@ -40,7 +40,7 @@ export default function ThemeToggle({
           tone="plain"
           layout="icon"
           className={cn(
-            "ak-theme-toggle-compact size-[var(--control-h)] shrink-0",
+            "kf-theme-toggle-compact size-[var(--control-h)] shrink-0",
             className
           )}
         >

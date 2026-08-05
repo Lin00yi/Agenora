@@ -3,10 +3,13 @@ import { cn } from "@/lib/cn";
 export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || "KnowFlow";
 
 type BrandSize = "sm" | "md" | "lg";
+type BrandTone = "solid" | "soft";
 
 type BrandProps = {
   size?: BrandSize;
   showWordmark?: boolean;
+  /** solid = filled ink mark (default); soft = quiet surface mark for sidebars */
+  tone?: BrandTone;
   className?: string;
 };
 
@@ -73,22 +76,29 @@ function BrandMark({ className }: { className?: string }) {
 export default function Brand({
   size = "md",
   showWordmark = true,
+  tone = "solid",
   className,
 }: BrandProps) {
   const s = SIZES[size];
+  const soft = tone === "soft";
   return (
     <div className={cn("inline-flex items-center gap-2", className)}>
       <div
         className={cn(
-          "relative isolate flex items-center justify-center overflow-hidden text-white shadow-soft ring-1 ring-white/20",
-          "bg-[linear-gradient(145deg,#2563eb_0%,#3b82f6_52%,#0ea5e9_100%)]",
-          "before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_70%_18%,rgba(255,255,255,0.34),transparent_28%)]",
-          "after:absolute after:inset-x-1 after:bottom-1 after:h-px after:bg-white/28",
+          "kf-brand-mark relative isolate flex items-center justify-center overflow-hidden",
+          soft
+            ? "border border-surface-border bg-surface-2 text-ink shadow-none"
+            : [
+                "bg-ink text-on-brand shadow-soft ring-1 ring-white/20",
+                "before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_70%_18%,rgba(255,255,255,0.22),transparent_28%)]",
+                "after:absolute after:inset-x-1 after:bottom-1 after:h-px after:bg-white/20",
+                "dark:bg-ink dark:ring-white/15",
+              ],
           s.box
         )}
         aria-hidden
       >
-        <BrandMark className={cn("relative z-10 drop-shadow-sm", s.mark)} />
+        <BrandMark className={cn("relative z-10", !soft && "drop-shadow-sm", s.mark)} />
       </div>
       {showWordmark && <span className={s.text}>{APP_NAME}</span>}
     </div>

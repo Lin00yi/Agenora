@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Toaster } from "sonner";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { fontVariables } from "@/lib/fonts";
 import "./globals.css";
 
 const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || "KnowFlow";
@@ -15,12 +16,12 @@ const NO_FLASH = `(function(){try{var t=localStorage.getItem('anykb:theme')||'sy
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="zh-CN" suppressHydrationWarning>
+    <html lang="zh-CN" className={fontVariables} suppressHydrationWarning>
       <head>
         {/* eslint-disable-next-line react/no-danger */}
         <script dangerouslySetInnerHTML={{ __html: NO_FLASH }} />
       </head>
-      <body className="min-h-screen bg-background text-foreground antialiased">
+      <body className="min-h-screen bg-background font-sans text-foreground antialiased">
         <ThemeProvider>
           {children}
           <Toaster

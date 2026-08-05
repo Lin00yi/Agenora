@@ -1,5 +1,87 @@
 # Chat workspace visual QA
 
+## 2026-08-05 — Light sidebar black-slab fix
+
+ChatGPT 对齐修补（浅色主修）：
+
+- 侧栏顶区去掉卡片底/描边；Logo 用 `tone="soft"` 浅灰标记，不再叠第二块黑方
+- 仅「新建对话」保留实心黑/白 CTA
+- 选中行 / hover：浅灰底，去掉左侧黑条
+- 底部头像与用户气泡改为中性浅灰；主区画布去掉 brand 顶洗
+
+## 2026-08-05 — ChatGPT-inspired monochrome
+
+对齐 ChatGPT 气质：`#F4F4F4` 浅灰面、`#212121` 暖炭深色、黑/白发送钮、Composer `1.5rem` 大圆角、用户气泡无描边浅灰底。
+
+## 2026-08-05 — Monochrome brand
+
+纯黑白：brand = ink 阶（Light `#0F172A` / Dark `#E2E8F0`）；Logo 去彩色渐变。语义色仅 success/warning/danger。
+
+## 2026-08-05 — Restore Enterprise Blue
+
+撤回 Amber / Graphite / Teal 试色。品牌色回到 `#2563EB`；深色保留描边主按钮与压亮度结构。
+
+## 2026-08-05 — Amber brand
+
+- 品牌色改为琥珀：Light `#B45309` / Dark `#D4A060`
+- 明确不做绿、蓝、灰品牌色；中性底仍 Cool Slate
+
+## 2026-08-05 — Graphite brand
+
+- 品牌色改为冷灰石板：Light `#334155` / Dark `#94A3B8`
+- 去掉蓝、绿品牌色；深色仍保持描边主按钮
+
+## 2026-08-05 — Drop green brand (Cool Blue)
+
+- 品牌色去掉青绿：浅色 `#2563EB`，深色钢蓝 `#7894BA`
+- Logo 渐变改为跟随 `--brand` Token
+- 中性底去青绿 tint；`success` 仍保留语义绿
+
+## 2026-08-05 — Dark retune v5.1 (scheme A)
+
+Deep dark A3：近乎单色 chrome，brand 只做安静点缀。
+
+- canvas `#06080B`；ink `#BABCCE` 降亮度
+- 新建对话 / Send / 默认 Button：透明描边 + ink 字；仅图标带弱 teal
+- 空态标题、已连接状态：去掉 brand 高亮
+- Composer / Search focus：中性环，不再打品牌光
+
+## 2026-08-05 — Design system v5 Flow Teal visual QA (light + dark)
+
+Browser QA on `localhost:3001` after restarting dev (prior `next build` had corrupted `.next`). Theme forced via `anykb:theme` + `html.dark`.
+
+| Route | Light | Dark | Notes |
+|---|---|---|---|
+| Welcome | ✅ | ✅ | Teal CTA / Logo；Jakarta + Noto 字体生效；`overflowX=0` |
+| Login | ✅ | ✅ | BrandPanel + 表单卡；深色 BrandPanel 网格/渐变正常 |
+| Chat `/c` | ✅ | ✅ | 侧栏新建/列表、空态、Composer、starter 卡；`data-kf-shell` 正常 |
+| KB `/kbs` | ✅ | ✅ | 列表卡 `bg-surface` 深浅均正确（LI=`rgb(12,24,24)` dark） |
+| Settings | ✅ | ✅ | LLM / KB 选项 / 记忆分区与主按钮正常 |
+| Admin 看板 | ✅ | ✅ | 统计卡、tabs、语义色（活跃绿 / 封禁红 / brand 青）正常 |
+
+### Contrast（`--kf-*` 实测）
+
+| 组合 | Light | Dark | AA |
+|---|---|---|---|
+| `on-brand` on `brand` | **5.47** | **10.13** | ✅ |
+| `ink` on `canvas` | **15.26** | **17.44** | ✅ |
+| `muted` on `canvas` | **5.87** | **8.56** | ✅ |
+
+### Token / font smoke
+
+- Light `--kf-brand`: `15 118 110`；Dark: `45 212 191`
+- `font-family` 含 Plus Jakarta Sans + Noto Sans SC
+- 关键页关键面 `overflowX === 0`
+
+**结论**：未发现需修的视觉回归。
+
+## 2026-08-05 — Design system v5 (Flow Teal)
+
+- Theme: blue→cyan 改为 **Flow Teal**（`--kf-brand` `#0F766E` / dark `#2DD4BF`）。
+- Fonts: Plus Jakarta Sans + Noto Sans SC + JetBrains Mono via `lib/fonts.ts`.
+- Tokens: `--kf-*` 为规范源；`--canvas` / `--brand` 等为兼容别名；Tailwind `kf.*` 色板。
+- Chat DOM: 拆到 `components/chat/*`；类名 `ak-*` → `kf-*`；`data-kf-region` 语义分区。
+
 ## 2026-08-05 — Dark mode authenticated QA
 
 Browser dark theme (`anykb:theme=dark`). No visual regressions found.
@@ -56,13 +138,13 @@ Also in this pass:
 
 - Chat paint rules unlayered; conflict `!important` eliminated (only `prefers-reduced-motion` remains).
 - `SelectTrigger` gains `tone="plain"` for Chat ThemeToggle / model / KB selects.
-- Context ring tones use `ak-context-ring-brand|warning|muted` (no utility color fights).
+- Context ring tones use `kf-context-ring-brand|warning|muted` (no utility color fights).
 - Renamed `Dialog.tsx` → `ConfirmDialog.tsx`; all imports updated.
 - Migrated `admin-toolbar-btn` / `admin-row-action` to `<Button>` via `AdminTableActions`; deleted dead CSS.
 
 ## 2026-08-05 — Chat style convergence
 
-- Removed dead `.ak-chat` `--ak-*` color channel aliases (unused; paint uses `--chat-*` / semantic RGB).
+- Removed dead `.kf-chat` `--kf-*` color channel aliases (unused; paint uses `--chat-*` / semantic RGB).
 - Renamed layout vars: `--chat-composer-offset`, `--chat-thread-scrollbar`.
 - Dropped most Chat `!important` (~160 → ~50); kept only where fighting shadcn Select / ThemeToggle / send / sidebar-new.
 - ChatPageClient: removed competing paint utilities on sidebar shell, composer box/controls, popover/notice shadows; sidebar rows no longer use `border-transparent`.
@@ -95,7 +177,7 @@ Also in this pass:
 
 ## 2026-08-05 — Chat bridge cleanup (P1)
 
-- Removed dead `.ak-chat` attribute overrides (`bg-[#…]`, `text-slate-*`, `bg-white/` / `bg-black/`, insight/step/trace orphans, emerald `ak-control-primary`).
+- Removed dead `.kf-chat` attribute overrides (`bg-[#…]`, `text-slate-*`, `bg-white/` / `bg-black/`, insight/step/trace orphans, emerald `kf-control-primary`).
 - Composer / sidebar / model dropdown now paint from semantic tokens (`--surface`, `--brand`, `--chat-*` aliases); no parallel dark-hex `#101a2b` model menu.
 - Restored Brand logo gradient in the sidebar (removed solid-accent `!important` override).
 - Composer controls in `ChatPageClient` carry `border-surface-border bg-surface-2 text-ink-2`.
@@ -105,7 +187,7 @@ Also in this pass:
 ## 2026-08-05 — Design tokens v4 (P0)
 
 - Unified semantic RGB tokens in `:root` / `.dark` (`--canvas`, `--ink`, `--brand`, …).
-- Legacy aliases (`--bg`, `--fg`, `--brand-dark`) and chat aliases (`--chat-*`, `--ak-*`) now resolve through the semantic layer.
+- Legacy aliases (`--bg`, `--fg`, `--brand-dark`) and chat aliases (`--chat-*`, `--kf-*`) now resolve through the semantic layer.
 - shadcn / Radix theme vars no longer use a parallel oklch palette; they bind to `rgb(var(--…))`.
 - Tailwind exposes `canvas`, `ink`, `brand-strong`, `brand-cyan`, `on-brand`, `composer`.
 - Public Light/Dark visual pass completed 2026-08-05 (Welcome / Login / Register).

@@ -1,24 +1,23 @@
-# KnowFlow UI 设计系统 v4
+# KnowFlow UI 设计系统 v5
 
-> 从「三套并行 Token」收敛为「一套语义 Design Token + shadcn 组件」。  
-> 保留已验证的企业蓝青方向，消灭视觉碎片化。
+> v5：**Flow Teal** 主题色 + 新字体栈 + `--kf-*` Token 为唯一真相源；Chat DOM 拆分为 `components/chat/*`，类名前缀 `kf-*`。
 
 | 字段 | 值 |
 |---|---|
 | **产品** | KnowFlow（anykb）— 私有 RAG 知识库 + 透明 Agent |
-| **视觉方向** | Enterprise Clarity：冷静、可溯源、偏工程可信 |
+| **视觉方向** | ChatGPT-inspired monochrome：白/浅灰底，炭黑深色，黑白主按钮，大圆角 Composer |
 | **主题** | Light-first + Dark |
 | **无障碍** | WCAG AA（正文 ≥ 4.5:1，大字 / 图标 ≥ 3:1） |
 | **设计系统日期** | 2026-08-05 |
-| **实施状态** | P0–P4 + cleanup 全部落地；语义 Token 为唯一真相源；Chat 无冲突 `!important` |
+| **实施状态** | v5.6：对齐 ChatGPT 气质（非像素级抄袭） |
 | **UI 设计师** | Cursor UI Designer |
 
 ---
 
 ## 0. 诊断摘要（历史 → 已解决）
 
-v3 曾并行三套 Token（legacy RGB / chat bridge / shadcn oklch）与多套按钮 API。  
-**v4（P0–P4）已收敛**：语义 RGB Token 为唯一真相源；shadcn 变量绑定其上；Chat `--chat-*` / `--ak-*` 为语义别名而非独立色板。
+v3 曾并行三套 Token；v4 收敛语义 RGB。  
+**v5**：引入 `--kf-*` 为规范 Token，旧名（`--canvas` / `--brand` 等）为兼容别名；Chat 类名 `ak-*` → `kf-*`，DOM 拆到 `components/chat/`。
 
 ---
 
@@ -26,50 +25,47 @@ v3 曾并行三套 Token（legacy RGB / chat bridge / shadcn oklch）与多套�
 
 ### 1.1 色彩系统
 
-#### 品牌主色（Blue → Cyan）
+#### 品牌主色（Monochrome / ChatGPT-like）
 
 | Token | Light | Dark | 用途 |
 |---|---|---|---|
-| `brand.500` / `primary` | `#2563EB` | `#60A5FA` | 主按钮、链接、焦点环、选中态 |
-| `brand.600` / `primary-strong` | `#1D4ED8` | `#93C5FD` | Hover / Active |
-| `brand.400` / `accent-cyan` | `#0EA5E9` | `#38BDF8` | Logo 渐变末端、高亮点缀（勿大面积铺底） |
-| `on-primary` | `#FFFFFF` | `#07111F` | 主色上的文字 / 图标 |
+| `kf-brand` | `#0D0D0D` | `#FFFFFF` | 主按钮、发送 |
+| `kf-brand-strong` | `#000000` | `#ECECEC` | Hover |
+| `kf-brand-accent` | `#404040` | `#B4B4B4` | 次级点缀 |
+| `kf-on-brand` | `#FFFFFF` | `#0D0D0D` | 主色上的字/图标 |
 
-品牌渐变（仅 Logo / 营销强调，不用于正文背景）：
+#### 中性（ChatGPT-like）
 
-```
-linear-gradient(145deg, #2563EB 0%, #3B82F6 52%, #0EA5E9 100%)
-```
+| Token | Light | Dark |
+|---|---|---|
+| `kf-canvas` | `#FFFFFF` | `#212121` |
+| `kf-surface` | `#FFFFFF` | `#171717` |
+| `kf-surface-2` / composer | `#F4F4F4` | `#2F2F2F` |
+| `kf-border` | `#E2E2E2` | `#404040` |
+| `kf-ink` | `#0D0D0D` | `#ECECEC` |
+| `kf-muted` | `#6E6E6E` | `#A3A3A3` |
+
+Composer `border-radius: 1.5rem`；用户气泡浅灰底、无描边；发送钮圆形黑/白实心。
+
+> 语义 `success` / `warning` / `danger` 仍保留彩色。
 
 #### 语义色
 
 | Token | Light | Dark | 对比度要求 |
 |---|---|---|---|
-| `success` | `#15803D` | `#4ADE80` | 与相邻背景 ≥ 4.5:1（含文字） |
-| `warning` | `#B45309` | `#FBBF24` | 不可仅靠颜色传达状态 |
-| `danger` | `#DC2626` | `#F87171` | Destructive 按钮需图标或文案 |
-| `info` | `#2563EB` | `#60A5FA` | 与 brand 对齐 |
+| `success` | `#15803D` | `#34A064` | 与相邻背景 ≥ 4.5:1（含文字） |
+| `warning` | `#B45309` | `#BC9438` | 不可仅靠颜色传达状态 |
+| `danger` | `#DC2626` | `#C86262` | Destructive 按钮需图标或文案 |
+| `info` | `#0D0D0D` | `#FFFFFF` | 与 brand 对齐 |
 
-#### 中性色板（Cool Slate，偏蓝灰）
-
-| Token | Light | Dark | 用途 |
-|---|---|---|---|
-| `canvas` | `#F6F8FB` | `#090E18` | 页面底层 |
-| `surface` | `#FFFFFF` | `#111C2B` | 卡片、侧栏、弹层 |
-| `surface-2` | `#F1F5F9` | `#0D1726` | 次级区块、输入底 |
-| `border` | `#DDE3ED` | `rgba(255,255,255,0.12)` | 默认分割线 |
-| `border-strong` | `#C2CDDC` | `rgba(255,255,255,0.18)` | 强调边框 |
-| `ink` | `#152033` | `#F1F5F9` | 主文字 |
-| `ink-2` | `#334155` | `#CBD5E1` | 次级文字 |
-| `muted` | `#5B677C` | `#9AA8BB` | 说明、元数据（Light ≥ 4.5:1 on canvas） |
-| `faint` | `#94A3B8` | `#475569` | 占位符、禁用辅文（不可单独承担关键信息） |
+Tailwind：`bg-kf-brand` / `text-kf-ink` 为规范写法；`bg-brand` / `text-ink` 仍可用（别名）。
 
 #### 禁止色 / 反模式
 
 - 禁止默认落到紫色 / indigo 渐变主题
 - 禁止暖奶油底 + 衬线大标题 + 陶土强调色组合
 - 禁止 glow、多层霓虹阴影、全圆 pill 作为主控件语言
-- Chat 内禁止残留硬编码 `#08101c` 等暗色 hex；一律走 Token
+- Chat 内禁止残留硬编码暗色 hex；一律走 Token
 
 #### WCAG AA 已验证组合（目标）
 
@@ -77,19 +73,21 @@ linear-gradient(145deg, #2563EB 0%, #3B82F6 52%, #0EA5E9 100%)
 |---|---|
 | `ink` on `canvas` / `surface` | ≥ 12:1 |
 | `muted` on `canvas` | ≥ 4.5:1 |
-| `on-primary` on `brand.500` | ≥ 5.1:1（已在 v3 QA 达标） |
-| Focus ring `brand.500` @ 2px + 2px offset | 可见，不依赖颜色 alone |
+| `on-brand` on `kf-brand` | ≥ 4.5:1（Light `#0F766E` + 白） |
+| Focus ring `brand` @ 2px + 2px offset | 可见，不依赖颜色 alone |
 
 ---
 
 ### 1.2 排版系统
 
-**策略**：中文企业产品优先系统字体栈（加载快、CJK 渲染稳）。不引入 Inter / Roboto；品牌表达靠色与构图，不靠西文展示字体硬撑。
+**策略**：西文用 Plus Jakarta Sans，中文用 Noto Sans SC（`next/font`），等宽用 JetBrains Mono。系统字体作回退。
 
 | 角色 | 字体栈 |
 |---|---|
-| **UI / 正文** | `-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif` |
-| **等宽**（引用 ID、代码、token） | `Menlo, Monaco, Consolas, ui-monospace, monospace` |
+| **UI / 正文** | `Plus Jakarta Sans`, `Noto Sans SC`, `"PingFang SC"`, `"Microsoft YaHei"`, system-ui |
+| **等宽** | `JetBrains Mono`, ui-monospace, Menlo, Monaco, Consolas |
+
+CSS 变量：`--font-sans-latin` / `--font-sans-cjk` / `--font-mono`（由 `lib/fonts.ts` 注入）。
 
 #### 比例（4px 基线对齐）
 
@@ -233,7 +231,7 @@ linear-gradient(145deg, #2563EB 0%, #3B82F6 52%, #0EA5E9 100%)
 |---|---|
 | `--bg` / `--fg` / `--brand-dark` | **已删除**；请用 `--canvas` / `--ink` / `--brand-strong` |
 | Tailwind `bg` / `fg` / `brand-dark` | **已删除**；请用 `canvas` / `ink` / `brand-strong` |
-| `--chat-*` / `--ak-*` | `--chat-*` 保留为 Chat 全色别名；`--ak-*` 色值别名已删；布局用 `--chat-composer-offset` 等 |
+| `--chat-*` / `--kf-*` | `--chat-*` 保留为 Chat 全色别名；`--kf-*` 色值别名已删；布局用 `--chat-composer-offset` 等 |
 | `--text-subtle` | 保留（避免与 shadcn `--muted` 背景色冲突）；Tailwind 用 `subtle` / `.text-muted` |
 | shadcn `--background` / `--primary` | 绑定 `rgb(var(--canvas))` / `rgb(var(--brand))` |
 
@@ -306,7 +304,7 @@ colors: {
 | 自定义 `Dialog.tsx` vs `ui/dialog` | 统一 Radix `ui/dialog` |
 | 未使用的 `Sidebar.tsx` | 删除或改为导出 Chat 侧栏 |
 | Chat 硬编码 dark hex + `!important` 桥 | Token 化后删除覆盖层 |
-| 命名 `ak-*` / anykb / dcmf 混用 | **渐进**：新类用语义名；旧 `ak-*` 保留至下一次领域重构 |
+| 命名 `kf-*` / anykb / dcmf 混用 | **渐进**：新类用语义名；旧 `kf-*` 保留至下一次领域重构 |
 
 ---
 
