@@ -1,5 +1,19 @@
 # Chat workspace visual QA
 
+## 2026-08-05 — Dark mode authenticated QA
+
+Browser dark theme (`anykb:theme=dark`). No visual regressions found.
+
+| Route | Dark | Notes |
+|---|---|---|
+| Admin `/admin` | ✅ | 看板统计卡、tabs、主题「深色」正常 |
+| Admin `/admin/users` | ✅ | 表格、管理员/活跃标签对比清晰 |
+| Admin `/admin/kbs` | ✅ | 全局 KB 表、系统标签正常 |
+| Chat `/c` | ✅ | 草稿空态、Composer、starter 卡、侧栏正常 |
+| KB `/kbs` | ✅ | 列表卡、新建按钮、compact 主题图标正常 |
+| Settings | ✅ | LLM 表单、分区卡、保存按钮正常 |
+| Welcome | ✅ |（此前已签；本次再确认深色） |
+
 ## 2026-08-05 — Admin authenticated sign-off
 
 - Promoted `1765861423@qq.com` to admin (`is_admin=true` + `ADMIN_EMAILS`).
@@ -21,9 +35,9 @@ Browser QA on `localhost:3001` (dev). Theme toggle Light/Dark exercised. Authent
 | Login | ✅ | ✅ | BrandPanel + 表单卡 |
 | Register | ✅ | ✅ | 与 Login 同壳 |
 | Chat | ✅ | ✅ | Sidebar / Composer / KB Select / 模型 / 发送 / 检索条 / 导出动作正常 |
-| KB (`/kbs`) | ✅ | — | 列表卡、新建按钮、主题 compact、加载态正常 |
-| Settings | ✅ | — | LLM 表单、保存按钮、分区卡片正常 |
-| Admin | ✅ | — | 看板 / 用户 / 知识库 Light 签收；`1765861423@qq.com` 显示为管理员 |
+| KB (`/kbs`) | ✅ | ✅ | 列表卡、新建按钮、主题 compact、加载态正常 |
+| Settings | ✅ | ✅ | LLM 表单、保存按钮、分区卡片正常 |
+| Admin | ✅ | ✅ | 看板 / 用户 / 知识库；`1765861423@qq.com` 显示为管理员 |
 
 Token contrast (computed from CSS vars):
 

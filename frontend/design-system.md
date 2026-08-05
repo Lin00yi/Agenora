@@ -412,7 +412,7 @@ Hero 预算（遵守品牌优先）：
 
 ### 7.2 设计 QA 清单
 
-- [x] Light / Dark 关键页截图：Welcome、Login、Register、Chat；KB / Settings（Light）；Admin 看板/用户/知识库（Light）
+- [x] Light / Dark 关键页截图：Welcome、Login、Register、Chat、KB、Settings、Admin（看板/用户/知识库）
 - [x] 主按钮对比度 ≥ 5.1:1（Light 5.17 / Dark 7.45）
 - [x] 焦点环：Button / Select / Input / Switch / admin-icon-action / app-nav-link 均有 `focus-visible:ring`；KB 删除按钮补 `focus-visible:opacity-100`
 - [x] 375 / 768 / 1024 / 1440 关键页无横向溢出（Welcome / Login / Chat / KB / Settings）
