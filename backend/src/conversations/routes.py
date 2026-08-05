@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -59,6 +59,8 @@ class PatchMemoryRequest(BaseModel):
     value: str | None = Field(default=None, min_length=1, max_length=500)
     importance: float | None = Field(default=None, ge=0, le=1)
     status: Literal["active", "deleted"] | None = None
+    # Explicit null clears expiry (long-lived). Omitted field leaves it unchanged.
+    expires_at: datetime | None = None
 
 
 class ImportMessage(BaseModel):
@@ -230,6 +232,37 @@ async def list_memories(
     return [m.to_public_dict() for m in result.scalars().all()]
 
 
+@router.get("/memories/export")
+async def export_memories(
+    user: CurrentUser,
+    status_filter: Literal["active", "superseded", "deleted", "expired", "all"] = Query(
+        default="all", alias="status"
+    ),
+    session: AsyncSession = Depends(get_session),
+):
+    """Download the caller's memories as a portable JSON file."""
+    where = [UserMemory.user_id == user.id]
+    if status_filter != "all":
+        where.append(UserMemory.status == status_filter)
+    result = await session.execute(
+        select(UserMemory)
+        .where(*where)
+        .order_by(desc(UserMemory.updated_at))
+    )
+    rows = [m.to_public_dict() for m in result.scalars().all()]
+    payload = {
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "user_id": user.id,
+        "status_filter": status_filter,
+        "count": len(rows),
+        "memories": rows,
+    }
+    return JSONResponse(
+        payload,
+        headers={"Content-Disposition": 'attachment; filename="knowflow-memories.json"'},
+    )
+
+
 @router.delete("/memories/{memory_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_memory(
     memory_id: str,
@@ -242,6 +275,17 @@ async def delete_memory(
     row.status = "deleted"
     row.updated_at = datetime.now(timezone.utc)
     await session.commit()
+
+
+def _normalize_memory_expires_at(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
+    if value > now + timedelta(days=3650):
+        raise HTTPException(status_code=400, detail="expires_at too far in the future")
+    return value.astimezone(timezone.utc)
 
 
 @router.patch("/memories/{memory_id}")
@@ -268,6 +312,14 @@ async def patch_memory(
         row.importance = req.importance
     if req.status is not None:
         row.status = req.status
+    if "expires_at" in req.model_fields_set:
+        row.expires_at = _normalize_memory_expires_at(req.expires_at)
+        row.source = "user_edited"
+        now = datetime.now(timezone.utc)
+        if row.expires_at is None and row.status == "expired":
+            row.status = "active"
+        elif row.expires_at is not None and row.expires_at <= now and row.status == "active":
+            row.status = "expired"
     row.updated_at = datetime.now(timezone.utc)
     if req.content is not None:
         await refresh_memory_embedding(row, embedding_cfg=resolve_user_embedding(user))

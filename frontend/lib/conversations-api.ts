@@ -223,7 +223,14 @@ export async function listMemories(opts: { status?: string } = {}): Promise<User
 
 export async function patchMemory(
   id: string,
-  patch: { content?: string; value?: string; importance?: number; status?: "active" | "deleted" }
+  patch: {
+    content?: string;
+    value?: string;
+    importance?: number;
+    status?: "active" | "deleted";
+    /** ISO timestamp, or null to clear expiry (long-lived). */
+    expires_at?: string | null;
+  }
 ): Promise<UserMemory> {
   return unwrap(
     await authFetch(`/api/conversations/memories/${id}`, {
@@ -236,6 +243,27 @@ export async function patchMemory(
 
 export async function deleteMemory(id: string): Promise<void> {
   await unwrap(await authFetch(`/api/conversations/memories/${id}`, { method: "DELETE" }));
+}
+
+/** Trigger a browser download of long-term memories as JSON. */
+export async function exportMemories(opts: { status?: string } = {}): Promise<void> {
+  const q = new URLSearchParams();
+  if (opts.status) q.set("status", opts.status);
+  const suffix = q.toString() ? `?${q.toString()}` : "";
+  const r = await authFetch(`/api/conversations/memories/export${suffix}`);
+  if (!r.ok) {
+    const detail = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }));
+    throw new ConversationApiError(r.status, detail, `memory export failed: ${r.status}`);
+  }
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "knowflow-memories.json";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ---------------------------------------------------------------------------

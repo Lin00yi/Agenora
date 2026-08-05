@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   BrainCircuit,
   ChevronDown,
+  Download,
   Edit3,
   Loader2,
   RefreshCw,
@@ -26,6 +27,7 @@ import { LoadingState, StateView } from "@/components/ui/state-view";
 import { getToken } from "@/lib/auth";
 import {
   deleteMemory,
+  exportMemories,
   listMemories,
   patchMemory,
   type UserMemory,
@@ -70,6 +72,7 @@ export default function MemoriesPage() {
   const [query, setQuery] = useState("");
   const [editTarget, setEditTarget] = useState<UserMemory | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<UserMemory | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const refresh = async (nextStatus: StatusFilter = status) => {
     setRefreshing(true);
@@ -122,6 +125,18 @@ export default function MemoriesPage() {
   const handleStatusChange = (next: StatusFilter) => {
     setStatus(next);
     void refresh(next);
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await exportMemories({ status });
+      toast.success("记忆已导出");
+    } catch (e) {
+      toast.error((e as Error).message || "导出记忆失败");
+    } finally {
+      setExporting(false);
+    }
   };
 
   const confirmDelete = async () => {
@@ -191,13 +206,29 @@ export default function MemoriesPage() {
                   管理对话中保存的长期记忆。只有有效记忆会注入后续上下文。
                 </p>
               </div>
-              <p className="shrink-0 text-sm tabular-nums text-muted">
-                有效 <span className="font-semibold text-ink">{stats.active}</span>
-                <span className="mx-2 text-surface-border">·</span>
-                本页 <span className="font-semibold text-ink">{stats.total}</span>
-                <span className="mx-2 text-surface-border">·</span>
-                已向量化 <span className="font-semibold text-ink">{stats.embedded}</span>
-              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="shrink-0 text-sm tabular-nums text-muted">
+                  有效 <span className="font-semibold text-ink">{stats.active}</span>
+                  <span className="mx-2 text-surface-border">·</span>
+                  本页 <span className="font-semibold text-ink">{stats.total}</span>
+                  <span className="mx-2 text-surface-border">·</span>
+                  已向量化 <span className="font-semibold text-ink">{stats.embedded}</span>
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-[var(--control-h)] min-h-[var(--control-h)]"
+                  onClick={() => void handleExport()}
+                  disabled={exporting || rows.length === 0}
+                >
+                  {exporting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  导出
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -369,6 +400,7 @@ function MemoryRow({
               <DetailItem label="来源" value={memorySourceLabel(memory.source)} />
               <DetailItem label="重要度" value={memory.importance.toFixed(2)} />
               <DetailItem label="置信度" value={`${Math.round(memory.confidence * 100)}%`} />
+              <DetailItem label="过期" value={expiryLabel} />
               <DetailItem label="向量" value={memory.has_embedding ? "已向量化" : "未向量化"} />
             </div>
           ) : null}
@@ -498,6 +530,8 @@ function MemoryEditDialog({
   const [content, setContent] = useState("");
   const [value, setValue] = useState("");
   const [importance, setImportance] = useState(0.5);
+  const [neverExpires, setNeverExpires] = useState(true);
+  const [expiresLocal, setExpiresLocal] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   useEffect(() => {
@@ -505,7 +539,9 @@ function MemoryEditDialog({
     setContent(memory.content);
     setValue(memory.value ?? "");
     setImportance(memory.importance);
-    setAdvancedOpen(false);
+    setNeverExpires(!memory.expires_at);
+    setExpiresLocal(toDatetimeLocalValue(memory.expires_at));
+    setAdvancedOpen(Boolean(memory.expires_at));
   }, [memory]);
 
   const save = async () => {
@@ -515,6 +551,19 @@ function MemoryEditDialog({
       toast.error("记忆内容至少需要 4 个字符");
       return;
     }
+    let expires_at: string | null = null;
+    if (!neverExpires) {
+      if (!expiresLocal) {
+        toast.error("请选择到期时间，或勾选长期有效");
+        return;
+      }
+      const parsed = fromDatetimeLocalValue(expiresLocal);
+      if (!parsed) {
+        toast.error("到期时间格式无效");
+        return;
+      }
+      expires_at = parsed;
+    }
     onSaving(memory.id);
     try {
       const updated = await patchMemory(memory.id, {
@@ -522,6 +571,7 @@ function MemoryEditDialog({
         value: value.trim() || undefined,
         importance,
         status: memory.status === "deleted" ? "deleted" : "active",
+        expires_at,
       });
       toast.success("记忆已更新");
       onSaved(updated);
@@ -564,6 +614,39 @@ function MemoryEditDialog({
             disabled={busy}
           />
         </label>
+
+        <div className="space-y-2 rounded-lg border border-surface-border/70 bg-surface-2/40 p-3">
+          <div className="text-xs font-medium text-muted">过期时间</div>
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              type="checkbox"
+              checked={neverExpires}
+              onChange={(e) => {
+                const next = e.target.checked;
+                setNeverExpires(next);
+                if (next) {
+                  setExpiresLocal("");
+                } else if (!expiresLocal) {
+                  setExpiresLocal(toDatetimeLocalValue(defaultExpiryIso()));
+                }
+              }}
+              disabled={busy}
+              className="accent-brand"
+            />
+            长期有效（不过期）
+          </label>
+          {!neverExpires ? (
+            <label className="block">
+              <div className="mb-1 text-xs text-muted">到期于</div>
+              <Input
+                type="datetime-local"
+                value={expiresLocal}
+                onChange={(e) => setExpiresLocal(e.target.value)}
+                disabled={busy}
+              />
+            </label>
+          ) : null}
+        </div>
 
         <button
           type="button"
@@ -650,4 +733,25 @@ function formatMemoryDate(value: string | null) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function toDatetimeLocalValue(iso: string | null): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function fromDatetimeLocalValue(local: string): string | null {
+  if (!local) return null;
+  const date = new Date(local);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
+function defaultExpiryIso(): string {
+  const date = new Date();
+  date.setDate(date.getDate() + 180);
+  return date.toISOString();
 }

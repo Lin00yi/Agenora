@@ -262,14 +262,15 @@ python -m src.infra.memory_maintenance
 | 方法 | 路径 | 作用 |
 |---|---|---|
 | `GET` | `/api/conversations/memories` | 查看当前用户的 Memory（可按 status 过滤） |
-| `PATCH` | `/api/conversations/memories/{memory_id}` | 编辑内容、重要性或状态 |
+| `GET` | `/api/conversations/memories/export` | 导出 Memory 为 JSON（默认全部状态） |
+| `PATCH` | `/api/conversations/memories/{memory_id}` | 编辑内容、重要性、状态或过期时间（`expires_at`，传 `null` 表示长期有效） |
 | `DELETE` | `/api/conversations/memories/{memory_id}` | 逻辑删除记忆 |
 | `POST` | `/api/conversations/{id}/finalize` | 会话结束时的 LLM 记忆补召回 |
 | `GET` | `/api/conversations/{id}/context-status` | 上下文占用与压缩状态 |
 
 前端：
 
-- `/memories` 记忆管理页：查看、改重要性、删除
+- `/memories` 记忆管理页：查看、编辑内容与过期时间、改重要性、删除、按当前筛选导出
 - 设置页也可浏览记忆列表
 - 聊天消息可展示 Memory 注入 Trace（`memory_trace`）
 
@@ -289,9 +290,9 @@ python -m src.infra.memory_maintenance
 - 向量以 JSON 存在关系库中，适合小规模个人记忆；达到较大规模后应迁移至支持 metadata filter 的专用向量索引；
 - 过期与整合可由独立 Worker/Cron 覆盖长期不活跃用户；部署平台仍需负责单实例调度与重试；
 - 约束主题词表覆盖常见技术栈与策略；词表外约束仍用 `constraint.misc:<hash>`，需要时可扩展 `CONSTRAINT_TOPICS`；
-- 导出、逐条过期时间编辑仍待补齐；token 计量仍为启发式估计。
+- token 计量仍为启发式估计。
 
-下一阶段建议优先引入：真实 tokenizer、记忆导出 / 过期编辑、离线评测。
+下一阶段建议优先引入：真实 tokenizer、离线评测小集。
 
 ## 11. 关键代码位置
 

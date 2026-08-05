@@ -99,3 +99,78 @@ async def test_finalize_conversation_runs_memory_extraction_once(
             await session.execute(select(Conversation).where(Conversation.id == conv_id))
         ).scalar_one()
     assert conv.finalized_at is None
+
+
+@pytest.mark.asyncio
+async def test_patch_memory_expires_at_and_export(client, create_user):
+    from datetime import datetime, timedelta, timezone
+
+    from src.conversations.models import UserMemory
+    from src.infra.database import get_session_factory
+
+    user = await create_user("memory-expiry-export@example.com")
+    memory_id = str(uuid.uuid4())
+    factory = get_session_factory()
+    async with factory() as session:
+        session.add(
+            UserMemory(
+                id=memory_id,
+                user_id=user.id,
+                type="preference",
+                memory_key="response_language",
+                memory_value="zh-CN",
+                content="用户偏好使用中文回复。",
+                status="active",
+                expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+            )
+        )
+        await session.commit()
+
+    future = (datetime.now(timezone.utc) + timedelta(days=90)).isoformat()
+    patched = await client.patch(
+        f"/api/conversations/memories/{memory_id}",
+        headers=_bearer(user),
+        json={"expires_at": future},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["expires_at"] is not None
+    assert patched.json()["status"] == "active"
+    assert patched.json()["source"] == "user_edited"
+
+    cleared = await client.patch(
+        f"/api/conversations/memories/{memory_id}",
+        headers=_bearer(user),
+        json={"expires_at": None},
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["expires_at"] is None
+    assert cleared.json()["status"] == "active"
+
+    past = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    expired = await client.patch(
+        f"/api/conversations/memories/{memory_id}",
+        headers=_bearer(user),
+        json={"expires_at": past},
+    )
+    assert expired.status_code == 200
+    assert expired.json()["status"] == "expired"
+
+    revived = await client.patch(
+        f"/api/conversations/memories/{memory_id}",
+        headers=_bearer(user),
+        json={"expires_at": None},
+    )
+    assert revived.status_code == 200
+    assert revived.json()["status"] == "active"
+    assert revived.json()["expires_at"] is None
+
+    exported = await client.get(
+        "/api/conversations/memories/export?status=all",
+        headers=_bearer(user),
+    )
+    assert exported.status_code == 200
+    assert "knowflow-memories.json" in exported.headers.get("content-disposition", "")
+    body = exported.json()
+    assert body["count"] == 1
+    assert body["memories"][0]["id"] == memory_id
+    assert body["user_id"] == user.id

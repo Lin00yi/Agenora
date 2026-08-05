@@ -78,8 +78,9 @@
 
 - [x] 同步 `memory-system.md`：Profile、LLM finalize、Trace、Memories 页
 - [x] 结构化约束主题键（`constraint.stack.*` / `constraint.policy.*`）
+- [x] 记忆导出 / 逐条过期编辑
 - [ ] 真实 tokenizer；记忆量上来再迁专用向量索引
-- [ ] 记忆导出 / 逐条过期编辑；离线评测小集
+- [ ] 离线评测小集
 
 ## 一句话结论
 
