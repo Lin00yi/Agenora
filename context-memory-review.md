@@ -62,23 +62,25 @@
 
 ## 建议收敛（修复计划）
 
-### P0 · 注入去重
+### P0 · 注入去重 — 已完成
 
 - Profile 只保留「每轮必带」的稳定偏好（`response_language` / `response_style` / `response_max_chars`）
 - 检索块排除已进 Profile 的 `memory_id`，避免双写
 - Profile 文案中文化
 
-### P1 · 预算按模式
+### P1 · 预算按模式 — 已完成
 
 - general 模式 `RAG_RESERVE=0`；KB 模式再预留 8k
 - status percent 改为「注入后有效上下文 / 可用预算」
 - `force_summarize` 驱动更积极的摘要写入（降低最少 older 门槛）
 
-### P2 · 文档与质量
+### P2 · 文档与质量 — 进行中
 
-- 同步 `memory-system.md`：Profile、LLM finalize、Trace、Memories 页
-- 长期：真实 tokenizer；记忆量上来再迁专用向量索引；constraint 主题键
+- [x] 同步 `memory-system.md`：Profile、LLM finalize、Trace、Memories 页
+- [x] 结构化约束主题键（`constraint.stack.*` / `constraint.policy.*`）
+- [ ] 真实 tokenizer；记忆量上来再迁专用向量索引
+- [ ] 记忆导出 / 逐条过期编辑；离线评测小集
 
 ## 一句话结论
 
-上下文设计不是「不合理」，而是「多了一层重叠的记忆注入 + 预算过保守」。先收敛 Profile/Memory 职责和按模式预算，比重做记忆系统更划算。
+上下文设计不是「不合理」，而是「多了一层重叠的记忆注入 + 预算过保守」。先收敛 Profile/Memory 职责和按模式预算，比重做记忆系统更划算。约束冲突已改为主题键 supersede，不再依赖内容哈希。

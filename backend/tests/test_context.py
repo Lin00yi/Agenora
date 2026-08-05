@@ -209,6 +209,137 @@ def test_auto_memories_receive_a_finite_lifecycle() -> None:
     assert all(candidate.expires_in_days == 180 for candidate in candidates)
 
 
+def test_constraint_extraction_uses_topic_keys() -> None:
+    from src.conversations.context import normalize_constraint_key
+
+    candidates = extract_memory_candidates("项目必须统一使用 PostgreSQL。")
+    assert len(candidates) == 1
+    assert candidates[0].type == "constraint"
+    assert candidates[0].key == "constraint.stack.database"
+    assert candidates[0].scope == "kb"
+
+    fastapi = extract_memory_candidates("团队必须统一使用 FastAPI。")
+    assert fastapi[0].key == "constraint.stack.backend"
+
+    assert normalize_constraint_key("database", "use MySQL") == "constraint.stack.database"
+    assert normalize_constraint_key("stack.database") == "constraint.stack.database"
+    assert normalize_constraint_key(None, "完全无关的奇怪约束xyz").startswith("constraint.misc:")
+
+
+def test_explicit_project_constraint_is_promoted_to_topic_key() -> None:
+    candidates = extract_memory_candidates("请记住：项目必须统一使用 TypeScript。")
+    assert len(candidates) == 1
+    assert candidates[0].type == "constraint"
+    assert candidates[0].key == "constraint.stack.language"
+    assert candidates[0].source == "explicit"
+
+
+@pytest.mark.asyncio
+async def test_constraint_topic_conflict_supersedes_previous_value(db, create_user):
+    from sqlalchemy import select
+
+    from src.infra.database import get_session_factory
+
+    user = await create_user("constraint-topic@example.com")
+    factory = get_session_factory()
+    async with factory() as session:
+        first = await store_user_memories(
+            session,
+            user_id=user.id,
+            message_id=str(uuid.uuid4()),
+            content="项目必须统一使用 PostgreSQL。",
+            kb_id="kb-demo",
+        )
+        second = await store_user_memories(
+            session,
+            user_id=user.id,
+            message_id=str(uuid.uuid4()),
+            content="项目必须统一使用 MySQL。",
+            kb_id="kb-demo",
+        )
+        await session.commit()
+        rows = list(
+            (
+                await session.execute(
+                    select(UserMemory).where(
+                        UserMemory.user_id == user.id,
+                        UserMemory.type == "constraint",
+                    )
+                )
+            ).scalars()
+        )
+
+    assert first[0].memory_key == "constraint.stack.database"
+    assert second[0].memory_key == "constraint.stack.database"
+    assert "MySQL" in second[0].memory_value
+    assert "PostgreSQL" in first[0].memory_value
+    active = [row for row in rows if row.status == "active"]
+    superseded = [row for row in rows if row.status == "superseded"]
+    assert len(active) == 1
+    assert active[0].id == second[0].id
+    assert len(superseded) == 1
+    assert superseded[0].id == first[0].id
+
+
+@pytest.mark.asyncio
+async def test_consolidation_rewrites_legacy_hash_constraint_keys(db, create_user):
+    from sqlalchemy import select
+
+    from src.conversations.context import consolidate_user_memories
+    from src.infra.database import get_session_factory
+
+    user = await create_user("legacy-constraint@example.com")
+    now = datetime.now(timezone.utc)
+    legacy_id = str(uuid.uuid4())
+    modern_id = str(uuid.uuid4())
+    factory = get_session_factory()
+    async with factory() as session:
+        session.add_all(
+            [
+                UserMemory(
+                    id=legacy_id,
+                    user_id=user.id,
+                    type="constraint",
+                    scope="kb",
+                    scope_id="kb-1",
+                    memory_key="constraint:abcdef0123456789",
+                    memory_value="统一使用 PostgreSQL",
+                    content="项目约束：统一使用 PostgreSQL。",
+                    status="active",
+                    updated_at=now - timedelta(days=1),
+                ),
+                UserMemory(
+                    id=modern_id,
+                    user_id=user.id,
+                    type="constraint",
+                    scope="kb",
+                    scope_id="kb-1",
+                    memory_key="constraint.stack.database",
+                    memory_value="统一使用 MySQL",
+                    content="项目约束：统一使用 MySQL。",
+                    status="active",
+                    updated_at=now,
+                ),
+            ]
+        )
+        await session.commit()
+        stats = await consolidate_user_memories(session, user_id=user.id)
+        await session.commit()
+        rows = list(
+            (
+                await session.execute(select(UserMemory).where(UserMemory.user_id == user.id))
+            ).scalars()
+        )
+
+    assert stats["superseded"] >= 1
+    active = [row for row in rows if row.status == "active"]
+    assert len(active) == 1
+    assert active[0].id == modern_id
+    assert active[0].memory_key == "constraint.stack.database"
+    legacy = next(row for row in rows if row.id == legacy_id)
+    assert legacy.status == "superseded"
+
+
 def test_unknown_models_use_a_conservative_context_window() -> None:
     from src.conversations.context import context_window_for_model
 

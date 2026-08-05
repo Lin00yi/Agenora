@@ -115,9 +115,15 @@ extract_memory_candidates(content)
 | `preference` | `response_language` | 以后请用中文回复 |
 | `preference` | `response_style` | 默认简洁回答 |
 | `preference` | `response_max_chars` | 以后回复不超过 500 字 |
-| `constraint` | `constraint:<hash>` | 项目必须统一使用 FastAPI |
+| `constraint` | `constraint.<topic>`（如 `constraint.stack.database`） | 项目必须统一使用 FastAPI / PostgreSQL |
+
+已知主题包括：`stack.database`、`stack.backend`、`stack.frontend`、`stack.language`、`stack.orm`、`stack.vector`、`policy.testing`、`policy.ci`、`policy.security`。无法归类时回退到 `constraint.misc:<hash>`，避免无关约束互相覆盖。
+
+同一 `(user, scope, scope_id, type, memory_key)` 下新值会 supersede 旧值；写入与整合还会按主题合并遗留的哈希键约束（例如旧的 `constraint:<hash>` 与新的 `constraint.stack.database`）。
 
 问句不会触发隐式记忆，例如“这次可以用中文吗？”不会被保存。
+
+显式「记住：项目必须…」若能推断主题，会提升为 `constraint` 而非自由 `explicit`，以便参与主题冲突消解。
 
 ### 3.3 低频 LLM 补召回
 
@@ -282,10 +288,10 @@ python -m src.infra.memory_maintenance
 - 实时路径仍以规则为主；LLM 抽取仅在 finalize / idle 维护时运行；
 - 向量以 JSON 存在关系库中，适合小规模个人记忆；达到较大规模后应迁移至支持 metadata filter 的专用向量索引；
 - 过期与整合可由独立 Worker/Cron 覆盖长期不活跃用户；部署平台仍需负责单实例调度与重试；
-- `constraint` 使用内容哈希键；只有高度语义重复的记录会自动合并，真正冲突的约束仍需要更强的结构化主题识别；
+- 约束主题词表覆盖常见技术栈与策略；词表外约束仍用 `constraint.misc:<hash>`，需要时可扩展 `CONSTRAINT_TOPICS`；
 - 导出、逐条过期时间编辑仍待补齐；token 计量仍为启发式估计。
 
-下一阶段建议优先引入：结构化约束主题键、真实 tokenizer、离线评测。
+下一阶段建议优先引入：真实 tokenizer、记忆导出 / 过期编辑、离线评测。
 
 ## 11. 关键代码位置
 

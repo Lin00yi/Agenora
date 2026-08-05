@@ -919,6 +919,187 @@ def _language_value(value: str) -> str:
     return "en"
 
 
+# Canonical constraint topics. Same topic + scope → one active value (supersede).
+CONSTRAINT_TOPICS: dict[str, tuple[str, ...]] = {
+    "stack.database": (
+        "postgresql",
+        "postgres",
+        "mysql",
+        "mariadb",
+        "mongodb",
+        "mongo",
+        "redis",
+        "sqlite",
+        "cockroach",
+        "数据库",
+        "持久化",
+    ),
+    "stack.backend": (
+        "fastapi",
+        "django",
+        "flask",
+        "express",
+        "nestjs",
+        "spring boot",
+        "springboot",
+        "后端框架",
+    ),
+    "stack.frontend": (
+        "react",
+        "vue",
+        "next.js",
+        "nextjs",
+        "nuxt",
+        "angular",
+        "svelte",
+        "前端框架",
+    ),
+    "stack.language": (
+        "python",
+        "typescript",
+        "javascript",
+        "golang",
+        "rust",
+        "kotlin",
+        "java",
+        "go语言",
+    ),
+    "stack.orm": (
+        "sqlalchemy",
+        "prisma",
+        "typeorm",
+        "hibernate",
+        "gorm",
+        "django orm",
+    ),
+    "stack.vector": (
+        "milvus",
+        "qdrant",
+        "pinecone",
+        "weaviate",
+        "向量库",
+        "vector store",
+        "vector database",
+    ),
+    "policy.testing": (
+        "pytest",
+        "jest",
+        "vitest",
+        "unittest",
+        "单测",
+        "单元测试",
+        "测试覆盖",
+    ),
+    "policy.ci": (
+        "github actions",
+        "gitlab ci",
+        "ci/cd",
+        "持续集成",
+        "jenkins",
+    ),
+    "policy.security": (
+        "禁止提交密钥",
+        "不得明文",
+        "强制 https",
+        "禁止硬编码",
+        "no plaintext secret",
+    ),
+}
+
+CONSTRAINT_TOPIC_ALIASES: dict[str, str] = {
+    "database": "stack.database",
+    "db": "stack.database",
+    "postgres": "stack.database",
+    "postgresql": "stack.database",
+    "mysql": "stack.database",
+    "mongodb": "stack.database",
+    "backend": "stack.backend",
+    "framework": "stack.backend",
+    "fastapi": "stack.backend",
+    "django": "stack.backend",
+    "frontend": "stack.frontend",
+    "react": "stack.frontend",
+    "language": "stack.language",
+    "lang": "stack.language",
+    "python": "stack.language",
+    "typescript": "stack.language",
+    "orm": "stack.orm",
+    "vector": "stack.vector",
+    "embedding_store": "stack.vector",
+    "testing": "policy.testing",
+    "test": "policy.testing",
+    "ci": "policy.ci",
+    "cd": "policy.ci",
+    "security": "policy.security",
+}
+
+
+def _strip_constraint_key_prefix(key: str) -> str:
+    raw = key.strip().lower().replace("_", ".").replace(" ", ".")
+    for prefix in ("constraint.", "constraint:", "topic.", "topic:"):
+        if raw.startswith(prefix):
+            raw = raw[len(prefix) :]
+    return raw.strip(".")
+
+
+def infer_constraint_topic(*texts: str) -> str | None:
+    """Infer a canonical topic from free-form constraint text.
+
+    Longer keyword matches win so ``spring boot`` beats ``spring``-style
+    collisions when both are present. Returns ``None`` when no topic keyword hits.
+    """
+    haystack = " ".join(part for part in texts if part).lower()
+    if not haystack:
+        return None
+    best_topic: str | None = None
+    best_len = 0
+    for topic, keywords in CONSTRAINT_TOPICS.items():
+        for keyword in keywords:
+            if keyword.lower() in haystack and len(keyword) > best_len:
+                best_topic = topic
+                best_len = len(keyword)
+    return best_topic
+
+
+def normalize_constraint_key(key: str | None = None, *texts: str) -> str:
+    """Map a constraint to ``constraint.<topic>`` for supersede-friendly writes.
+
+    Unknown topics fall back to a content hash under ``constraint.misc:`` so
+    unrelated free-form rules still do not collide with each other.
+    """
+    stripped = _strip_constraint_key_prefix(key or "")
+    if stripped in CONSTRAINT_TOPICS:
+        return f"constraint.{stripped}"
+    if stripped in CONSTRAINT_TOPIC_ALIASES:
+        return f"constraint.{CONSTRAINT_TOPIC_ALIASES[stripped]}"
+    inferred = infer_constraint_topic(stripped, *texts)
+    if inferred:
+        return f"constraint.{inferred}"
+    seed = " ".join(part for part in (key, *texts) if part).strip() or "constraint"
+    return _stable_key("constraint.misc", seed)
+
+
+def _constraint_topic_for_candidate(candidate: MemoryCandidate) -> str | None:
+    return constraint_topic_from_memory_key(candidate.key) or infer_constraint_topic(
+        candidate.key, candidate.value, candidate.content
+    )
+
+
+def constraint_topic_from_memory_key(memory_key: str | None) -> str | None:
+    """Return the topic segment for a stored constraint key, if structured."""
+    if not memory_key:
+        return None
+    stripped = _strip_constraint_key_prefix(memory_key)
+    if stripped in CONSTRAINT_TOPICS:
+        return stripped
+    if stripped.startswith("misc:") or stripped.startswith("misc."):
+        return None
+    # Legacy ``constraint:<hash>`` has no topic.
+    if re.fullmatch(r"[0-9a-f]{12,64}", stripped):
+        return None
+    return stripped if stripped in CONSTRAINT_TOPICS else None
+
+
 def extract_memory_candidates(text: str) -> list[MemoryCandidate]:
     """Silently extract only stable, user-authored, high-confidence memories.
 
@@ -933,6 +1114,24 @@ def extract_memory_candidates(text: str) -> list[MemoryCandidate]:
 
     explicit = extract_explicit_memory_candidate(cleaned)
     if explicit:
+        # Promote project constraints phrased as ``记住：…`` into the structured
+        # constraint lane when a topic can be inferred; otherwise keep explicit.
+        if re.search(r"(?:项目|团队|代码库).{0,36}?(必须|禁止|不可|不能|统一使用)", explicit):
+            topic_key = normalize_constraint_key(None, explicit)
+            if not topic_key.startswith("constraint.misc:"):
+                return [
+                    MemoryCandidate(
+                        type="constraint",
+                        key=topic_key,
+                        value=explicit,
+                        content=f"项目约束：{explicit}。",
+                        confidence=0.92,
+                        importance=0.9,
+                        source="explicit",
+                        scope="kb",
+                        expires_in_days=180,
+                    )
+                ]
         return [
             MemoryCandidate(
                 type="explicit",
@@ -1016,7 +1215,7 @@ def extract_memory_candidates(text: str) -> list[MemoryCandidate]:
         candidates.append(
             MemoryCandidate(
                 type="constraint",
-                key=_stable_key("constraint", value),
+                key=normalize_constraint_key(None, value, cleaned),
                 value=value,
                 content=f"项目约束：{value}。",
                 confidence=0.8,
@@ -1091,8 +1290,12 @@ def _coerce_llm_memory_candidate(item: Any) -> MemoryCandidate | None:
         return None
     if confidence < 0.72:
         return None
-    key = " ".join(str(item.get("key") or "").split())[:128]
-    if not key:
+    raw_key = " ".join(str(item.get("key") or "").split())[:128]
+    if memory_type == "constraint":
+        key = normalize_constraint_key(raw_key, value, content)
+    elif raw_key:
+        key = raw_key
+    else:
         key = _stable_key(memory_type, value)
     scope = str(item.get("scope") or "personal").strip().lower()
     if scope not in {"personal", "kb"}:
@@ -1152,6 +1355,10 @@ async def extract_conversation_memory_candidates_with_llm(
         "Return only a JSON array. Each item must have: type, key, value, content, "
         "confidence, importance, scope. Optional: expires_in_days. "
         "Use type one of explicit, preference, constraint, fact. "
+        "For preference keys prefer: response_language, response_style, response_max_chars. "
+        "For constraint keys use a topic from: stack.database, stack.backend, "
+        "stack.frontend, stack.language, stack.orm, stack.vector, policy.testing, "
+        "policy.ci, policy.security. Example constraint key: stack.database. "
         "Use scope personal unless the memory is clearly tied to the current KB/project."
     )
     user_prompt = (
@@ -1161,7 +1368,10 @@ async def extract_conversation_memory_candidates_with_llm(
         "Return JSON only. Example: "
         '[{"type":"preference","key":"response_language","value":"zh-CN",'
         '"content":"User prefers Chinese responses.","confidence":0.86,'
-        '"importance":0.9,"scope":"personal","expires_in_days":180}]'
+        '"importance":0.9,"scope":"personal","expires_in_days":180},'
+        '{"type":"constraint","key":"stack.database","value":"PostgreSQL",'
+        '"content":"Project must use PostgreSQL.","confidence":0.88,'
+        '"importance":0.9,"scope":"kb","expires_in_days":180}]'
     )
     try:
         client = get_client(llm_cfg)
@@ -1291,8 +1501,41 @@ async def consolidate_user_memories(
             superseded += 1
 
     active_rows = [row for row in rows if row.status == "active"]
+    # Constraints that share a topic (including legacy hash keys whose content
+    # maps to the same topic) keep only the newest active value.
+    topic_groups: dict[tuple[str, str | None, str], list[UserMemory]] = {}
+    for row in active_rows:
+        if row.type != "constraint":
+            continue
+        topic = constraint_topic_from_memory_key(row.memory_key) or infer_constraint_topic(
+            row.memory_key or "",
+            row.memory_value or "",
+            row.content or "",
+        )
+        if not topic:
+            continue
+        # Rewrite legacy / misc keys onto the canonical topic key when we can.
+        canonical_key = f"constraint.{topic}"
+        if row.memory_key != canonical_key:
+            row.memory_key = canonical_key
+        topic_groups.setdefault((row.scope, row.scope_id, topic), []).append(row)
+    for group in topic_groups.values():
+        if len(group) < 2:
+            continue
+        survivor = _newer_memory(group)
+        for row in group:
+            if row is survivor:
+                continue
+            _merge_memory_sources(survivor, row)
+            row.status = "superseded"
+            if not survivor.supersedes_memory_id:
+                survivor.supersedes_memory_id = row.id
+            row.updated_at = now
+            superseded += 1
+
+    active_rows = [row for row in rows if row.status == "active"]
     # Near-identical free-form/constraint memories frequently acquire distinct
-    # hash keys. Merge them only with matching type/scope/fingerprint and a
+    # misc-hash keys. Merge them only with matching type/scope/fingerprint and a
     # very high cosine threshold to avoid treating related facts as duplicates.
     for index, row in enumerate(active_rows):
         if row.status != "active" or row.type not in {"explicit", "constraint"}:
@@ -1359,23 +1602,65 @@ async def store_memory_candidates(
             )
         )
         existing = result.scalar_one_or_none()
+        # Constraints may still live under a legacy hash key. Match by topic so
+        # ``PostgreSQL`` → ``MySQL`` supersedes even before consolidation runs.
+        topic_conflicts: list[UserMemory] = []
+        if candidate.type == "constraint" and existing is None:
+            topic = _constraint_topic_for_candidate(candidate)
+            if topic:
+                siblings = list(
+                    (
+                        await session.execute(
+                            select(UserMemory).where(
+                                UserMemory.user_id == user_id,
+                                UserMemory.scope == scope,
+                                UserMemory.scope_id == scope_id,
+                                UserMemory.type == "constraint",
+                                UserMemory.status == "active",
+                            )
+                        )
+                    ).scalars()
+                )
+                for row in siblings:
+                    row_topic = constraint_topic_from_memory_key(row.memory_key) or infer_constraint_topic(
+                        row.memory_key or "",
+                        row.memory_value or "",
+                        row.content or "",
+                    )
+                    if row_topic == topic:
+                        topic_conflicts.append(row)
+                if topic_conflicts:
+                    existing = _newer_memory(topic_conflicts)
+
         if existing and existing.memory_value == candidate.value:
             ids = _source_message_ids(existing)
             ids = list(dict.fromkeys([*ids, *source_ids]))
             existing.source_message_ids = json.dumps(ids, ensure_ascii=False)
             existing.confidence = max(existing.confidence, candidate.confidence)
             existing.importance = max(existing.importance, candidate.importance)
+            existing.memory_key = candidate.key
+            existing.content = candidate.content
             if candidate.expires_in_days is not None:
                 existing.expires_at = datetime.now(timezone.utc) + timedelta(
                     days=candidate.expires_in_days
                 )
             existing.updated_at = datetime.now(timezone.utc)
+            for row in topic_conflicts:
+                if row is existing:
+                    continue
+                row.status = "superseded"
+                row.updated_at = datetime.now(timezone.utc)
             stored.append(existing)
             continue
 
         if existing:
             existing.status = "superseded"
             existing.updated_at = datetime.now(timezone.utc)
+        for row in topic_conflicts:
+            if row is existing:
+                continue
+            row.status = "superseded"
+            row.updated_at = datetime.now(timezone.utc)
 
         row = UserMemory(
             id=str(uuid.uuid4()),
