@@ -1,5 +1,10 @@
 # Chat workspace visual QA
 
+## 2026-08-05 — Admin authenticated sign-off
+
+- Promoted `1765861423@qq.com` to admin (`is_admin=true` + `ADMIN_EMAILS`).
+- Light QA: `/admin` 看板、`/admin/users`、`/admin/kbs` — Brand、tabs、表格、刷新/操作按钮正常；当前账号显示「管理员 · 你」。
+
 ## 2026-08-05 — Focus + responsive QA
 
 - Breakpoints `375 / 768 / 1024 / 1440`: Welcome、Login、Chat、KB、Settings — `overflowX === 0`.
@@ -18,7 +23,7 @@ Browser QA on `localhost:3001` (dev). Theme toggle Light/Dark exercised. Authent
 | Chat | ✅ | ✅ | Sidebar / Composer / KB Select / 模型 / 发送 / 检索条 / 导出动作正常 |
 | KB (`/kbs`) | ✅ | — | 列表卡、新建按钮、主题 compact、加载态正常 |
 | Settings | ✅ | — | LLM 表单、保存按钮、分区卡片正常 |
-| Admin | ✅* | — | 非管理员空态「没有后台管理权限」展示正确（*无管理权限账号） |
+| Admin | ✅ | — | 看板 / 用户 / 知识库 Light 签收；`1765861423@qq.com` 显示为管理员 |
 
 Token contrast (computed from CSS vars):
 
