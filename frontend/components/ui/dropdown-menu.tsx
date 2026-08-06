@@ -7,9 +7,18 @@ import { cn } from "@/lib/utils"
 import { CheckIcon, ChevronRightIcon } from "lucide-react"
 
 function DropdownMenu({
+  modal = false,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
-  return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} />
+  // modal=false avoids a full-screen pointer-events layer that can make
+  // table-row triggers feel "dead" inside overflow scroll containers.
+  return (
+    <DropdownMenuPrimitive.Root
+      data-slot="dropdown-menu"
+      modal={modal}
+      {...props}
+    />
+  )
 }
 
 function DropdownMenuPortal({
@@ -44,7 +53,7 @@ function DropdownMenuContent({
         sideOffset={sideOffset}
         align={align}
         className={cn(
-          "kf-motion-enter z-50 max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-36 overflow-x-hidden overflow-y-auto rounded-lg border border-surface-border/80 bg-surface p-1 text-ink shadow-[0_18px_48px_rgb(15_23_42/0.18)] ring-1 ring-surface-border/45 duration-popover ease-ui-out data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:overflow-hidden data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 dark:border-surface-border/90 dark:bg-surface dark:shadow-[0_22px_54px_rgb(0_0_0/0.34)]",
+          "z-50 max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-36 overflow-x-hidden overflow-y-auto rounded-lg border border-surface-border/80 bg-surface p-1 text-ink shadow-[0_18px_48px_rgb(15_23_42/0.18)] ring-1 ring-surface-border/45 outline-none data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 dark:border-surface-border/90 dark:bg-surface dark:shadow-[0_22px_54px_rgb(0_0_0/0.34)]",
           className
         )}
         {...props}

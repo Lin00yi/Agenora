@@ -1,7 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { forwardRef, type ReactNode } from "react";
+import {
+  forwardRef,
+  type ComponentPropsWithoutRef,
+  type ReactNode,
+} from "react";
 import { Loader2, MoreHorizontal, type LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -79,16 +83,14 @@ export function AdminRowAction({
   );
 }
 
-type AdminRowMoreTriggerProps = {
+type AdminRowMoreTriggerProps = ComponentPropsWithoutRef<"button"> & {
   title?: string;
-  "aria-label"?: string;
-  disabled?: boolean;
-  className?: string;
 };
 
 /**
- * Dropdown trigger for row “更多” — same height / weight as AdminRowAction.
- * Use inside DropdownMenuTrigger asChild.
+ * Dropdown trigger for row “更多”.
+ * Renders a native <button> (not Button) so Radix DropdownMenuTrigger asChild
+ * can attach pointer handlers/ref reliably — same pattern as ChatTopBar.
  */
 export const AdminRowMoreTrigger = forwardRef<
   HTMLButtonElement,
@@ -99,27 +101,31 @@ export const AdminRowMoreTrigger = forwardRef<
     "aria-label": ariaLabel,
     disabled = false,
     className,
+    type = "button",
+    ...props
   },
   ref
 ) {
   return (
-    <Button
+    <button
       ref={ref}
-      type="button"
-      variant="ghost"
-      size="icon-sm"
-      className={cn(
-        adminRowActionClassName,
-        "w-7 px-0 text-muted hover:bg-surface-2 hover:text-ink",
-        "aria-expanded:bg-surface-2 aria-expanded:text-ink",
-        className
-      )}
+      type={type}
       title={title}
       aria-label={ariaLabel ?? title}
       disabled={disabled}
+      className={cn(
+        adminRowActionClassName,
+        "inline-flex w-7 cursor-pointer items-center justify-center px-0 text-muted",
+        "transition-colors hover:bg-surface-2 hover:text-ink",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30",
+        "aria-expanded:bg-surface-2 aria-expanded:text-ink",
+        "disabled:pointer-events-none disabled:opacity-50",
+        className
+      )}
+      {...props}
     >
       <MoreHorizontal className="h-3.5 w-3.5" aria-hidden />
-    </Button>
+    </button>
   );
 });
 AdminRowMoreTrigger.displayName = "AdminRowMoreTrigger";
