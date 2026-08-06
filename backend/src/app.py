@@ -230,6 +230,16 @@ def _run_chat_session(
             final_state = await graph.ainvoke(initial_state)
             report = redact_sensitive_output(final_state.get("final_report") or "")
             cost_usd = round(final_state.get("cost_usd", 0.0), 6)
+            # Finish sinks before SSE "done" so client disconnect / task.cancel
+            # cannot skip DB persist while Langfuse flush is in flight.
+            if trace is not None:
+                await asyncio.shield(
+                    trace.finish(
+                        status="ok",
+                        output=report,
+                        total_cost_usd=cost_usd,
+                    )
+                )
             await queue.put({"event": "report_start"})
             for piece in _chunks(report, size=8):
                 await queue.put({"event": "token", "text": piece})
@@ -242,19 +252,18 @@ def _run_chat_session(
                     "kb_id": kb.id if kb else None,
                     "memory_trace": memory_trace,
                     "citations": list(final_state.get("citations") or []),
-                    "trace_id": get_current_trace_id(),
+                    "trace_id": (trace.id if trace is not None else get_current_trace_id()),
                 }
             )
-            if trace is not None:
-                await trace.finish(
-                    status="ok",
-                    output=report,
-                    total_cost_usd=cost_usd,
-                )
         except Exception as exc:  # noqa: BLE001
             log.exception("agent_failed", user=user_email, kb_id=kb.id if kb else None)
             if trace is not None:
-                await trace.finish(status="error", error=str(exc))
+                try:
+                    await asyncio.shield(
+                        trace.finish(status="error", error=str(exc))
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
             await queue.put({"event": "error", "message": str(exc)})
         finally:
             await queue.put(None)

@@ -61,6 +61,15 @@ services:
       LOG_LEVEL: INFO
       CORS_ORIGINS: ${PUBLIC_URL:-http://localhost}
       RATE_LIMIT_PER_HOUR: ${RATE_LIMIT_PER_HOUR:-60}
+
+      # --- Observability (internal Trace DB + Langfuse SaaS/self-host) ---
+      TRACE_ENABLED: ${TRACE_ENABLED:-true}
+      TRACE_STORE_IO: ${TRACE_STORE_IO:-true}
+      LANGFUSE_ENABLED: ${LANGFUSE_ENABLED:-true}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-https://cloud.langfuse.com}
+      LANGFUSE_SAMPLE_RATE: ${LANGFUSE_SAMPLE_RATE:-1.0}
     volumes:
       - backend-data:/app/data
     expose:

@@ -1,6 +1,7 @@
 """In-memory span tree + flush to DB and/or Langfuse."""
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 import uuid
@@ -165,6 +166,16 @@ class TraceHandle:
                     obs.status = "error"
                 self._end_lf(obs)
 
+        # Persist internal DB first. Langfuse flush is sync/network-bound and
+        # must not block or cancel-away the local sink when SSE clients disconnect.
+        if s.trace_enabled:
+            try:
+                from src.observability.persist import persist_trace
+
+                await persist_trace(self)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("trace_persist_failed", error=str(exc), trace_id=self.id)
+
         if self._lf_root is not None:
             try:
                 self._lf_root.update(
@@ -179,17 +190,9 @@ class TraceHandle:
                 self._lf_root.end()
                 lf = get_langfuse()
                 if lf is not None and hasattr(lf, "flush"):
-                    lf.flush()
+                    await asyncio.to_thread(lf.flush)
             except Exception as exc:  # noqa: BLE001
                 log.warning("langfuse_trace_end_failed", error=str(exc))
-
-        if s.trace_enabled:
-            try:
-                from src.observability.persist import persist_trace
-
-                await persist_trace(self)
-            except Exception as exc:  # noqa: BLE001
-                log.warning("trace_persist_failed", error=str(exc), trace_id=self.id)
 
         # Token.reset only works in the Context that called set(). Chat may
         # start the trace in the request task and finish inside create_task.
