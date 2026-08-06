@@ -170,3 +170,76 @@ export async function listKbs(
 export async function deleteKb(id: string): Promise<void> {
   await unwrap(await authFetch(`/api/admin/kbs/${id}`, { method: "DELETE" }));
 }
+
+// ---------------------------------------------------------------------------
+// Traces (internal observability)
+// ---------------------------------------------------------------------------
+export type AdminTraceSummary = {
+  id: string;
+  conversation_id: string | null;
+  user_id: string | null;
+  name: string;
+  started_at: string | null;
+  ended_at: string | null;
+  duration_ms: number | null;
+  status: string;
+  total_cost_usd: number | null;
+  metadata: Record<string, unknown>;
+  observation_count: number;
+};
+
+export type AdminObservationNode = {
+  id: string;
+  trace_id: string;
+  parent_observation_id: string | null;
+  type: string;
+  name: string;
+  started_at: string | null;
+  ended_at: string | null;
+  duration_ms: number | null;
+  status: string;
+  error: string | null;
+  model: string | null;
+  usage: Record<string, number> | null;
+  cost_usd: number | null;
+  input_preview: string | null;
+  output_preview: string | null;
+  metadata: Record<string, unknown>;
+  children?: AdminObservationNode[];
+};
+
+export type AdminTraceListResponse = {
+  total: number;
+  limit: number;
+  offset: number;
+  traces: AdminTraceSummary[];
+};
+
+export type AdminTraceDetail = AdminTraceSummary & {
+  input_preview: string | null;
+  output_preview: string | null;
+  observations: AdminObservationNode[];
+  observations_flat: AdminObservationNode[];
+};
+
+export async function listTraces(params?: {
+  conversation_id?: string;
+  user_id?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<AdminTraceListResponse> {
+  const qs = new URLSearchParams();
+  qs.set("limit", String(params?.limit ?? 50));
+  qs.set("offset", String(params?.offset ?? 0));
+  if (params?.conversation_id?.trim()) {
+    qs.set("conversation_id", params.conversation_id.trim());
+  }
+  if (params?.user_id?.trim()) {
+    qs.set("user_id", params.user_id.trim());
+  }
+  return unwrap(await authFetch(`/api/admin/traces?${qs.toString()}`));
+}
+
+export async function getTrace(id: string): Promise<AdminTraceDetail> {
+  return unwrap(await authFetch(`/api/admin/traces/${id}`));
+}

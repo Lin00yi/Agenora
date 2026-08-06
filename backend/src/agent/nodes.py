@@ -18,6 +18,7 @@ from src.conversations.context import (
 )
 from src.infra.llm import CostTracker, get_client, pick_model, with_cache_control
 from src.infra.llm_adapters import create_tool_adapter
+from src.observability import ageneration, traced
 from src.safety.tool_guard import is_tool_allowed
 from src.safety.prompt_injection import assess_prompt_injection, filter_untrusted_rag_text
 from src.tools.base import ToolRegistry
@@ -531,6 +532,7 @@ def _infer_output_task(messages: list[dict[str, Any]], kb_context: str) -> str:
     return "answer"
 
 
+@traced("query_policy")
 async def query_policy_node(
     state: AgentState,
     *,
@@ -622,28 +624,37 @@ async def query_policy_node(
         else:
             is_anthropic = settings.llm_provider == "anthropic"
 
-        if not is_anthropic:
-            resp = await client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_query},
-                ],
-                max_tokens=512,
-            )
-            cost.add(model, getattr(resp, "usage", None))
-            text = resp.choices[0].message.content or ""
-        else:
-            resp = await client.messages.create(
-                model=model,
-                max_tokens=512,
-                system=with_cache_control([{"type": "text", "text": system_prompt}], llm_cfg),
-                messages=[{"role": "user", "content": user_query}],
-            )
-            cost.add(model, resp.usage)
-            text = "\n".join(
-                block.text for block in resp.content if getattr(block, "type", "") == "text"
-            )
+        async with ageneration(
+            "query_policy.llm",
+            model=model,
+            input={"query": user_query},
+        ) as gen:
+            if not is_anthropic:
+                resp = await client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_query},
+                    ],
+                    max_tokens=512,
+                )
+                cost.add(model, getattr(resp, "usage", None))
+                text = resp.choices[0].message.content or ""
+                if gen is not None:
+                    gen.update(output=text, usage=getattr(resp, "usage", None))
+            else:
+                resp = await client.messages.create(
+                    model=model,
+                    max_tokens=512,
+                    system=with_cache_control([{"type": "text", "text": system_prompt}], llm_cfg),
+                    messages=[{"role": "user", "content": user_query}],
+                )
+                cost.add(model, resp.usage)
+                text = "\n".join(
+                    block.text for block in resp.content if getattr(block, "type", "") == "text"
+                )
+                if gen is not None:
+                    gen.update(output=text, usage=resp.usage)
 
         parsed = _extract_json_object(text)
         decision = _coerce_policy_decision(
@@ -747,6 +758,7 @@ async def query_rewrite_node(
     }
 
 
+@traced("reason")
 async def reason_node(
     state: AgentState,
     *,
@@ -1010,6 +1022,7 @@ def _append_output_limit_notice(text: str) -> str:
     return text.rstrip() + notice
 
 
+@traced("kb_search")
 async def kb_search_node(
     state: AgentState,
     *,
@@ -1123,6 +1136,7 @@ async def kb_search_node(
     }
 
 
+@traced("call_tools")
 async def call_tools_node(
     state: AgentState,
     *,

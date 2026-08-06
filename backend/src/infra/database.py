@@ -70,6 +70,7 @@ async def init_db() -> None:
     from src.auth import models as _auth_models  # noqa: F401
     from src.conversations import models as _conv_models  # noqa: F401
     from src.kb import models as _kb_models  # noqa: F401
+    from src.observability import models as _obs_models  # noqa: F401
 
     engine = get_engine()
     async with engine.begin() as conn:

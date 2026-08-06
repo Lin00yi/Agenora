@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
-import { BookOpen, ChevronLeft, Home, LayoutDashboard, Users } from "lucide-react";
+import { BookOpen, ChevronLeft, GitBranch, Home, LayoutDashboard, Users } from "lucide-react";
 
 import { getToken, getUser, refreshMe } from "@/lib/auth";
 import { cn } from "@/lib/cn";
@@ -106,6 +106,7 @@ export default function AdminShell({
     { href: "/admin", label: "看板", icon: LayoutDashboard },
     { href: "/admin/users", label: "用户", icon: Users },
     { href: "/admin/kbs", label: "知识库", icon: BookOpen },
+    { href: "/admin/traces", label: "追踪", icon: GitBranch },
   ];
 
   return (

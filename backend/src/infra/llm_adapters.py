@@ -133,37 +133,61 @@ class AnthropicToolAdapter:
         tools: list[ToolSchema],
         max_tokens: int,
     ) -> LLMToolChatResponse:
-        system_blocks = with_cache_control(
-            [{"type": "text", "text": system_prompt}], self.llm_cfg
-        )
-        resp = await self.client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            system=system_blocks,
-            messages=messages,
-            tools=tools,
-        )
+        from src.observability import ageneration
+        from src.infra.llm import CostTracker
 
-        text_parts: list[str] = []
-        tool_calls: list[LLMToolCall] = []
-        for block in resp.content:
-            if block.type == "text":
-                text_parts.append(block.text)
-            elif block.type == "tool_use":
-                tool_calls.append(
-                    LLMToolCall(id=block.id, name=block.name, input=dict(block.input or {}))
+        async with ageneration(
+            "llm.chat_with_tools",
+            model=model,
+            input={"system": system_prompt, "messages": messages, "tools": [t.get("name") for t in tools]},
+            metadata={"max_tokens": max_tokens, "provider": "anthropic"},
+        ) as gen:
+            system_blocks = with_cache_control(
+                [{"type": "text", "text": system_prompt}], self.llm_cfg
+            )
+            resp = await self.client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                system=system_blocks,
+                messages=messages,
+                tools=tools,
+            )
+
+            text_parts: list[str] = []
+            tool_calls: list[LLMToolCall] = []
+            for block in resp.content:
+                if block.type == "text":
+                    text_parts.append(block.text)
+                elif block.type == "tool_use":
+                    tool_calls.append(
+                        LLMToolCall(id=block.id, name=block.name, input=dict(block.input or {}))
+                    )
+
+            # Estimate cost for the generation span (mirrors CostTracker pricing).
+            cost_usd = None
+            try:
+                tracker = CostTracker()
+                tracker.add(model, resp.usage)
+                cost_usd = tracker.usd
+            except Exception:  # noqa: BLE001
+                pass
+            if gen is not None:
+                gen.update(
+                    output={"text": "\n".join(text_parts), "tool_calls": [tc.name for tc in tool_calls]},
+                    usage=resp.usage,
+                    cost_usd=cost_usd,
                 )
 
-        return LLMToolChatResponse(
-            text_parts=text_parts,
-            tool_calls=tool_calls,
-            assistant_content=[
-                b.model_dump() if hasattr(b, "model_dump") else dict(b)
-                for b in resp.content
-            ],
-            usage=resp.usage,
-            stop_reason=getattr(resp, "stop_reason", None),
-        )
+            return LLMToolChatResponse(
+                text_parts=text_parts,
+                tool_calls=tool_calls,
+                assistant_content=[
+                    b.model_dump() if hasattr(b, "model_dump") else dict(b)
+                    for b in resp.content
+                ],
+                usage=resp.usage,
+                stop_reason=getattr(resp, "stop_reason", None),
+            )
 
 
 class OpenAICompatToolAdapter:
@@ -179,52 +203,75 @@ class OpenAICompatToolAdapter:
         tools: list[ToolSchema],
         max_tokens: int,
     ) -> LLMToolChatResponse:
-        _, openai_messages, openai_tools = convert_to_openai_format(messages, tools)
-        resp = await self.client.chat.completions.create(
+        from src.observability import ageneration
+        from src.infra.llm import CostTracker
+
+        async with ageneration(
+            "llm.chat_with_tools",
             model=model,
-            messages=[{"role": "system", "content": system_prompt}] + openai_messages,
-            tools=openai_tools if openai_tools else None,
-            max_tokens=max_tokens,
-        )
-
-        choice = resp.choices[0]
-        text_parts: list[str] = []
-        tool_calls: list[LLMToolCall] = []
-
-        if choice.message.content:
-            text_parts.append(choice.message.content)
-
-        if choice.message.tool_calls:
-            for tc in choice.message.tool_calls:
-                tool_input: dict[str, Any] = {}
-                if tc.function.arguments:
-                    parsed = json.loads(tc.function.arguments)
-                    if isinstance(parsed, dict):
-                        tool_input = parsed
-                tool_calls.append(
-                    LLMToolCall(id=tc.id, name=tc.function.name, input=tool_input)
-                )
-
-        assistant_content: list[dict[str, Any]] = []
-        if text_parts:
-            assistant_content.append({"type": "text", "text": " ".join(text_parts)})
-        for tc in tool_calls:
-            assistant_content.append(
-                {
-                    "type": "tool_use",
-                    "id": tc.id,
-                    "name": tc.name,
-                    "input": tc.input,
-                }
+            input={"system": system_prompt, "messages": messages, "tools": [t.get("name") for t in tools]},
+            metadata={"max_tokens": max_tokens, "provider": "openai-compat"},
+        ) as gen:
+            _, openai_messages, openai_tools = convert_to_openai_format(messages, tools)
+            resp = await self.client.chat.completions.create(
+                model=model,
+                messages=[{"role": "system", "content": system_prompt}] + openai_messages,
+                tools=openai_tools if openai_tools else None,
+                max_tokens=max_tokens,
             )
 
-        return LLMToolChatResponse(
-            text_parts=text_parts,
-            tool_calls=tool_calls,
-            assistant_content=assistant_content,
-            usage=resp.usage,
-            stop_reason=getattr(choice, "finish_reason", None),
-        )
+            choice = resp.choices[0]
+            text_parts: list[str] = []
+            tool_calls: list[LLMToolCall] = []
+
+            if choice.message.content:
+                text_parts.append(choice.message.content)
+
+            if choice.message.tool_calls:
+                for tc in choice.message.tool_calls:
+                    tool_input: dict[str, Any] = {}
+                    if tc.function.arguments:
+                        parsed = json.loads(tc.function.arguments)
+                        if isinstance(parsed, dict):
+                            tool_input = parsed
+                    tool_calls.append(
+                        LLMToolCall(id=tc.id, name=tc.function.name, input=tool_input)
+                    )
+
+            assistant_content: list[dict[str, Any]] = []
+            if text_parts:
+                assistant_content.append({"type": "text", "text": " ".join(text_parts)})
+            for tc in tool_calls:
+                assistant_content.append(
+                    {
+                        "type": "tool_use",
+                        "id": tc.id,
+                        "name": tc.name,
+                        "input": tc.input,
+                    }
+                )
+
+            cost_usd = None
+            try:
+                tracker = CostTracker()
+                tracker.add(model, resp.usage)
+                cost_usd = tracker.usd
+            except Exception:  # noqa: BLE001
+                pass
+            if gen is not None:
+                gen.update(
+                    output={"text": "\n".join(text_parts), "tool_calls": [tc.name for tc in tool_calls]},
+                    usage=resp.usage,
+                    cost_usd=cost_usd,
+                )
+
+            return LLMToolChatResponse(
+                text_parts=text_parts,
+                tool_calls=tool_calls,
+                assistant_content=assistant_content,
+                usage=resp.usage,
+                stop_reason=getattr(choice, "finish_reason", None),
+            )
 
 
 def create_tool_adapter(

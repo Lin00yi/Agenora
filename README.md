@@ -157,7 +157,7 @@ ai-agent/
 │   │   └── uploads/{kb_id}/       原始上传文件
 │   ├── tests/                     smoke (reranker + milvus + graph) + test_admin (28) + conftest（临时 DB/HTTP 夹具）
 │   ├── env.example                env 模板（每个字段含注释）
-│   └── pyproject.toml             依赖（核心 + dev/ollama/openai/monitoring/milvus extras）
+│   └── pyproject.toml             依赖（核心 + dev/ollama/openai/milvus extras）
 │
 ├── frontend/                      Next.js 14 App Router + Tailwind
 │   ├── app/
@@ -677,7 +677,7 @@ sudo certbot renew
 | **加密** | (派生自 `JWT_SECRET`) | — | Fernet at-rest 加密所有 api_key |
 | **CORS** | `CORS_ORIGINS` | `http://localhost:3000` | 多个用逗号分隔 |
 | **限流** | `RATE_LIMIT_PER_HOUR` | `20` | 每用户每小时 chat 上限 |
-| **监控** | `LOGFIRE_TOKEN` | (空) | 可选 Logfire backend tracing |
+| **可观测性** | `TRACE_ENABLED` / `LANGFUSE_*` | 默认开 | 内部 Trace 写 DB；Langfuse 无密钥时 no-op |
 
 ### 前端 env（`frontend/.env.local`）
 

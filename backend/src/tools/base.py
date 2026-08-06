@@ -70,19 +70,45 @@ class ToolRegistry:
         return [t.to_schema() for t in self._tools.values()]
 
     async def call(self, name: str, args: dict[str, Any]) -> ToolResult:
+        from src.observability import get_current_trace
+
         tool = self.get(name)
         if tool is None:
             return ToolResult(text="", latency_ms=0, error=f"Unknown tool: {name}")
+
+        trace = get_current_trace()
+        span = (
+            trace.tool(name, input=args, metadata={"tool": name})
+            if trace is not None
+            else None
+        )
+        if span is not None:
+            span.__enter__()
         start = time.perf_counter()
         try:
             result = await tool.execute(**args)
             if result.latency_ms == 0:
                 result.latency_ms = int((time.perf_counter() - start) * 1000)
+            if span is not None:
+                span.end(
+                    status="error" if result.error else "ok",
+                    error=result.error,
+                    output=result.text if not result.error else None,
+                    metadata={"latency_ms": result.latency_ms},
+                )
             return result
         except Exception as exc:  # noqa: BLE001
-            return ToolResult(
-                text="", latency_ms=int((time.perf_counter() - start) * 1000), error=str(exc)
-            )
+            latency_ms = int((time.perf_counter() - start) * 1000)
+            if span is not None:
+                span.end(status="error", error=str(exc), metadata={"latency_ms": latency_ms})
+            return ToolResult(text="", latency_ms=latency_ms, error=str(exc))
+        finally:
+            if span is not None and span._span_token is not None:
+                from src.observability.tracer import _current_span_id
+
+                _current_span_id.reset(span._span_token)
+                span._span_token = None
+
 
 
 def build_default_registry(

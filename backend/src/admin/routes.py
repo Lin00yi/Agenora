@@ -331,3 +331,84 @@ async def delete_kb(
         raise HTTPException(status_code=400, detail="cannot delete a system KB")
     await purge_kb(session, kb)
     log.info("admin_action", actor=admin.email, action="delete_kb", target=kb_id)
+
+
+# ---------------------------------------------------------------------------
+# Traces (internal observability)
+# ---------------------------------------------------------------------------
+def _build_observation_tree(observations: list) -> list[dict]:
+    """Nest observations by parent_observation_id."""
+    by_id = {o.id: {**o.to_dict(), "children": []} for o in observations}
+    roots: list[dict] = []
+    for o in observations:
+        node = by_id[o.id]
+        parent_id = o.parent_observation_id
+        if parent_id and parent_id in by_id:
+            by_id[parent_id]["children"].append(node)
+        else:
+            roots.append(node)
+    return roots
+
+
+@router.get("/traces")
+async def list_traces(
+    admin: AdminUser,  # noqa: ARG001
+    session: AsyncSession = Depends(get_session),
+    conversation_id: str | None = Query(None),
+    user_id: str | None = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> dict:
+    from src.observability.models import Trace
+
+    filters = []
+    if conversation_id:
+        filters.append(Trace.conversation_id == conversation_id)
+    if user_id:
+        filters.append(Trace.user_id == user_id)
+
+    count_q = select(func.count()).select_from(Trace)
+    for clause in filters:
+        count_q = count_q.where(clause)
+    total = int((await session.execute(count_q)).scalar_one())
+
+    q = select(Trace).order_by(Trace.started_at.desc()).limit(limit).offset(offset)
+    for clause in filters:
+        q = q.where(clause)
+    rows = (await session.execute(q)).scalars().all()
+
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "traces": [t.to_summary_dict() for t in rows],
+    }
+
+
+@router.get("/traces/{trace_id}")
+async def get_trace(
+    trace_id: str,
+    admin: AdminUser,  # noqa: ARG001
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    from src.observability.models import Observation, Trace
+
+    trace = await session.get(Trace, trace_id)
+    if trace is None:
+        raise HTTPException(status_code=404, detail="trace not found")
+
+    obs_rows = (
+        await session.execute(
+            select(Observation)
+            .where(Observation.trace_id == trace_id)
+            .order_by(Observation.started_at)
+        )
+    ).scalars().all()
+
+    return {
+        **trace.to_summary_dict(),
+        "input_preview": trace.input_preview,
+        "output_preview": trace.output_preview,
+        "observations": _build_observation_tree(list(obs_rows)),
+        "observations_flat": [o.to_dict() for o in obs_rows],
+    }

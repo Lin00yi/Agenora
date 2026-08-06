@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 from contextlib import asynccontextmanager
 from dataclasses import replace as dc_replace
 from typing import Any, AsyncGenerator, Literal
@@ -39,6 +38,7 @@ from src.kb.routes import router as kb_router
 from src.safety.input_filter import sanitize_user_input
 from src.safety.output_filter import redact_sensitive_output
 from src.safety.prompt_injection import assess_prompt_injection
+from src.observability import get_current_trace_id, start_trace
 from src.settings import get_settings
 from src.settings_user import (
     require_user_embedding,
@@ -72,30 +72,6 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
 
 
 app = FastAPI(title="KnowFlow", version="3.1.0", lifespan=lifespan)
-
-# v2-M7 — optional Logfire monitoring. Enabled only when both:
-#   1) `pip install -e '.[monitoring]'` (or pip install logfire)
-#   2) LOGFIRE_TOKEN env is set (get one at https://logfire.pydantic.dev/)
-# Falls through silently when either is missing — structlog still works.
-_logfire_token = os.getenv("LOGFIRE_TOKEN")
-if _logfire_token:
-    try:
-        import logfire  # type: ignore[import-not-found]
-
-        logfire.configure(
-            token=_logfire_token,
-            service_name=os.getenv("LOGFIRE_SERVICE_NAME", "anykb-backend"),
-        )
-        logfire.instrument_fastapi(app, capture_headers=False)
-        logfire.instrument_httpx()
-        log.info("logfire_enabled")
-    except ImportError:
-        log.warning(
-            "LOGFIRE_TOKEN set but logfire not installed; "
-            "run `pip install -e '.[monitoring]'` to enable monitoring"
-        )
-    except Exception as exc:  # noqa: BLE001
-        log.warning("logfire_init_failed", error=str(exc))
 
 s = get_settings()
 app.add_middleware(
@@ -155,6 +131,7 @@ def _run_chat_session(
     model_override: str | None = None,
     memory_trace: dict[str, Any] | None = None,
     conversation_lock_id: str | None = None,
+    conversation_id: str | None = None,
 ) -> EventSourceResponse:
     settings = get_settings()
     allowed, remaining = rate_check(rate_key, settings.rate_limit_per_hour)
@@ -216,6 +193,30 @@ def _run_chat_session(
     )
 
     async def run_agent() -> None:
+        from src.observability import get_current_trace
+
+        trace = get_current_trace()
+        if trace is None:
+            trace = start_trace(
+                "chat",
+                conversation_id=conversation_id,
+                user_id=user.id if user is not None else None,
+                input=cleaned,
+                metadata={
+                    "kb_id": kb.id if kb else None,
+                    "model": model_override,
+                    "user_email": user_email,
+                },
+            )
+        else:
+            # Refresh input after sanitize when trace started earlier in chat_post.
+            from src.settings import get_settings as _gs
+            from src.observability.preview import preview_text
+
+            if cleaned:
+                trace.input_preview = preview_text(
+                    cleaned, store_io=_gs().trace_store_io
+                )
         try:
             initial_state: dict[str, Any] = {
                 "messages": full_messages,
@@ -228,6 +229,7 @@ def _run_chat_session(
             }
             final_state = await graph.ainvoke(initial_state)
             report = redact_sensitive_output(final_state.get("final_report") or "")
+            cost_usd = round(final_state.get("cost_usd", 0.0), 6)
             await queue.put({"event": "report_start"})
             for piece in _chunks(report, size=8):
                 await queue.put({"event": "token", "text": piece})
@@ -235,15 +237,24 @@ def _run_chat_session(
             await queue.put(
                 {
                     "event": "done",
-                    "cost_usd": round(final_state.get("cost_usd", 0.0), 6),
+                    "cost_usd": cost_usd,
                     "rate_remaining": remaining,
                     "kb_id": kb.id if kb else None,
                     "memory_trace": memory_trace,
                     "citations": list(final_state.get("citations") or []),
+                    "trace_id": get_current_trace_id(),
                 }
             )
+            if trace is not None:
+                await trace.finish(
+                    status="ok",
+                    output=report,
+                    total_cost_usd=cost_usd,
+                )
         except Exception as exc:  # noqa: BLE001
             log.exception("agent_failed", user=user_email, kb_id=kb.id if kb else None)
+            if trace is not None:
+                await trace.finish(status="error", error=str(exc))
             await queue.put({"event": "error", "message": str(exc)})
         finally:
             await queue.put(None)
@@ -320,20 +331,36 @@ async def chat_post(
             if not kb.is_system and not bool(getattr(kb, "embedding_provider", None)):
                 require_user_embedding(user)
 
+        from src.observability import aspan
+
+        # Root trace covers context assembly + agent run (flushed in run_agent).
+        start_trace(
+            "chat",
+            conversation_id=conv.id if conv else None,
+            user_id=user.id,
+            input=(req.messages[-1].content if req.messages else None),
+            metadata={
+                "kb_id": effective_kb_id,
+                "model": selected_model,
+                "user_email": user.email,
+            },
+        )
+
         if conv is not None:
             memory_trace: dict[str, Any] | None = None
             context_llm_cfg = (resolve_user_llm(user) if user is not None else None) or resolve_system_llm()
             user_memory_embedding_cfg = resolve_user_embedding(user)
-            built = await build_context_for_conversation(
-                session,
-                conversation_id=conv.id,
-                user_id=user.id,
-                model=selected_model,
-                kb_id=effective_kb_id,
-                context_window=context_llm_cfg.context_window if context_llm_cfg is not None else None,
-                llm_cfg=context_llm_cfg,
-                embedding_cfg=user_memory_embedding_cfg,
-            )
+            async with aspan("build_context", metadata={"conversation_id": conv.id}):
+                built = await build_context_for_conversation(
+                    session,
+                    conversation_id=conv.id,
+                    user_id=user.id,
+                    model=selected_model,
+                    kb_id=effective_kb_id,
+                    context_window=context_llm_cfg.context_window if context_llm_cfg is not None else None,
+                    llm_cfg=context_llm_cfg,
+                    embedding_cfg=user_memory_embedding_cfg,
+                )
             messages = built.messages
             memory_trace = built.memory_trace
         elif req.messages:
@@ -354,10 +381,16 @@ async def chat_post(
             model_override=selected_model,
             memory_trace=memory_trace,
             conversation_lock_id=conversation_lock_id,
+            conversation_id=conv.id if conv else None,
         )
     except Exception:
         if conversation_lock_id:
             await generation_lock.release(conversation_lock_id)
+        from src.observability import get_current_trace
+
+        orphan = get_current_trace()
+        if orphan is not None and not orphan._finished:
+            await orphan.finish(status="error", error="request_aborted")
         raise
 
 

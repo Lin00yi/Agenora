@@ -130,6 +130,18 @@ class Settings(BaseSettings):
     # for any public deployment to stop sharing the owner's API keys.
     byok_required: bool = False
 
+    # ===== Observability (internal Trace DB + Langfuse) =====
+    # Internal span trees persist to the app DB when True (default on).
+    trace_enabled: bool = True
+    # Store truncated input/output previews on traces/observations.
+    trace_store_io: bool = True
+    # External Langfuse export. Switch defaults on; without keys it no-ops.
+    langfuse_enabled: bool = True
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_host: str = "https://cloud.langfuse.com"
+    langfuse_sample_rate: float = 1.0
+
     # ===== Server =====
     app_env: str = "dev"
     log_level: str = "INFO"
