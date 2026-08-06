@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 import {
   Activity,
   BookOpen,
   Database,
   FileText,
+  GitBranch,
   MessageSquare,
   MessageSquareText,
   ShieldCheck,
@@ -61,6 +63,22 @@ function Dashboard() {
           聚合用户、知识库、文档和会话规模，帮助管理员快速判断系统使用情况。
         </p>
       </div>
+
+      <Link
+        href="/admin/traces"
+        className="admin-panel flex items-center gap-4 px-5 py-4 transition hover:border-brand/30 hover:bg-brand/5"
+      >
+        <span className="admin-icon-tile admin-icon-tile-brand rounded-md">
+          <GitBranch className="h-4 w-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold">全链路追踪</div>
+          <p className="mt-0.5 text-xs text-muted">
+            查看每次对话的 span 树、端到端延迟与成本分布。
+          </p>
+        </div>
+        <span className="text-xs font-medium text-brand">进入 →</span>
+      </Link>
 
       <Section title="用户" description="账号规模、活跃状态与管理员配置。">
         <StatCard icon={Users} label="用户总数" value={stats.users.total} />

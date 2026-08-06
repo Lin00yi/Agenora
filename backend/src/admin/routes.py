@@ -359,7 +359,7 @@ async def list_traces(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> dict:
-    from src.observability.models import Trace
+    from src.observability.models import Observation, Trace
 
     filters = []
     if conversation_id:
@@ -372,16 +372,33 @@ async def list_traces(
         count_q = count_q.where(clause)
     total = int((await session.execute(count_q)).scalar_one())
 
-    q = select(Trace).order_by(Trace.started_at.desc()).limit(limit).offset(offset)
+    obs_count = (
+        select(Observation.trace_id, func.count().label("cnt"))
+        .group_by(Observation.trace_id)
+        .subquery()
+    )
+    q = (
+        select(Trace, func.coalesce(obs_count.c.cnt, 0))
+        .outerjoin(obs_count, Trace.id == obs_count.c.trace_id)
+        .order_by(Trace.started_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
     for clause in filters:
         q = q.where(clause)
-    rows = (await session.execute(q)).scalars().all()
+    rows = (await session.execute(q)).all()
+
+    traces = []
+    for trace, n_obs in rows:
+        item = trace.to_summary_dict()
+        item["observation_count"] = int(n_obs or 0)
+        traces.append(item)
 
     return {
         "total": total,
         "limit": limit,
         "offset": offset,
-        "traces": [t.to_summary_dict() for t in rows],
+        "traces": traces,
     }
 
 
