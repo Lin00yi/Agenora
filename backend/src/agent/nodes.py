@@ -769,6 +769,7 @@ async def reason_node(
     include_kb_skill: bool = False,
     excluded_tool_names: set[str] | None = None,
     llm_cfg: "UserLLMConfig | None" = None,
+    emit: Any = None,
 ) -> AgentState:
     """LLM decides next action: call tools, call skill, or finish.
 
@@ -776,7 +777,15 @@ async def reason_node(
     injected by build_graph. KB-mode conversations get a different
     system_prompt + the generic `generate_kb_report` skill (v2-M8); travel
     KB gets `generate_travel_report`. Unbound chat mounts neither.
+
+    When the model returns a final text answer (no tool calls), tokens are
+    streamed live via ``emit`` and ``report_streamed`` is set so app.py skips
+    fake chunking.
     """
+    async def _emit(evt: dict[str, Any]) -> None:
+        if emit is not None:
+            await emit(evt)
+
     # Early exit if final_report already set (by skill_report from prev tool wave)
     if state.get("final_report"):
         return {**state, "pending_tool_calls": []}
@@ -851,6 +860,30 @@ async def reason_node(
         output_token_budget=output_token_budget,
     )
     adapter = create_tool_adapter(llm_cfg)
+
+    # Live SSE for final text answers; silent aggregation when tools are chosen.
+    live_path: str | None = None  # "text" | "tools"
+    report_streamed = bool(state.get("report_streamed"))
+    report_started = False
+
+    async def _on_tool_detected() -> None:
+        nonlocal live_path
+        live_path = "tools"
+
+    async def _on_text_delta(text: str) -> None:
+        nonlocal live_path, report_streamed, report_started
+        if live_path == "tools":
+            return
+        if live_path is None:
+            live_path = "text"
+        if not report_started:
+            await _emit({"event": "report_start"})
+            report_started = True
+        await _emit({"event": "token", "text": text})
+        report_streamed = True
+
+    from src.infra.llm_adapters import StreamHooks
+
     resp = await _chat_with_budget_retry(
         adapter,
         model=model,
@@ -858,12 +891,21 @@ async def reason_node(
         messages=provider_messages,
         tools=tools_schema,
         max_tokens=output_token_budget,
+        stream=True,
+        hooks=StreamHooks(
+            on_text_delta=_on_text_delta,
+            on_tool_detected=_on_tool_detected,
+        ),
     )
     cost.add(model, resp.usage)
 
     text_parts = resp.text_parts
     tool_calls = [tc.as_state() for tc in resp.tool_calls]
     assistant_content = resp.assistant_content
+
+    # If tools won after we already started streaming text, stop treating as final.
+    if tool_calls:
+        report_streamed = False
 
     new_messages = messages + [{"role": "assistant", "content": assistant_content}]
     final_report: str | None = state.get("final_report")
@@ -880,7 +922,9 @@ async def reason_node(
                 provider_messages=provider_messages,
                 initial_text=final_report,
                 max_tokens=output_token_budget,
+                emit=_emit if report_streamed or report_started else None,
             )
+            report_streamed = True
 
     return {
         **state,
@@ -888,6 +932,7 @@ async def reason_node(
         "pending_tool_calls": tool_calls,
         "iterations": iters + 1,
         "final_report": final_report,
+        "report_streamed": report_streamed,
         "cost_usd": cost.usd,
     }
 
@@ -941,24 +986,32 @@ async def _chat_with_budget_retry(
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]],
     max_tokens: int,
+    stream: bool = False,
+    hooks: Any = None,
 ):
-    try:
+    async def _call(limit: int):
+        if stream and hasattr(adapter, "chat_with_tools_stream"):
+            return await adapter.chat_with_tools_stream(
+                model=model,
+                system_prompt=system_prompt,
+                messages=messages,
+                tools=tools,
+                max_tokens=limit,
+                hooks=hooks,
+            )
         return await adapter.chat_with_tools(
             model=model,
             system_prompt=system_prompt,
             messages=messages,
             tools=tools,
-            max_tokens=max_tokens,
+            max_tokens=limit,
         )
+
+    try:
+        return await _call(max_tokens)
     except Exception as exc:  # noqa: BLE001
         if max_tokens > MAX_OUTPUT_TOKENS and _looks_like_output_budget_rejection(exc):
-            return await adapter.chat_with_tools(
-                model=model,
-                system_prompt=system_prompt,
-                messages=messages,
-                tools=tools,
-                max_tokens=MAX_OUTPUT_TOKENS,
-            )
+            return await _call(MAX_OUTPUT_TOKENS)
         raise
 
 
@@ -971,7 +1024,10 @@ async def _auto_continue_report(
     provider_messages: list[dict[str, Any]],
     initial_text: str,
     max_tokens: int,
+    emit: Any = None,
 ) -> str:
+    from src.infra.llm_adapters import StreamHooks
+
     parts = [initial_text.rstrip()]
     continuation_messages = [
         *provider_messages,
@@ -980,6 +1036,11 @@ async def _auto_continue_report(
     ]
 
     for _ in range(MAX_AUTO_CONTINUATIONS):
+        async def _on_text(text: str, _emit=emit) -> None:
+            if _emit is not None:
+                await _emit({"event": "token", "text": text})
+
+        hooks = StreamHooks(on_text_delta=_on_text) if emit is not None else None
         resp = await _chat_with_budget_retry(
             adapter,
             model=model,
@@ -987,11 +1048,16 @@ async def _auto_continue_report(
             messages=continuation_messages,
             tools=[],
             max_tokens=max_tokens,
+            stream=emit is not None,
+            hooks=hooks,
         )
         cost.add(model, resp.usage)
         text = "\n".join(resp.text_parts).strip()
         if not text:
             break
+        # Non-stream path (or mock fanout already emitted): if we didn't stream, emit once.
+        if emit is not None and hooks is not None and not hooks._first_text:
+            await emit({"event": "token", "text": text})
         parts.append(text)
         if not _response_hit_output_limit(resp.stop_reason):
             return "\n\n".join(part for part in parts if part)

@@ -13,7 +13,12 @@ from typing import Any, AsyncIterator, Iterator, Literal
 
 import structlog
 
-from src.observability.langfuse_client import get_langfuse
+from src.observability.langfuse_client import (
+    build_langfuse_tags,
+    get_langfuse,
+    resolve_langfuse_environment,
+    stamp_langfuse_trace_attrs,
+)
 from src.observability.preview import preview_text, usage_from_sdk
 from src.settings import get_settings
 
@@ -80,8 +85,20 @@ class TraceHandle:
     _t0: float = field(default_factory=time.perf_counter, repr=False)
     _lf_root: Any = field(default=None, repr=False)
     _lf_by_id: dict[str, Any] = field(default_factory=dict, repr=False)
+    _lf_tags: list[str] = field(default_factory=list, repr=False)
     _token: Token | None = field(default=None, repr=False)
     _finished: bool = field(default=False, repr=False)
+
+    def _stamp_lf(self, lf_obs: Any) -> None:
+        stamp_langfuse_trace_attrs(
+            lf_obs,
+            trace_name=self.name,
+            user_id=self.user_id,
+            session_id=self.conversation_id,
+            tags=self._lf_tags,
+            metadata=self.metadata,
+            environment=resolve_langfuse_environment(),
+        )
 
     def start_observation(
         self,
@@ -117,6 +134,7 @@ class TraceHandle:
                     metadata=metadata or {},
                     model=model,
                 )
+                self._stamp_lf(lf_obs)
                 obs._lf_obs = lf_obs
                 self._lf_by_id[obs.id] = lf_obs
             except Exception as exc:  # noqa: BLE001
@@ -178,6 +196,7 @@ class TraceHandle:
 
         if self._lf_root is not None:
             try:
+                self._stamp_lf(self._lf_root)
                 self._lf_root.update(
                     output=output if s.trace_store_io else None,
                     metadata={**self.metadata, "status": self.status},
@@ -187,6 +206,15 @@ class TraceHandle:
                         self._lf_root.update(cost_details={"total": total_cost_usd})
                     except Exception:  # noqa: BLE001
                         pass
+                # Legacy trace-level I/O (still used by some Langfuse evaluators).
+                try:
+                    if hasattr(self._lf_root, "set_trace_io"):
+                        self._lf_root.set_trace_io(
+                            input=self.input_preview if s.trace_store_io else None,
+                            output=output if s.trace_store_io else None,
+                        )
+                except Exception:  # noqa: BLE001
+                    pass
                 self._lf_root.end()
                 lf = get_langfuse()
                 if lf is not None and hasattr(lf, "flush"):
@@ -266,6 +294,7 @@ class SpanHandle:
         cost_usd: float | None = None,
         status: str | None = None,
         error: str | None = None,
+        completion_start_time: Any = None,
     ) -> None:
         s = get_settings()
         obs = self.observation
@@ -286,6 +315,17 @@ class SpanHandle:
         if error is not None:
             obs.error = error
             obs.status = "error"
+        if completion_start_time is not None:
+            obs.metadata["completion_start_time"] = (
+                completion_start_time.isoformat()
+                if hasattr(completion_start_time, "isoformat")
+                else str(completion_start_time)
+            )
+            if obs._lf_obs is not None:
+                try:
+                    obs._lf_obs.update(completion_start_time=completion_start_time)
+                except Exception:  # noqa: BLE001
+                    pass
 
     def end(
         self,
@@ -341,6 +381,8 @@ def start_trace(
         metadata=dict(metadata or {}),
     )
 
+    handle._lf_tags = build_langfuse_tags(name=name, metadata=handle.metadata)
+
     lf = get_langfuse()
     if lf is not None:
         try:
@@ -348,22 +390,10 @@ def start_trace(
                 name=name,
                 as_type="span",
                 input=input if s.trace_store_io else None,
-                metadata={
-                    **handle.metadata,
-                    **({"langfuse_user_id": user_id} if user_id else {}),
-                    **({"langfuse_session_id": conversation_id} if conversation_id else {}),
-                },
+                metadata=handle.metadata,
             )
             handle._lf_root = lf_root
-            try:
-                if hasattr(lf_root, "update_trace"):
-                    lf_root.update_trace(
-                        user_id=user_id,
-                        session_id=conversation_id,
-                        metadata=handle.metadata,
-                    )
-            except Exception:  # noqa: BLE001
-                pass
+            handle._stamp_lf(lf_root)
         except Exception as exc:  # noqa: BLE001
             log.warning("langfuse_trace_start_failed", error=str(exc))
 

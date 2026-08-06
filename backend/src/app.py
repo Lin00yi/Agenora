@@ -230,6 +230,7 @@ def _run_chat_session(
             final_state = await graph.ainvoke(initial_state)
             report = redact_sensitive_output(final_state.get("final_report") or "")
             cost_usd = round(final_state.get("cost_usd", 0.0), 6)
+            report_streamed = bool(final_state.get("report_streamed"))
             # Finish sinks before SSE "done" so client disconnect / task.cancel
             # cannot skip DB persist while Langfuse flush is in flight.
             if trace is not None:
@@ -240,10 +241,12 @@ def _run_chat_session(
                         total_cost_usd=cost_usd,
                     )
                 )
-            await queue.put({"event": "report_start"})
-            for piece in _chunks(report, size=8):
-                await queue.put({"event": "token", "text": piece})
-                await asyncio.sleep(0.02)
+            if not report_streamed:
+                # Skill / non-stream paths still use fake chunking for UX.
+                await queue.put({"event": "report_start"})
+                for piece in _chunks(report, size=8):
+                    await queue.put({"event": "token", "text": piece})
+                    await asyncio.sleep(0.02)
             await queue.put(
                 {
                     "event": "done",

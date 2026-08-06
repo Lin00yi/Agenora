@@ -29,5 +29,6 @@ class AgentState(TypedDict, total=False):
     rag_suspicious_chunks: int               # KB chunks removed before kb_context
     citations: list[dict[str, Any]]          # structured KB/web source cards for the UI
     final_report: str | None
+    report_streamed: bool                     # True when final answer tokens were SSE-streamed live
     iterations: int                          # plan loop guard
     cost_usd: float

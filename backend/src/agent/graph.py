@@ -132,6 +132,7 @@ def build_graph(
             include_kb_skill=include_kb_skill,
             excluded_tool_names={"search_kb"} if user_kb_mode else set(),
             llm_cfg=llm_cfg,
+            emit=em,
         ),
     )
     g.add_node(

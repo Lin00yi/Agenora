@@ -141,6 +141,9 @@ class Settings(BaseSettings):
     langfuse_secret_key: str = ""
     langfuse_host: str = "https://cloud.langfuse.com"
     langfuse_sample_rate: float = 1.0
+    # Optional override for Langfuse Environment column. Empty → derive from app_env
+    # (prod→production, dev→development, …).
+    langfuse_tracing_environment: str = ""
 
     # ===== Server =====
     app_env: str = "dev"
