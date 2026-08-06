@@ -1,11 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
-import { Loader2, type LucideIcon } from "lucide-react";
+import { forwardRef, type ReactNode } from "react";
+import { Loader2, MoreHorizontal, type LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
+
+/** Shared compact control look for admin table row actions. */
+export const adminRowActionClassName =
+  "h-7 gap-1 rounded-md px-2 text-xs font-medium shadow-none";
 
 type AdminRowActionProps = {
   icon: LucideIcon;
@@ -16,6 +20,7 @@ type AdminRowActionProps = {
   disabled?: boolean;
   onClick?: () => void;
   href?: string;
+  className?: string;
 };
 
 /** Compact row action for admin tables — icon with optional label + loading. */
@@ -28,12 +33,16 @@ export function AdminRowAction({
   disabled = false,
   onClick,
   href,
+  className,
 }: AdminRowActionProps) {
-  const className = cn(
-    variant === "brand" && "text-brand hover:text-brand hover:bg-brand/10",
+  const classes = cn(
+    adminRowActionClassName,
+    variant === "default" && "text-muted hover:bg-surface-2 hover:text-ink",
+    variant === "brand" && "text-brand hover:bg-brand/10 hover:text-brand",
     variant === "danger" &&
-      "text-danger hover:border-danger/30 hover:bg-danger/10 hover:text-danger",
-    loading && "pointer-events-none opacity-70"
+      "text-danger hover:bg-danger/10 hover:text-danger",
+    loading && "pointer-events-none opacity-70",
+    className
   );
 
   const content = (
@@ -49,7 +58,7 @@ export function AdminRowAction({
 
   if (href && !disabled && !loading) {
     return (
-      <Button variant="ghost" size="sm" className={className} asChild title={title}>
+      <Button variant="ghost" size="sm" className={classes} asChild title={title}>
         <Link href={href}>{content}</Link>
       </Button>
     );
@@ -60,7 +69,7 @@ export function AdminRowAction({
       type="button"
       variant="ghost"
       size="sm"
-      className={className}
+      className={classes}
       title={title}
       disabled={disabled || loading}
       onClick={onClick}
@@ -69,6 +78,51 @@ export function AdminRowAction({
     </Button>
   );
 }
+
+type AdminRowMoreTriggerProps = {
+  title?: string;
+  "aria-label"?: string;
+  disabled?: boolean;
+  className?: string;
+};
+
+/**
+ * Dropdown trigger for row “更多” — same height / weight as AdminRowAction.
+ * Use inside DropdownMenuTrigger asChild.
+ */
+export const AdminRowMoreTrigger = forwardRef<
+  HTMLButtonElement,
+  AdminRowMoreTriggerProps
+>(function AdminRowMoreTrigger(
+  {
+    title = "更多操作",
+    "aria-label": ariaLabel,
+    disabled = false,
+    className,
+  },
+  ref
+) {
+  return (
+    <Button
+      ref={ref}
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      className={cn(
+        adminRowActionClassName,
+        "w-7 px-0 text-muted hover:bg-surface-2 hover:text-ink",
+        "aria-expanded:bg-surface-2 aria-expanded:text-ink",
+        className
+      )}
+      title={title}
+      aria-label={ariaLabel ?? title}
+      disabled={disabled}
+    >
+      <MoreHorizontal className="h-3.5 w-3.5" aria-hidden />
+    </Button>
+  );
+});
+AdminRowMoreTrigger.displayName = "AdminRowMoreTrigger";
 
 type AdminToolbarButtonProps = {
   icon?: LucideIcon;

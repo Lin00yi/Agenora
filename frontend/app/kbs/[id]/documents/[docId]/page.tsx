@@ -22,7 +22,6 @@ import {
   Search,
   Split,
   Merge,
-  MoreHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -65,6 +64,7 @@ import {
 } from "@/components/kb/AdminPageShell";
 import {
   AdminRowAction,
+  AdminRowMoreTrigger,
   AdminToolbarButton,
 } from "@/components/kb/AdminTableActions";
 import {
@@ -792,7 +792,7 @@ export default function DocumentDetailPage({
                 </div>
 
                 {canWrite && (
-                  <div className="mt-3 flex items-center justify-end gap-1.5 border-t border-surface-border/60 pt-3">
+                  <div className="mt-3 flex items-center justify-end gap-1 border-t border-surface-border/60 pt-3">
                     <AdminRowAction
                       icon={Pencil}
                       label="编辑"
@@ -815,16 +815,10 @@ export default function DocumentDetailPage({
                     />
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          title="更多操作"
+                        <AdminRowMoreTrigger
                           aria-label={`chunk #${c.chunk_idx + 1} 更多操作`}
                           disabled={anyPending}
-                        >
-                          <MoreHorizontal className="h-3.5 w-3.5" aria-hidden />
-                        </Button>
+                        />
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-36">
                         <DropdownMenuItem
@@ -932,7 +926,7 @@ export default function DocumentDetailPage({
                   </td>
                   {canWrite && (
                     <td>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1">
                         <AdminRowAction
                           icon={Pencil}
                           label="编辑"
@@ -955,16 +949,10 @@ export default function DocumentDetailPage({
                         />
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              title="更多操作"
+                            <AdminRowMoreTrigger
                               aria-label={`chunk #${c.chunk_idx + 1} 更多操作`}
                               disabled={anyPending}
-                            >
-                              <MoreHorizontal className="h-3.5 w-3.5" aria-hidden />
-                            </Button>
+                            />
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-36">
                             <DropdownMenuItem

@@ -29,7 +29,6 @@ import {
   Search,
   Plus,
   Play,
-  MoreHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -84,6 +83,7 @@ import {
 } from "@/components/kb/AdminPageShell";
 import {
   AdminRowAction,
+  AdminRowMoreTrigger,
   AdminToolbarButton,
 } from "@/components/kb/AdminTableActions";
 import {
@@ -759,7 +759,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                                 : "启用后文档分块可参与检索"
                         }
                       />
-                      <div className="flex items-center gap-0.5">
+                      <div className="flex items-center gap-1">
                         <AdminRowAction
                           icon={Layers}
                           title="分块管理"
@@ -770,15 +770,9 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                         {canWrite && (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                title="更多操作"
+                              <AdminRowMoreTrigger
                                 aria-label={`${d.filename} 更多操作`}
-                              >
-                                <MoreHorizontal className="h-3.5 w-3.5" aria-hidden />
-                              </Button>
+                              />
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-40">
                               {d.status === "done" && (
@@ -872,7 +866,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                         {formatAdminDate(d.updated_at ?? d.created_at)}
                       </td>
                       <td>
-                        <div className="flex items-center gap-0.5">
+                        <div className="flex items-center gap-1">
                           <AdminRowAction
                             icon={Layers}
                             title="分块管理"
@@ -883,15 +877,9 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                           {canWrite && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  title="更多操作"
+                                <AdminRowMoreTrigger
                                   aria-label={`${d.filename} 更多操作`}
-                                >
-                                  <MoreHorizontal className="h-3.5 w-3.5" aria-hidden />
-                                </Button>
+                                />
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-40">
                                 {d.status === "done" && (
