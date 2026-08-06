@@ -145,11 +145,34 @@ function AnswerMarkdown({ markdown, streaming }: { markdown: string; streaming: 
           h1: ({ children }) => <h1 className="kf-answer-heading mb-3 text-xl font-semibold">{children}</h1>,
           h2: ({ children }) => <h2 className="kf-answer-heading mb-3 mt-5 text-lg font-semibold">{children}</h2>,
           h3: ({ children }) => <h3 className="kf-answer-heading mb-2 mt-4 text-base font-semibold">{children}</h3>,
-          code: ({ children }) => (
-            <code className="kf-answer-code rounded px-1.5 py-0.5 text-sm">
+          a: ({ href, children }) => (
+            <a
+              className="kf-answer-link underline underline-offset-2"
+              href={href}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
               {children}
-            </code>
+            </a>
           ),
+          pre: ({ children }) => <pre className="kf-answer-pre mb-4 overflow-x-auto">{children}</pre>,
+          code: ({ className, children }) => {
+            const isBlock = typeof className === "string" && className.length > 0;
+            if (isBlock) {
+              return <code className={cn("kf-answer-code-block", className)}>{children}</code>;
+            }
+            return <code className="kf-answer-code rounded px-1.5 py-0.5 text-sm">{children}</code>;
+          },
+          table: ({ children }) => (
+            <div className="kf-answer-table-wrap mb-4 overflow-x-auto">
+              <table className="kf-answer-table">{children}</table>
+            </div>
+          ),
+          thead: ({ children }) => <thead className="kf-answer-thead">{children}</thead>,
+          tbody: ({ children }) => <tbody className="kf-answer-tbody">{children}</tbody>,
+          tr: ({ children }) => <tr className="kf-answer-tr">{children}</tr>,
+          th: ({ children }) => <th className="kf-answer-th">{children}</th>,
+          td: ({ children }) => <td className="kf-answer-td">{children}</td>,
         }}
       >
         {markdown.replace(/\\n/g, "\n")}

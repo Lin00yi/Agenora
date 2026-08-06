@@ -519,6 +519,89 @@
     color: var(--chat-ink);
   }
 
+  .kf-chat .kf-workspace .kf-answer-link {
+    color: var(--chat-ink);
+    text-decoration-color: color-mix(in srgb, var(--chat-muted) 55%, transparent);
+  }
+  .kf-chat .kf-workspace .kf-answer-link:hover {
+    text-decoration-color: var(--chat-ink);
+  }
+
+  .kf-chat .kf-workspace .kf-answer-pre {
+    border: 1px solid var(--chat-line);
+    border-radius: 0.75rem;
+    background: color-mix(in srgb, var(--chat-soft) 88%, transparent);
+    padding: 0.85rem 1rem;
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 0.8125rem;
+    line-height: 1.55;
+    white-space: pre;
+  }
+  .kf-chat .kf-workspace .kf-answer-pre .kf-answer-code-block {
+    background: transparent;
+    padding: 0;
+    border-radius: 0;
+    font: inherit;
+    color: inherit;
+  }
+
+  .kf-chat .kf-workspace .kf-answer-table-wrap {
+    border: 1px solid var(--chat-line);
+    border-radius: 0.75rem;
+    background: color-mix(in srgb, var(--chat-surface) 92%, transparent);
+    -webkit-overflow-scrolling: touch;
+  }
+  .kf-chat .kf-workspace .kf-answer-table {
+    width: max-content;
+    min-width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+    line-height: 1.45;
+  }
+  .kf-chat .kf-workspace .kf-answer-th,
+  .kf-chat .kf-workspace .kf-answer-td {
+    border-bottom: 1px solid var(--chat-line);
+    padding: 0.65rem 0.9rem;
+    text-align: left;
+    vertical-align: top;
+    white-space: nowrap;
+  }
+  .kf-chat .kf-workspace .kf-answer-td:not(:first-child),
+  .kf-chat .kf-workspace .kf-answer-th:not(:first-child) {
+    text-align: left;
+  }
+  /* First column (row labels) can wrap; value columns stay scannable. */
+  .kf-chat .kf-workspace .kf-answer-th:first-child,
+  .kf-chat .kf-workspace .kf-answer-td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    white-space: normal;
+    min-width: 5.5rem;
+    max-width: 9rem;
+    font-weight: 600;
+    background: color-mix(in srgb, var(--chat-soft) 96%, transparent);
+  }
+  .kf-chat .kf-workspace .kf-answer-th {
+    background: color-mix(in srgb, var(--chat-soft) 100%, transparent);
+    color: var(--chat-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  .kf-chat .kf-workspace .kf-answer-th:first-child {
+    background: color-mix(in srgb, var(--chat-soft) 100%, transparent);
+  }
+  .kf-chat .kf-workspace .kf-answer-tr:last-child .kf-answer-td {
+    border-bottom: 0;
+  }
+  .kf-chat .kf-workspace .kf-answer-tbody .kf-answer-tr:hover .kf-answer-td {
+    background: color-mix(in srgb, var(--chat-soft) 70%, transparent);
+  }
+  .kf-chat .kf-workspace .kf-answer-tbody .kf-answer-tr:hover .kf-answer-td:first-child {
+    background: color-mix(in srgb, var(--chat-soft) 88%, transparent);
+  }
+
   .kf-chat .kf-workspace .kf-message-user {
     border: 0;
     background: rgb(var(--kf-surface-2));
@@ -625,7 +708,11 @@
   }
   .kf-chat .kf-workspace .kf-composer-centered .kf-composer-box {
     max-width: 880px;
-    box-shadow: 0 20px 48px rgb(53 76 142 / 0.12);
+    /* Neutral elevation — avoid the old blue halo (53 76 142) on monochrome UI. */
+    box-shadow: 0 0 0 1px rgb(var(--ink) / 0.08), 0 12px 32px rgb(var(--ink) / 0.06);
+  }
+  .dark .kf-chat .kf-workspace .kf-composer-centered .kf-composer-box {
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08), 0 16px 40px rgb(0 0 0 / 0.35);
   }
   .kf-chat .kf-workspace .kf-starter-prompts { margin: 0 auto; width: min(100%, 880px); }
   .kf-chat .kf-workspace .kf-starter-card {
@@ -644,7 +731,10 @@
   .kf-chat .kf-workspace .kf-starter-card:hover {
     transform: translateY(-1px);
     border-color: color-mix(in srgb, var(--chat-accent) 38%, var(--chat-line));
-    box-shadow: 0 10px 20px rgb(38 52 80 / 0.07);
+    box-shadow: 0 8px 18px rgb(var(--ink) / 0.06);
+  }
+  .dark .kf-chat .kf-workspace .kf-starter-card:hover {
+    box-shadow: 0 10px 22px rgb(0 0 0 / 0.28);
   }
   .kf-chat .kf-workspace .kf-starter-card .text-xs { color: var(--chat-muted); }
   .kf-chat .kf-workspace .kf-starter-icon {
