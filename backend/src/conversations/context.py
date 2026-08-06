@@ -1658,6 +1658,64 @@ async def consolidate_user_memories(
     return {"expired": len(expired), "superseded": superseded, "deduplicated": deduplicated}
 
 
+async def finalize_memory_rows_heavy(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    memory_ids: list[str],
+    embedding_cfg=None,
+) -> dict[str, int]:
+    """Best-effort embedding refresh + consolidate for rows written on the hot path.
+
+    Used by BackgroundTasks after a lightweight ``store_*(..., heavy=False)`` so
+    chat append does not wait on the embedding provider.
+    """
+    ids = [str(item) for item in dict.fromkeys(memory_ids) if item]
+    if not ids:
+        return {"embedded": 0, "consolidated": 0}
+    result = await session.execute(
+        select(UserMemory).where(
+            UserMemory.user_id == user_id,
+            UserMemory.id.in_(ids),
+        )
+    )
+    rows = list(result.scalars().all())
+    embedded = 0
+    for row in rows:
+        if await refresh_memory_embedding(row, embedding_cfg=embedding_cfg):
+            embedded += 1
+    stats = await consolidate_user_memories(session, user_id=user_id)
+    return {"embedded": embedded, "consolidated": int(stats.get("deduplicated") or 0)}
+
+
+async def run_memory_heavy_background(
+    user_id: str,
+    memory_ids: list[str],
+    embedding_cfg=None,
+) -> None:
+    """Open a fresh session for post-append memory embedding / consolidation."""
+    from src.infra.database import get_session_factory
+
+    if not memory_ids:
+        return
+    factory = get_session_factory()
+    try:
+        async with factory() as session:
+            await finalize_memory_rows_heavy(
+                session,
+                user_id=user_id,
+                memory_ids=memory_ids,
+                embedding_cfg=embedding_cfg,
+            )
+            await session.commit()
+    except Exception:  # noqa: BLE001 - never fail the chat path via background
+        log.exception(
+            "memory_heavy_background_failed user_id=%s memory_ids=%s",
+            user_id,
+            memory_ids,
+        )
+
+
 async def store_memory_candidates(
     session: AsyncSession,
     *,
@@ -1666,12 +1724,16 @@ async def store_memory_candidates(
     candidates: list[MemoryCandidate],
     kb_id: str | None = None,
     embedding_cfg=None,
+    heavy: bool = True,
 ) -> list[UserMemory]:
     """Persist extracted memories through the shared structured write path.
 
     A new value for the same ``scope + type + key`` automatically supersedes
     the older active row. This prevents conflicting preferences from being
     injected together on later turns.
+
+    When ``heavy=False`` (realtime chat append), only the relational write runs;
+    callers should schedule ``run_memory_heavy_background`` after commit.
     """
     stored: list[UserMemory] = []
     source_ids = [str(item) for item in dict.fromkeys(source_message_ids) if item]
@@ -1781,9 +1843,10 @@ async def store_memory_candidates(
         # Flush gives newly captured rows primary identity in the same request;
         # embedding is best-effort, never a reason to reject a chat message.
         await session.flush()
-        for row in stored:
-            await refresh_memory_embedding(row, embedding_cfg=embedding_cfg)
-        await consolidate_user_memories(session, user_id=user_id)
+        if heavy:
+            for row in stored:
+                await refresh_memory_embedding(row, embedding_cfg=embedding_cfg)
+            await consolidate_user_memories(session, user_id=user_id)
     return stored
 
 
@@ -1795,6 +1858,7 @@ async def store_user_memories(
     content: str,
     kb_id: str | None = None,
     embedding_cfg=None,
+    heavy: bool = True,
 ) -> list[UserMemory]:
     """Persist high-confidence explicit or implicit memories without UI friction."""
     return await store_memory_candidates(
@@ -1804,6 +1868,7 @@ async def store_user_memories(
         candidates=extract_memory_candidates(content),
         kb_id=kb_id,
         embedding_cfg=embedding_cfg,
+        heavy=heavy,
     )
 
 

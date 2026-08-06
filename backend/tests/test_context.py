@@ -282,6 +282,53 @@ async def test_constraint_topic_conflict_supersedes_previous_value(db, create_us
 
 
 @pytest.mark.asyncio
+async def test_store_user_memories_heavy_false_skips_embedding_until_finalize(
+    db, create_user, monkeypatch
+):
+    """Realtime append writes the row immediately; embedding runs in the heavy pass."""
+    import src.infra.embedding as embedding
+    from sqlalchemy import select
+
+    from src.conversations.context import finalize_memory_rows_heavy
+    from src.infra.database import get_session_factory
+
+    user = await create_user("light-memory-write@example.com")
+    monkeypatch.setattr(embedding, "embed", lambda _text, cfg=None: _async_value([1.0, 0.0]))
+    monkeypatch.setattr(embedding, "embedding_fingerprint", lambda cfg=None: "test-space")
+    factory = get_session_factory()
+    async with factory() as session:
+        rows = await store_user_memories(
+            session,
+            user_id=user.id,
+            message_id=str(uuid.uuid4()),
+            content="记住：我偏好用中文回复技术问题。",
+            heavy=False,
+            embedding_cfg=object(),
+        )
+        await session.commit()
+        assert len(rows) == 1
+        stored = (
+            await session.execute(select(UserMemory).where(UserMemory.id == rows[0].id))
+        ).scalar_one()
+        assert stored.embedding_json is None or stored.embedding_json == ""
+
+        stats = await finalize_memory_rows_heavy(
+            session,
+            user_id=user.id,
+            memory_ids=[stored.id],
+            embedding_cfg=object(),
+        )
+        await session.commit()
+        refreshed = (
+            await session.execute(select(UserMemory).where(UserMemory.id == stored.id))
+        ).scalar_one()
+
+    assert stats["embedded"] == 1
+    assert refreshed.embedding_json is not None
+    assert refreshed.embedding_fingerprint == "test-space"
+
+
+@pytest.mark.asyncio
 async def test_consolidation_rewrites_legacy_hash_constraint_keys(db, create_user):
     from sqlalchemy import select
 

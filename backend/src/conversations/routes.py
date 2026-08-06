@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, desc, func, select, update
@@ -22,6 +22,7 @@ from src.conversations.context import (
     get_latest_summary,
     rag_reserve_for_kb,
     refresh_memory_embedding,
+    run_memory_heavy_background,
     store_user_memories,
 )
 from src.conversations.models import Conversation, Message, UserMemory
@@ -477,6 +478,7 @@ async def append_message(
     conv_id: str,
     req: AppendMessageRequest,
     user: CurrentUser,
+    background: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     conv = await _load_owned_conversation(session, conv_id, user.id)
@@ -502,15 +504,21 @@ async def append_message(
     )
     session.add(msg)
 
+    pending_memory_ids: list[str] = []
+    embedding_cfg = None
     if req.role == "user":
-        await store_user_memories(
+        embedding_cfg = resolve_user_embedding(user)
+        # Hot path: relational write only. Embedding + consolidate run after commit.
+        stored = await store_user_memories(
             session,
             user_id=user.id,
             message_id=msg.id,
             content=content,
             kb_id=conv.kb_id,
-            embedding_cfg=resolve_user_embedding(user),
+            embedding_cfg=embedding_cfg,
+            heavy=False,
         )
+        pending_memory_ids = [row.id for row in stored]
         if _is_default_title(conv.title) and req.content.strip():
             conv.title = _derive_title(req.content)
 
@@ -519,6 +527,13 @@ async def append_message(
 
     await session.commit()
     await session.refresh(msg)
+    if pending_memory_ids:
+        background.add_task(
+            run_memory_heavy_background,
+            user.id,
+            pending_memory_ids,
+            embedding_cfg,
+        )
     return msg.to_public_dict()
 
 
