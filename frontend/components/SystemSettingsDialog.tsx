@@ -441,19 +441,19 @@ function AboutTab() {
         <dt className="text-muted">仓库</dt>
         <dd className="break-all text-brand">
           <a
-            href="https://github.com/GU-Cryptography/anykb"
+            href="https://github.com/Lin00yi/Agenora"
             target="_blank"
             rel="noopener noreferrer"
             className="hover:underline"
           >
-            github.com/GU-Cryptography/anykb
+            github.com/Lin00yi/Agenora
           </a>
         </dd>
       </dl>
 
       <div className="rounded-lg border border-surface-border/70 bg-surface p-4 text-xs leading-5 text-muted shadow-sm">
         <p>
-          Agenora 是一个本地优先的知识库与 Agent 平台，所有数据保存在你自己的数据库中。
+          Agenora 是个人维护的本地优先知识库与 Agent 项目，数据保存在你自己的数据库中。
           使用本服务即表示你了解：LLM 输出可能不准确；上传到知识库的文档会经过
           embedding 提供商处理。详见仓库 README。
         </p>

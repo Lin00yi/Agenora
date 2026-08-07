@@ -1577,16 +1577,58 @@ body {
 
   .welcome-hero-wash {
     background:
-      linear-gradient(180deg, color-mix(in srgb, rgb(var(--brand)) 7%, transparent), transparent 55%),
-      linear-gradient(105deg, color-mix(in srgb, rgb(var(--brand-cyan)) 6%, transparent), transparent 42%);
+      radial-gradient(ellipse 80% 55% at 15% 10%, color-mix(in srgb, rgb(var(--brand)) 8%, transparent), transparent 60%),
+      linear-gradient(180deg, color-mix(in srgb, rgb(var(--surface)) 70%, transparent), transparent 50%);
   }
   .dark .welcome-hero-wash {
     background:
-      linear-gradient(180deg, color-mix(in srgb, rgb(var(--brand)) 3%, transparent), transparent 58%),
-      linear-gradient(105deg, color-mix(in srgb, rgb(var(--brand-cyan)) 2%, transparent), transparent 44%);
+      radial-gradient(ellipse 70% 50% at 12% 8%, color-mix(in srgb, rgb(var(--brand)) 4%, transparent), transparent 58%),
+      linear-gradient(180deg, color-mix(in srgb, rgb(255 255 255) 2%, transparent), transparent 52%);
   }
-  .welcome-hero-visual {
-    background: rgb(var(--surface));
+
+  @keyframes welcome-fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .welcome-hero-enter {
+    animation: welcome-fade-up 0.55s ease-out both;
+  }
+  .welcome-hero-brand {
+    animation: welcome-fade-up 0.45s ease-out both;
+  }
+  .welcome-hero-preview {
+    animation: welcome-fade-up 0.65s 0.08s ease-out both;
+  }
+  .welcome-preview-user {
+    animation: welcome-fade-up 0.5s 0.28s ease-out both;
+  }
+  .welcome-preview-assistant {
+    animation: welcome-fade-up 0.55s 0.42s ease-out both;
+  }
+  .welcome-step {
+    animation: welcome-fade-up 0.45s ease-out both;
+  }
+  .welcome-step:nth-child(2) {
+    animation-delay: 0.06s;
+  }
+  .welcome-step:nth-child(3) {
+    animation-delay: 0.12s;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .welcome-hero-enter,
+    .welcome-hero-brand,
+    .welcome-hero-preview,
+    .welcome-preview-user,
+    .welcome-preview-assistant,
+    .welcome-step {
+      animation: none;
+    }
   }
 
   .app-page-header {
