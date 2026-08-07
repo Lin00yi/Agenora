@@ -288,6 +288,7 @@ export function ChatPage({
     memory_trace: MemoryTrace | null;
     citations: Citation[];
   } | null>(null);
+  const tokenPaintRafRef = useRef<number | null>(null);
 
   useEffect(() => {
     modelOptionsRef.current = modelOptions;
@@ -296,6 +297,15 @@ export function ChatPage({
   useEffect(() => {
     currentIdRef.current = currentId;
   }, [currentId]);
+
+  useEffect(() => {
+    return () => {
+      if (tokenPaintRafRef.current != null) {
+        cancelAnimationFrame(tokenPaintRafRef.current);
+        tokenPaintRafRef.current = null;
+      }
+    };
+  }, []);
 
   const visibleMessages = useMemo(() => normalizeMessages(currentMessages), [currentMessages]);
 
@@ -447,6 +457,55 @@ export function ChatPage({
     },
     [setMessagesForCurrent]
   );
+
+  /** Cancel pending rAF; optionally sync streamingRef.content into React state. */
+  const flushTokenPaint = useCallback(
+    (paint = true) => {
+      if (tokenPaintRafRef.current != null) {
+        cancelAnimationFrame(tokenPaintRafRef.current);
+        tokenPaintRafRef.current = null;
+      }
+      if (!paint) return;
+      const snap = streamingRef.current;
+      if (!snap) return;
+      const { msgId, content } = snap;
+      setMessagesForCurrent((prev) => {
+        const next = [...prev];
+        for (let i = next.length - 1; i >= 0; i--) {
+          const msg = next[i];
+          if (msg.role === "assistant" && msg.id === msgId) {
+            if (msg.content === content) return prev;
+            next[i] = { ...msg, content };
+            break;
+          }
+        }
+        return next;
+      });
+    },
+    [setMessagesForCurrent]
+  );
+
+  const scheduleTokenPaint = useCallback(() => {
+    if (tokenPaintRafRef.current != null) return;
+    tokenPaintRafRef.current = requestAnimationFrame(() => {
+      tokenPaintRafRef.current = null;
+      const snap = streamingRef.current;
+      if (!snap) return;
+      const { msgId, content } = snap;
+      setMessagesForCurrent((prev) => {
+        const next = [...prev];
+        for (let i = next.length - 1; i >= 0; i--) {
+          const msg = next[i];
+          if (msg.role === "assistant" && msg.id === msgId) {
+            if (msg.content === content) return prev;
+            next[i] = { ...msg, content };
+            break;
+          }
+        }
+        return next;
+      });
+    });
+  }, [setMessagesForCurrent]);
 
   const bumpSummary = useCallback(
     (
@@ -1017,6 +1076,7 @@ export function ChatPage({
         (evt: ChatEvent) => {
           switch (evt.event) {
             case "tool_start": {
+              flushTokenPaint();
               const newTool: ToolEvent = {
                 id: evt.id,
                 name: evt.name!,
@@ -1118,6 +1178,7 @@ export function ChatPage({
               break;
             }
             case "tool_blocked": {
+              flushTokenPaint();
               const newTool: ToolEvent = {
                 id: evt.id,
                 name: evt.name!,
@@ -1162,6 +1223,7 @@ export function ChatPage({
               break;
             }
             case "segment_seal": {
+              flushTokenPaint();
               if (streamingRef.current?.content.trim()) {
                 const snap = streamingRef.current;
                 snap.parts = [...snap.parts, { type: "text", text: snap.content }];
@@ -1179,16 +1241,16 @@ export function ChatPage({
             }
             case "token": {
               if (streamingRef.current) streamingRef.current.content += evt.text ?? "";
-              updateLastAssistant((m) =>
-                m.role === "assistant" ? { ...m, content: m.content + (evt.text ?? "") } : m
-              );
+              scheduleTokenPaint();
               break;
             }
             case "error": {
+              flushTokenPaint();
               const errMsg = evt.message ?? "\u751f\u6210\u5931\u8d25";
               if (errMsg === "generation_in_progress") {
                 const friendly = "当前会话正在生成回答，请稍后再发送";
                 toast.info(friendly);
+                flushTokenPaint(false);
                 setMessagesForCurrent((prev) => prev.filter((m) => m.id !== aiId));
                 streamingRef.current = null;
                 cleanupRef.current = null;
@@ -1212,6 +1274,7 @@ export function ChatPage({
               break;
             }
             case "done": {
+              flushTokenPaint();
               const costUsd = typeof evt.cost_usd === "number" ? evt.cost_usd : undefined;
               const memoryTrace = evt.memory_trace ?? null;
               const finalCitations =
@@ -1275,6 +1338,8 @@ export function ChatPage({
       summaries,
       setMessagesForCurrent,
       updateLastAssistant,
+      flushTokenPaint,
+      scheduleTokenPaint,
       bumpSummary,
       releaseSendLock,
       router,
@@ -1284,6 +1349,7 @@ export function ChatPage({
   const handleStop = useCallback(() => {
     cleanupRef.current?.();
     cleanupRef.current = null;
+    flushTokenPaint();
     releaseSendLock();
     const snap = streamingRef.current;
     if (snap) {
@@ -1317,7 +1383,7 @@ export function ChatPage({
         })
         .catch((e) => console.error("persist stopped turn failed", e));
     }
-  }, [updateLastAssistant, setMessagesForCurrent, bumpSummary, releaseSendLock]);
+  }, [updateLastAssistant, setMessagesForCurrent, bumpSummary, releaseSendLock, flushTokenPaint]);
 
   const submitComposer = useCallback(() => {
     void handleSend(composerValue);

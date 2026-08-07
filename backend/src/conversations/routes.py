@@ -150,22 +150,66 @@ async def list_conversations(
     user: CurrentUser,
     page: int | None = Query(default=None, ge=1),
     page_size: int = Query(default=30, ge=1, le=100),
+    q: str | None = Query(default=None, max_length=120),
     session: AsyncSession = Depends(get_session),
 ) -> list[dict] | dict:
-    base = (
-        select(Conversation)
-        .where(Conversation.user_id == user.id)
-        .order_by(desc(Conversation.updated_at))
-    )
+    from sqlalchemy import or_
+
+    base = select(Conversation).where(Conversation.user_id == user.id)
+    needle = (q or "").strip()
+    if needle:
+        # Escape LIKE wildcards so user input is literal.
+        escaped = (
+            needle.replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+        )
+        pattern = f"%{escaped}%"
+        message_match = (
+            select(Message.id)
+            .where(
+                Message.conversation_id == Conversation.id,
+                Message.content.ilike(pattern, escape="\\"),
+            )
+            .correlate(Conversation)
+            .exists()
+        )
+        base = base.where(
+            or_(
+                Conversation.title.ilike(pattern, escape="\\"),
+                message_match,
+            )
+        )
+    base = base.order_by(desc(Conversation.updated_at))
+
     if page is None:
         result = await session.execute(base)
         return [c.to_summary_dict() for c in result.scalars().all()]
 
-    total = (
-        await session.execute(
-            select(func.count()).select_from(Conversation).where(Conversation.user_id == user.id)
+    count_stmt = (
+        select(func.count()).select_from(Conversation).where(Conversation.user_id == user.id)
+    )
+    if needle:
+        count_stmt = (
+            select(func.count())
+            .select_from(Conversation)
+            .where(Conversation.user_id == user.id)
+            .where(
+                or_(
+                    Conversation.title.ilike(pattern, escape="\\"),
+                    (
+                        select(Message.id)
+                        .where(
+                            Message.conversation_id == Conversation.id,
+                            Message.content.ilike(pattern, escape="\\"),
+                        )
+                        .correlate(Conversation)
+                        .exists()
+                    ),
+                )
+            )
         )
-    ).scalar_one()
+    total = (await session.execute(count_stmt)).scalar_one()
     result = await session.execute(base.offset((page - 1) * page_size).limit(page_size))
     items = [c.to_summary_dict() for c in result.scalars().all()]
     return {

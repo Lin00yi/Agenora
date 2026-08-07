@@ -28,11 +28,11 @@ async def seed_system_kbs() -> None:
         await _seed_one(
             session,
             kb_id=SYSTEM_TRAVEL_KB_ID,
-            name="TravelGPT 演示库",
+            name="旅行演示库（可选）",
             description=(
-                "本地老饕策展的 4 城（上海 / 北京 / 成都 / 杭州）餐厅库，"
-                "仅供演示。绑定此知识库会启用天气查询 / 高德 POI 兜底 / "
-                "旅行报告生成等专用工具，体验完整 TravelGPT 流程。"
+                "Agenora 附带的可选演示知识库：上海 / 北京 / 成都 / 杭州本地餐厅策展数据。"
+                "仅在主动选择时启用天气、高德 POI 与旅行报告等演示工具；"
+                "默认「通用对话」不绑定此库。"
             ),
             embedding_model="BAAI/bge-m3",
             vector_size=1024,

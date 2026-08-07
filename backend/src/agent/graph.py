@@ -45,7 +45,7 @@ def build_graph(
         assistant prompt. No travel fallback (that was v1, fixed in v2-M4).
       - kb=<system travel demo KB>: travel agent (weather + restaurant_kb +
         amap + generate_travel_report skill, travel prompt). Reachable only
-        by explicitly selecting "TravelGPT 演示库".
+        by explicitly selecting "旅行演示库（可选）".
       - kb=<user KB>: KB-bound mode (search_kb + optional web_search per
         v2-M6, KB-specific prompt with optional score-tutorial section).
 

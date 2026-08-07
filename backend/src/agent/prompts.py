@@ -6,8 +6,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 # v2-M4 (2026-05-17): unbound state used to fall back to travel mode. Now it
 # routes to this neutral assistant prompt — plain chat with no business tools.
-# Travel behavior is reachable only by explicitly selecting the "TravelGPT
-# 演示库" system KB in the selector.
+# Travel behavior is reachable only by explicitly selecting the optional
+# "旅行演示库（可选）" system KB in the selector.
 SYSTEM_PROMPT_GENERAL = """你是 Agenora 的通用 AI 助手。当前对话**未绑定任何知识库**，所以你只能依靠模型预训练知识 + get_current_time 工具 + 网络搜索回答。
 
 # 行为准则
@@ -36,7 +36,7 @@ SYSTEM_PROMPT_GENERAL = """你是 Agenora 的通用 AI 助手。当前对话**�
 """
 
 # Backwards-compatible alias used by older imports.
-SYSTEM_PROMPT_TRAVEL = """你是 TravelGPT，一个本地视角的旅行规划助手。
+SYSTEM_PROMPT_TRAVEL = """你是 Agenora 的旅行演示助手（可选演示模式）。
 
 # 决策原则（最重要）
 **最多调用工具 3 次，然后必须调 generate_travel_report 收尾。**

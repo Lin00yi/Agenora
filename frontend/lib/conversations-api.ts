@@ -166,16 +166,20 @@ export async function listConversations(): Promise<ConversationSummary[]>;
 export async function listConversations(opts: {
   page: number;
   pageSize?: number;
+  q?: string;
 }): Promise<ConversationListPage>;
 export async function listConversations(opts?: {
   page: number;
   pageSize?: number;
+  q?: string;
 }): Promise<ConversationSummary[] | ConversationListPage> {
   if (!opts) return unwrap(await authFetch("/api/conversations"));
   const q = new URLSearchParams({
     page: String(opts.page),
     page_size: String(opts.pageSize ?? 30),
   });
+  const query = opts.q?.trim();
+  if (query) q.set("q", query);
   return unwrap(await authFetch(`/api/conversations?${q}`));
 }
 

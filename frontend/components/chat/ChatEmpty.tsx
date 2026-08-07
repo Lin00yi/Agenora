@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { BookOpen, Database, ShieldCheck, SlidersHorizontal } from "lucide-react";
+import { BookOpen, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { EMPTY_PROMPTS } from "./constants";
 
@@ -31,26 +31,18 @@ export function EmptyWorkbench({
         </div>
 
         {!centered && (
-          <>
-            <div className="mt-8 grid gap-3 sm:grid-cols-3">
-              <EmptyStat icon={<Database className="h-4 w-4" />} label="知识库" value={currentKbName} />
-              <EmptyStat icon={<SlidersHorizontal className="h-4 w-4" />} label="检索模式" value="混合检索" />
-              <EmptyStat icon={<ShieldCheck className="h-4 w-4" />} label="数据策略" value="BYOK / 私有化" />
-            </div>
-
-            <div className="mt-5 flex flex-wrap gap-2">
-              {EMPTY_PROMPTS.map((item) => (
-                <button
-                  className="kf-empty-prompt rounded-lg border px-3 py-2 text-sm transition"
-                  key={item}
-                  onClick={() => onPick(item)}
-                  type="button"
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
-          </>
+          <div className="mt-8 flex flex-wrap justify-center gap-2">
+            {EMPTY_PROMPTS.map((item) => (
+              <button
+                className="kf-empty-prompt rounded-lg border px-3 py-2 text-sm transition"
+                key={item}
+                onClick={() => onPick(item)}
+                type="button"
+              >
+                {item}
+              </button>
+            ))}
+          </div>
         )}
       </section>
     </div>

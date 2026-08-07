@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Clock3, MessageSquareText, Search, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Clock3, LoaderCircle, MessageSquareText, Search, X } from "lucide-react";
 
 import {
   Dialog,
@@ -11,11 +11,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/cn";
-import type { Conversation } from "@/lib/conversationStore";
+import {
+  listConversations,
+  type ConversationSummary,
+} from "@/lib/conversations-api";
 import { formatConversationTime } from "@/components/chat/utils";
 
 const RECENT_KEY = "agenora:recent-conversation-searches";
 const MAX_RECENT = 8;
+const SEARCH_DEBOUNCE_MS = 220;
 
 function loadRecentSearches(): string[] {
   if (typeof window === "undefined") return [];
@@ -51,33 +55,88 @@ export function ConversationSearchDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  conversations: Conversation[];
+  /** Loaded sidebar conversations — used as instant local fallback while the server search runs. */
+  conversations: Array<{
+    id: string;
+    title: string;
+    updated_at: number;
+    message_count?: number;
+    messages?: unknown[];
+  }>;
   onSelect: (id: string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const searchSeq = useRef(0);
   const [query, setQuery] = useState("");
   const [recent, setRecent] = useState<string[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [results, setResults] = useState<ConversationSummary[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setQuery("");
     setRecent(loadRecentSearches());
     setActiveIndex(0);
+    setResults([]);
+    setSearching(false);
+    setSearchError(null);
     const frame = window.requestAnimationFrame(() => inputRef.current?.focus());
     return () => window.cancelAnimationFrame(frame);
   }, [open]);
 
   const trimmed = query.trim();
-  const results = useMemo(() => {
-    if (!trimmed) return [];
-    const needle = trimmed.toLowerCase();
-    return conversations
-      .filter((conversation) => conversation.title.toLowerCase().includes(needle))
-      .slice(0, 20);
-  }, [conversations, trimmed]);
-
   const showRecent = !trimmed && recent.length > 0;
+
+  useEffect(() => {
+    if (!trimmed) {
+      searchSeq.current += 1;
+      setResults([]);
+      setSearching(false);
+      setSearchError(null);
+      return;
+    }
+
+    const localHits = conversations
+      .filter((conversation) => conversation.title.toLowerCase().includes(trimmed.toLowerCase()))
+      .slice(0, 20)
+      .map(
+        (conversation): ConversationSummary => ({
+          id: conversation.id,
+          title: conversation.title,
+          kb_id: null,
+          llm_model: null,
+          message_count: conversation.message_count ?? conversation.messages?.length ?? 0,
+          created_at: null,
+          updated_at: new Date(conversation.updated_at).toISOString(),
+          finalized_at: null,
+        })
+      );
+    setResults(localHits);
+    setSearching(true);
+    setSearchError(null);
+
+    const seq = ++searchSeq.current;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const page = await listConversations({ page: 1, pageSize: 50, q: trimmed });
+          if (seq !== searchSeq.current) return;
+          setResults(page.items);
+          setSearchError(null);
+        } catch (error) {
+          if (seq !== searchSeq.current) return;
+          setSearchError((error as Error)?.message ?? "搜索失败");
+        } finally {
+          if (seq === searchSeq.current) setSearching(false);
+        }
+      })();
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [trimmed, conversations]);
+
   const itemCount = showRecent ? recent.length : results.length;
 
   useEffect(() => {
@@ -149,7 +208,7 @@ export function ConversationSearchDialog({
       >
         <DialogHeader className="sr-only">
           <DialogTitle>搜索对话</DialogTitle>
-          <DialogDescription>按标题搜索历史对话，或从最近搜索继续。</DialogDescription>
+          <DialogDescription>按标题或消息内容搜索历史对话，或从最近搜索继续。</DialogDescription>
         </DialogHeader>
 
         <div className="flex items-center gap-2 border-b border-surface-border/80 px-3">
@@ -158,11 +217,13 @@ export function ConversationSearchDialog({
             ref={inputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索对话标题…"
+            placeholder="搜索标题或消息内容…"
             className="h-12 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted"
             aria-label="搜索对话"
           />
-          {query ? (
+          {searching ? (
+            <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-muted" aria-label="搜索中" />
+          ) : query ? (
             <button
               type="button"
               className="rounded-md p-1 text-muted transition hover:bg-surface-2 hover:text-ink"
@@ -209,14 +270,20 @@ export function ConversationSearchDialog({
               </button>
             ))}
 
-          {trimmed && results.length === 0 && (
+          {trimmed && searchError && (
+            <div className="px-3 py-2 text-center text-xs text-muted">{searchError}（已显示本地结果）</div>
+          )}
+
+          {trimmed && !searching && results.length === 0 && (
             <div className="px-3 py-8 text-center text-sm text-muted">没有匹配的对话</div>
           )}
 
           {trimmed &&
             results.map((conversation, index) => {
-              const messageCount =
-                conversation.messages.length || conversation.message_count || 0;
+              const messageCount = conversation.message_count || 0;
+              const updatedMs = conversation.updated_at
+                ? new Date(conversation.updated_at).getTime()
+                : Date.now();
               return (
                 <button
                   key={conversation.id}
@@ -232,7 +299,7 @@ export function ConversationSearchDialog({
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm text-ink">{conversation.title}</span>
                     <span className="mt-0.5 block text-[11px] text-muted">
-                      {formatConversationTime(conversation.updated_at)}
+                      {formatConversationTime(updatedMs)}
                       {" · "}
                       {messageCount}
                       {" 条消息"}
@@ -244,7 +311,7 @@ export function ConversationSearchDialog({
 
           {!trimmed && recent.length === 0 && (
             <div className="px-3 py-8 text-center text-sm text-muted">
-              输入关键词搜索对话，或从最近搜索继续
+              输入关键词搜索标题或消息内容
             </div>
           )}
         </div>
