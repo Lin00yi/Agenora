@@ -17,7 +17,7 @@ import { ArrowDown } from "lucide-react";
 import { toast } from "sonner";
 import { APP_NAME } from "@/components/Brand";
 import { type ToolEvent } from "@/components/ThinkingChain";
-import { getToken, getUser, logout, type User } from "@/lib/auth";
+import { logout } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import {
   appendAssistantMessage,
@@ -28,11 +28,9 @@ import {
   getConversation,
   getConversationContextStatus,
   listConversations,
-  migrateFromLocalStorage,
   patchConversation,
   type ConversationContextStatus,
   type ConversationSummary,
-  type MessagePayload,
 } from "@/lib/conversations-api";
 import {
   deriveTitle,
@@ -40,10 +38,8 @@ import {
   genMessageId,
   joinAssistantText,
   type AssistantPart,
-  type Conversation,
   type Message,
 } from "@/lib/conversationStore";
-import { listKbs, type KB } from "@/lib/kb-api";
 import {
   connectChat,
   type ChatEvent,
@@ -65,173 +61,21 @@ import {
   formatMessageStats,
   mergeCitations,
   updateToolEvent,
-  type LlmSource,
 } from "@/components/chat";
-
-const EMPTY_ASSISTANT_RESPONSE = "\u672c\u8f6e\u6ca1\u6709\u751f\u6210\u53ef\u5c55\u793a\u5185\u5bb9\uff0c\u8bf7\u91cd\u8bd5\u3002";
-const STOPPED_GENERATION_MESSAGE = "\u7528\u6237\u5df2\u505c\u6b62\u751f\u6210";
-const DEFAULT_CONTEXT_WINDOW = 16_000;
-const CONTEXT_WINDOWS: Record<string, number> = {
-  // Kept temporarily for conversations that have not yet been opened since
-  // the backend startup migration; new DeepSeek calls use the V4 models.
-  "deepseek-chat": 64_000,
-  "deepseek-reasoner": 64_000,
-  "deepseek-v4-flash": 1_000_000,
-  "deepseek-v4-pro": 1_000_000,
-  "gpt-4o": 128_000,
-  "gpt-4o-mini": 128_000,
-  "claude-haiku-4-5-20251001": 200_000,
-  "claude-sonnet-4-6": 200_000,
-  "claude-opus-4-7": 200_000,
-};
-const CONTEXT_OUTPUT_RESERVE = 2_048;
-const CONTEXT_SYSTEM_TOOL_RESERVE = 6_000;
-const CONTEXT_RAG_RESERVE = 8_000;
-const CONTEXT_SAFETY_RESERVE = 2_000;
-
-function getContextWindowForModel(model: string | null, fallbackModels: string[] = []) {
-  if (model) return CONTEXT_WINDOWS[model] ?? DEFAULT_CONTEXT_WINDOW;
-  const fallbackWindow = Math.max(
-    ...fallbackModels.map((candidate) => CONTEXT_WINDOWS[candidate] ?? DEFAULT_CONTEXT_WINDOW),
-    DEFAULT_CONTEXT_WINDOW
-  );
-  return fallbackWindow;
-}
-
-function estimateContextStatus(
-  messages: Message[],
-  model: string | null,
-  fallbackModels: string[] = [],
-  kbId: string | null = null
-): ConversationContextStatus {
-  const window = getContextWindowForModel(model, fallbackModels);
-  const ragReserve = kbId ? CONTEXT_RAG_RESERVE : 0;
-  const available = Math.max(
-    4_000,
-    window -
-      CONTEXT_OUTPUT_RESERVE -
-      CONTEXT_SYSTEM_TOOL_RESERVE -
-      ragReserve -
-      CONTEXT_SAFETY_RESERVE
-  );
-  const current = messages.reduce((total, message) => {
-    const content = message.content ?? "";
-    const cjk = [...content].filter((char) => char >= "\u4e00" && char <= "\u9fff").length;
-    return total + Math.max(1, Math.floor(cjk * 1.2 + Math.max(content.length - cjk, 0) / 3.2)) + 6;
-  }, 0);
-  const ratio = current / available;
-  const percent = Math.min(100, Math.round(ratio * 100));
-  const state = ratio >= 0.85 ? "critical" : ratio >= 0.72 ? "ready" : ratio >= 0.6 ? "approaching" : "normal";
-
-  return {
-    state,
-    label: "本地估算",
-    description: `后端尚未提供上下文状态，已按当前消息和 ${model ?? "默认模型"} 的上下文窗口估算。`,
-    current_tokens: current,
-    raw_history_tokens: current,
-    available_tokens: available,
-    context_window: window,
-    ratio,
-    percent,
-    prepare_threshold_percent: 60,
-    summary_threshold_percent: 72,
-    force_threshold_percent: 85,
-    retained_recent_turns: 10,
-    summary: null,
-  };
-}
-
-const CONVERSATION_PAGE_SIZE = 30;
-
-function conversationHref(id: string) {
-  return `/c/${encodeURIComponent(id)}`;
-}
-
-function conversationIdFromPath(pathname: string) {
-  const match = pathname.match(/^\/c\/([^/]+)$/);
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
-function uniqueStrings(values: Array<string | null | undefined>) {
-  return Array.from(new Set(values.filter((value): value is string => !!value)));
-}
-
-function isRenderableMessage(message: Message) {
-  if (message.role === "user") return true;
-  return Boolean(
-    message.streaming ||
-      message.error ||
-      message.content.trim().length > 0 ||
-      message.tools.length > 0
-  );
-}
-
-function normalizeMessages(messages: Message[]) {
-  return messages.filter(isRenderableMessage);
-}
-
-function serverMsgToLocal(m: MessagePayload): Message {
-  const ts = m.created_at ? new Date(m.created_at).getTime() : Date.now();
-  if (m.role === "user") {
-    return { id: m.id, role: "user", content: m.content, created_at: ts };
-  }
-  return {
-    id: m.id,
-    role: "assistant",
-    content: m.content,
-    tools: m.tools ?? [],
-    memory_trace: m.memory_trace ?? null,
-    citations: m.citations ?? null,
-    cost_usd: m.cost_usd ?? undefined,
-    error: m.error === STOPPED_GENERATION_MESSAGE ? undefined : m.error ?? undefined,
-    created_at: ts,
-  };
-}
-
-function summaryToConv(s: ConversationSummary, messages: Message[] = []): Conversation {
-  const createdMs = s.created_at ? new Date(s.created_at).getTime() : Date.now();
-  const updatedMs = s.updated_at ? new Date(s.updated_at).getTime() : createdMs;
-  const finalizedMs = s.finalized_at ? new Date(s.finalized_at).getTime() : null;
-  return {
-    id: s.id,
-    title: s.title,
-    messages,
-    kb_id: s.kb_id,
-    llm_model: s.llm_model,
-    message_count: s.message_count,
-    created_at: createdMs,
-    updated_at: updatedMs,
-    finalized_at: finalizedMs,
-  };
-}
-
-function mergeConversationSummaries(
-  current: ConversationSummary[],
-  incoming: ConversationSummary[]
-) {
-  const seen = new Set<string>();
-  return [...current, ...incoming].filter((item) => {
-    if (seen.has(item.id)) return false;
-    seen.add(item.id);
-    return true;
-  });
-}
-
-const CHAT_PANE_FADE_MS = 180;
-
-function prefersReducedMotion() {
-  return (
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
-}
-
-function waitPaneMs(ms: number) {
-  if (prefersReducedMotion() || ms <= 0) return Promise.resolve();
-  return new Promise<void>((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
-}
+import { useChatBoot } from "@/hooks/useChatBoot";
+import {
+  CHAT_PANE_FADE_MS,
+  CONVERSATION_PAGE_SIZE,
+  EMPTY_ASSISTANT_RESPONSE,
+  conversationHref,
+  conversationIdFromPath,
+  estimateContextStatus,
+  mergeConversationSummaries,
+  normalizeMessages,
+  serverMsgToLocal,
+  summaryToConv,
+  waitPaneMs,
+} from "@/lib/chatPageHelpers";
 
 export function ChatPage({
   routeConversationId = null,
@@ -241,10 +85,6 @@ export function ChatPage({
   startBlank?: boolean;
 }) {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
-  const [initialLoadDone, setInitialLoadDone] = useState(false);
-  const [bootPhase, setBootPhase] = useState<"loading" | "leaving" | "gone">("loading");
   const [panePhase, setPanePhase] = useState<"in" | "out">("in");
 
   const [summaries, setSummaries] = useState<ConversationSummary[]>([]);
@@ -260,13 +100,8 @@ export function ChatPage({
   const [currentContextStatus, setCurrentContextStatus] =
     useState<ConversationContextStatus | null>(null);
   const [contextStatusLoading, setContextStatusLoading] = useState(false);
-  const [modelOptions, setModelOptions] = useState<string[]>([]);
-  const [llmReady, setLlmReady] = useState(false);
-  const [llmSource, setLlmSource] = useState<LlmSource>("missing");
-  const [kbs, setKbs] = useState<KB[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [systemSettingsOpen, setSystemSettingsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [composerValue, setComposerValue] = useState("");
 
@@ -291,10 +126,6 @@ export function ChatPage({
   } | null>(null);
 
   useEffect(() => {
-    modelOptionsRef.current = modelOptions;
-  }, [modelOptions]);
-
-  useEffect(() => {
     currentIdRef.current = currentId;
   }, [currentId]);
 
@@ -305,8 +136,6 @@ export function ChatPage({
     [summaries, currentId, visibleMessages]
   );
 
-  const currentConversation = sidebarConversations.find((c) => c.id === currentId) ?? null;
-  const currentKb = kbs.find((kb) => kb.id === currentKbId) ?? null;
   const hasConversationMessages = visibleMessages.length > 0;
 
   const loadConversation = useCallback(async (id: string) => {
@@ -405,6 +234,45 @@ export function ChatPage({
     }
   }, []);
 
+  const clearActiveConversation = useCallback(() => {
+    setMissingConversationId(null);
+    setCurrentId(null);
+    setCurrentMessages([]);
+    setCurrentKbId(null);
+    setCurrentModel(null);
+    setCurrentContextStatus(null);
+  }, []);
+
+  const {
+    user,
+    setUser,
+    authChecked,
+    initialLoadDone,
+    bootPhase,
+    modelOptions,
+    llmReady,
+    llmSource,
+    kbs,
+    systemSettingsOpen,
+    setSystemSettingsOpen,
+  } = useChatBoot({
+    routeConversationId,
+    startBlank,
+    loadConversation,
+    clearActiveConversation,
+    setSummaries,
+    setConversationTotal,
+    setConversationPage,
+    setConversationHasMore,
+  });
+
+  useEffect(() => {
+    modelOptionsRef.current = modelOptions;
+  }, [modelOptions]);
+
+  const currentConversation = sidebarConversations.find((c) => c.id === currentId) ?? null;
+  const currentKb = kbs.find((kb) => kb.id === currentKbId) ?? null;
+
   const runPaneTransition = useCallback(async (action: () => void | Promise<void | boolean>) => {
     const seq = ++paneSwitchSeq.current;
     setPanePhase("out");
@@ -499,148 +367,6 @@ export function ChatPage({
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("account") !== "1") return;
-    setSystemSettingsOpen(true);
-    params.delete("account");
-    const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}${window.location.hash}`;
-    window.history.replaceState(null, "", next);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (!getToken()) {
-        router.replace("/welcome");
-        return;
-      }
-
-      const u = getUser();
-      if (cancelled) return;
-      setUser(u);
-      setAuthChecked(true);
-
-      if (u) {
-        try {
-          const imported = await migrateFromLocalStorage(u.id);
-          if (!cancelled && imported > 0) {
-            toast.success(`\u5df2\u4ece\u672c\u5730\u6062\u590d ${imported} \u6761\u5386\u53f2\u5bf9\u8bdd`);
-          }
-        } catch (e) {
-          console.warn("conversation migration failed", e);
-        }
-
-        try {
-          const { getMySettings, probeLLM } = await import("@/lib/settings-api");
-          const settings = await getMySettings();
-          const effectiveSource =
-            settings.llm.effective_source ?? (settings.llm.configured ? "user" : "missing");
-          const effectiveReady = settings.llm.effective_configured ?? settings.llm.configured;
-          if (
-            !cancelled &&
-            settings.llm.configured &&
-            settings.llm.provider &&
-            settings.llm.base_url
-          ) {
-            setLlmReady(true);
-            setLlmSource("user");
-            const { models } = await probeLLM({
-              provider: settings.llm.provider,
-              base_url: settings.llm.base_url,
-              api_key: "",
-            });
-            if (!cancelled) setModelOptions(models);
-          } else if (!cancelled && effectiveReady && effectiveSource === "system") {
-            setLlmReady(true);
-            setLlmSource("system");
-            setModelOptions(
-              uniqueStrings([
-                settings.llm.effective_model,
-                settings.llm.effective_complex_model,
-              ])
-            );
-          } else if (!cancelled) {
-            setLlmReady(false);
-            setLlmSource("missing");
-            setModelOptions([]);
-          }
-        } catch (e) {
-          console.warn("LLM model probe failed", e);
-          if (!cancelled) {
-            setLlmReady(false);
-            setLlmSource("missing");
-            setModelOptions([]);
-          }
-        }
-      }
-
-      try {
-        const page = await listConversations({ page: 1, pageSize: CONVERSATION_PAGE_SIZE });
-        if (cancelled) return;
-        const list = page.items;
-        setSummaries(list);
-        setConversationTotal(page.total);
-        setConversationPage(page.page);
-        setConversationHasMore(page.has_more);
-        const fallbackId = list[0]?.id ?? null;
-        const targetId = routeConversationId ?? (startBlank ? null : fallbackId);
-        if (targetId) {
-          const ok = await loadConversation(targetId);
-          if (cancelled) return;
-          if (ok && !routeConversationId) {
-            window.history.replaceState(null, "", conversationHref(targetId));
-          } else if (!ok) {
-            if (routeConversationId) {
-              return;
-            }
-            const nextId = fallbackId && fallbackId !== targetId ? fallbackId : null;
-            if (nextId) {
-              window.history.replaceState(null, "", conversationHref(nextId));
-              await loadConversation(nextId);
-            } else {
-              window.history.replaceState(null, "", "/");
-            }
-          }
-        } else {
-          setMissingConversationId(null);
-          setCurrentId(null);
-          setCurrentMessages([]);
-          setCurrentKbId(null);
-          setCurrentModel(null);
-          setCurrentContextStatus(null);
-        }
-      } catch (e) {
-        if (!cancelled) {
-          console.error("list conversations failed", e);
-          toast.error((e as Error)?.message ?? "\u52a0\u8f7d\u4f1a\u8bdd\u5386\u53f2\u5931\u8d25");
-        }
-      } finally {
-        if (!cancelled) setInitialLoadDone(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [loadConversation, routeConversationId, router, startBlank]);
-
-  useEffect(() => {
-    if (!authChecked) return;
-    listKbs().then(setKbs).catch(() => {});
-  }, [authChecked]);
-
-  useEffect(() => {
-    if (!authChecked || !initialLoadDone) return;
-    if (bootPhase !== "loading") return;
-    setBootPhase("leaving");
-    const timer = window.setTimeout(
-      () => setBootPhase("gone"),
-      prefersReducedMotion() ? 0 : CHAT_PANE_FADE_MS
-    );
-    return () => window.clearTimeout(timer);
-  }, [authChecked, bootPhase, initialLoadDone]);
-
-  useEffect(() => {
     if (!authChecked) return;
     const handlePopState = () => {
       const id = conversationIdFromPath(window.location.pathname);
@@ -648,32 +374,23 @@ export function ChatPage({
         if (id) {
           await loadConversation(id);
         } else {
-          setMissingConversationId(null);
-          setCurrentId(null);
-          setCurrentMessages([]);
-          setCurrentKbId(null);
-          setCurrentModel(null);
-          setCurrentContextStatus(null);
+          clearActiveConversation();
         }
       });
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [authChecked, loadConversation, runPaneTransition]);
+  }, [authChecked, clearActiveConversation, loadConversation, runPaneTransition]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "k") return;
-      const target = event.target as HTMLElement | null;
-      if (target?.closest("textarea, input, [contenteditable='true']") && !searchOpen) {
-        // Still allow Ctrl+K from composer to open search.
-      }
       event.preventDefault();
       setSearchOpen(true);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [searchOpen]);
+  }, []);
 
   const scrollThreadToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const el = scrollRef.current;
@@ -692,17 +409,16 @@ export function ChatPage({
     setShowScrollToBottom(!nearBottom && el.scrollHeight > el.clientHeight + 24);
   }, []);
 
+  const lastAssistantContentLen = useMemo(() => {
+    const last = visibleMessages[visibleMessages.length - 1];
+    if (!last || last.role !== "assistant") return 0;
+    return last.content.length;
+  }, [visibleMessages]);
+
   useEffect(() => {
     if (!stickToBottomRef.current) return;
     scrollThreadToBottom("auto");
-  }, [
-    scrollThreadToBottom,
-    visibleMessages.length,
-    visibleMessages[visibleMessages.length - 1]?.role === "assistant"
-      ? (visibleMessages[visibleMessages.length - 1] as Message & { content: string })?.content
-          ?.length
-      : 0,
-  ]);
+  }, [scrollThreadToBottom, visibleMessages.length, lastAssistantContentLen]);
 
   useEffect(() => {
     stickToBottomRef.current = true;
@@ -743,16 +459,12 @@ export function ChatPage({
     }
     setSidebarOpen(false);
     void runPaneTransition(() => {
-      setMissingConversationId(null);
-      setCurrentId(null);
-      setCurrentMessages([]);
+      clearActiveConversation();
       setCurrentKbId(kbId);
-      setCurrentModel(null);
-      setCurrentContextStatus(null);
       setComposerValue("");
       window.history.pushState(null, "", "/c");
     });
-  }, [busy, currentId, currentKbId, finalizeSilently, hasConversationMessages, runPaneTransition]);
+  }, [busy, clearActiveConversation, currentId, currentKbId, finalizeSilently, hasConversationMessages, runPaneTransition]);
 
   const handleSelect = useCallback(
     async (id: string) => {
@@ -824,17 +536,13 @@ export function ChatPage({
             window.history.replaceState(null, "", conversationHref(newId));
             await loadConversation(newId);
           } else {
-            setCurrentId(null);
-            setCurrentMessages([]);
-            setCurrentKbId(null);
-            setCurrentModel(null);
-            setCurrentContextStatus(null);
+            clearActiveConversation();
             window.history.replaceState(null, "", "/c");
           }
         });
       }
     },
-    [currentId, loadConversation, runPaneTransition, summaries]
+    [clearActiveConversation, currentId, loadConversation, runPaneTransition, summaries]
   );
 
   const handleLogout = useCallback(() => {
