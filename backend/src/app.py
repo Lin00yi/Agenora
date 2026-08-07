@@ -406,17 +406,5 @@ async def chat_post(
         raise
 
 
-@app.get("/api/chat", deprecated=True)
-async def chat_get(q: str, request: Request) -> EventSourceResponse:
-    """Deprecated single-turn endpoint (anonymous, IP-rate-limited).
-
-    Kept for backward-compat smoke tests. New clients must use POST with auth.
-    """
-    client_ip = (request.client.host if request.client else "unknown") or "unknown"
-    return _run_chat_session(
-        [{"role": "user", "content": q}], rate_key=f"ip:{client_ip}"
-    )
-
-
 def _chunks(s: str, *, size: int) -> list[str]:
     return [s[i : i + size] for i in range(0, len(s), size)]

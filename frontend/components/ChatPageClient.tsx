@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import SystemSettingsDialog from "@/components/SystemSettingsDialog";
+import { useStreamingTokenPaint } from "@/hooks/useStreamingTokenPaint";
 import { Button } from "@/components/ui/button";
 import { StateView } from "@/components/ui/state-view";
 import { ArrowDown } from "lucide-react";
@@ -288,7 +289,6 @@ export function ChatPage({
     memory_trace: MemoryTrace | null;
     citations: Citation[];
   } | null>(null);
-  const tokenPaintRafRef = useRef<number | null>(null);
 
   useEffect(() => {
     modelOptionsRef.current = modelOptions;
@@ -297,15 +297,6 @@ export function ChatPage({
   useEffect(() => {
     currentIdRef.current = currentId;
   }, [currentId]);
-
-  useEffect(() => {
-    return () => {
-      if (tokenPaintRafRef.current != null) {
-        cancelAnimationFrame(tokenPaintRafRef.current);
-        tokenPaintRafRef.current = null;
-      }
-    };
-  }, []);
 
   const visibleMessages = useMemo(() => normalizeMessages(currentMessages), [currentMessages]);
 
@@ -458,54 +449,10 @@ export function ChatPage({
     [setMessagesForCurrent]
   );
 
-  /** Cancel pending rAF; optionally sync streamingRef.content into React state. */
-  const flushTokenPaint = useCallback(
-    (paint = true) => {
-      if (tokenPaintRafRef.current != null) {
-        cancelAnimationFrame(tokenPaintRafRef.current);
-        tokenPaintRafRef.current = null;
-      }
-      if (!paint) return;
-      const snap = streamingRef.current;
-      if (!snap) return;
-      const { msgId, content } = snap;
-      setMessagesForCurrent((prev) => {
-        const next = [...prev];
-        for (let i = next.length - 1; i >= 0; i--) {
-          const msg = next[i];
-          if (msg.role === "assistant" && msg.id === msgId) {
-            if (msg.content === content) return prev;
-            next[i] = { ...msg, content };
-            break;
-          }
-        }
-        return next;
-      });
-    },
-    [setMessagesForCurrent]
+  const { flushTokenPaint, scheduleTokenPaint } = useStreamingTokenPaint(
+    streamingRef,
+    setMessagesForCurrent
   );
-
-  const scheduleTokenPaint = useCallback(() => {
-    if (tokenPaintRafRef.current != null) return;
-    tokenPaintRafRef.current = requestAnimationFrame(() => {
-      tokenPaintRafRef.current = null;
-      const snap = streamingRef.current;
-      if (!snap) return;
-      const { msgId, content } = snap;
-      setMessagesForCurrent((prev) => {
-        const next = [...prev];
-        for (let i = next.length - 1; i >= 0; i--) {
-          const msg = next[i];
-          if (msg.role === "assistant" && msg.id === msgId) {
-            if (msg.content === content) return prev;
-            next[i] = { ...msg, content };
-            break;
-          }
-        }
-        return next;
-      });
-    });
-  }, [setMessagesForCurrent]);
 
   const bumpSummary = useCallback(
     (
@@ -549,6 +496,16 @@ export function ChatPage({
       .catch(() => {
         /* best effort: idle maintenance will retry later */
       });
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("account") !== "1") return;
+    setSystemSettingsOpen(true);
+    params.delete("account");
+    const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}${window.location.hash}`;
+    window.history.replaceState(null, "", next);
   }, []);
 
   useEffect(() => {

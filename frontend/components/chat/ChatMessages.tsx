@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -29,7 +29,7 @@ import {
   stripHandwrittenSourceList,
 } from "./utils";
 
-export function ChatMessage({ message }: { message: Message }) {
+export const ChatMessage = memo(function ChatMessage({ message }: { message: Message }) {
   if (message.role === "user") {
     return (
       <div className="flex items-start justify-end">
@@ -44,7 +44,7 @@ export function ChatMessage({ message }: { message: Message }) {
   }
 
   return <ChatAssistantMessage message={message} />;
-}
+});
 
 function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "assistant" }> }) {
   const streaming = !!message.streaming;
@@ -175,7 +175,13 @@ function useLiveElapsed(active: boolean, startedAt: number) {
   return Math.max(0, (active ? now : Date.now()) - startedAt);
 }
 
-function AnswerMarkdown({ markdown, streaming }: { markdown: string; streaming: boolean }) {
+const AnswerMarkdown = memo(function AnswerMarkdown({
+  markdown,
+  streaming,
+}: {
+  markdown: string;
+  streaming: boolean;
+}) {
   return (
     <div className="kf-answer-markdown text-[15px] leading-7">
       <ReactMarkdown
@@ -224,7 +230,7 @@ function AnswerMarkdown({ markdown, streaming }: { markdown: string; streaming: 
       {streaming && <span className="kf-streaming-cursor inline-block h-4 w-1.5 animate-pulse" />}
     </div>
   );
-}
+});
 
 export function ContextCompressionNotice({
   contextStatus,

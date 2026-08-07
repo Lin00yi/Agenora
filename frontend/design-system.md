@@ -276,11 +276,11 @@ colors: {
 |---|---|---|
 | **Brand** | Logo + Wordmark | 蓝青渐变方标 `rounded-lg`；三档 sm/md/lg |
 | **Chat shell** | 侧栏 + 顶栏 + 主区 + Composer | Canvas 上轻 brand 顶部 wash（≤ 8% 透明度） |
-| **MessageBubble** | 用户 / 助手消息 | 用户：brand 淡底；助手：surface + 引用条 |
+| **ChatMessage** | 用户 / 助手消息（`chat/ChatMessages.tsx`） | 用户气泡 + 助手流式回答 / 工具链 |
 | **ThinkingChain** | 透明 Agent 步骤 | 时间线 + 状态点（running / done / error） |
 | **Composer** | KB / 模型 / 附件 / 发送 / 上下文环 | 结构化边框面板；发送按钮方形主色 |
 | **ContextUsageRing** | Token 用量 | 圆形进度；hover/focus 显示详情；非假按钮 |
-| **ReportView** | Markdown 报告 | 清晰标题层级；citation chip |
+| **AnswerMarkdown** | Markdown 回答（`chat/ChatMessages.tsx`） | 清晰标题层级；citation chip |
 | **AdminPageShell** | 管理页壳 | 与 `app-page` 同一页眉语言 |
 
 ### 3.3 组件状态矩阵（全组件必备）

@@ -36,22 +36,3 @@ export async function POST(req: NextRequest) {
 
   return new Response(upstream.body, { headers: SSE_HEADERS });
 }
-
-// Deprecated single-turn GET — kept for backward compatibility / smoke tests.
-export async function GET(req: NextRequest) {
-  const q = req.nextUrl.searchParams.get("q");
-  if (!q) return new Response("missing q", { status: 400 });
-
-  const upstream = await fetch(
-    `${BACKEND_URL}/api/chat?q=${encodeURIComponent(q)}`,
-    { headers: { Accept: "text/event-stream" } }
-  );
-
-  if (!upstream.ok || !upstream.body) {
-    return new Response(`backend error ${upstream.status}`, {
-      status: upstream.status,
-    });
-  }
-
-  return new Response(upstream.body, { headers: SSE_HEADERS });
-}

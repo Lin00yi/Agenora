@@ -91,6 +91,8 @@ services:
       - "3000"
 
   # ===== Reverse proxy (single public entrypoint, HTTPS) =====
+  # Enable with: docker compose --profile production up -d
+  # Set DOMAIN in .env to match your TLS cert directory under /etc/letsencrypt/live/
   nginx:
     image: nginx:1.27-alpine
     restart: unless-stopped
@@ -100,8 +102,12 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-anykb.cc.cd}
+      # Only substitute DOMAIN — leave nginx vars like $host untouched.
+      NGINX_ENVSUBST_FILTER: DOMAIN
     volumes:
-      - ./nginx/agenora.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/agenora.conf.template:/etc/nginx/templates/default.conf.template:ro
       # Let's Encrypt certificates (managed by host certbot, mounted read-only).
       - /etc/letsencrypt:/etc/letsencrypt:ro
       # ACME http-01 challenge webroot — kept for future webroot-based renewal.
