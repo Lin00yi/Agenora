@@ -111,6 +111,34 @@ def pick_model(messages: list[dict], tools: list[dict], cfg: "UserLLMConfig | No
     return default_model
 
 
+def resolve_empty_answer_fallback_model(
+    current_model: str,
+    cfg: "UserLLMConfig | None" = None,
+) -> str | None:
+    """Pick a different model for empty-answer escalation (usually complex).
+
+    Returns None when no distinct alternate is configured — callers should skip
+    the second recovery attempt and use the user-facing fallback copy.
+    """
+    current = normalize_model_name(current_model) or (current_model or "").strip()
+    if cfg is not None:
+        default_model = cfg.default_model
+        complex_model = cfg.complex_model or cfg.default_model
+    else:
+        s = get_settings()
+        default_model = s.llm_default_model
+        complex_model = s.llm_complex_model
+
+    default_model = normalize_model_name(default_model) or default_model
+    complex_model = normalize_model_name(complex_model) or complex_model
+
+    if complex_model and complex_model != current:
+        return complex_model
+    if default_model and default_model != current:
+        return default_model
+    return None
+
+
 def with_cache_control(blocks: list[dict], cfg: "UserLLMConfig | None" = None) -> list[dict]:
     """Add cache_control to the last block for prompt caching (Anthropic only)."""
     provider = cfg.provider if cfg is not None else get_settings().llm_provider

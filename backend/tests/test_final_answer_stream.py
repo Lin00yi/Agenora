@@ -388,3 +388,58 @@ async def test_reason_node_empty_completion_falls_back_copy(
     assert next_state["report_streamed"] is False
     # Recovery also returned blank; no live tokens until app.py fake-chunks.
     assert events == []
+
+
+@pytest.mark.asyncio
+async def test_reason_node_escalates_to_complex_model_after_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    models: list[str] = []
+
+    class FakeCompletions:
+        async def create(self, **kwargs: Any) -> Any:
+            model = kwargs["model"]
+            models.append(model)
+            # Initial + same-model recovery stay empty; complex succeeds.
+            content = "复杂模型给出的答案" if model == "gpt-complex" else None
+            return SimpleNamespace(
+                usage=None,
+                choices=[
+                    SimpleNamespace(
+                        finish_reason="stop",
+                        message=SimpleNamespace(content=content, tool_calls=None),
+                    )
+                ],
+            )
+
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
+    monkeypatch.setattr("src.infra.llm_adapters.get_client", lambda cfg=None: fake_client)
+
+    events: list[dict[str, Any]] = []
+
+    async def emit(evt: dict[str, Any]) -> None:
+        events.append(evt)
+
+    cfg = UserLLMConfig(
+        provider="openai-compat",
+        api_key="sk-test",
+        base_url="https://example.com/v1",
+        default_model="gpt-test",
+        complex_model="gpt-complex",
+        context_window=128000,
+    )
+    registry = ToolRegistry()
+    next_state = await reason_node(
+        {"messages": [{"role": "user", "content": "q"}]},
+        registry=registry,
+        cost=CostTracker(),
+        system_prompt="sys",
+        include_travel_skill=False,
+        llm_cfg=cfg,
+        emit=emit,
+    )
+    assert models == ["gpt-test", "gpt-test", "gpt-complex"]
+    assert next_state["final_report"] == "复杂模型给出的答案"
+    assert next_state["report_streamed"] is True
+    assert [e["event"] for e in events] == ["report_start", "token"]
+    assert events[1]["text"] == "复杂模型给出的答案"

@@ -17,7 +17,7 @@ from src.conversations.context import (
     resolve_output_token_budget,
     truncate_text_to_token_budget,
 )
-from src.infra.llm import CostTracker, get_client, pick_model, with_cache_control
+from src.infra.llm import CostTracker, get_client, pick_model, resolve_empty_answer_fallback_model, with_cache_control
 from src.infra.llm_adapters import create_tool_adapter
 from src.observability import ageneration, traced
 from src.safety.tool_guard import is_tool_allowed
@@ -950,17 +950,19 @@ async def reason_node(
             )
             report_streamed = True
     elif not existing_report:
-        # Model finished with neither tools nor visible text (common flaky
-        # provider / tool-loop exit). Recover once without tools, then fall back.
+        # Empty completion: same-model tool-free nudge, then escalate once to
+        # complex/alternate model, then user-facing fallback copy.
         log.warning(
             "empty_reason_completion model=%s iters=%s; attempting recovery",
             model,
             iters + 1,
         )
-        recovered, recovered_streamed = await _recover_empty_answer(
+        fallback_model = resolve_empty_answer_fallback_model(model, llm_cfg)
+        recovered, recovered_streamed = await _recover_empty_answer_pipeline(
             adapter,
             cost=cost,
             model=model,
+            fallback_model=fallback_model,
             system_prompt=effective_system_prompt,
             provider_messages=provider_messages,
             max_tokens=output_token_budget,
@@ -1113,6 +1115,53 @@ async def _recover_empty_answer(
         streamed = streamed or emit is not None
 
     return text.strip(), streamed
+
+
+async def _recover_empty_answer_pipeline(
+    adapter: Any,
+    *,
+    cost: CostTracker,
+    model: str,
+    fallback_model: str | None,
+    system_prompt: str,
+    provider_messages: list[dict[str, Any]],
+    max_tokens: int,
+    emit: Any = None,
+    report_started: bool = False,
+) -> tuple[str, bool]:
+    """Same-model nudge, then one alternate-model attempt. Returns (text, streamed)."""
+    recovered, streamed = await _recover_empty_answer(
+        adapter,
+        cost=cost,
+        model=model,
+        system_prompt=system_prompt,
+        provider_messages=provider_messages,
+        max_tokens=max_tokens,
+        emit=emit,
+        report_started=report_started,
+    )
+    if recovered:
+        return recovered, streamed
+
+    if not fallback_model or fallback_model == model:
+        return "", streamed
+
+    log.warning(
+        "empty_answer_escalating model=%s -> %s",
+        model,
+        fallback_model,
+    )
+    recovered2, streamed2 = await _recover_empty_answer(
+        adapter,
+        cost=cost,
+        model=fallback_model,
+        system_prompt=system_prompt,
+        provider_messages=provider_messages,
+        max_tokens=max_tokens,
+        emit=emit,
+        report_started=report_started or streamed,
+    )
+    return recovered2, streamed or streamed2
 
 
 def _looks_like_output_budget_rejection(exc: BaseException) -> bool:
