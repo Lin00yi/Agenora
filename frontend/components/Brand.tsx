@@ -1,6 +1,6 @@
 import { cn } from "@/lib/cn";
 
-export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || "KnowFlow";
+export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || "Agenora";
 
 type BrandSize = "sm" | "md" | "lg";
 type BrandTone = "solid" | "soft";
@@ -8,25 +8,25 @@ type BrandTone = "solid" | "soft";
 type BrandProps = {
   size?: BrandSize;
   showWordmark?: boolean;
-  /** solid = filled ink mark (default); soft = quiet surface mark for sidebars */
+  /** Kept for call-site compatibility; mark is full-color either way. */
   tone?: BrandTone;
   className?: string;
 };
 
 const SIZES: Record<BrandSize, { box: string; mark: string; text: string }> = {
   sm: {
-    box: "h-7 w-7 rounded-lg",
-    mark: "h-5 w-5",
+    box: "h-7 w-7",
+    mark: "h-7 w-7",
     text: "text-sm font-semibold",
   },
   md: {
-    box: "h-8 w-8 rounded-lg",
-    mark: "h-6 w-6",
+    box: "h-8 w-8",
+    mark: "h-8 w-8",
     text: "text-base font-semibold",
   },
   lg: {
-    box: "h-14 w-14 rounded-lg",
-    mark: "h-10 w-10",
+    box: "h-14 w-14",
+    mark: "h-14 w-14",
     text: "text-3xl font-semibold tracking-tight sm:text-4xl",
   },
 };
@@ -37,38 +37,27 @@ function BrandMark({ className }: { className?: string }) {
       aria-hidden="true"
       className={className}
       fill="none"
-      viewBox="0 0 64 64"
+      viewBox="0 0 1254 1254"
       xmlns="http://www.w3.org/2000/svg"
     >
       <path
-        d="M18 12h21.8L50 22.2V50H18V12Z"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="5"
+        fill="#272e3e"
+        fillRule="evenodd"
+        d="M810.6 612.93a187.5 187.5 0 1 1-375 0 187.5 187.5 0 1 1 375 0ZM803.5 498a67.1 67.1 0 1 0-134.2 0 67.1 67.1 0 1 0 134.2 0Z"
       />
       <path
-        d="M40 13v12h10"
-        stroke="currentColor"
+        d="M899.77 582.87a278.3 278.3 0 0 1-429.06 262.93"
+        stroke="#575e72"
+        strokeWidth="65.7"
         strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="5"
       />
       <path
-        d="M26 28h12M26 38h20"
-        stroke="currentColor"
+        d="M370.08 748.6a287.1 287.1 0 0 1 347.44-406.8"
+        stroke="#202737"
+        strokeWidth="68.5"
         strokeLinecap="round"
-        strokeWidth="5"
       />
-      <path
-        d="M14 21H9v31h28v-5"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeOpacity=".58"
-        strokeWidth="5"
-      />
-      <circle cx="49" cy="43" r="4" fill="currentColor" />
+      <circle cx="845.4" cy="435.5" r="50.2" fill="#7e89cb" />
     </svg>
   );
 }
@@ -76,29 +65,13 @@ function BrandMark({ className }: { className?: string }) {
 export default function Brand({
   size = "md",
   showWordmark = true,
-  tone = "solid",
   className,
 }: BrandProps) {
   const s = SIZES[size];
-  const soft = tone === "soft";
   return (
     <div className={cn("inline-flex items-center gap-2", className)}>
-      <div
-        className={cn(
-          "kf-brand-mark relative isolate flex items-center justify-center overflow-hidden",
-          soft
-            ? "border border-surface-border bg-surface-2 text-ink shadow-none"
-            : [
-                "bg-ink text-on-brand shadow-soft ring-1 ring-white/20",
-                "before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_70%_18%,rgba(255,255,255,0.22),transparent_28%)]",
-                "after:absolute after:inset-x-1 after:bottom-1 after:h-px after:bg-white/20",
-                "dark:bg-ink dark:ring-white/15",
-              ],
-          s.box
-        )}
-        aria-hidden
-      >
-        <BrandMark className={cn("relative z-10", !soft && "drop-shadow-sm", s.mark)} />
+      <div className={cn("kf-brand-mark relative flex items-center justify-center", s.box)} aria-hidden>
+        <BrandMark className={s.mark} />
       </div>
       {showWordmark && <span className={s.text}>{APP_NAME}</span>}
     </div>

@@ -13,7 +13,7 @@ type Ctx = {
 
 const ThemeContext = createContext<Ctx | null>(null);
 
-const STORAGE_KEY = "anykb:theme";
+const STORAGE_KEY = "agenora:theme";
 
 function readStored(): Theme {
   if (typeof window === "undefined") return "system";

@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /* ============================================================
-   KnowFlow design tokens v5.6 — ChatGPT-inspired monochrome
+   Agenora design tokens v5.6 — ChatGPT-inspired monochrome
    Soft gray surfaces, black/white actions, warm charcoal dark.
    Spec: frontend/design-system.md
    ============================================================ */
@@ -330,13 +330,13 @@
 
   .kf-chat .kf-sidebar-row:hover {
     border-color: transparent;
-    background: rgb(var(--kf-surface-2));
+    background: rgb(var(--kf-surface));
     color: var(--chat-ink);
   }
 
   .kf-chat .kf-sidebar-row-active {
     border-color: transparent;
-    background: rgb(var(--kf-surface-2));
+    background: rgb(var(--kf-surface));
     color: var(--chat-ink);
     box-shadow: none;
   }
@@ -992,21 +992,14 @@
     color: var(--chat-ink);
   }
 
-  /* Soft mark in sidebar — avoid a second black slab next to the CTA. */
   .kf-chat .kf-sidebar .kf-sidebar-brand .kf-brand-mark {
-    background: rgb(var(--kf-surface-2));
-    color: var(--chat-ink);
+    background: transparent;
     box-shadow: none;
-    border: 1px solid var(--chat-line);
+    border: none;
   }
   .kf-chat .kf-sidebar .kf-sidebar-brand .kf-brand-mark::before,
   .kf-chat .kf-sidebar .kf-sidebar-brand .kf-brand-mark::after {
     display: none;
-  }
-  .dark .kf-chat .kf-sidebar .kf-sidebar-brand .kf-brand-mark {
-    background: rgb(var(--kf-surface-2));
-    color: var(--chat-ink);
-    border-color: var(--chat-line);
   }
 
   .kf-chat .kf-sidebar .kf-sidebar-new {

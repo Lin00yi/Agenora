@@ -48,7 +48,7 @@ Deep dark A3：近乎单色 chrome，brand 只做安静点缀。
 
 ## 2026-08-05 — Design system v5 Flow Teal visual QA (light + dark)
 
-Browser QA on `localhost:3001` after restarting dev (prior `next build` had corrupted `.next`). Theme forced via `anykb:theme` + `html.dark`.
+Browser QA on `localhost:3001` after restarting dev (prior `next build` had corrupted `.next`). Theme forced via `agenora:theme` + `html.dark`.
 
 | Route | Light | Dark | Notes |
 |---|---|---|---|
@@ -84,7 +84,7 @@ Browser QA on `localhost:3001` after restarting dev (prior `next build` had corr
 
 ## 2026-08-05 — Dark mode authenticated QA
 
-Browser dark theme (`anykb:theme=dark`). No visual regressions found.
+Browser dark theme (`agenora:theme=dark`). No visual regressions found.
 
 | Route | Dark | Notes |
 |---|---|---|

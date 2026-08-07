@@ -169,7 +169,7 @@ async def test_patch_memory_expires_at_and_export(client, create_user):
         headers=_bearer(user),
     )
     assert exported.status_code == 200
-    assert "knowflow-memories.json" in exported.headers.get("content-disposition", "")
+    assert "agenora-memories.json" in exported.headers.get("content-disposition", "")
     body = exported.json()
     assert body["count"] == 1
     assert body["memories"][0]["id"] == memory_id

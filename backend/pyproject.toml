@@ -1,7 +1,7 @@
 [project]
-name = "anykb-backend"
+name = "agenora-backend"
 version = "3.1.0"
-description = "KnowFlow backend — FastAPI + LangGraph private RAG knowledge base"
+description = "Agenora backend — FastAPI + LangGraph private RAG knowledge base and agents"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

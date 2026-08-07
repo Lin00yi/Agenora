@@ -200,7 +200,7 @@ function ProductPreview() {
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 p-5 sm:p-6">
         <div className="ml-auto max-w-[90%] rounded-lg border border-brand/25 bg-brand/8 px-4 py-3 text-sm leading-6 text-ink">
-          KnowFlow 如何保证企业数据安全？
+          Agenora 如何保证企业数据安全？
         </div>
 
         <div className="mr-auto max-w-[95%] space-y-3">

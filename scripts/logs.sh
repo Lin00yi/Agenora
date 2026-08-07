@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# KnowFlow 日志 — 跟踪指定服务（默认 backend）的日志。
+# Agenora 日志 — 跟踪指定服务（默认 backend）的日志。
 # 用法：
 #   ./scripts/logs.sh              tail -f backend
 #   ./scripts/logs.sh frontend     tail -f frontend

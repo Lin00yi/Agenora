@@ -7,8 +7,8 @@
  * you'd use httpOnly cookies set by the backend; that's a v2 concern.
  */
 
-const TOKEN_KEY = "anykb:token";
-const USER_KEY = "anykb:user";
+const TOKEN_KEY = "agenora:token";
+const USER_KEY = "agenora:user";
 
 export type User = {
   id: string;
@@ -66,10 +66,10 @@ export function handleSessionExpired(reason = "session_expired"): void {
     return;
   }
   // Avoid redirect storms when many API calls fail at once.
-  if ((window as Window & { __anykbAuthRedirect?: boolean }).__anykbAuthRedirect) {
+  if ((window as Window & { __agenoraAuthRedirect?: boolean }).__agenoraAuthRedirect) {
     return;
   }
-  (window as Window & { __anykbAuthRedirect?: boolean }).__anykbAuthRedirect = true;
+  (window as Window & { __agenoraAuthRedirect?: boolean }).__agenoraAuthRedirect = true;
   const next = encodeURIComponent(`${path}${window.location.search}`);
   window.location.href = `/login?next=${next}&reason=${encodeURIComponent(reason)}`;
 }

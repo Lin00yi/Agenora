@@ -1,10 +1,10 @@
-# KnowFlow UI 设计系统 v5
+# Agenora UI 设计系统 v5
 
 > v5：**Flow Teal** 主题色 + 新字体栈 + `--kf-*` Token 为唯一真相源；Chat DOM 拆分为 `components/chat/*`，类名前缀 `kf-*`。
 
 | 字段 | 值 |
 |---|---|
-| **产品** | KnowFlow（anykb）— 私有 RAG 知识库 + 透明 Agent |
+| **产品** | Agenora — 私有 RAG 知识库 + 透明 Agent |
 | **视觉方向** | ChatGPT-inspired monochrome：白/浅灰底，炭黑深色，黑白主按钮，大圆角 Composer |
 | **主题** | Light-first + Dark |
 | **无障碍** | WCAG AA（正文 ≥ 4.5:1，大字 / 图标 ≥ 3:1） |
@@ -304,7 +304,7 @@ colors: {
 | 自定义 `Dialog.tsx` vs `ui/dialog` | 统一 Radix `ui/dialog` |
 | 未使用的 `Sidebar.tsx` | 删除或改为导出 Chat 侧栏 |
 | Chat 硬编码 dark hex + `!important` 桥 | Token 化后删除覆盖层 |
-| 命名 `kf-*` / anykb / dcmf 混用 | **渐进**：新类用语义名；旧 `kf-*` 保留至下一次领域重构 |
+| 命名 `kf-*` / agenora / dcmf 混用 | **渐进**：新类用语义名；旧 `kf-*` 保留至下一次领域重构 |
 
 ---
 

@@ -57,7 +57,7 @@ const config: Config = {
         border: "var(--border)",
         input: "var(--input)",
         ring: "var(--ring)",
-        // KnowFlow v5 — kf tokens (canonical) + v4 aliases
+        // Agenora v5 — kf tokens (canonical) + v4 aliases
         kf: {
           canvas: "rgb(var(--kf-canvas) / <alpha-value>)",
           surface: "rgb(var(--kf-surface) / <alpha-value>)",

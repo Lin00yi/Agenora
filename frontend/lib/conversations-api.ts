@@ -271,7 +271,7 @@ export async function exportMemories(opts: { status?: string } = {}): Promise<vo
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "knowflow-memories.json";
+  a.download = "agenora-memories.json";
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -296,7 +296,7 @@ export async function exportConversations(): Promise<void> {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "knowflow-export.json";
+  a.download = "agenora-export.json";
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -375,18 +375,27 @@ type LocalConversation = {
 
 /**
  * Push any leftover localStorage conversations to the server, exactly once.
- * Idempotent via `anykb:migrated:{userId}` flag.
+ * Idempotent via `agenora:migrated:{userId}` flag.
  *
  * Returns the imported count (0 if nothing to migrate or already migrated).
  */
 export async function migrateFromLocalStorage(userId: string): Promise<number> {
   if (typeof window === "undefined") return 0;
   const ls = window.localStorage;
-  const migratedFlag = `anykb:migrated:${userId}`;
-  if (ls.getItem(migratedFlag) === "true") return 0;
+  const migratedFlag = `agenora:migrated:${userId}`;
+  if (ls.getItem(migratedFlag) === "true" || ls.getItem(`anykb:migrated:${userId}`) === "true") {
+    ls.setItem(migratedFlag, "true");
+    return 0;
+  }
 
-  const oldConvKey = `anykb:conversations:${userId}`;
-  const oldCurrKey = `anykb:current_conversation_id:${userId}`;
+  const oldConvKey =
+    ls.getItem(`agenora:conversations:${userId}`) != null
+      ? `agenora:conversations:${userId}`
+      : `anykb:conversations:${userId}`;
+  const oldCurrKey =
+    oldConvKey.startsWith("agenora:")
+      ? `agenora:current_conversation_id:${userId}`
+      : `anykb:current_conversation_id:${userId}`;
   const raw = ls.getItem(oldConvKey);
   if (!raw) {
     ls.setItem(migratedFlag, "true");

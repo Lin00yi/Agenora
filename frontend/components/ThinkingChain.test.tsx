@@ -12,13 +12,13 @@ describe("ThinkingChain", () => {
             name: "search_kb",
             status: "ok",
             latency_ms: 1260,
-            input: { query: "AnyKB data security", limit: 5 },
+            input: { query: "Agenora data security", limit: 5 },
           },
           {
             name: "search_kb",
             status: "ok",
             latency_ms: 387,
-            input: { query: "AnyKB privacy", limit: 5 },
+            input: { query: "Agenora privacy", limit: 5 },
           },
         ]}
       />
@@ -30,8 +30,8 @@ describe("ThinkingChain", () => {
 
     fireEvent.click(screen.getByRole("button"));
 
-    expect(screen.getByText("AnyKB data security")).toBeTruthy();
-    expect(screen.getByText("AnyKB privacy")).toBeTruthy();
+    expect(screen.getByText("Agenora data security")).toBeTruthy();
+    expect(screen.getByText("Agenora privacy")).toBeTruthy();
     expect(screen.getByText("387ms")).toBeTruthy();
   });
 });

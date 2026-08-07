@@ -71,7 +71,7 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     log.info("shutdown")
 
 
-app = FastAPI(title="KnowFlow", version="3.1.0", lifespan=lifespan)
+app = FastAPI(title="Agenora", version="3.1.0", lifespan=lifespan)
 
 s = get_settings()
 app.add_middleware(

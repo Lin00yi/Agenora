@@ -79,7 +79,7 @@ wheels = [
 ]
 
 [[package]]
-name = "anykb-backend"
+name = "agenora-backend"
 version = "3.1.0"
 source = { editable = "." }
 dependencies = [

@@ -11,7 +11,7 @@ import trafilatura
 
 _USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/124.0 Safari/537.36 KnowFlow-KB/1.0"
+    "(KHTML, like Gecko) Chrome/124.0 Safari/537.36 Agenora-KB/1.0"
 )
 
 

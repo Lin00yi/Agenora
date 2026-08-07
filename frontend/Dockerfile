@@ -14,7 +14,7 @@ COPY . .
 RUN mkdir -p public
 
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV NEXT_PUBLIC_APP_NAME=KnowFlow
+ENV NEXT_PUBLIC_APP_NAME=Agenora
 
 RUN npm run build
 

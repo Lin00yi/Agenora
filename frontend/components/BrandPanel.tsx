@@ -21,7 +21,7 @@ export default function BrandPanel() {
               让团队资料变成可追问、可引用的答案
             </h2>
             <p className="kf-brand-panel-muted mt-4 text-sm leading-7">
-              {APP_NAME} 面向私有知识库场景：模型密钥由你提供，文档和向量数据保留在自己的部署环境里。
+              {APP_NAME} 面向私有知识库与 Agent 场景：模型密钥由你提供，文档和向量数据保留在自己的部署环境里。
             </p>
           </div>
 

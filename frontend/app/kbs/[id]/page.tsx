@@ -572,8 +572,8 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
             title="系统内置示例库"
             description={
               kb.documents.length === 0
-                ? "这是 KnowFlow 内置的旅行演示知识库，可在对话中直接选用。文档清单不在此页开放管理；下方无文档列表属预期表现。"
-                : "这是 KnowFlow 内置的旅行演示知识库。所有用户都能在对话中选中它；内容只读，不能上传或删除。"
+                ? "这是 Agenora 内置的旅行演示知识库，可在对话中直接选用。文档清单不在此页开放管理；下方无文档列表属预期表现。"
+                : "这是 Agenora 内置的旅行演示知识库。所有用户都能在对话中选中它；内容只读，不能上传或删除。"
             }
             className="mb-4"
           />
@@ -1481,7 +1481,7 @@ function InviteDialog({
         {tab === "email" ? (
           <form onSubmit={onInviteEmail} className="space-y-4">
             <div className="rounded-lg border border-surface-border/70 bg-surface-2/45 px-3 py-2 text-xs leading-5 text-muted">
-              被邀请者必须先在 KnowFlow 注册一个账号，再用该邮箱邀请。
+              被邀请者必须先在 Agenora 注册一个账号，再用该邮箱邀请。
             </div>
             <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
               <label className="space-y-1.5 text-xs font-medium text-muted">

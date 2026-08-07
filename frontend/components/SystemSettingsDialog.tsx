@@ -427,9 +427,9 @@ function AboutTab() {
   return (
     <div className="space-y-4 text-sm">
       <div>
-        <h3 className="font-medium">KnowFlow</h3>
+        <h3 className="font-medium">Agenora</h3>
         <p className="mt-1 text-muted">
-          Your personal RAG chat over any knowledge base.
+          Private knowledge base and transparent agents — grounded answers you can trace.
         </p>
       </div>
 
@@ -453,7 +453,7 @@ function AboutTab() {
 
       <div className="rounded-lg border border-surface-border/70 bg-surface p-4 text-xs leading-5 text-muted shadow-sm">
         <p>
-          KnowFlow 是一个本地优先的 RAG 平台，所有数据保存在你自己的数据库中。
+          Agenora 是一个本地优先的知识库与 Agent 平台，所有数据保存在你自己的数据库中。
           使用本服务即表示你了解：LLM 输出可能不准确；上传到知识库的文档会经过
           embedding 提供商处理。详见仓库 README。
         </p>

@@ -245,7 +245,7 @@ def _rule_query_policy(query: str, *, max_queries: int) -> QueryPolicyDecision |
 
     has_followup = any(keyword in text for keyword in _RULE_FOLLOWUP_KEYWORDS)
     has_named_entity = any(ch.isupper() for ch in text) or any(
-        token in lowered for token in ("anykb", "kb", "api", "sdk", "sso", "ldap")
+        token in lowered for token in ("agenora", "anykb", "kb", "api", "sdk", "sso", "ldap")
     )
     if has_followup and not has_named_entity:
         return None

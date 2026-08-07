@@ -39,7 +39,7 @@ export default function ExportActions({
       toast.error("找不到报告内容");
       return;
     }
-    html2pdf().set({ filename: "knowflow-report.pdf", margin: 10 }).from(el).save();
+    html2pdf().set({ filename: "agenora-report.pdf", margin: 10 }).from(el).save();
   };
 
   return (

@@ -216,7 +216,7 @@ async def export_conversations(
         )
     return JSONResponse(
         out,
-        headers={"Content-Disposition": 'attachment; filename="knowflow-export.json"'},
+        headers={"Content-Disposition": 'attachment; filename="agenora-export.json"'},
     )
 
 
@@ -266,7 +266,7 @@ async def export_memories(
     }
     return JSONResponse(
         payload,
-        headers={"Content-Disposition": 'attachment; filename="knowflow-memories.json"'},
+        headers={"Content-Disposition": 'attachment; filename="agenora-memories.json"'},
     )
 
 

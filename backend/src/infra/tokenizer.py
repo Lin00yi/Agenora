@@ -20,7 +20,7 @@ from typing import Iterator
 log = logging.getLogger(__name__)
 
 _token_model: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "knowflow_token_model", default=None
+    "agenora_token_model", default=None
 )
 _encoding_cache: dict[str, object] = {}
 _tiktoken_failed = False

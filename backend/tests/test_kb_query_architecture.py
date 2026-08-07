@@ -87,8 +87,8 @@ def test_user_kb_graph_compiles_with_rewrite_and_search_nodes() -> None:
     registry.register(RecordingKBSearchTool())
     kb = SimpleNamespace(
         id="user-kb-id",
-        name="AnyKB",
-        description="AnyKB product docs",
+        name="Agenora",
+        description="Agenora product docs",
         is_system=False,
     )
 
@@ -110,12 +110,12 @@ async def test_query_policy_direct_rule_does_not_call_llm(
 
     monkeypatch.setattr("src.agent.nodes.get_client", fail_client)
 
-    state = {"messages": [{"role": "user", "content": "AnyKB 支持私有化吗？"}]}
+    state = {"messages": [{"role": "user", "content": "Agenora 支持私有化吗？"}]}
     next_state = await query_policy_node(state, cost=CostTracker(), llm_cfg=_llm_cfg())
 
     assert next_state["query_policy_action"] == "direct"
     assert next_state["query_policy_source"] == "rule"
-    assert next_state["kb_queries"] == [{"query": "AnyKB 支持私有化吗？", "limit": 5}]
+    assert next_state["kb_queries"] == [{"query": "Agenora 支持私有化吗？", "limit": 5}]
     assert next_state["kb_search_done"] is False
 
 
@@ -136,10 +136,10 @@ async def test_query_policy_complex_query_uses_llm_and_caps_queries(
                         message=SimpleNamespace(
                             content=(
                                 '{"action":"expand","reason":"multi_intent","queries":['
-                                '{"query":"AnyKB 数据安全","limit":5},'
-                                '{"query":"AnyKB 本地部署 私有化","limit":5},'
-                                '{"query":"AnyKB 数据加密 隐私","limit":5},'
-                                '{"query":"AnyKB 企业版","limit":5}'
+                                '{"query":"Agenora 数据安全","limit":5},'
+                                '{"query":"Agenora 本地部署 私有化","limit":5},'
+                                '{"query":"Agenora 数据加密 隐私","limit":5},'
+                                '{"query":"Agenora 企业版","limit":5}'
                                 "]}"
                             )
                         )
@@ -154,14 +154,14 @@ async def test_query_policy_complex_query_uses_llm_and_caps_queries(
         "messages": [
             {
                 "role": "user",
-                "content": "AnyKB 如何保证数据安全？是否支持本地部署和私有化？",
+                "content": "Agenora 如何保证数据安全？是否支持本地部署和私有化？",
             }
         ]
     }
     next_state = await query_policy_node(
         state,
         cost=CostTracker(),
-        kb_name="AnyKB",
+        kb_name="Agenora",
         llm_cfg=_llm_cfg(),
     )
 
@@ -170,9 +170,9 @@ async def test_query_policy_complex_query_uses_llm_and_caps_queries(
     assert next_state["query_policy_source"] == "llm"
     assert next_state["query_policy_reason"] == "multi_intent"
     assert [item["query"] for item in next_state["kb_queries"]] == [
-        "AnyKB 数据安全",
-        "AnyKB 本地部署 私有化",
-        "AnyKB 数据加密 隐私",
+        "Agenora 数据安全",
+        "Agenora 本地部署 私有化",
+        "Agenora 数据加密 隐私",
     ]
 
 
@@ -219,7 +219,7 @@ async def test_query_policy_model_override_respects_provider(
     fake_client = SimpleNamespace(messages=FakeMessages())
     monkeypatch.setattr("src.agent.nodes.get_client", lambda cfg=None: fake_client)
 
-    state = {"messages": [{"role": "user", "content": "AnyKB 支持私有化吗？"}]}
+    state = {"messages": [{"role": "user", "content": "Agenora 支持私有化吗？"}]}
     await query_policy_node(state, cost=CostTracker(), llm_cfg=_anthropic_llm_cfg())
 
     assert captured_models == ["claude-haiku-4-5-20251001"]
@@ -236,10 +236,10 @@ async def test_query_rewrite_node_caps_queries(monkeypatch: pytest.MonkeyPatch) 
                         message=SimpleNamespace(
                             content=(
                                 '{"queries":['
-                                '{"query":"AnyKB 数据安全","limit":5},'
-                                '{"query":"AnyKB 本地部署 私有化","limit":5},'
-                                '{"query":"AnyKB 数据加密 隐私","limit":5},'
-                                '{"query":"AnyKB 企业版","limit":5}'
+                                '{"query":"Agenora 数据安全","limit":5},'
+                                '{"query":"Agenora 本地部署 私有化","limit":5},'
+                                '{"query":"Agenora 数据加密 隐私","limit":5},'
+                                '{"query":"Agenora 企业版","limit":5}'
                                 "]}"
                             )
                         )
@@ -252,18 +252,18 @@ async def test_query_rewrite_node_caps_queries(monkeypatch: pytest.MonkeyPatch) 
     )
     monkeypatch.setattr("src.agent.nodes.get_client", lambda cfg=None: fake_client)
 
-    state = {"messages": [{"role": "user", "content": "AnyKB 如何保证数据安全？"}]}
+    state = {"messages": [{"role": "user", "content": "Agenora 如何保证数据安全？"}]}
     next_state = await query_rewrite_node(
         state,
         cost=CostTracker(),
-        kb_name="AnyKB",
+        kb_name="Agenora",
         llm_cfg=_llm_cfg(),
     )
 
     assert [item["query"] for item in next_state["kb_queries"]] == [
-        "AnyKB 数据安全",
-        "AnyKB 本地部署 私有化",
-        "AnyKB 数据加密 隐私",
+        "Agenora 数据安全",
+        "Agenora 本地部署 私有化",
+        "Agenora 数据加密 隐私",
     ]
     assert next_state["kb_search_done"] is False
 
@@ -281,11 +281,11 @@ async def test_query_rewrite_node_falls_back_to_user_query(
     )
     monkeypatch.setattr("src.agent.nodes.get_client", lambda cfg=None: fake_client)
 
-    state = {"messages": [{"role": "user", "content": "AnyKB 支持私有化吗？"}]}
+    state = {"messages": [{"role": "user", "content": "Agenora 支持私有化吗？"}]}
     next_state = await query_rewrite_node(state, cost=CostTracker(), llm_cfg=_llm_cfg())
 
     assert next_state["kb_queries"] == [
-        {"query": "AnyKB 支持私有化吗？", "limit": 5}
+        {"query": "Agenora 支持私有化吗？", "limit": 5}
     ]
 
 

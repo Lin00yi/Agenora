@@ -1,4 +1,4 @@
-# KnowFlow — 私有 RAG 知识库 + 透明 Agent
+# Agenora — 私有 RAG 知识库 + 透明 Agent
 
 > 上传文档 / 抓取网页 → 选中 KB → 用一句话问出来。
 > 30 秒内吐一份带原文引用的 markdown 报告，全过程思考链可视。
@@ -188,7 +188,7 @@ ai-agent/
 │   │   ├── settings-api.ts        LLM / Embedding / Reranker probe + save
 │   │   ├── conversationStore.ts   Message 类型 + deriveTitle
 │   │   ├── byok-toast.ts          v2-M2: BYOK 422 → toast「去配置」
-│   │   ├── storage-migrate.ts     一次性 anykb:* 命名空间迁移
+│   │   ├── storage-migrate.ts     一次性 agenora:* 命名空间迁移
 │   │   ├── cn.ts                  clsx + tailwind-merge
 │   │   └── theme.ts               class 策略 dark mode
 │   ├── tailwind.config.ts         语义化 token + dark class 策略
@@ -209,7 +209,7 @@ ai-agent/
 │
 ├── docker-compose.yml             4 服务编排（postgres + backend + frontend + nginx）
 ├── env.docker.example             Docker 部署 env 模板
-├── nginx/anykb.conf               nginx 反代配置（SSE-safe）
+├── nginx/agenora.conf             nginx 反代配置（SSE-safe）
 ├── scripts/                       运维脚本
 │   ├── deploy.sh                  build + up + 健康检查
 │   ├── backup.sh                  备份 PG + backend-data 卷
@@ -360,7 +360,7 @@ PG + Milvus Standalone 是被 1000+ 公司验证过的组合，资源占用合�
 │   /api/...  → backend                      │
 │   /        → frontend                      │
 └──────────────────┬─────────────────────────┘
-                   │ docker network: anykb_default
+                   │ docker network: agenora_default
    ┌───────────────┼───────────────┐
    ▼               ▼               ▼
 postgres        backend         frontend
@@ -377,7 +377,7 @@ postgres        backend         frontend
 | `docker-compose.yml` | 4 服务编排 + volume + 健康检查 + env 注入 |
 | `backend/Dockerfile` | Python 3.11 slim + `pip install .[milvus] asyncpg` + healthcheck `/health` |
 | `frontend/Dockerfile` | 两阶段 build：builder npm ci + build / runner 只装 `.next/standalone`（~150MB） |
-| `nginx/anykb.conf` | upstream `backend:8000` + `frontend:3000` + SSE-safe 配置 |
+| `nginx/agenora.conf` | upstream `backend:8000` + `frontend:3000` + SSE-safe 配置 |
 | `env.docker.example` | 模板：POSTGRES_PASSWORD / JWT_SECRET / PUBLIC_URL / BYOK_REQUIRED / ADMIN_EMAILS |
 | `scripts/deploy.sh` | build + up + healthcheck + 日志（**主入口**） |
 | `scripts/backup.sh` | 备份 PG + backend-data volume 到 tarball |
@@ -540,7 +540,7 @@ data volumes:
 | ✅ docker compose 4 服务全栈 healthy | `restart: unless-stopped` 自启 |
 | ✅ PostgreSQL 16 替代 SQLite | volume 持久化 |
 | ✅ Milvus Lite 嵌入 backend 容器 | volume 持久化 |
-| ✅ nginx 反代 + SSE buffering off + 60M body limit | `nginx/anykb.conf` |
+| ✅ nginx 反代 + SSE buffering off + 60M body limit | `nginx/agenora.conf` |
 | ✅ **HTTPS / Let's Encrypt 证书**（2026-05-25 上线） | `/etc/letsencrypt/live/anykb.cc.cd/`，TLSv1.2+1.3 + HSTS 1 年 |
 | ✅ **HTTP → HTTPS 301 自动跳** | nginx :80 block 全部 redirect |
 | ✅ **certbot 自动续期**（每 60 天自动） | systemd timer + renewal-hooks 自动停启 nginx 容器，downtime ~30s |
@@ -683,7 +683,7 @@ sudo certbot renew
 
 ```ini
 BACKEND_URL=http://127.0.0.1:8000           # 后端地址（前端 proxy 转发）
-NEXT_PUBLIC_APP_NAME=KnowFlow                  # 显示名
+NEXT_PUBLIC_APP_NAME=Agenora                  # 显示名
 NEXT_PUBLIC_PLAUSIBLE_DOMAIN=               # 可选 Plausible analytics
 NEXT_TELEMETRY_DISABLED=1                   # 关掉 next telemetry
 ```

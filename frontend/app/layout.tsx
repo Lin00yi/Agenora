@@ -4,15 +4,18 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import { fontVariables } from "@/lib/fonts";
 import "./globals.css";
 
-const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || "KnowFlow";
+const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || "Agenora";
 
 export const metadata: Metadata = {
   title: APP_NAME,
   description: "把任意知识库变成可对话的资料助手：上传文档、抓取网页，然后一句话问出答案。",
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+  },
 };
 
 // Runs before paint so the dark class is applied before the first frame.
-const NO_FLASH = `(function(){try{var t=localStorage.getItem('anykb:theme')||'system';var d=t==='dark'||(t==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);}catch(e){}})()`;
+const NO_FLASH = `(function(){try{var t=localStorage.getItem('agenora:theme')||localStorage.getItem('anykb:theme')||'system';var d=t==='dark'||(t==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);}catch(e){}})()`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

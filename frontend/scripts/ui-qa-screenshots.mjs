@@ -91,8 +91,8 @@ async function captureRoute(context, route, mode, auth) {
   if (auth) {
     await page.addInitScript(
       ([token, user]) => {
-        localStorage.setItem("anykb:token", token);
-        localStorage.setItem("anykb:user", JSON.stringify(user));
+        localStorage.setItem("agenora:token", token);
+        localStorage.setItem("agenora:user", JSON.stringify(user));
       },
       [auth.token, auth.user],
     );
@@ -101,12 +101,12 @@ async function captureRoute(context, route, mode, auth) {
   await page.emulateMedia({ colorScheme: mode === "dark" ? "dark" : "light" });
   if (mode === "dark") {
     await page.addInitScript(() => {
-      localStorage.setItem("anykb:theme", "dark");
+      localStorage.setItem("agenora:theme", "dark");
       document.documentElement.classList.add("dark");
     });
   } else {
     await page.addInitScript(() => {
-      localStorage.setItem("anykb:theme", "light");
+      localStorage.setItem("agenora:theme", "light");
       document.documentElement.classList.remove("dark");
     });
   }
