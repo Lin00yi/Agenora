@@ -296,3 +296,95 @@ async def test_reason_node_no_tools_streams_tokens_directly(
     assert next_state["report_streamed"] is True
     assert [e["event"] for e in events] == ["report_start", "token"]
     assert events[1]["text"] == "直接答"
+
+
+@pytest.mark.asyncio
+async def test_reason_node_recovers_empty_completion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = {"n": 0}
+
+    class FakeCompletions:
+        async def create(self, **kwargs: Any) -> Any:
+            calls["n"] += 1
+            assert kwargs.get("tools") in (None, [])
+            if calls["n"] == 1:
+                content = None
+            else:
+                content = "恢复后的答案"
+            return SimpleNamespace(
+                usage=None,
+                choices=[
+                    SimpleNamespace(
+                        finish_reason="stop",
+                        message=SimpleNamespace(content=content, tool_calls=None),
+                    )
+                ],
+            )
+
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
+    monkeypatch.setattr("src.infra.llm_adapters.get_client", lambda cfg=None: fake_client)
+
+    events: list[dict[str, Any]] = []
+
+    async def emit(evt: dict[str, Any]) -> None:
+        events.append(evt)
+
+    registry = ToolRegistry()
+    next_state = await reason_node(
+        {"messages": [{"role": "user", "content": "四张卡的开卡规则？"}]},
+        registry=registry,
+        cost=CostTracker(),
+        system_prompt="sys",
+        include_travel_skill=False,
+        llm_cfg=_llm_cfg(),
+        emit=emit,
+    )
+    assert calls["n"] == 2
+    assert next_state["final_report"] == "恢复后的答案"
+    assert next_state["report_streamed"] is True
+    assert next_state["pending_tool_calls"] == []
+    assert [e["event"] for e in events] == ["report_start", "token"]
+    assert events[1]["text"] == "恢复后的答案"
+
+
+@pytest.mark.asyncio
+async def test_reason_node_empty_completion_falls_back_copy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.agent.nodes import EMPTY_ANSWER_FALLBACK
+
+    class FakeCompletions:
+        async def create(self, **kwargs: Any) -> Any:
+            return SimpleNamespace(
+                usage=None,
+                choices=[
+                    SimpleNamespace(
+                        finish_reason="stop",
+                        message=SimpleNamespace(content=None, tool_calls=None),
+                    )
+                ],
+            )
+
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
+    monkeypatch.setattr("src.infra.llm_adapters.get_client", lambda cfg=None: fake_client)
+
+    events: list[dict[str, Any]] = []
+
+    async def emit(evt: dict[str, Any]) -> None:
+        events.append(evt)
+
+    registry = ToolRegistry()
+    next_state = await reason_node(
+        {"messages": [{"role": "user", "content": "q"}]},
+        registry=registry,
+        cost=CostTracker(),
+        system_prompt="sys",
+        include_travel_skill=False,
+        llm_cfg=_llm_cfg(),
+        emit=emit,
+    )
+    assert next_state["final_report"] == EMPTY_ANSWER_FALLBACK
+    assert next_state["report_streamed"] is False
+    # Recovery also returned blank; no live tokens until app.py fake-chunks.
+    assert events == []

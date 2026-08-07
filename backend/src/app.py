@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
 from src.agent.graph import build_graph
+from src.agent.nodes import EMPTY_ANSWER_FALLBACK
 from src.auth.middleware import CurrentUser
 from src.auth.models import User
 from src.auth.routes import router as auth_router
@@ -231,6 +232,15 @@ def _run_chat_session(
             report = redact_sensitive_output(final_state.get("final_report") or "")
             cost_usd = round(final_state.get("cost_usd", 0.0), 6)
             report_streamed = bool(final_state.get("report_streamed"))
+            if not report.strip():
+                # Last-resort guard: never end the SSE round with zero tokens.
+                log.warning(
+                    "empty_final_report user=%s kb_id=%s; using fallback copy",
+                    user_email,
+                    kb.id if kb else None,
+                )
+                report = EMPTY_ANSWER_FALLBACK
+                report_streamed = False
             # Finish sinks before SSE "done" so client disconnect / task.cancel
             # cannot skip DB persist while Langfuse flush is in flight.
             if trace is not None:

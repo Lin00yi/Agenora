@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 from typing import Any, TYPE_CHECKING, Literal, TypedDict
 
@@ -27,11 +28,16 @@ from src.tools.citations import citations_from_tool_raw, merge_citations
 if TYPE_CHECKING:
     from src.settings_user import UserLLMConfig
 
+log = logging.getLogger(__name__)
+
 MAX_ITERATIONS = 10
 MAX_SEARCH_KB_CALLS_PER_STEP = 3
 MAX_KB_REWRITE_QUERIES = 3
 DEFAULT_KB_SEARCH_LIMIT = 5
 MAX_AUTO_CONTINUATIONS = 2
+EMPTY_ANSWER_FALLBACK = (
+    "本轮模型未返回有效内容。请直接点重试，或换一种问法后再试一次。"
+)
 
 _TRUSTED_CONTEXT_SOURCES = {"profile", "memory", "summary"}
 _QUERY_POLICY_ACTIONS = {"direct", "normalize", "expand", "skip_kb"}
@@ -909,17 +915,19 @@ async def reason_node(
     text_parts = resp.text_parts
     tool_calls = [tc.as_state() for tc in resp.tool_calls]
     assistant_content = resp.assistant_content
+    usable_text = _join_usable_text(text_parts)
 
     new_messages = messages + [{"role": "assistant", "content": assistant_content}]
     final_report: str | None = state.get("final_report")
+    existing_report = (final_report or "").strip()
 
     if tool_calls:
         # Intermediate prose stays on the timeline; final answer comes later.
         if text_streamed_this_round and live_path != "tools":
             await _emit({"event": "segment_seal"})
         # Do not mark report_streamed — final may still need fake-chunk / later stream.
-    elif text_parts and not final_report:
-        final_report = "\n".join(text_parts)
+    elif usable_text and not existing_report:
+        final_report = usable_text
         if text_streamed_this_round:
             report_streamed = True
         if _response_hit_output_limit(resp.stop_reason):
@@ -941,6 +949,33 @@ async def reason_node(
                 emit=_emit_answer,
             )
             report_streamed = True
+    elif not existing_report:
+        # Model finished with neither tools nor visible text (common flaky
+        # provider / tool-loop exit). Recover once without tools, then fall back.
+        log.warning(
+            "empty_reason_completion model=%s iters=%s; attempting recovery",
+            model,
+            iters + 1,
+        )
+        recovered, recovered_streamed = await _recover_empty_answer(
+            adapter,
+            cost=cost,
+            model=model,
+            system_prompt=effective_system_prompt,
+            provider_messages=provider_messages,
+            max_tokens=output_token_budget,
+            emit=_emit,
+            report_started=report_started,
+        )
+        if recovered:
+            final_report = recovered
+            report_streamed = report_streamed or recovered_streamed
+            new_messages = messages + [
+                {"role": "assistant", "content": [{"type": "text", "text": recovered}]}
+            ]
+        else:
+            final_report = EMPTY_ANSWER_FALLBACK
+            # Leave report_streamed False so app.py fake-chunks the fallback.
 
     return {
         **state,
@@ -977,6 +1012,107 @@ async def plan_node(
 
 def _response_hit_output_limit(stop_reason: str | None) -> bool:
     return (stop_reason or "").lower() in {"length", "max_tokens"}
+
+
+def _join_usable_text(text_parts: list[str] | None) -> str:
+    if not text_parts:
+        return ""
+    return "\n".join(part for part in text_parts if (part or "").strip()).strip()
+
+
+def _empty_answer_recovery_prompt() -> str:
+    return (
+        "你刚才没有产出任何对用户可见的回答（既没有正文，也没有继续调用工具）。"
+        "请基于已有对话、工具结果和已检索的知识库上下文，直接给出完整中文答复。"
+        "不要再调用工具，不要只输出空白或客套话。"
+    )
+
+
+async def _recover_empty_answer(
+    adapter: Any,
+    *,
+    cost: CostTracker,
+    model: str,
+    system_prompt: str,
+    provider_messages: list[dict[str, Any]],
+    max_tokens: int,
+    emit: Any = None,
+    report_started: bool = False,
+) -> tuple[str, bool]:
+    """One tool-free retry after an empty completion. Returns (text, streamed)."""
+    recovery_messages = [
+        *provider_messages,
+        {"role": "user", "content": _empty_answer_recovery_prompt()},
+    ]
+    streamed = False
+    started = report_started
+
+    async def _on_text(text: str) -> None:
+        nonlocal streamed, started
+        if emit is None or not (text or "").strip():
+            return
+        if not started:
+            await emit({"event": "report_start"})
+            started = True
+        await emit({"event": "token", "text": text})
+        streamed = True
+
+    from src.infra.llm_adapters import StreamHooks
+
+    hooks = StreamHooks(on_text_delta=_on_text) if emit is not None else None
+    try:
+        resp = await _chat_with_budget_retry(
+            adapter,
+            model=model,
+            system_prompt=system_prompt,
+            messages=recovery_messages,
+            tools=[],
+            max_tokens=max_tokens,
+            stream=emit is not None,
+            hooks=hooks,
+        )
+    except Exception:  # noqa: BLE001
+        log.exception("empty_answer_recovery_failed model=%s", model)
+        return "", False
+
+    cost.add(model, resp.usage)
+    text = _join_usable_text(resp.text_parts)
+    if not text:
+        return "", streamed
+
+    # Non-stream / mock path: ensure UI still receives tokens once.
+    if emit is not None and hooks is not None and not hooks._first_text:
+        if not started:
+            await emit({"event": "report_start"})
+            started = True
+        await emit({"event": "token", "text": text})
+        streamed = True
+
+    if _response_hit_output_limit(resp.stop_reason):
+        async def _emit_answer(evt: dict[str, Any]) -> None:
+            nonlocal started, streamed
+            if emit is None:
+                return
+            if evt.get("event") == "token":
+                if not started:
+                    await emit({"event": "report_start"})
+                    started = True
+                streamed = True
+            await emit(evt)
+
+        text = await _auto_continue_report(
+            adapter,
+            cost=cost,
+            model=model,
+            system_prompt=system_prompt,
+            provider_messages=recovery_messages,
+            initial_text=text,
+            max_tokens=max_tokens,
+            emit=_emit_answer if emit is not None else None,
+        )
+        streamed = streamed or emit is not None
+
+    return text.strip(), streamed
 
 
 def _looks_like_output_budget_rejection(exc: BaseException) -> bool:
