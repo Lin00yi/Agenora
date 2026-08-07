@@ -21,7 +21,6 @@ import {
 } from "@/lib/admin-api";
 import { cn } from "@/lib/cn";
 import { Button, buttonVariants } from "@/components/ui/button";
-import AdminShell from "../AdminShell";
 import { LoadingState, PageSkeleton, StateView } from "@/components/ui/state-view";
 
 const PAGE_SIZE = 30;
@@ -35,11 +34,7 @@ const paginationButtonClass = cn(
  * /admin/traces — master/detail layout with duration waterfall.
  */
 export default function AdminTracesPage() {
-  return (
-    <AdminShell title="后台管理 · 追踪">
-      <TracesPanel />
-    </AdminShell>
-  );
+  return <TracesPanel />;
 }
 
 function TracesPanel() {

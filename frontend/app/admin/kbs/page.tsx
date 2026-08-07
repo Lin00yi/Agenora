@@ -8,7 +8,6 @@ import { listKbs, deleteKb, type AdminKb } from "@/lib/admin-api";
 import { cn } from "@/lib/cn";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import AdminShell from "../AdminShell";
 import { PageSkeleton, StateView } from "@/components/ui/state-view";
 
 const PAGE_SIZE = 50;
@@ -25,11 +24,7 @@ const paginationButtonClass = cn(
  * button for them and still surface the error if it somehow fires.
  */
 export default function AdminKbsPage() {
-  return (
-    <AdminShell title="后台管理 · 知识库">
-      <KbsTable />
-    </AdminShell>
-  );
+  return <KbsTable />;
 }
 
 function KbsTable() {

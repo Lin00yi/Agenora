@@ -53,6 +53,7 @@ import {
 import {
   ChatLoadingShell,
   ChatSidebar,
+  ConversationSearchDialog,
   ChatTopBar,
   ChatMessage,
   Composer,
@@ -263,6 +264,7 @@ export function ChatPage({
   const [llmSource, setLlmSource] = useState<LlmSource>("missing");
   const [kbs, setKbs] = useState<KB[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [systemSettingsOpen, setSystemSettingsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [composerValue, setComposerValue] = useState("");
@@ -276,6 +278,7 @@ export function ChatPage({
   const paneSwitchSeq = useRef(0);
   const sendLockRef = useRef(false);
   const modelOptionsRef = useRef<string[]>([]);
+  const currentIdRef = useRef<string | null>(null);
   const streamingRef = useRef<{
     convId: string;
     msgId: string;
@@ -289,6 +292,10 @@ export function ChatPage({
   useEffect(() => {
     modelOptionsRef.current = modelOptions;
   }, [modelOptions]);
+
+  useEffect(() => {
+    currentIdRef.current = currentId;
+  }, [currentId]);
 
   const visibleMessages = useMemo(() => normalizeMessages(currentMessages), [currentMessages]);
 
@@ -417,11 +424,12 @@ export function ChatPage({
       setCurrentMessages((prev) => {
         const resolved =
           typeof next === "function" ? (next as (p: Message[]) => Message[])(prev) : next;
-        if (currentId) messagesCache.current.set(currentId, resolved);
+        const id = currentIdRef.current;
+        if (id) messagesCache.current.set(id, resolved);
         return resolved;
       });
     },
-    [currentId]
+    []
   );
 
   const updateLastAssistant = useCallback(
@@ -637,6 +645,20 @@ export function ChatPage({
     return () => window.removeEventListener("popstate", handlePopState);
   }, [authChecked, loadConversation, runPaneTransition]);
 
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "k") return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("textarea, input, [contenteditable='true']") && !searchOpen) {
+        // Still allow Ctrl+K from composer to open search.
+      }
+      event.preventDefault();
+      setSearchOpen(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [searchOpen]);
+
   const scrollThreadToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const el = scrollRef.current;
     if (!el) return;
@@ -839,9 +861,8 @@ export function ChatPage({
           };
           setSummaries((prev) => [summary, ...prev]);
           setConversationTotal((total) => total + 1);
+          currentIdRef.current = created.id;
           setCurrentId(created.id);
-          messagesCache.current.set(created.id, []);
-          setCurrentMessages([]);
           setCurrentKbId(created.kb_id);
           setCurrentModel(created.llm_model ?? null);
           setCurrentContextStatus(created.context_status ?? null);
@@ -853,28 +874,16 @@ export function ChatPage({
         }
       }
 
-      let userMsg: Message;
-      try {
-        const persisted = await appendUserMessage(convId!, trimmed);
-        userMsg = serverMsgToLocal(persisted) as Message;
-      } catch (e) {
-        toast.error((e as Error)?.message ?? "\u4fdd\u5b58\u6d88\u606f\u5931\u8d25");
-        releaseSendLock();
-        return;
-      }
-
-      const priorHistory: SseChatMessage[] = currentMessages
-        .filter((m) => {
-          if (m.role === "user") return true;
-          return !!m.content && !m.error && !m.streaming;
-        })
-        .map((m) => ({ role: m.role, content: m.content }));
-      const messagesForBackend: SseChatMessage[] = [
-        ...priorHistory,
-        { role: "user", content: trimmed },
-      ];
-
+      // Paint the thread immediately so we never flash the empty-workbench
+      // between createConversation and appendUserMessage.
+      const optimisticUserId = genMessageId();
       const aiId = genMessageId();
+      const optimisticUser: Message = {
+        id: optimisticUserId,
+        role: "user",
+        content: trimmed,
+        created_at: Date.now(),
+      };
       const aiMsg: Message = {
         id: aiId,
         role: "assistant",
@@ -884,7 +893,7 @@ export function ChatPage({
         streaming: true,
         created_at: Date.now(),
       };
-      setMessagesForCurrent((prev) => [...prev, userMsg, aiMsg]);
+      setMessagesForCurrent((prev) => [...prev, optimisticUser, aiMsg]);
       streamingRef.current = {
         convId: convId!,
         msgId: aiId,
@@ -907,8 +916,37 @@ export function ChatPage({
         1,
         true
       );
-
       setComposerValue("");
+
+      try {
+        const persisted = await appendUserMessage(convId!, trimmed);
+        const userMsg = serverMsgToLocal(persisted) as Message;
+        if (userMsg.id !== optimisticUserId) {
+          setMessagesForCurrent((prev) =>
+            prev.map((m) => (m.id === optimisticUserId ? userMsg : m))
+          );
+        }
+      } catch (e) {
+        toast.error((e as Error)?.message ?? "\u4fdd\u5b58\u6d88\u606f\u5931\u8d25");
+        setMessagesForCurrent((prev) =>
+          prev.filter((m) => m.id !== optimisticUserId && m.id !== aiId)
+        );
+        bumpSummary(convId!, {}, -1, false);
+        streamingRef.current = null;
+        releaseSendLock();
+        return;
+      }
+
+      const priorHistory: SseChatMessage[] = currentMessages
+        .filter((m) => {
+          if (m.role === "user") return true;
+          return !!m.content && !m.error && !m.streaming;
+        })
+        .map((m) => ({ role: m.role, content: m.content }));
+      const messagesForBackend: SseChatMessage[] = [
+        ...priorHistory,
+        { role: "user", content: trimmed },
+      ];
 
       const persistFinal = async (opts: { error?: string; costUsd?: number }) => {
         const snap = streamingRef.current;
@@ -1335,7 +1373,15 @@ export function ChatPage({
           onDeleteConversation={handleDelete}
           onLoadMoreConversations={loadMoreConversations}
           onOpenAccountSettings={() => setSystemSettingsOpen(true)}
+          onOpenSearch={() => setSearchOpen(true)}
           onLogout={handleLogout}
+        />
+
+        <ConversationSearchDialog
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
+          conversations={sidebarConversations}
+          onSelect={handleSelect}
         />
 
         <section

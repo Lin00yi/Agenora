@@ -19,18 +19,13 @@ import {
 import type { LucideIcon } from "lucide-react";
 
 import { getStats, type AdminStats } from "@/lib/admin-api";
-import AdminShell from "./AdminShell";
 import { PageSkeleton, StateView } from "@/components/ui/state-view";
 
 /**
  * /admin — read-only platform stats dashboard (06-01).
  */
 export default function AdminDashboardPage() {
-  return (
-    <AdminShell title="后台管理 · 看板">
-      <Dashboard />
-    </AdminShell>
-  );
+  return <Dashboard />;
 }
 
 function Dashboard() {

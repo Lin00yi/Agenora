@@ -25,7 +25,6 @@ import { cn } from "@/lib/cn";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import AppModal from "@/components/AppModal";
-import AdminShell from "../AdminShell";
 import { PageSkeleton, StateView } from "@/components/ui/state-view";
 
 const PAGE_SIZE = 50;
@@ -43,11 +42,7 @@ const paginationButtonClass = cn(
  * (400 / 409) which we surface verbatim via toast.
  */
 export default function AdminUsersPage() {
-  return (
-    <AdminShell title="后台管理 · 用户">
-      <UsersTable />
-    </AdminShell>
-  );
+  return <UsersTable />;
 }
 
 function UsersTable() {

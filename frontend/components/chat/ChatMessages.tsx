@@ -96,9 +96,7 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
                 </div>
               )}
               {hasAnyText && (
-                <div id={`report-output-${message.id}`}>
-                  <AnswerMarkdown markdown={exportMarkdown} streaming={streaming} />
-                </div>
+                <AnswerMarkdown markdown={exportMarkdown} streaming={streaming} />
               )}
               {hasAnyText && streaming && (
                 <div className="kf-live-badge mt-3 inline-flex items-center gap-2 rounded-md border px-2.5 py-1 text-xs tabular-nums">
@@ -129,7 +127,7 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
               <MemoryContextTrace trace={message.memory_trace!} />
             ) : null}
             {hasLiveContent && (
-              <div className="kf-answer px-1 py-1 sm:px-2" id={`report-output-${message.id}`}>
+              <div className="kf-answer px-1 py-1 sm:px-2">
                 <AnswerMarkdown markdown={liveContent} streaming={streaming} />
                 {streaming && (
                   <div className="kf-live-badge mt-3 inline-flex items-center gap-2 rounded-md border px-2.5 py-1 text-xs tabular-nums">
@@ -149,12 +147,6 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
                 </span>
               </div>
             )}
-            {/* Stable export anchor when live segment empty but sealed text exists */}
-            {!hasLiveContent && hasAnyText && (
-              <div className="hidden" id={`report-output-${message.id}`}>
-                {exportMarkdown}
-              </div>
-            )}
           </div>
         )}
 
@@ -163,11 +155,7 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
         ) : null}
 
         {hasAnyText && !streaming && (
-          <ExportActions
-            markdown={exportMarkdown}
-            cost={message.cost_usd}
-            reportId={`report-output-${message.id}`}
-          />
+          <ExportActions markdown={exportMarkdown} cost={message.cost_usd} />
         )}
       </div>
     </div>

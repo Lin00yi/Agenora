@@ -3,18 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Bot, BrainCircuit, Globe2, KeyRound, Loader2, Trash2 } from "lucide-react";
+import { ArrowLeft, Bot, Globe2, KeyRound, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { ConfirmDialog } from "@/components/ConfirmDialog";
 import Select from "@/components/Select";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { getToken } from "@/lib/auth";
-import {
-  deleteMemory,
-  listMemories,
-  patchMemory,
-  type UserMemory,
-} from "@/lib/conversations-api";
 import {
   clearLLMSettings,
   getMySettings,
@@ -41,6 +35,7 @@ import { cn } from "@/lib/utils";
  *   - Save LLM provider creds (provider + base_url + api_key + default_model)
  *   - Toggle KB-mode options (e.g. web_search opt-in)
  *
+ * Long-term memory management lives at /memories.
  * The default LLM model saved here is the fallback for any conversation that
  * hasn't explicitly picked a model via the chat header Model selector (v3-M6).
  */
@@ -94,7 +89,12 @@ export default function SettingsPage() {
             <p className="text-xs font-semibold tracking-[0.16em] text-brand">模型设置</p>
             <h1 className="mt-2 text-2xl font-semibold tracking-tight">模型设置</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-              配置 LLM 提供商凭据、知识库兜底策略和长期记忆控制。Embedding / Reranker 在创建知识库时按 KB 单独配置。
+              配置 LLM 提供商凭据与知识库兜底策略。Embedding / Reranker 在创建知识库时按 KB 单独配置。
+              长期记忆请前往{" "}
+              <Link href="/memories" className="text-brand underline-offset-2 hover:underline">
+                记忆系统
+              </Link>
+              。
             </p>
           </div>
         </section>
@@ -108,7 +108,6 @@ export default function SettingsPage() {
             initial={settings?.kb_options}
             onChanged={refresh}
           />
-          <MemoryCard />
         </div>
       </main>
     </div>
@@ -484,178 +483,6 @@ function KbOptionsCard({
       </div>
     </section>
   );
-}
-
-// ---------------------------------------------------------------------------
-// Memory card - audit and control without interrupting chat capture
-// ---------------------------------------------------------------------------
-function MemoryCard() {
-  const [memories, setMemories] = useState<UserMemory[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<UserMemory | null>(null);
-
-  const refresh = async () => {
-    const rows = await listMemories();
-    setMemories(rows);
-  };
-
-  useEffect(() => {
-    refresh()
-      .catch((e) => toast.error((e as Error).message || "读取记忆失败"))
-      .finally(() => setLoading(false));
-  }, []);
-
-  const updateImportance = async (memory: UserMemory, importance: number) => {
-    setBusyId(memory.id);
-    try {
-      const updated = await patchMemory(memory.id, { importance });
-      setMemories((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-      toast.success("记忆重要度已更新");
-    } catch (e) {
-      toast.error((e as Error).message || "更新记忆失败");
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const confirmDelete = async () => {
-    if (!deleteTarget) return;
-    setBusyId(deleteTarget.id);
-    try {
-      await deleteMemory(deleteTarget.id);
-      setMemories((current) => current.filter((item) => item.id !== deleteTarget.id));
-      setDeleteTarget(null);
-      toast.success("记忆已删除，不会再注入后续对话");
-    } catch (e) {
-      toast.error((e as Error).message || "删除记忆失败");
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  return (
-    <section className="admin-panel overflow-hidden">
-      <header className="flex flex-col gap-3 border-b border-surface-border/70 bg-surface-2/35 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="admin-icon-tile admin-icon-tile-brand shrink-0">
-            <BrainCircuit className="h-4 w-4" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <h2 className="text-base font-semibold">记忆管理</h2>
-            <p className="mt-1 text-xs leading-relaxed text-muted">
-              系统会在后台仅保存高置信度的偏好和约束。你可以随时查看、降低重要度或删除；不会影响聊天时的静默体验。
-            </p>
-          </div>
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full shrink-0 sm:w-auto"
-          onClick={() => void refresh()}
-          disabled={loading}
-        >
-          刷新
-        </Button>
-      </header>
-
-      <div className="px-5 py-5">
-      {loading ? (
-        <div className="flex items-center gap-2 py-5 text-sm text-muted">
-          <Loader2 className="h-4 w-4 animate-spin" /> 读取记忆中...
-        </div>
-      ) : memories.length === 0 ? (
-        <StateView
-          density="compact"
-          title="暂无长期记忆"
-          description="系统只会在识别到稳定偏好或项目约束时静默保存。"
-          className="bg-surface/60"
-        />
-      ) : (
-        <div className="space-y-2">
-          {memories.map((memory) => {
-            const busy = busyId === memory.id;
-            return (
-              <article key={memory.id} className="rounded-lg border border-surface-border/80 bg-surface shadow-sm transition-[background-color,border-color,box-shadow] hover:border-brand/30 hover:bg-surface-2/45 hover:shadow-md">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0 px-3 py-3">
-                    <p className="break-words text-sm font-medium">{memory.content}</p>
-                    <p className="mt-1 text-xs text-muted">
-                      {memoryTypeLabel(memory.type)} · {memorySourceLabel(memory.source)} · {memory.scope === "kb" ? "知识库范围" : "全局范围"}
-                      {memory.expires_at ? ` · 到期：${formatMemoryDate(memory.expires_at)}` : " · 长期有效"}
-                    </p>
-                    {memory.source_message_ids.length > 0 ? (
-                      <p className="mt-1 text-xs text-muted">来源消息：{memory.source_message_ids.length} 条</p>
-                    ) : null}
-                  </div>
-                  <Button
-                    type="button"
-                    className={cn(secondaryActionClass, "mx-3 mb-3 text-muted hover:text-destructive sm:m-3")}
-                    onClick={() => setDeleteTarget(memory)}
-                    disabled={busy}
-                    aria-label={`删除记忆：${memory.content}`}
-                  >
-                    <Trash2 className="h-4 w-4" /> 删除
-                  </Button>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 border-t border-surface-border/60 bg-surface-2/35 px-3 py-3 text-xs">
-                  <span className="text-muted">重要度</span>
-                  <Select
-                    value={String(memory.importance)}
-                    onChange={(e) => void updateImportance(memory, Number(e.target.value))}
-                    disabled={busy}
-                    options={[
-                      { value: "0.2", label: "低" },
-                      { value: "0.5", label: "普通" },
-                      { value: "0.75", label: "较高" },
-                      { value: "0.8", label: "高" },
-                      { value: "0.9", label: "很高" },
-                      { value: "1", label: "最高" },
-                    ]}
-                    size="sm"
-                    className="h-[var(--control-h)] min-w-[6rem] text-sm"
-                    contentAlign="start"
-                    contentPosition="popper"
-                    aria-label={`调整记忆重要度：${memory.content}`}
-                  />
-                  <span className="text-muted">置信度 {Math.round(memory.confidence * 100)}%</span>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      )}
-      </div>
-
-      <ConfirmDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => {
-          if (!open && !busyId) setDeleteTarget(null);
-        }}
-        title="删除这条记忆？"
-        description="删除后，它不会再作为上下文注入后续对话。"
-        confirmLabel="删除"
-        variant="danger"
-        busy={deleteTarget !== null && busyId === deleteTarget.id}
-        onConfirm={confirmDelete}
-      />
-    </section>
-  );
-}
-
-function memoryTypeLabel(type: UserMemory["type"]) {
-  return type === "preference" ? "偏好" : type === "constraint" ? "约束" : "显式记忆";
-}
-
-function memorySourceLabel(source: UserMemory["source"]) {
-  if (source === "auto_rule") return "自动提取";
-  if (source === "user_edited") return "用户编辑";
-  return "用户明确要求";
-}
-
-function formatMemoryDate(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "未知" : date.toLocaleDateString();
 }
 
 // ---------------------------------------------------------------------------

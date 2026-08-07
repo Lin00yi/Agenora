@@ -13,8 +13,8 @@ import { cn } from "@/lib/utils";
 
 const OPTIONS = [
   { value: "light", label: "浅色", icon: Sun },
-  { value: "system", label: "跟随系统", icon: Monitor },
   { value: "dark", label: "深色", icon: Moon },
+  { value: "system", label: "跟随系统", icon: Monitor },
 ] as const;
 
 function ThemeIcon({ theme, className }: { theme: Theme; className?: string }) {

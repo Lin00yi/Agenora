@@ -3,6 +3,7 @@ export * from "./constants";
 export * from "./utils";
 export { ChatLoadingShell } from "./ChatLoadingShell";
 export { ChatSidebar } from "./ChatSidebar";
+export { ConversationSearchDialog } from "./ConversationSearchDialog";
 export { ChatTopBar, DEFAULT_TITLE } from "./ChatTopBar";
 export { EmptyWorkbench, StarterPromptCards, EmptyStat } from "./ChatEmpty";
 export { ChatMessage, ContextCompressionNotice } from "./ChatMessages";

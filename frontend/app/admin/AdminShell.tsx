@@ -17,19 +17,18 @@ import { Button } from "@/components/ui/button";
 import { LoadingState, StateView } from "@/components/ui/state-view";
 import ThemeToggle from "@/components/ThemeToggle";
 
+const TABS = [
+  { href: "/admin", label: "看板", icon: LayoutDashboard, title: "看板" },
+  { href: "/admin/users", label: "用户", icon: Users, title: "用户" },
+  { href: "/admin/kbs", label: "知识库", icon: BookOpen, title: "知识库" },
+  { href: "/admin/traces", label: "追踪", icon: GitBranch, title: "追踪" },
+] as const;
+
 /**
  * Client-side guard + chrome for the /admin/* pages.
- *
- * Header mirrors other internal pages (settings / kbs / memories): compact
- * back link + theme toggle, with section tabs as a secondary row.
+ * Mounted once via app/admin/layout.tsx so tab navigations keep the shell.
  */
-export default function AdminShell({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
+export default function AdminShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [ready, setReady] = useState(false);
@@ -64,6 +63,13 @@ export default function AdminShell({
       active = false;
     };
   }, [router]);
+
+  const activeTab =
+    TABS.find((tab) =>
+      tab.href === "/admin"
+        ? pathname === "/admin"
+        : pathname === tab.href || pathname.startsWith(`${tab.href}/`)
+    ) ?? TABS[0];
 
   if (forbidden) {
     return (
@@ -105,13 +111,6 @@ export default function AdminShell({
     );
   }
 
-  const tabs = [
-    { href: "/admin", label: "看板", icon: LayoutDashboard },
-    { href: "/admin/users", label: "用户", icon: Users },
-    { href: "/admin/kbs", label: "知识库", icon: BookOpen },
-    { href: "/admin/traces", label: "追踪", icon: GitBranch },
-  ];
-
   return (
     <div className="app-page min-h-dvh text-ink">
       <header className="app-page-header border-b">
@@ -124,7 +123,7 @@ export default function AdminShell({
             /
           </span>
           <span className="hidden truncate text-sm font-medium text-ink sm:inline">
-            {title.replace(/^后台管理 · /, "") || "平台管理"}
+            {activeTab.title}
           </span>
           <div className="flex-1" />
           <ThemeToggle compact />
@@ -133,7 +132,7 @@ export default function AdminShell({
           className="mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto px-4 pb-3 sm:px-6"
           aria-label="管理分区"
         >
-          {tabs.map((t) => {
+          {TABS.map((t) => {
             const active =
               t.href === "/admin"
                 ? pathname === "/admin"
@@ -143,6 +142,7 @@ export default function AdminShell({
               <Link
                 key={t.href}
                 href={t.href}
+                prefetch
                 aria-current={active ? "page" : undefined}
                 className={cn(
                   "inline-flex min-h-[var(--control-h)] shrink-0 items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30",

@@ -40,17 +40,12 @@ export default function WelcomePage() {
                 </Link>
               </Button>
             ) : (
-              <>
-                <Button asChild variant="outline" className="hidden sm:inline-flex">
-                  <Link href="/login">登录</Link>
-                </Button>
-                <Button asChild>
-                  <Link href="/register">
-                    开始使用
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </Link>
-                </Button>
-              </>
+              <Button asChild>
+                <Link href="/login">
+                  开始使用
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </Button>
             )}
           </div>
         </div>
@@ -71,16 +66,11 @@ export default function WelcomePage() {
               </p>
               <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
                 <Button asChild className="min-h-[44px] px-5">
-                  <Link href={signedIn ? "/" : "/register"}>
+                  <Link href={signedIn ? "/" : "/login"}>
                     {signedIn ? "进入工作台" : "免费开始"}
                     <ArrowRight className="h-4 w-4" />
                   </Link>
                 </Button>
-                {!signedIn && (
-                  <Button asChild variant="outline" className="min-h-[44px] px-5">
-                    <Link href="/login">已有账号</Link>
-                  </Button>
-                )}
                 <a
                   href={GITHUB_URL}
                   target="_blank"
@@ -144,8 +134,8 @@ export default function WelcomePage() {
               </p>
             </div>
             <Button asChild className="min-h-[44px] shrink-0 px-5">
-              <Link href={signedIn ? "/" : "/register"}>
-                {signedIn ? "打开工作台" : "创建账号"}
+              <Link href={signedIn ? "/" : "/login"}>
+                {signedIn ? "打开工作台" : "开始使用"}
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>

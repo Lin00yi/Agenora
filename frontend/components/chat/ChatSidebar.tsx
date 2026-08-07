@@ -48,6 +48,7 @@ export function ChatSidebar({
   onDeleteConversation,
   onLoadMoreConversations,
   onOpenAccountSettings,
+  onOpenSearch,
   onLogout,
 }: {
   open: boolean;
@@ -65,25 +66,19 @@ export function ChatSidebar({
   onDeleteConversation: (id: string) => void;
   onLoadMoreConversations: () => void;
   onOpenAccountSettings: () => void;
+  onOpenSearch: () => void;
   onLogout: () => void;
 }) {
-  const [searchTerm, setSearchTerm] = useState("");
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setPinnedIds(loadPinnedConversationIds());
   }, []);
 
-  const filteredConversations = sortConversationsByPin(
-    conversations.filter((conversation) =>
-      conversation.title.toLowerCase().includes(searchTerm.trim().toLowerCase())
-    ),
-    pinnedIds
-  );
+  const filteredConversations = sortConversationsByPin(conversations, pinnedIds);
 
   const handleTogglePin = useCallback((id: string) => {
     setPinnedIds((prev) => {
@@ -123,17 +118,6 @@ export function ChatSidebar({
     };
   }, [userMenuOpen]);
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        searchInputRef.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
   return (
     <aside
       className={cn(
@@ -165,20 +149,18 @@ export function ChatSidebar({
           {"\u65b0\u5efa\u5bf9\u8bdd"}
         </button>
 
-        <div className="kf-sidebar-search mt-4 flex h-[var(--control-h)] items-center gap-2 rounded-lg border px-3 text-sm">
-          <Search className="h-4 w-4" />
-          <input
-            className="kf-sidebar-search-input min-w-0 flex-1 bg-transparent text-sm outline-none"
-            ref={searchInputRef}
-            aria-label="搜索历史对话"
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="搜索对话"
-          />
+        <button
+          className="kf-sidebar-search mt-4 flex h-[var(--control-h)] w-full cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm transition hover:bg-[rgb(var(--kf-surface))]"
+          onClick={onOpenSearch}
+          type="button"
+          aria-label="搜索历史对话"
+        >
+          <Search className="h-4 w-4 shrink-0" />
+          <span className="kf-sidebar-search-input min-w-0 flex-1 truncate text-left">搜索对话</span>
           <kbd aria-hidden="true" className="kf-sidebar-kbd rounded border px-1.5 py-0.5 text-[10px]">
             Ctrl K
           </kbd>
-        </div>
+        </button>
 
       </div>
 
@@ -210,7 +192,7 @@ export function ChatSidebar({
             ))}
             {filteredConversations.length === 0 && (
               <div className="kf-sidebar-empty rounded-lg border border-dashed px-3 py-4 text-sm">
-                {searchTerm ? "\u6ca1\u6709\u5339\u914d\u7684\u5bf9\u8bdd\u3002" : "\u8fd8\u6ca1\u6709\u5bf9\u8bdd\uff0c\u5148\u95ee\u4e00\u4e2a\u95ee\u9898\u3002"}
+                {"\u8fd8\u6ca1\u6709\u5bf9\u8bdd\uff0c\u5148\u95ee\u4e00\u4e2a\u95ee\u9898\u3002"}
               </div>
             )}
             {(conversationHasMore || conversationLoadingMore) && (
