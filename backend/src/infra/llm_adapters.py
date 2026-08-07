@@ -220,14 +220,18 @@ async def _fanout_complete_response(
     hooks: StreamHooks | None,
     gen: Any,
 ) -> LLMToolChatResponse:
-    """Synthesize stream hooks from a non-streaming response (tests / fallback)."""
+    """Synthesize stream hooks from a non-streaming response (tests / fallback).
+
+    Text is fanned out before tools so callers can show a thinking draft when the
+    model returns both prose and tool_calls (same order as a real stream).
+    """
     hooks = hooks or StreamHooks()
-    if resp.tool_calls:
-        await hooks.notify_tool()
-    elif resp.text_parts:
+    if resp.text_parts:
         _mark_ttft(gen)
         for part in resp.text_parts:
             await hooks.notify_text(part)
+    if resp.tool_calls:
+        await hooks.notify_tool()
     return resp
 
 

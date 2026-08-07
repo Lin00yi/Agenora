@@ -346,6 +346,38 @@
     background: rgb(var(--kf-surface-2));
   }
 
+  /* Codex-style: rest with right-edge fade; hover slides via transform. */
+  .kf-chat .kf-hover-marquee {
+    display: block;
+    overflow: hidden;
+  }
+
+  .kf-chat .kf-hover-marquee__text {
+    backface-visibility: hidden;
+  }
+
+  .kf-chat .kf-hover-marquee--clip {
+    -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 calc(100% - 14px), transparent);
+    mask-image: linear-gradient(90deg, #000 0%, #000 calc(100% - 14px), transparent);
+  }
+
+  .kf-chat .kf-hover-marquee--scrolling {
+    -webkit-mask-image: linear-gradient(
+      90deg,
+      transparent,
+      #000 12px,
+      #000 calc(100% - 12px),
+      transparent
+    );
+    mask-image: linear-gradient(
+      90deg,
+      transparent,
+      #000 12px,
+      #000 calc(100% - 12px),
+      transparent
+    );
+  }
+
   .kf-chat .kf-sidebar-section-label,
   .kf-chat .kf-sidebar-count,
   .kf-chat .kf-sidebar-meta,
@@ -367,12 +399,25 @@
   }
 
   .kf-chat .kf-sidebar-row-action {
+    min-height: 1.75rem;
+    min-width: 1.75rem;
     background: transparent;
+    border-color: transparent;
+    color: var(--chat-muted);
   }
 
   .kf-chat .kf-sidebar-row-action:hover {
-    border-color: color-mix(in srgb, rgb(var(--danger)) 30%, var(--chat-line));
-    background: color-mix(in srgb, rgb(var(--danger)) 10%, var(--chat-surface));
+    border-color: transparent;
+    background: color-mix(in srgb, var(--chat-ink) 8%, transparent);
+    color: var(--chat-ink);
+  }
+
+  .kf-chat .kf-sidebar-row-action-active {
+    color: var(--chat-ink);
+  }
+
+  .kf-chat .kf-sidebar-row-action[aria-label="删除会话"]:hover {
+    background: color-mix(in srgb, rgb(var(--danger)) 12%, transparent);
     color: rgb(var(--danger));
   }
 
@@ -1322,6 +1367,20 @@ html.dark {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .kf-chat .kf-hover-marquee {
+    transition: none;
+  }
+
+  .kf-chat .kf-hover-marquee__text {
+    transition: none !important;
+    transform: none !important;
+  }
+
+  .kf-chat .kf-hover-marquee--scrolling {
+    -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 calc(100% - 14px), transparent);
+    mask-image: linear-gradient(90deg, #000 0%, #000 calc(100% - 14px), transparent);
   }
 }
 

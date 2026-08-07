@@ -52,6 +52,7 @@ export type ChatEvent = {
     | "tool_start"
     | "tool_end"
     | "tool_blocked"
+    | "segment_seal"
     | "report_start"
     | "token"
     | "done"

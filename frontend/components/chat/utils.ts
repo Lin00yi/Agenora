@@ -96,7 +96,9 @@ export function getAssistantStreamingStatus(
   message: Extract<Message, { role: "assistant" }>,
   elapsedMs: number
 ) {
-  const hasContent = message.content.trim().length > 0;
+  const hasContent =
+    message.content.trim().length > 0 ||
+    (message.parts ?? []).some((p) => p.type === "text" && p.text.trim());
   const hasTools = message.tools.length > 0;
   const toolsRunning = message.tools.some((tool) => tool.status === "running");
   const allToolsSettled = hasTools && !toolsRunning;

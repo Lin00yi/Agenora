@@ -778,9 +778,10 @@ async def reason_node(
     system_prompt + the generic `generate_kb_report` skill (v2-M8); travel
     KB gets `generate_travel_report`. Unbound chat mounts neither.
 
-    When the model returns a final text answer (no tool calls), tokens are
-    streamed live via ``emit`` and ``report_streamed`` is set so app.py skips
-    fake chunking.
+    When the model streams text, tokens are pushed live via ``emit``. If it then
+    chooses tools, a ``segment_seal`` keeps that prose on the timeline above the
+    tool cards; later reason rounds may stream more tokens. ``report_streamed``
+    is set only when a final answer was streamed so app.py can skip fake chunking.
     """
     async def _emit(evt: dict[str, Any]) -> None:
         if emit is not None:
@@ -861,17 +862,23 @@ async def reason_node(
     )
     adapter = create_tool_adapter(llm_cfg)
 
-    # Live SSE for final text answers; silent aggregation when tools are chosen.
+    # Phase 3: every reason text round streams as timeline tokens. If the model
+    # then chooses tools, seal the text segment (frontend keeps it above tools)
+    # and continue the tool loop — no separate thinking_* channel.
     live_path: str | None = None  # "text" | "tools"
     report_streamed = bool(state.get("report_streamed"))
     report_started = False
+    text_streamed_this_round = False
 
     async def _on_tool_detected() -> None:
         nonlocal live_path
+        was_text = live_path == "text"
         live_path = "tools"
+        if was_text or text_streamed_this_round:
+            await _emit({"event": "segment_seal"})
 
     async def _on_text_delta(text: str) -> None:
-        nonlocal live_path, report_streamed, report_started
+        nonlocal live_path, report_streamed, report_started, text_streamed_this_round
         if live_path == "tools":
             return
         if live_path is None:
@@ -880,7 +887,7 @@ async def reason_node(
             await _emit({"event": "report_start"})
             report_started = True
         await _emit({"event": "token", "text": text})
-        report_streamed = True
+        text_streamed_this_round = True
 
     from src.infra.llm_adapters import StreamHooks
 
@@ -903,17 +910,26 @@ async def reason_node(
     tool_calls = [tc.as_state() for tc in resp.tool_calls]
     assistant_content = resp.assistant_content
 
-    # If tools won after we already started streaming text, stop treating as final.
-    if tool_calls:
-        report_streamed = False
-
     new_messages = messages + [{"role": "assistant", "content": assistant_content}]
     final_report: str | None = state.get("final_report")
 
-    # Stop condition: model returns text only AND no pending tools.
-    if not tool_calls and text_parts and not final_report:
+    if tool_calls:
+        # Intermediate prose stays on the timeline; final answer comes later.
+        if text_streamed_this_round and live_path != "tools":
+            await _emit({"event": "segment_seal"})
+        # Do not mark report_streamed — final may still need fake-chunk / later stream.
+    elif text_parts and not final_report:
         final_report = "\n".join(text_parts)
+        if text_streamed_this_round:
+            report_streamed = True
         if _response_hit_output_limit(resp.stop_reason):
+            async def _emit_answer(evt: dict[str, Any]) -> None:
+                nonlocal report_started
+                if evt.get("event") == "token" and not report_started:
+                    await _emit({"event": "report_start"})
+                    report_started = True
+                await _emit(evt)
+
             final_report = await _auto_continue_report(
                 adapter,
                 cost=cost,
@@ -922,7 +938,7 @@ async def reason_node(
                 provider_messages=provider_messages,
                 initial_text=final_report,
                 max_tokens=output_token_budget,
-                emit=_emit if report_streamed or report_started else None,
+                emit=_emit_answer,
             )
             report_streamed = True
 

@@ -31,10 +31,12 @@ export default function MessageBubble({
 
   const hasContent = message.content && message.content.length > 0;
   const hasTools = message.tools && message.tools.length > 0;
+  const hasParts = (message.parts?.length ?? 0) > 0;
   const streaming = !!message.streaming;
-  if (!hasContent && !streaming && !message.error && !hasTools) return null;
+  if (!hasContent && !streaming && !message.error && !hasTools && !hasParts) return null;
 
-  const showInitialThinking = streaming && !hasTools && !hasContent && !message.error;
+  const showInitialThinking =
+    streaming && !hasTools && !hasContent && !hasParts && !message.error;
   const showWritingHint =
     streaming &&
     hasTools &&
@@ -50,7 +52,16 @@ export default function MessageBubble({
         </div>
         <div className="min-w-0 flex-1 space-y-3">
           {showInitialThinking && <ThinkingPlaceholder label="正在思考" />}
-          {hasTools && <ThinkingChain events={message.tools} />}
+          {(message.parts ?? []).map((part, index) =>
+            part.type === "text" ? (
+              <div className="text-[15px] leading-relaxed whitespace-pre-wrap" key={`p-${index}`}>
+                {part.text}
+              </div>
+            ) : (
+              <ThinkingChain events={part.tools} key={`t-${index}`} />
+            )
+          )}
+          {!hasParts && hasTools && <ThinkingChain events={message.tools} />}
           {showWritingHint && <ThinkingPlaceholder label="正在撰写回答" />}
 
           {message.error && (

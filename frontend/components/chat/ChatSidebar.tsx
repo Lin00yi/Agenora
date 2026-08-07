@@ -8,6 +8,7 @@ import {
   ChevronDown,
   LoaderCircle,
   LogOut,
+  Pin,
   Plus,
   Search,
   Settings,
@@ -22,6 +23,13 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { cn } from "@/lib/cn";
 import type { User } from "@/lib/auth";
 import type { Conversation } from "@/lib/conversationStore";
+import { HoverMarqueeTitle } from "./HoverMarqueeTitle";
+import {
+  loadPinnedConversationIds,
+  persistPinnedConversationIds,
+  sortConversationsByPin,
+  togglePinnedConversationId,
+} from "./pinnedConversations";
 import { formatConversationTime, getConversationStatusView } from "./utils";
 
 export function ChatSidebar({
@@ -62,11 +70,28 @@ export function ChatSidebar({
   const [searchTerm, setSearchTerm] = useState("");
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
+  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
-  const filteredConversations = conversations.filter((conversation) =>
-    conversation.title.toLowerCase().includes(searchTerm.trim().toLowerCase())
+
+  useEffect(() => {
+    setPinnedIds(loadPinnedConversationIds());
+  }, []);
+
+  const filteredConversations = sortConversationsByPin(
+    conversations.filter((conversation) =>
+      conversation.title.toLowerCase().includes(searchTerm.trim().toLowerCase())
+    ),
+    pinnedIds
   );
+
+  const handleTogglePin = useCallback((id: string) => {
+    setPinnedIds((prev) => {
+      const next = togglePinnedConversationId(prev, id);
+      persistPinnedConversationIds(next);
+      return next;
+    });
+  }, []);
   const handleConversationScroll = useCallback(
     (event: { currentTarget: HTMLDivElement }) => {
       const target = event.currentTarget;
@@ -170,58 +195,19 @@ export function ChatSidebar({
           className="min-h-0 flex-1 overflow-y-auto pr-1"
           onScroll={handleConversationScroll}
         >
-          <div className="space-y-1">
-            {filteredConversations.map((conversation) => {
-              const statusView = getConversationStatusView(conversation, currentId, busy);
-              const messageCount = conversation.messages.length || conversation.message_count || 0;
-              const showStatusTag = conversation.id === currentId && busy;
-              return (
-              <div
+          <div className="space-y-0.5">
+            {filteredConversations.map((conversation) => (
+              <ConversationRow
                 key={conversation.id}
-                className={cn(
-                  "kf-sidebar-row group flex min-h-12 items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-[background-color,border-color,color]",
-                  conversation.id === currentId
-                    ? "kf-sidebar-row-active"
-                    : "kf-sidebar-row-idle"
-                )}
-              >
-                <button
-                  className="min-w-0 flex-1 cursor-pointer text-left"
-                  onClick={() => onSelectConversation(conversation.id)}
-                  type="button"
-                  title={conversation.title}
-                >
-                  <span className="block truncate">{conversation.title}</span>
-                  <span className="kf-sidebar-meta mt-0.5 flex items-center gap-2 text-[11px]">
-                    <span className={cn("h-1.5 w-1.5 rounded-sm", statusView.dot)} />
-                    <span>{formatConversationTime(conversation.updated_at)}</span>
-                    <span className="kf-sidebar-meta-separator h-1 w-1 rounded-sm" />
-                    <span>{messageCount}{" \u6761\u6d88\u606f"}</span>
-                  </span>
-                </button>
-                {showStatusTag && (
-                  <span
-                    className={cn(
-                      "kf-sidebar-status-badge shrink-0 rounded-md border px-1.5 py-0.5 text-[11px] group-hover:hidden",
-                      statusView.tone
-                    )}
-                  >
-                    {statusView.label}
-                  </span>
-                )}
-                <button
-                  aria-label="删除会话"
-                  className="kf-sidebar-row-action hidden size-8 shrink-0 cursor-pointer items-center justify-center rounded-md group-hover:flex"
-                  onClick={() => {
-                    setDeleteTarget(conversation);
-                  }}
-                  type="button"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              );
-            })}
+                conversation={conversation}
+                currentId={currentId}
+                busy={busy}
+                pinned={pinnedIds.includes(conversation.id)}
+                onSelect={() => onSelectConversation(conversation.id)}
+                onTogglePin={() => handleTogglePin(conversation.id)}
+                onDelete={() => setDeleteTarget(conversation)}
+              />
+            ))}
             {filteredConversations.length === 0 && (
               <div className="kf-sidebar-empty rounded-lg border border-dashed px-3 py-4 text-sm">
                 {searchTerm ? "\u6ca1\u6709\u5339\u914d\u7684\u5bf9\u8bdd\u3002" : "\u8fd8\u6ca1\u6709\u5bf9\u8bdd\uff0c\u5148\u95ee\u4e00\u4e2a\u95ee\u9898\u3002"}
@@ -356,5 +342,106 @@ export function ChatSidebar({
         }}
       />
     </aside>
+  );
+}
+
+function ConversationRow({
+  conversation,
+  currentId,
+  busy,
+  pinned,
+  onSelect,
+  onTogglePin,
+  onDelete,
+}: {
+  conversation: Conversation;
+  currentId: string | null;
+  busy: boolean;
+  pinned: boolean;
+  onSelect: () => void;
+  onTogglePin: () => void;
+  onDelete: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const statusView = getConversationStatusView(conversation, currentId, busy);
+  const messageCount = conversation.messages.length || conversation.message_count || 0;
+  const showBusy = conversation.id === currentId && busy && !hovered;
+  const active = conversation.id === currentId;
+  const showActions = hovered || pinned;
+
+  return (
+    <div
+      className={cn(
+        "kf-sidebar-row group flex min-h-10 items-center gap-0.5 rounded-lg border px-2 py-1.5 text-sm transition-[background-color,border-color,color]",
+        active ? "kf-sidebar-row-active" : "kf-sidebar-row-idle"
+      )}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <button
+        className="min-w-0 flex-1 cursor-pointer px-1.5 text-left"
+        onClick={onSelect}
+        type="button"
+        title={conversation.title}
+      >
+        <HoverMarqueeTitle
+          text={conversation.title}
+          className="text-[13px] leading-5 text-[color:var(--chat-ink)]"
+          scrolling={hovered}
+        />
+        <span className="kf-sidebar-meta mt-0.5 flex items-center gap-2 text-[11px]">
+          <span className={cn("h-1.5 w-1.5 rounded-sm", statusView.dot)} />
+          <span>{formatConversationTime(conversation.updated_at)}</span>
+          <span className="kf-sidebar-meta-separator h-1 w-1 rounded-sm" />
+          <span>
+            {messageCount}
+            {" \u6761\u6d88\u606f"}
+          </span>
+        </span>
+      </button>
+      {showBusy && (
+        <span
+          className={cn(
+            "kf-sidebar-status-badge mr-0.5 shrink-0 rounded-md border px-1.5 py-0.5 text-[10px]",
+            statusView.tone
+          )}
+        >
+          {statusView.label}
+        </span>
+      )}
+      <div
+        className={cn(
+          "flex shrink-0 items-center gap-0.5",
+          !showActions && "hidden"
+        )}
+      >
+        <button
+          aria-label={pinned ? "取消置顶" : "置顶对话"}
+          aria-pressed={pinned}
+          className={cn(
+            "kf-sidebar-row-action inline-flex size-7 cursor-pointer items-center justify-center rounded-lg",
+            pinned && "kf-sidebar-row-action-active"
+          )}
+          onClick={(event) => {
+            event.stopPropagation();
+            onTogglePin();
+          }}
+          type="button"
+        >
+          <Pin className={cn("h-3.5 w-3.5", pinned && "fill-current")} />
+        </button>
+        <button
+          aria-label="删除会话"
+          className="kf-sidebar-row-action inline-flex size-7 cursor-pointer items-center justify-center rounded-lg"
+          onClick={(event) => {
+            event.stopPropagation();
+            onDelete();
+          }}
+          type="button"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
   );
 }

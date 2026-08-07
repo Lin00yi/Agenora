@@ -12,6 +12,11 @@ import type { Citation, MemoryTrace } from "@/lib/sseClient";
  * before SSE done fires and we persist).
  */
 
+/** Sealed timeline segments for one assistant turn (Phase 3 interleaved stream). */
+export type AssistantPart =
+  | { type: "text"; text: string }
+  | { type: "tools"; tools: ToolEvent[] };
+
 export type Message =
   | {
       id: string;
@@ -22,8 +27,11 @@ export type Message =
   | {
       id: string;
       role: "assistant";
-      content: string; // markdown report
-      tools: ToolEvent[]; // tool call timeline
+      /** Joined text for persistence / export; live open segment while streaming. */
+      content: string;
+      tools: ToolEvent[]; // flat tool timeline (persist + legacy)
+      /** Interleaved text/tool segments for Cursor-like rendering. */
+      parts?: AssistantPart[];
       memory_trace?: MemoryTrace | null;
       citations?: Citation[] | null;
       streaming?: boolean;
@@ -53,4 +61,29 @@ export function deriveTitle(msg: string): string {
 
 export function genMessageId(): string {
   return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+/** Flatten parts + live content into persistable markdown. */
+export function joinAssistantText(
+  parts: AssistantPart[] | undefined,
+  liveContent: string
+): string {
+  const chunks: string[] = [];
+  for (const part of parts ?? []) {
+    if (part.type === "text" && part.text.trim()) chunks.push(part.text.trimEnd());
+  }
+  if (liveContent.trim()) chunks.push(liveContent.trimEnd());
+  return chunks.join("\n\n");
+}
+
+/** Flatten tool events from parts (fallback to legacy tools array). */
+export function flattenAssistantTools(
+  parts: AssistantPart[] | undefined,
+  legacyTools: ToolEvent[]
+): ToolEvent[] {
+  const fromParts: ToolEvent[] = [];
+  for (const part of parts ?? []) {
+    if (part.type === "tools") fromParts.push(...part.tools);
+  }
+  return fromParts.length > 0 ? fromParts : legacyTools;
 }

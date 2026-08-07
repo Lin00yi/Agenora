@@ -13,7 +13,7 @@ import {
 import ExportActions from "@/components/ExportActions";
 import ThinkingChain from "@/components/ThinkingChain";
 import type { ConversationContextStatus } from "@/lib/conversations-api";
-import type { Message } from "@/lib/conversationStore";
+import { joinAssistantText, type Message } from "@/lib/conversationStore";
 import type { MemoryTrace } from "@/lib/sseClient";
 import { cn } from "@/lib/cn";
 import { SourceCards } from "./SourceCards";
@@ -48,67 +48,123 @@ export function ChatMessage({ message }: { message: Message }) {
 
 function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "assistant" }> }) {
   const streaming = !!message.streaming;
-  const hasContent = message.content.trim().length > 0;
+  const parts = message.parts ?? [];
+  const hasParts = parts.length > 0;
+  const liveContent = message.content;
+  const hasLiveContent = liveContent.trim().length > 0;
   const hasTools = message.tools.length > 0;
+  const joined = joinAssistantText(parts, liveContent);
+  const hasAnyText = joined.trim().length > 0;
   const hasMemoryContext = hasVisibleMemoryTrace(message.memory_trace);
   const hasCitations = hasVisibleCitations(message.citations);
   const elapsedMs = useLiveElapsed(streaming, message.created_at);
   const status = getAssistantStreamingStatus(message, elapsedMs);
-  const displayMarkdown =
-    hasCitations && !streaming
-      ? stripHandwrittenSourceList(message.content)
-      : message.content;
-  if (!hasContent && !streaming && !message.error && !hasTools) return null;
+  const exportMarkdown =
+    hasCitations && !streaming ? stripHandwrittenSourceList(joined) : joined;
+
+  // Legacy / persisted messages: no parts → single answer + tools above.
+  const legacyLayout = !hasParts;
+
+  if (!hasAnyText && !streaming && !message.error && !hasTools) return null;
 
   return (
     <div className="flex items-start">
       <div className="min-w-0 flex-1">
-        {/* Process chips stay above the answer; quiet by default. */}
-        {(hasTools || (!streaming && hasMemoryContext)) && (
-          <div className="mb-3 space-y-2">
-            {hasTools ? <ThinkingChain events={message.tools} /> : null}
+        {legacyLayout ? (
+          <>
+            {(hasTools || (!streaming && hasMemoryContext)) && (
+              <div className="mb-3 space-y-2">
+                {hasTools ? <ThinkingChain events={message.tools} /> : null}
+                {!streaming && hasMemoryContext ? (
+                  <MemoryContextTrace trace={message.memory_trace!} />
+                ) : null}
+              </div>
+            )}
+            <div className="kf-answer px-1 py-1 sm:px-2">
+              {message.error && (
+                <div className="kf-answer-error mb-3 rounded-lg border px-3 py-2 text-sm">
+                  {message.error}
+                </div>
+              )}
+              {!hasAnyText && streaming && (
+                <div className="kf-streaming-status flex flex-wrap items-center gap-2 text-sm">
+                  <LoaderCircle className="h-4 w-4 animate-spin text-[color:var(--chat-accent)]" />
+                  <span>{status.label}</span>
+                  <span className="kf-live-badge rounded-md border px-2 py-0.5 text-xs tabular-nums">
+                    {status.elapsed}
+                  </span>
+                </div>
+              )}
+              {hasAnyText && (
+                <div id={`report-output-${message.id}`}>
+                  <AnswerMarkdown markdown={exportMarkdown} streaming={streaming} />
+                </div>
+              )}
+              {hasAnyText && streaming && (
+                <div className="kf-live-badge mt-3 inline-flex items-center gap-2 rounded-md border px-2.5 py-1 text-xs tabular-nums">
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                  <span>{status.label}</span>
+                  <span>{status.elapsed}</span>
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="space-y-3">
+            {message.error && (
+              <div className="kf-answer-error rounded-lg border px-3 py-2 text-sm">
+                {message.error}
+              </div>
+            )}
+            {parts.map((part, index) =>
+              part.type === "text" ? (
+                <div className="kf-answer px-1 py-1 sm:px-2" key={`text-${index}`}>
+                  <AnswerMarkdown markdown={part.text} streaming={false} />
+                </div>
+              ) : (
+                <ThinkingChain events={part.tools} key={`tools-${index}`} />
+              )
+            )}
             {!streaming && hasMemoryContext ? (
               <MemoryContextTrace trace={message.memory_trace!} />
             ) : null}
+            {hasLiveContent && (
+              <div className="kf-answer px-1 py-1 sm:px-2" id={`report-output-${message.id}`}>
+                <AnswerMarkdown markdown={liveContent} streaming={streaming} />
+                {streaming && (
+                  <div className="kf-live-badge mt-3 inline-flex items-center gap-2 rounded-md border px-2.5 py-1 text-xs tabular-nums">
+                    <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                    <span>{status.label}</span>
+                    <span>{status.elapsed}</span>
+                  </div>
+                )}
+              </div>
+            )}
+            {!hasLiveContent && streaming && (
+              <div className="kf-streaming-status flex flex-wrap items-center gap-2 px-1 text-sm">
+                <LoaderCircle className="h-4 w-4 animate-spin text-[color:var(--chat-accent)]" />
+                <span>{status.label}</span>
+                <span className="kf-live-badge rounded-md border px-2 py-0.5 text-xs tabular-nums">
+                  {status.elapsed}
+                </span>
+              </div>
+            )}
+            {/* Stable export anchor when live segment empty but sealed text exists */}
+            {!hasLiveContent && hasAnyText && (
+              <div className="hidden" id={`report-output-${message.id}`}>
+                {exportMarkdown}
+              </div>
+            )}
           </div>
         )}
 
-        <div className="kf-answer px-1 py-1 sm:px-2">
-          {message.error && (
-            <div className="kf-answer-error mb-3 rounded-lg border px-3 py-2 text-sm">
-              {message.error}
-            </div>
-          )}
-          {!hasContent && streaming && (
-            <div className="kf-streaming-status flex flex-wrap items-center gap-2 text-sm">
-              <LoaderCircle className="h-4 w-4 animate-spin text-[color:var(--chat-accent)]" />
-              <span>{status.label}</span>
-              <span className="kf-live-badge rounded-md border px-2 py-0.5 text-xs tabular-nums">
-                {status.elapsed}
-              </span>
-            </div>
-          )}
-          {hasContent && (
-            <div id={`report-output-${message.id}`}>
-              <AnswerMarkdown markdown={displayMarkdown} streaming={streaming} />
-            </div>
-          )}
-          {hasContent && streaming && (
-            <div className="kf-live-badge mt-3 inline-flex items-center gap-2 rounded-md border px-2.5 py-1 text-xs tabular-nums">
-              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-              <span>{status.label}</span>
-              <span>{status.elapsed}</span>
-            </div>
-          )}
-        </div>
-
-        {hasContent && !streaming && hasCitations ? (
+        {hasAnyText && !streaming && hasCitations ? (
           <SourceCards citations={message.citations!} />
         ) : null}
 
-        {hasContent && !streaming && (
+        {hasAnyText && !streaming && (
           <ExportActions
-            markdown={displayMarkdown}
+            markdown={exportMarkdown}
             cost={message.cost_usd}
             reportId={`report-output-${message.id}`}
           />

@@ -1,4 +1,4 @@
-"""Tests for final-answer streaming + StreamHooks fanout."""
+"""Tests for final-answer / timeline streaming (Phase 3)."""
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -203,3 +203,96 @@ async def test_reason_node_tools_do_not_stream_tokens(
     assert next_state.get("report_streamed") is False
     assert next_state["pending_tool_calls"]
     assert events == []
+
+
+@pytest.mark.asyncio
+async def test_reason_node_streams_text_then_seals_for_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tc = SimpleNamespace(
+        id="c1",
+        function=SimpleNamespace(name="web_search", arguments="{}"),
+    )
+
+    class FakeCompletions:
+        async def create(self, **kwargs: Any) -> Any:
+            return SimpleNamespace(
+                usage=None,
+                choices=[
+                    SimpleNamespace(
+                        finish_reason="tool_calls",
+                        message=SimpleNamespace(
+                            content="先查一下",
+                            tool_calls=[tc],
+                        ),
+                    )
+                ],
+            )
+
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
+    monkeypatch.setattr("src.infra.llm_adapters.get_client", lambda cfg=None: fake_client)
+
+    events: list[dict[str, Any]] = []
+
+    async def emit(evt: dict[str, Any]) -> None:
+        events.append(evt)
+
+    registry = ToolRegistry()
+    registry.register(_DummyTool())
+    next_state = await reason_node(
+        {"messages": [{"role": "user", "content": "q"}]},
+        registry=registry,
+        cost=CostTracker(),
+        system_prompt="sys",
+        include_travel_skill=False,
+        llm_cfg=_llm_cfg(),
+        emit=emit,
+    )
+    assert next_state.get("final_report") is None
+    assert next_state.get("report_streamed") is False
+    assert [e["event"] for e in events] == [
+        "report_start",
+        "token",
+        "segment_seal",
+    ]
+    assert events[1]["text"] == "先查一下"
+
+
+@pytest.mark.asyncio
+async def test_reason_node_no_tools_streams_tokens_directly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeCompletions:
+        async def create(self, **kwargs: Any) -> Any:
+            return SimpleNamespace(
+                usage=None,
+                choices=[
+                    SimpleNamespace(
+                        finish_reason="stop",
+                        message=SimpleNamespace(content="直接答", tool_calls=None),
+                    )
+                ],
+            )
+
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
+    monkeypatch.setattr("src.infra.llm_adapters.get_client", lambda cfg=None: fake_client)
+
+    events: list[dict[str, Any]] = []
+
+    async def emit(evt: dict[str, Any]) -> None:
+        events.append(evt)
+
+    registry = ToolRegistry()
+    next_state = await reason_node(
+        {"messages": [{"role": "user", "content": "q"}]},
+        registry=registry,
+        cost=CostTracker(),
+        system_prompt="sys",
+        include_travel_skill=False,
+        llm_cfg=_llm_cfg(),
+        emit=emit,
+    )
+    assert next_state["final_report"] == "直接答"
+    assert next_state["report_streamed"] is True
+    assert [e["event"] for e in events] == ["report_start", "token"]
+    assert events[1]["text"] == "直接答"

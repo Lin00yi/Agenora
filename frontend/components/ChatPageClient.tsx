@@ -35,7 +35,10 @@ import {
 } from "@/lib/conversations-api";
 import {
   deriveTitle,
+  flattenAssistantTools,
   genMessageId,
+  joinAssistantText,
+  type AssistantPart,
   type Conversation,
   type Message,
 } from "@/lib/conversationStore";
@@ -277,6 +280,7 @@ export function ChatPage({
     convId: string;
     msgId: string;
     content: string;
+    parts: AssistantPart[];
     tools: ToolEvent[];
     memory_trace: MemoryTrace | null;
     citations: Citation[];
@@ -876,6 +880,7 @@ export function ChatPage({
         role: "assistant",
         content: "",
         tools: [],
+        parts: [],
         streaming: true,
         created_at: Date.now(),
       };
@@ -884,6 +889,7 @@ export function ChatPage({
         convId: convId!,
         msgId: aiId,
         content: "",
+        parts: [],
         tools: [],
         memory_trace: null,
         citations: [],
@@ -908,16 +914,18 @@ export function ChatPage({
         const snap = streamingRef.current;
         streamingRef.current = null;
         if (!snap || snap.convId !== convId) return;
-        const hasContent = snap.content.trim().length > 0;
-        const hasTools = snap.tools.length > 0;
+        const joined = joinAssistantText(snap.parts, snap.content);
+        const flatTools = flattenAssistantTools(snap.parts, snap.tools);
+        const hasContent = joined.trim().length > 0;
+        const hasTools = flatTools.length > 0;
         if (!hasContent && !hasTools && !opts.error) {
           setMessagesForCurrent((prev) => prev.filter((m) => m.id !== snap.msgId));
           return;
         }
         try {
           const result = await appendAssistantMessage(snap.convId, {
-            content: snap.content,
-            tools: snap.tools,
+            content: joined,
+            tools: flatTools,
             memory_trace: snap.memory_trace,
             citations: snap.citations.length > 0 ? snap.citations : undefined,
             cost_usd: opts.costUsd,
@@ -929,6 +937,10 @@ export function ChatPage({
                 ? {
                     ...m,
                     id: result.id,
+                    content: joined,
+                    tools: flatTools,
+                    parts: undefined,
+                    streaming: false,
                     memory_trace: result.memory_trace ?? snap.memory_trace,
                     citations: result.citations ?? snap.citations,
                   }
@@ -975,11 +987,40 @@ export function ChatPage({
                 t0: Date.now(),
               };
               if (streamingRef.current) {
-                streamingRef.current.tools = [...streamingRef.current.tools, newTool];
+                const snap = streamingRef.current;
+                // Seal any open text before tools if backend didn't send segment_seal.
+                if (snap.content.trim()) {
+                  snap.parts = [...snap.parts, { type: "text", text: snap.content }];
+                  snap.content = "";
+                }
+                const last = snap.parts[snap.parts.length - 1];
+                if (last?.type === "tools") {
+                  last.tools = [...last.tools, newTool];
+                  snap.parts = [...snap.parts.slice(0, -1), last];
+                } else {
+                  snap.parts = [...snap.parts, { type: "tools", tools: [newTool] }];
+                }
+                snap.tools = [...snap.tools, newTool];
               }
-              updateLastAssistant((m) =>
-                m.role === "assistant" ? { ...m, tools: [...m.tools, newTool] } : m
-              );
+              updateLastAssistant((m) => {
+                if (m.role !== "assistant") return m;
+                let parts = [...(m.parts ?? [])];
+                let content = m.content;
+                if (content.trim()) {
+                  parts = [...parts, { type: "text", text: content }];
+                  content = "";
+                }
+                const last = parts[parts.length - 1];
+                if (last?.type === "tools") {
+                  parts = [
+                    ...parts.slice(0, -1),
+                    { type: "tools", tools: [...last.tools, newTool] },
+                  ];
+                } else {
+                  parts = [...parts, { type: "tools", tools: [newTool] }];
+                }
+                return { ...m, content, parts, tools: [...m.tools, newTool] };
+              });
               break;
             }
             case "tool_end": {
@@ -990,6 +1031,18 @@ export function ChatPage({
                   latency_ms: evt.latency_ms ?? null,
                   error: evt.error ?? null,
                 });
+                streamingRef.current.parts = streamingRef.current.parts.map((part) =>
+                  part.type === "tools"
+                    ? {
+                        type: "tools",
+                        tools: updateToolEvent(part.tools, evt, {
+                          status: evt.ok ? "ok" : "error",
+                          latency_ms: evt.latency_ms ?? null,
+                          error: evt.error ?? null,
+                        }),
+                      }
+                    : part
+                );
                 if (incoming.length > 0) {
                   streamingRef.current.citations = mergeCitations(
                     streamingRef.current.citations,
@@ -1006,6 +1059,18 @@ export function ChatPage({
                     latency_ms: evt.latency_ms ?? null,
                     error: evt.error ?? null,
                   }),
+                  parts: (m.parts ?? []).map((part) =>
+                    part.type === "tools"
+                      ? {
+                          type: "tools",
+                          tools: updateToolEvent(part.tools, evt, {
+                            status: evt.ok ? "ok" : "error",
+                            latency_ms: evt.latency_ms ?? null,
+                            error: evt.error ?? null,
+                          }),
+                        }
+                      : part
+                  ),
                   citations:
                     incoming.length > 0
                       ? mergeCitations(m.citations, incoming)
@@ -1023,11 +1088,55 @@ export function ChatPage({
                 reason: evt.reason ?? "",
               };
               if (streamingRef.current) {
-                streamingRef.current.tools = [...streamingRef.current.tools, newTool];
+                const snap = streamingRef.current;
+                if (snap.content.trim()) {
+                  snap.parts = [...snap.parts, { type: "text", text: snap.content }];
+                  snap.content = "";
+                }
+                const last = snap.parts[snap.parts.length - 1];
+                if (last?.type === "tools") {
+                  last.tools = [...last.tools, newTool];
+                  snap.parts = [...snap.parts.slice(0, -1), last];
+                } else {
+                  snap.parts = [...snap.parts, { type: "tools", tools: [newTool] }];
+                }
+                snap.tools = [...snap.tools, newTool];
               }
-              updateLastAssistant((m) =>
-                m.role === "assistant" ? { ...m, tools: [...m.tools, newTool] } : m
-              );
+              updateLastAssistant((m) => {
+                if (m.role !== "assistant") return m;
+                let parts = [...(m.parts ?? [])];
+                let content = m.content;
+                if (content.trim()) {
+                  parts = [...parts, { type: "text", text: content }];
+                  content = "";
+                }
+                const last = parts[parts.length - 1];
+                if (last?.type === "tools") {
+                  parts = [
+                    ...parts.slice(0, -1),
+                    { type: "tools", tools: [...last.tools, newTool] },
+                  ];
+                } else {
+                  parts = [...parts, { type: "tools", tools: [newTool] }];
+                }
+                return { ...m, content, parts, tools: [...m.tools, newTool] };
+              });
+              break;
+            }
+            case "segment_seal": {
+              if (streamingRef.current?.content.trim()) {
+                const snap = streamingRef.current;
+                snap.parts = [...snap.parts, { type: "text", text: snap.content }];
+                snap.content = "";
+              }
+              updateLastAssistant((m) => {
+                if (m.role !== "assistant" || !m.content.trim()) return m;
+                return {
+                  ...m,
+                  parts: [...(m.parts ?? []), { type: "text", text: m.content }],
+                  content: "",
+                };
+              });
               break;
             }
             case "token": {
