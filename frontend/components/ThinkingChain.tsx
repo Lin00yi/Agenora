@@ -45,6 +45,7 @@ const NAME_LABEL: Record<string, string> = {
   search_kb: "\u68c0\u7d22 KB",
   web_search: "\u641c\u7d22\u7f51\u7edc",
   generate_kb_report: "\u751f\u6210 KB \u62a5\u544a",
+  get_current_time: "\u83b7\u53d6\u5f53\u524d\u65f6\u95f4",
   get_weather: "\u67e5\u5929\u6c14",
   search_restaurant_kb: "\u627e\u672c\u5730\u9910\u5385",
   amap_search: "\u5730\u56fe\u641c\u7d22",
@@ -265,6 +266,8 @@ function formatToolInputSummary(event: ToolEvent): string {
   if (typeof query === "string" && query.trim()) return query.trim();
   const city = input.city;
   if (typeof city === "string" && city.trim()) return city.trim();
+  const timezone = input.timezone;
+  if (typeof timezone === "string" && timezone.trim()) return timezone.trim();
   return formatToolInput(input)
     .map((row) => `${row.label}: ${row.value}`)
     .join(" · ");
@@ -312,6 +315,7 @@ function formatToolInput(input?: Record<string, unknown>): { label: string; valu
   addStringRow(rows, consumed, input, "query", "查询");
   addStringRow(rows, consumed, input, "city", "城市");
   addStringRow(rows, consumed, input, "date", "日期");
+  addStringRow(rows, consumed, input, "timezone", "时区");
   addScalarRow(rows, consumed, input, "limit", "TopK");
   addScalarRow(rows, consumed, input, "max_results", "数量");
 
