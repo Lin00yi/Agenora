@@ -180,7 +180,24 @@ class KBSearchTool(Tool):
         # v3-M4: cross-encoder rerank pass. Reorders top-N candidates; on
         # failure, fall back to first-stage order so chat doesn't break.
         # IMPORTANT: hit["score"] stays cosine — reranker only reorders.
-        if self.reranker_cfg and len(hits) >= 2:
+        # Latency guard: skip rerank when the first-stage top hit is already strong.
+        from src.settings import get_settings as _get_settings
+
+        skip_rerank_ge = float(
+            getattr(_get_settings(), "kb_rerank_skip_if_score_ge", 0.7) or 0.0
+        )
+        top_score = 0.0
+        for hit in hits:
+            try:
+                top_score = max(top_score, float(hit.get("score") or 0.0))
+            except (TypeError, ValueError):
+                continue
+        should_rerank = (
+            self.reranker_cfg
+            and len(hits) >= 2
+            and not (skip_rerank_ge > 0 and top_score >= skip_rerank_ge)
+        )
+        if should_rerank:
             texts = [(h.get("payload") or {}).get("text", "") or "" for h in hits]
             try:
                 reordered = await rerank(
@@ -205,6 +222,12 @@ class KBSearchTool(Tool):
                     self.kb_id,
                     exc,
                 )
+        elif self.reranker_cfg and skip_rerank_ge > 0 and top_score >= skip_rerank_ge:
+            log.info(
+                "kb_search.rerank_skipped_strong_hit kb_id=%s top_score=%.3f",
+                self.kb_id,
+                top_score,
+            )
 
         # Trim to caller's requested limit (defensive: the rerank path already
         # returns at most top_n, but over-fetched hits without rerank need it).

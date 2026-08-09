@@ -63,8 +63,12 @@ class Settings(BaseSettings):
     # llm_fallback: deterministic rules first, LLM policy+rewrite for uncertain/complex cases.
     # always_llm: use LLM policy+rewrite for every non-empty KB-bound query.
     kb_query_policy_mode: str = "llm_fallback"
-    kb_query_policy_max_queries: int = 3
+    # Cap expand width — each extra query is another embed + Milvus (+ optional rerank).
+    kb_query_policy_max_queries: int = 2
     kb_query_policy_llm_model: str = ""
+    # Skip cross-encoder rerank when first-stage top score is already strong.
+    # Set to 0 to always rerank when configured.
+    kb_rerank_skip_if_score_ge: float = 0.7
 
     # ===== Tools =====
     qweather_api_key: str = ""
@@ -157,7 +161,10 @@ class Settings(BaseSettings):
     # Hard cap for search_kg top_k (node may pass a lower value).
     lightrag_kg_top_k: int = 12
     # When vector KB already has a strong hit (>=0.7), only wait this long for KG.
-    lightrag_kg_soft_wait_s: float = 1.5
+    lightrag_kg_soft_wait_s: float = 0.0
+    # If true, skip KG for plain listing/factoid queries; only run for relation-like
+    # questions, or as a fallback when KB hits are weak.
+    lightrag_kg_only_when_needed: bool = True
 
     # ===== Server =====
     app_env: str = "dev"

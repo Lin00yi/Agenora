@@ -249,6 +249,7 @@ def _rule_query_policy(query: str, *, max_queries: int) -> QueryPolicyDecision |
     punctuation_multi = text.count("？") + text.count("?") + text.count("；") + text.count(";")
     intent_hits = sum(1 for keyword in _RULE_MULTI_INTENT_KEYWORDS if keyword in text)
     has_connector = any(connector in text for connector in ("和", "及", "与", "、", ",", "，"))
+    # Ambiguous / multi-intent → leave for policy LLM (do not short-circuit with rules).
     if punctuation_multi >= 2 or (has_connector and intent_hits >= 2):
         return None
 
@@ -270,6 +271,32 @@ def _rule_query_policy(query: str, *, max_queries: int) -> QueryPolicyDecision |
             latency_ms=0,
         )
     return _skip_policy_decision(reason="max_queries_disabled", source="rule", latency_ms=0)
+
+
+_KG_NEED_HINTS = (
+    "关系",
+    "关联",
+    "依赖",
+    "引用",
+    "链路",
+    "图谱",
+    "谁连接",
+    "如何连接",
+    "之间的",
+    "related",
+    "relationship",
+    "depends",
+    "depends on",
+    "connected to",
+)
+
+
+def _query_needs_kg(text: str) -> bool:
+    """Heuristic: KG helps relation / multi-hop questions more than listing queries."""
+    lowered = (text or "").strip().lower()
+    if not lowered:
+        return False
+    return any(hint in lowered for hint in _KG_NEED_HINTS)
 
 
 def _normalize_query_policy_mode(value: str | None) -> str:
@@ -615,8 +642,10 @@ async def query_policy_node(
         "action 只能是 direct、normalize、expand、skip_kb。\n"
         "- direct: 单一明确意图，queries 最多 1 条，通常使用原问题。\n"
         "- normalize: 追问、代词或上下文依赖，补全成 1 条明确 query。\n"
-        f"- expand: 多意图或多角度问题，拆成最多 {max_queries} 条 query。\n"
+        f"- expand: 仅当问题明确包含多个独立意图时才使用，拆成最多 {max_queries} 条 query；"
+        "能用 1 条就不要 expand。\n"
         "- skip_kb: 闲聊、翻译、润色、总结刚才回答、系统操作等不需要 KB 的请求，queries 为空。\n"
+        "优先 direct / normalize；不要为了“更全面”而随意 expand。\n"
         "query 必须保留用户原问题里的产品名、实体、限制条件，不要制造新主题。\n"
         'JSON 格式：{"action":"direct","queries":[{"query":"...","limit":5}],"reason":"short_reason"}\n'
     )
@@ -1398,18 +1427,22 @@ async def kb_search_node(
     settings = get_settings()
     kg_top_k = max(1, min(int(getattr(settings, "lightrag_kg_top_k", 12) or 12), 60))
     kg_hard_timeout = max(1.0, float(getattr(settings, "lightrag_timeout_s", 20.0) or 20.0))
-    kg_soft_wait = max(0.0, float(getattr(settings, "lightrag_kg_soft_wait_s", 1.5) or 0.0))
+    kg_soft_wait = max(0.0, float(getattr(settings, "lightrag_kg_soft_wait_s", 0.0) or 0.0))
+    kg_only_when_needed = bool(getattr(settings, "lightrag_kg_only_when_needed", True))
 
     kg_tool_id = f"kg_search_{int(time.time() * 1000)}"
     primary_q = str(bounded_queries[0].get("query") or "").strip() if bounded_queries else ""
     kg_args = {"query": primary_q, "limit": kg_top_k}
-    run_kg = (
-        "search_kg" in registry.names()
-        and bool(primary_q)
+    kg_registered = "search_kg" in registry.names() and bool(primary_q)
+    # Relation-like questions start KG in parallel; listing/factoid queries wait
+    # and only fall back to KG when vector hits are weak.
+    kg_eager = kg_registered and (
+        not kg_only_when_needed or _query_needs_kg(primary_q)
     )
+
     kg_task: asyncio.Task[Any] | None = None
     kg_started_at = 0.0
-    if run_kg:
+    if kg_eager:
         await emit(
             {"event": "tool_start", "id": kg_tool_id, "name": "search_kg", "input": kg_args}
         )
@@ -1420,16 +1453,22 @@ async def kb_search_node(
         *[_run_search(idx, item) for idx, item in enumerate(bounded_queries, start=1)]
     )
 
+    context_only = [ctx for _, ctx in pairs]
+    kb_strong = _kb_context_has_strong_hit(context_only)
+
+    # Opportunistic KG: non-relational query + weak KB → run KG once after vector search.
+    if kg_task is None and kg_registered and not kb_strong:
+        await emit(
+            {"event": "tool_start", "id": kg_tool_id, "name": "search_kg", "input": kg_args}
+        )
+        kg_started_at = time.perf_counter()
+        kg_task = asyncio.create_task(registry.call("search_kg", kg_args))
+
     kg_tool_result: dict[str, Any] | None = None
     kg_block = ""
     if kg_task is not None:
-        context_only = [ctx for _, ctx in pairs]
-        # Strong KB evidence → only a short grace wait for KG; otherwise use hard timeout.
-        budget = (
-            kg_soft_wait
-            if _kb_context_has_strong_hit(context_only)
-            else kg_hard_timeout
-        )
+        # Strong KB evidence → abandon KG immediately (soft_wait defaults to 0).
+        budget = kg_soft_wait if kb_strong else kg_hard_timeout
         elapsed = time.perf_counter() - kg_started_at
         remaining = max(0.05, budget - elapsed) if budget > 0 else 0.05
         kg_result: ToolResult | None = None
@@ -1451,7 +1490,7 @@ async def kb_search_node(
                 latency_ms=latency_ms,
                 error=(
                     "kg_search skipped: strong KB hits already available"
-                    if _kb_context_has_strong_hit(context_only)
+                    if kb_strong
                     else f"kg_search timed out after {latency_ms}ms"
                 ),
             )

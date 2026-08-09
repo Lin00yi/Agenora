@@ -352,13 +352,13 @@ class StrongKBSearchTool(Tool):
 
 
 @pytest.mark.asyncio
-async def test_kb_search_node_skips_slow_kg_when_kb_strong(
+async def test_kb_search_node_skips_kg_for_listing_when_kb_strong(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from src.settings import get_settings
 
-    monkeypatch.setenv("LIGHTRAG_KG_SOFT_WAIT_S", "0.05")
-    monkeypatch.setenv("LIGHTRAG_TIMEOUT_S", "5")
+    monkeypatch.setenv("LIGHTRAG_KG_ONLY_WHEN_NEEDED", "true")
+    monkeypatch.setenv("LIGHTRAG_KG_SOFT_WAIT_S", "0")
     get_settings.cache_clear()
 
     kb = StrongKBSearchTool()
@@ -379,15 +379,18 @@ async def test_kb_search_node_skips_slow_kg_when_kb_strong(
     next_state = await kb_search_node(state, registry=registry, emit=emit)
     elapsed = time.perf_counter() - start
 
-    assert elapsed < 0.25
+    assert elapsed < 0.2
     assert next_state["kb_search_done"] is True
     assert "KG search query" not in next_state["kb_context"]
-    kg_ends = [
-        e for e in events if e.get("event") == "tool_end" and e.get("name") == "search_kg"
-    ]
-    assert len(kg_ends) == 1
-    assert kg_ends[0]["ok"] is False
-    assert "strong KB" in (kg_ends[0].get("error") or "")
+    assert kg.calls == 0
+    assert not any(e.get("name") == "search_kg" for e in events)
+
+
+def test_rule_query_policy_defers_multi_intent_to_llm() -> None:
+    from src.agent.nodes import _rule_query_policy
+
+    # Multi-intent / multi-clause should return None so query_policy LLM can decide.
+    assert _rule_query_policy("目前有哪些卡片，以及卡组涉及哪些？", max_queries=2) is None
 
 
 @pytest.mark.asyncio
