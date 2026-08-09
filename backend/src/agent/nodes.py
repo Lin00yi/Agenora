@@ -1364,8 +1364,61 @@ async def kb_search_node(
         }
         return tool_result, context_item
 
-    pairs = await asyncio.gather(
-        *[_run_search(idx, item) for idx, item in enumerate(bounded_queries, start=1)]
+    async def _run_kg() -> tuple[dict[str, Any] | None, str]:
+        if "search_kg" not in registry.names() or not bounded_queries:
+            return None, ""
+        primary_q = str(bounded_queries[0].get("query") or "").strip()
+        if not primary_q:
+            return None, ""
+        kg_tool_id = f"kg_search_{int(time.time() * 1000)}"
+        kg_args = {"query": primary_q, "limit": 40}
+        await emit(
+            {"event": "tool_start", "id": kg_tool_id, "name": "search_kg", "input": kg_args}
+        )
+        kg_result = await registry.call("search_kg", kg_args)
+        await emit(
+            {
+                "event": "tool_end",
+                "id": kg_tool_id,
+                "name": "search_kg",
+                "latency_ms": kg_result.latency_ms,
+                "ok": kg_result.error is None,
+                "error": kg_result.error,
+                "citations": [],
+            }
+        )
+        tool_result = {
+            "id": kg_tool_id,
+            "name": "search_kg",
+            "input": kg_args,
+            "result": (
+                kg_result.text
+                if kg_result.error is None
+                else f"[tool error] {kg_result.error}"
+            ),
+            "latency_ms": kg_result.latency_ms,
+            "error": "yes" if kg_result.error is not None else None,
+            "citations": [],
+        }
+        block = ""
+        if kg_result.error is None and (kg_result.text or "").strip():
+            filtered_kg, kg_sus_count, kg_sus_reasons = filter_untrusted_rag_text(
+                kg_result.text or ""
+            )
+            tool_result["suspicious_count"] = kg_sus_count
+            tool_result["suspicious_reasons"] = kg_sus_reasons
+            if filtered_kg.strip():
+                block = (
+                    f"## KG search query: {primary_q}\n"
+                    f"latency_ms: {kg_result.latency_ms}\n{filtered_kg}"
+                )
+        return tool_result, block
+
+    pairs, kg_pair = await asyncio.gather(
+        asyncio.gather(
+            *[_run_search(idx, item) for idx, item in enumerate(bounded_queries, start=1)]
+        ),
+        _run_kg(),
     )
     log = list(state.get("tool_call_log") or [])
     context_blocks: list[str] = []
@@ -1385,6 +1438,14 @@ async def kb_search_node(
             context_blocks.append(f"{header}\nERROR: {context_item['error']}")
         else:
             context_blocks.append(f"{header}\n{context_item['text']}")
+
+    kg_tool_result, kg_block = kg_pair
+    if kg_tool_result is not None:
+        log.append(kg_tool_result)
+        rag_suspicious_chunks += int(kg_tool_result.get("suspicious_count") or 0)
+        prompt_reasons.extend(kg_tool_result.get("suspicious_reasons") or [])
+        if kg_block:
+            context_blocks.append(kg_block)
 
     next_prompt_risk = state.get("prompt_injection_risk") or "low"
     if rag_suspicious_chunks and next_prompt_risk == "low":

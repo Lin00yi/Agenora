@@ -54,6 +54,8 @@ export type KB = {
   /** v3-M3: owner toggle. When true, KB search returns at most 1 chunk per
    *  document via Milvus group_by_field. */
   grouping_enabled: boolean;
+  /** Knowledge-graph recall via LightRAG Server (opt-in). */
+  kg_enabled: boolean;
   /** v4: KB-level chunking defaults (chars). Document can override. */
   chunk_strategy: ChunkStrategy;
   chunk_target: number;
@@ -85,6 +87,8 @@ export type Document = {
   effective_chunk_overlap: number | null;
   parsed_text_length: number;
   enabled: boolean;
+  kg_status?: string | null;
+  kg_error?: string | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -275,12 +279,12 @@ export async function deleteKb(id: string): Promise<void> {
   await unwrap(await authFetch(`/api/kbs/${id}`, { method: "DELETE" }));
 }
 
-/** v3-M3: owner-only KB settings PATCH. Currently only supports
- *  `grouping_enabled` toggle. Returns the updated KB. */
+/** Owner-only KB settings PATCH. Returns the updated KB. */
 export async function patchKb(
   id: string,
   body: {
     grouping_enabled?: boolean;
+    kg_enabled?: boolean;
     chunk_strategy?: ChunkStrategy;
     chunk_target?: number;
     chunk_max_size?: number;

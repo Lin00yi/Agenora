@@ -130,7 +130,7 @@ def build_graph(
             system_prompt=system_prompt,
             include_travel_skill=include_travel_skill,
             include_kb_skill=include_kb_skill,
-            excluded_tool_names={"search_kb"} if user_kb_mode else set(),
+            excluded_tool_names={"search_kb", "search_kg"} if user_kb_mode else set(),
             llm_cfg=llm_cfg,
             emit=em,
         ),

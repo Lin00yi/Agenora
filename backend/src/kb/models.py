@@ -90,6 +90,13 @@ class KB(Base):
         Boolean, default=False, nullable=False
     )
 
+    # Knowledge-graph recall via LightRAG Server (opt-in). When True, ingest
+    # also pushes parsed_text to LightRAG and chat runs search_kg in parallel
+    # with search_kb (dense + BM25).
+    kg_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="0"
+    )
+
     # v3-M7: per-KB embedding override (independent from user-level cfg).
     # When set, this KB's documents were ingested with these credentials and
     # KBSearchTool re-embeds queries with the same model. NULL on all four =
@@ -198,6 +205,7 @@ class KB(Base):
             "document_status_counts": status_counts,
             "is_system": bool(self.is_system),
             "grouping_enabled": bool(self.grouping_enabled),
+            "kg_enabled": bool(getattr(self, "kg_enabled", False)),
             "chunk_strategy": self.chunk_strategy or "recursive",
             "chunk_target": self.chunk_target,
             "chunk_max_size": self.chunk_max_size,
@@ -243,6 +251,13 @@ class Document(Base):
 
     # v4: when False, all chunks from this document are excluded from KB search.
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # LightRAG Server sync bookkeeping (independent of vector ingest status).
+    # pending|processing|done|failed|skipped
+    kg_status: Mapped[str] = mapped_column(String(16), default="", nullable=False)
+    kg_track_id: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    kg_doc_id: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    kg_error: Mapped[str] = mapped_column(Text, default="", nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -290,6 +305,8 @@ class Document(Base):
             "effective_chunk_overlap": effective_overlap,
             "parsed_text_length": len(self.parsed_text or ""),
             "enabled": bool(self.enabled),
+            "kg_status": self.kg_status or None,
+            "kg_error": self.kg_error or None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

@@ -175,6 +175,13 @@ def build_default_registry(
     from src.tools.skill_report import make_kb_report_tool
 
     reg.register(KBSearchTool(kb=kb, embedding_cfg=embedding_cfg, reranker_cfg=reranker_cfg))
+    if bool(getattr(kb, "kg_enabled", False)):
+        from src.settings import get_settings
+        from src.tools.kg_search import KGSearchTool
+
+        _lr = get_settings()
+        if _lr.lightrag_enabled and (_lr.lightrag_base_url or "").strip():
+            reg.register(KGSearchTool(kb_id=kb.id, kb_name=kb.name or ""))
     reg.register(make_kb_report_tool(llm_cfg=llm_cfg))
     if user_kb_web_search_enabled:
         from src.tools.web_search import WebSearchTool

@@ -145,6 +145,15 @@ class Settings(BaseSettings):
     # (prod→production, dev→development, …).
     langfuse_tracing_environment: str = ""
 
+    # ===== LightRAG Server (knowledge-graph recall) =====
+    # When lightrag_enabled and LIGHTRAG_BASE_URL are set, KBs with kg_enabled
+    # sync documents to the server and search_kg runs in parallel with search_kb.
+    lightrag_enabled: bool = True
+    lightrag_base_url: str = ""  # e.g. http://localhost:9621 or http://lightrag:9621
+    lightrag_api_key: str = ""
+    lightrag_query_mode: str = "hybrid"  # local|global|hybrid|naive|mix
+    lightrag_timeout_s: float = 120.0
+
     # ===== Server =====
     app_env: str = "dev"
     log_level: str = "INFO"

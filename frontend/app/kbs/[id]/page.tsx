@@ -126,6 +126,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
   const [deletingKb, setDeletingKb] = useState(false);
   // v3-M3: advanced settings + index rebuild
   const [groupingBusy, setGroupingBusy] = useState(false);
+  const [kgBusy, setKgBusy] = useState(false);
   const [chunkBusy, setChunkBusy] = useState(false);
   const [chunkStrategy, setChunkStrategy] = useState<ChunkStrategy>("recursive");
   const [chunkTarget, setChunkTarget] = useState("1500");
@@ -290,6 +291,26 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
       toast.error((err as Error).message);
     } finally {
       setGroupingBusy(false);
+    }
+  };
+
+  const onToggleKg = async (next: boolean) => {
+    if (!kb) return;
+    setKgBusy(true);
+    setKb({ ...kb, kg_enabled: next });
+    try {
+      const updated = await patchKb(id, { kg_enabled: next });
+      setKb((cur) => (cur ? { ...cur, kg_enabled: updated.kg_enabled } : cur));
+      toast.success(
+        next
+          ? "已开启知识图谱召回（将同步已入库文档到 LightRAG）"
+          : "已关闭知识图谱召回"
+      );
+    } catch (err) {
+      setKb((cur) => (cur ? { ...cur, kg_enabled: !next } : cur));
+      toast.error((err as Error).message);
+    } finally {
+      setKgBusy(false);
     }
   };
 
@@ -964,6 +985,23 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
                 <span className="font-medium">Grouping search</span>
                 <span className="ml-1 text-xs text-muted">
                   每篇文档至多返回 1 个最相关 chunk，避免长文档独占 top-k。
+                </span>
+              </span>
+            </div>
+
+            <div className="mx-4 mb-4 flex items-start gap-3 rounded-lg border border-surface-border/80 bg-surface p-4 text-sm shadow-sm transition hover:border-brand/25 hover:bg-surface-2/60">
+              <Switch
+                checked={Boolean(kb.kg_enabled)}
+                disabled={kgBusy}
+                onCheckedChange={(checked) => void onToggleKg(checked)}
+                className="mt-1"
+                aria-label="切换知识图谱召回"
+              />
+              <span>
+                <span className="font-medium">知识图谱召回</span>
+                <span className="ml-1 text-xs text-muted">
+                  经 LightRAG Server + Neo4j 做实体关系召回，与向量/关键词混合检索并行。开启后会同步已入库文档（额外消耗 LLM）。图谱浏览器：
+                  localhost:7474
                 </span>
               </span>
             </div>

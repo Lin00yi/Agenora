@@ -159,6 +159,13 @@ def _migrate_additive_columns(sync_conn) -> None:
                     "INTEGER NOT NULL DEFAULT 150"
                 )
             )
+        if "kg_enabled" not in cols:
+            sync_conn.execute(
+                text(
+                    "ALTER TABLE kbs ADD COLUMN kg_enabled "
+                    "BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+            )
 
     # v4: documents parsed_text + chunk overrides
     if "documents" in tables:
@@ -184,6 +191,19 @@ def _migrate_additive_columns(sync_conn) -> None:
                     "BOOLEAN NOT NULL DEFAULT TRUE"
                 )
             )
+        for col_name, col_type, default in [
+            ("kg_status", "VARCHAR(16)", "''"),
+            ("kg_track_id", "VARCHAR(128)", "''"),
+            ("kg_doc_id", "VARCHAR(128)", "''"),
+            ("kg_error", "TEXT", "''"),
+        ]:
+            if col_name not in doc_cols:
+                sync_conn.execute(
+                    text(
+                        f"ALTER TABLE documents ADD COLUMN {col_name} "
+                        f"{col_type} NOT NULL DEFAULT {default}"
+                    )
+                )
 
     # v2-M1: users.{llm,embedding}_* (10 nullable columns; NULL = use env fallback)
     if "users" in tables:

@@ -99,10 +99,10 @@ class CreateKBRequest(BaseModel):
 
 
 class PatchKBRequest(BaseModel):
-    """v3-M3: KB owner-only PATCH. Only allows toggling `grouping_enabled`
-    for now — name/description editing is intentionally not in this round."""
+    """Owner-only PATCH for retrieval toggles and chunk defaults."""
 
     grouping_enabled: Optional[bool] = None
+    kg_enabled: Optional[bool] = None
     chunk_strategy: Optional[ChunkStrategy] = None
     chunk_target: Optional[int] = Field(default=None, ge=200, le=8000)
     chunk_max_size: Optional[int] = Field(default=None, ge=200, le=10000)
@@ -509,9 +509,10 @@ async def patch_kb(
     kb_id: str,
     body: PatchKBRequest,
     user: CurrentUser,
+    background: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    """Owner-only. Currently scoped to `grouping_enabled` toggle (v3-M3).
+    """Owner-only. Toggles grouping / knowledge-graph and chunk defaults.
     System KBs are rejected — owner sentinel can't be hit via auth anyway,
     but we belt-and-braces here for clarity."""
     kb = await _load_owner_kb(session, kb_id, user.id)
@@ -520,8 +521,13 @@ async def patch_kb(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="System KBs cannot be modified",
         )
+    enable_kg = False
     if body.grouping_enabled is not None:
         kb.grouping_enabled = body.grouping_enabled
+    if body.kg_enabled is not None:
+        was_on = bool(kb.kg_enabled)
+        kb.kg_enabled = body.kg_enabled
+        enable_kg = bool(body.kg_enabled) and not was_on
     if body.chunk_strategy is not None:
         kb.chunk_strategy = body.chunk_strategy
     if body.chunk_target is not None:
@@ -530,8 +536,23 @@ async def patch_kb(
         kb.chunk_max_size = body.chunk_max_size
     if body.chunk_overlap is not None:
         kb.chunk_overlap = body.chunk_overlap
+
+    sync_doc_ids: list[str] = []
+    if enable_kg:
+        for doc in kb.documents or []:
+            if doc.status == "done" and (doc.parsed_text or "").strip():
+                if (doc.kg_status or "") in ("", "skipped", "failed"):
+                    sync_doc_ids.append(doc.id)
+
     await session.commit()
     await session.refresh(kb)
+
+    if sync_doc_ids:
+        from src.kg.sync import sync_document_to_lightrag
+
+        for did in sync_doc_ids:
+            background.add_task(sync_document_to_lightrag, did)
+
     return kb.to_public_dict(my_role="owner")
 
 
@@ -737,6 +758,9 @@ async def delete_document(
     chunks_to_subtract = doc.chunks_count or 0
     filename_snap = doc.filename
     doc_id_snap = doc.id
+    kg_doc_id_snap = getattr(doc, "kg_doc_id", "") or ""
+    kg_track_id_snap = getattr(doc, "kg_track_id", "") or ""
+    kg_enabled_snap = bool(getattr(kb, "kg_enabled", False))
 
     # Drop chunks from Qdrant (idempotent), then DB row, then on-disk file.
     await delete_document_chunks(kb.collection_name, doc_id_snap)
@@ -745,6 +769,15 @@ async def delete_document(
         kb.chunks_count = max(0, (kb.chunks_count or 0) - chunks_to_subtract)
     await session.commit()
     delete_uploaded_file(kb_id, doc_id_snap, filename_snap)
+
+    if kg_enabled_snap and (kg_doc_id_snap or kg_track_id_snap):
+        from src.kg.sync import delete_document_from_lightrag
+
+        await delete_document_from_lightrag(
+            kb_id=kb_id,
+            kg_doc_id=kg_doc_id_snap,
+            kg_track_id=kg_track_id_snap,
+        )
 
 
 @router.get("/{kb_id}/documents/{doc_id}")

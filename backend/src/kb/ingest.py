@@ -201,6 +201,7 @@ async def ingest_document(
         log.exception("ingest_failed", doc_id=doc_id, error=error_msg)
 
     # ---- 3. Finalize: write status + counts in a fresh session
+    kg_enabled = False
     async with factory() as session:
         doc = await session.get(Document, doc_id)
         if doc is None:
@@ -212,7 +213,17 @@ async def ingest_document(
             kb = await session.get(KB, doc.kb_id)
             if kb is not None:
                 kb.chunks_count = (kb.chunks_count or 0) - prev_chunks + new_chunks
+                kg_enabled = bool(getattr(kb, "kg_enabled", False))
         await session.commit()
+
+    # ---- 4. Optional LightRAG Server sync (does not fail vector ingest)
+    if new_status == "done" and kg_enabled:
+        try:
+            from src.kg.sync import sync_document_to_lightrag
+
+            await sync_document_to_lightrag(doc_id)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("lightrag_sync_invoke_failed", doc_id=doc_id, error=str(exc)[:500])
 
 
 async def delete_document_chunks(collection_name: str, doc_id: str) -> None:
