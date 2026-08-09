@@ -220,6 +220,7 @@ export function getToolInputSummary(tool: ToolEvent): string {
 export function getToolLabelClean(name: string): string {
   const labels: Record<string, string> = {
     search_kb: "\u77e5\u8bc6\u5e93\u68c0\u7d22",
+    search_kg: "\u77e5\u8bc6\u56fe\u8c31\u68c0\u7d22",
     generate_kb_report: "\u77e5\u8bc6\u5e93\u62a5\u544a",
     web_search: "\u7f51\u7edc\u641c\u7d22",
     get_current_time: "\u83b7\u53d6\u5f53\u524d\u65f6\u95f4",

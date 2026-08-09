@@ -4,9 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
-  ChangeEvent,
   FormEvent,
 } from "react";
 import { useRouter } from "next/navigation";
@@ -64,6 +62,7 @@ import { toastApiError } from "@/lib/byok-toast";
 import { cn } from "@/lib/cn";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import AppModal from "@/components/AppModal";
+import { AddDocumentDialog } from "@/components/kb/AddDocumentDialog";
 import Select from "@/components/Select";
 import { LoadingState, StateView } from "@/components/ui/state-view";
 import { Button } from "@/components/ui/button";
@@ -114,9 +113,8 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
   const [notFound, setNotFound] = useState(false);
 
   const [uploadingFiles, setUploadingFiles] = useState<string[]>([]);
-  const [url, setUrl] = useState("");
+  const [addDocOpen, setAddDocOpen] = useState(false);
   const [submittingUrl, setSubmittingUrl] = useState(false);
-  const fileInput = useRef<HTMLInputElement>(null);
 
   const [pendingDelete, setPendingDelete] = useState<Document | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -210,8 +208,7 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
     return () => clearInterval(t);
   }, [kb, refresh]);
 
-  const onFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
+  const onUploadFiles = async (files: File[]) => {
     if (!files.length) return;
     setUploadingFiles(files.map((f) => f.name));
     try {
@@ -222,23 +219,23 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
       await refresh();
     } catch (err) {
       toastApiError(err, (p) => router.push(p));
+      throw err;
     } finally {
       setUploadingFiles([]);
-      if (fileInput.current) fileInput.current.value = "";
     }
   };
 
-  const onSubmitUrl = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!url.trim()) return;
+  const onSubmitUrl = async (rawUrl: string) => {
+    const trimmed = rawUrl.trim();
+    if (!trimmed) return;
     setSubmittingUrl(true);
     try {
-      await uploadUrl(id, url.trim());
+      await uploadUrl(id, trimmed);
       toast.success("已提交 URL，正在抓取并 ingest");
-      setUrl("");
       await refresh();
     } catch (err) {
       toastApiError(err, (p) => router.push(p));
+      throw err;
     } finally {
       setSubmittingUrl(false);
     }
@@ -469,24 +466,14 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
             <Link href="/kbs">返回知识库</Link>
           </Button>
           {canWrite && !kb.is_system && (
-            <>
-              <input
-                ref={fileInput}
-                type="file"
-                multiple
-                accept=".md,.markdown,.txt,.pdf,.docx"
-                onChange={onFileChange}
-                className="hidden"
-              />
-              <Button
-                type="button"
-                disabled={uploadingFiles.length > 0}
-                onClick={() => fileInput.current?.click()}
-              >
-                <Plus className="h-4 w-4" />
-                上传文档
-              </Button>
-            </>
+            <Button
+              type="button"
+              disabled={uploadingFiles.length > 0 || submittingUrl}
+              onClick={() => setAddDocOpen(true)}
+            >
+              <Plus className="h-4 w-4" />
+              添加文档
+            </Button>
           )}
         </>
       }
@@ -598,32 +585,6 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
             }
             className="mb-4"
           />
-        ) : canWrite ? (
-          <form
-            onSubmit={onSubmitUrl}
-            className="mb-4 rounded-lg border border-surface-border/75 bg-surface px-4 py-3 shadow-sm"
-          >
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <span className="admin-icon-tile admin-icon-tile-brand">
-                <Link2 className="h-4 w-4" />
-              </span>
-              <input
-                type="url"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="从 URL 抓取并 ingest..."
-                className={cn(kbDetailInputClass, "min-w-0 flex-1")}
-              />
-              <Button
-                type="submit"
-                disabled={!url.trim() || submittingUrl}
-                variant="outline"
-                className="min-h-[var(--control-h)] shrink-0 px-4 text-sm"
-              >
-                {submittingUrl ? "提交中..." : "抓取"}
-              </Button>
-            </div>
-          </form>
         ) : null}
 
         {!(kb.is_system && kb.documents.length === 0) && (
@@ -1116,6 +1077,15 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
           </div>
           </AdminSection>
         )}
+
+      <AddDocumentDialog
+        open={addDocOpen}
+        onOpenChange={setAddDocOpen}
+        uploading={uploadingFiles.length > 0}
+        submittingUrl={submittingUrl}
+        onUploadFiles={onUploadFiles}
+        onSubmitUrl={onSubmitUrl}
+      />
 
       <ConfirmDialog
         open={pendingDelete != null}

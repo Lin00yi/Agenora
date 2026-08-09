@@ -20,7 +20,6 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import AppModal from "@/components/AppModal";
 import Select from "@/components/Select";
 import ThemeToggle from "@/components/ThemeToggle";
-import { SettingsAreaNav } from "@/components/SettingsAreaNav";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -186,9 +185,7 @@ export default function MemoriesPage() {
             <ArrowLeft className="h-4 w-4" />
             返回对话
           </Link>
-          <SettingsAreaNav active="memory" className="ml-4 hidden sm:inline-flex" />
           <div className="ml-auto flex items-center gap-3">
-            <SettingsAreaNav active="memory" className="sm:hidden" />
             <ThemeToggle compact />
           </div>
         </div>

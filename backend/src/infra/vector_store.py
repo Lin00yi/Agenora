@@ -414,6 +414,7 @@ class MilvusStore:
         )
         self._collection = s.qdrant_collection  # reuse default for travel demo
         self._uri = s.milvus_uri
+        self._hybrid_support_cache: dict[str, bool] = {}
 
     # ---- collection management ----
 
@@ -771,10 +772,16 @@ class MilvusStore:
         between hybrid_search() and search() — old dense-only collections
         (legacy `restaurants`, pre-v3-M3 user KBs) keep working unchanged.
         """
+        cached = self._hybrid_support_cache.get(collection_name)
+        if cached is not None:
+            return cached
         if not self._has(collection_name):
+            self._hybrid_support_cache[collection_name] = False
             return False
         fields = await self._field_names(collection_name)
-        return {"text_bm25", "doc_id"}.issubset(fields)
+        supported = {"text_bm25", "doc_id"}.issubset(fields)
+        self._hybrid_support_cache[collection_name] = supported
+        return supported
 
     async def hybrid_search(
         self,

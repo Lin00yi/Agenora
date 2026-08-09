@@ -322,6 +322,74 @@ async def test_kb_search_node_runs_rewritten_queries_in_parallel() -> None:
     assert len(next_state["tool_call_log"]) == 3
 
 
+class SlowKGSearchTool(Tool):
+    name = "search_kg"
+    description = "slow KG search"
+    input_schema = {"type": "object", "properties": {"query": {"type": "string"}}}
+
+    def __init__(self, *, delay: float = 0.5) -> None:
+        self.delay = delay
+        self.calls = 0
+
+    async def execute(self, **kwargs: Any) -> ToolResult:  # noqa: ARG002
+        self.calls += 1
+        await asyncio.sleep(self.delay)
+        return ToolResult(text="kg hit", latency_ms=int(self.delay * 1000))
+
+
+class StrongKBSearchTool(Tool):
+    name = "search_kb"
+    description = "strong KB hit"
+    input_schema = {"type": "object", "properties": {"query": {"type": "string"}}}
+
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        query = kwargs.get("query", "")
+        return ToolResult(
+            text=f"hit for {query}",
+            latency_ms=5,
+            raw={"hits": 1, "results": [{"filename": "a.md", "score": 0.91}]},
+        )
+
+
+@pytest.mark.asyncio
+async def test_kb_search_node_skips_slow_kg_when_kb_strong(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.settings import get_settings
+
+    monkeypatch.setenv("LIGHTRAG_KG_SOFT_WAIT_S", "0.05")
+    monkeypatch.setenv("LIGHTRAG_TIMEOUT_S", "5")
+    get_settings.cache_clear()
+
+    kb = StrongKBSearchTool()
+    kg = SlowKGSearchTool(delay=0.4)
+    registry = ToolRegistry()
+    registry.register(kb)
+    registry.register(kg)
+    events: list[dict[str, Any]] = []
+
+    async def emit(evt: dict[str, Any]) -> None:
+        events.append(evt)
+
+    state = {
+        "kb_queries": [{"query": "目前有哪些卡片", "limit": 5}],
+        "tool_call_log": [],
+    }
+    start = time.perf_counter()
+    next_state = await kb_search_node(state, registry=registry, emit=emit)
+    elapsed = time.perf_counter() - start
+
+    assert elapsed < 0.25
+    assert next_state["kb_search_done"] is True
+    assert "KG search query" not in next_state["kb_context"]
+    kg_ends = [
+        e for e in events if e.get("event") == "tool_end" and e.get("name") == "search_kg"
+    ]
+    assert len(kg_ends) == 1
+    assert kg_ends[0]["ok"] is False
+    assert "strong KB" in (kg_ends[0].get("error") or "")
+
+
 @pytest.mark.asyncio
 async def test_reason_node_can_hide_search_kb_schema(
     monkeypatch: pytest.MonkeyPatch,

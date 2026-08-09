@@ -17,8 +17,10 @@ path — pick whichever you prefer.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import math
+from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -145,6 +147,11 @@ def embedding_fingerprint(cfg: "UserEmbeddingConfig | None" = None) -> str:
 # ---------------------------------------------------------------------------
 _client: httpx.AsyncClient | None = None
 
+# Query embedding LRU — parallel rewrite queries often overlap across turns.
+_EMBED_CACHE_MAX = 256
+_embed_cache: OrderedDict[tuple[str, str], list[float]] = OrderedDict()
+_embed_cache_lock = asyncio.Lock()
+
 
 def _get_client() -> httpx.AsyncClient:
     global _client
@@ -161,17 +168,43 @@ async def aclose() -> None:
     _client = None
 
 
+def _cache_get(key: tuple[str, str]) -> list[float] | None:
+    hit = _embed_cache.get(key)
+    if hit is None:
+        return None
+    _embed_cache.move_to_end(key)
+    return hit
+
+
+def _cache_put(key: tuple[str, str], vec: list[float]) -> None:
+    _embed_cache[key] = vec
+    _embed_cache.move_to_end(key)
+    while len(_embed_cache) > _EMBED_CACHE_MAX:
+        _embed_cache.popitem(last=False)
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 async def embed(text: str, cfg: "UserEmbeddingConfig | None" = None) -> list[float]:
+    cleaned = (text or "").strip()
+    key = (embedding_fingerprint(cfg), cleaned)
+    cached = _cache_get(key)
+    if cached is not None:
+        return list(cached)
+
     resolved = _resolve_config(cfg)
     if resolved["protocol"] == "hashmock":
-        return _embed_hashmock(text)
-    if resolved["protocol"] == "ollama-native":
-        return await _embed_ollama_native(text, resolved)
-    # openai-compatible (covers OpenAI, SiliconFlow, Together, Groq, vLLM, LMStudio, etc.)
-    return await _embed_openai_compat(text, resolved)
+        vec = _embed_hashmock(cleaned or text)
+    elif resolved["protocol"] == "ollama-native":
+        vec = await _embed_ollama_native(cleaned or text, resolved)
+    else:
+        # openai-compatible (covers OpenAI, SiliconFlow, Together, Groq, vLLM, LMStudio, etc.)
+        vec = await _embed_openai_compat(cleaned or text, resolved)
+
+    async with _embed_cache_lock:
+        _cache_put(key, vec)
+    return vec
 
 
 async def embed_batch(

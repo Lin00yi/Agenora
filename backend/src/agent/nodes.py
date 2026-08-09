@@ -22,8 +22,9 @@ from src.infra.llm_adapters import create_tool_adapter
 from src.observability import ageneration, traced
 from src.safety.tool_guard import is_tool_allowed
 from src.safety.prompt_injection import assess_prompt_injection, filter_untrusted_rag_text
-from src.tools.base import ToolRegistry
+from src.tools.base import ToolRegistry, ToolResult
 from src.tools.citations import citations_from_tool_raw, merge_citations
+from src.settings import get_settings
 
 if TYPE_CHECKING:
     from src.settings_user import UserLLMConfig
@@ -34,6 +35,8 @@ MAX_ITERATIONS = 10
 MAX_SEARCH_KB_CALLS_PER_STEP = 3
 MAX_KB_REWRITE_QUERIES = 3
 DEFAULT_KB_SEARCH_LIMIT = 5
+# Cosine / hybrid dense score threshold used by prompts as "strong" evidence.
+_KB_STRONG_HIT_SCORE = 0.7
 MAX_AUTO_CONTINUATIONS = 2
 EMPTY_ANSWER_FALLBACK = (
     "本轮模型未返回有效内容。请直接点重试，或换一种问法后再试一次。"
@@ -1289,6 +1292,33 @@ def _append_output_limit_notice(text: str) -> str:
     return text.rstrip() + notice
 
 
+def _max_score_from_tool_raw(raw: Any) -> float:
+    if not isinstance(raw, dict):
+        return 0.0
+    best = 0.0
+    for item in raw.get("results") or []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            best = max(best, float(item.get("score") or 0.0))
+        except (TypeError, ValueError):
+            continue
+    return best
+
+
+def _kb_context_has_strong_hit(context_items: list[dict[str, Any]]) -> bool:
+    """True when any parallel KB search returned a strong dense similarity hit."""
+    for item in context_items:
+        if item.get("error"):
+            continue
+        try:
+            if float(item.get("max_score") or 0.0) >= _KB_STRONG_HIT_SCORE:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
+
+
 @traced("kb_search")
 async def kb_search_node(
     state: AgentState,
@@ -1359,23 +1389,77 @@ async def kb_search_node(
             "text": filtered_text,
             "error": result.error,
             "latency_ms": result.latency_ms,
+            "max_score": _max_score_from_tool_raw(result.raw),
             "suspicious_count": suspicious_count,
             "suspicious_reasons": suspicious_reasons,
         }
         return tool_result, context_item
 
-    async def _run_kg() -> tuple[dict[str, Any] | None, str]:
-        if "search_kg" not in registry.names() or not bounded_queries:
-            return None, ""
-        primary_q = str(bounded_queries[0].get("query") or "").strip()
-        if not primary_q:
-            return None, ""
-        kg_tool_id = f"kg_search_{int(time.time() * 1000)}"
-        kg_args = {"query": primary_q, "limit": 40}
+    settings = get_settings()
+    kg_top_k = max(1, min(int(getattr(settings, "lightrag_kg_top_k", 12) or 12), 60))
+    kg_hard_timeout = max(1.0, float(getattr(settings, "lightrag_timeout_s", 20.0) or 20.0))
+    kg_soft_wait = max(0.0, float(getattr(settings, "lightrag_kg_soft_wait_s", 1.5) or 0.0))
+
+    kg_tool_id = f"kg_search_{int(time.time() * 1000)}"
+    primary_q = str(bounded_queries[0].get("query") or "").strip() if bounded_queries else ""
+    kg_args = {"query": primary_q, "limit": kg_top_k}
+    run_kg = (
+        "search_kg" in registry.names()
+        and bool(primary_q)
+    )
+    kg_task: asyncio.Task[Any] | None = None
+    kg_started_at = 0.0
+    if run_kg:
         await emit(
             {"event": "tool_start", "id": kg_tool_id, "name": "search_kg", "input": kg_args}
         )
-        kg_result = await registry.call("search_kg", kg_args)
+        kg_started_at = time.perf_counter()
+        kg_task = asyncio.create_task(registry.call("search_kg", kg_args))
+
+    pairs = await asyncio.gather(
+        *[_run_search(idx, item) for idx, item in enumerate(bounded_queries, start=1)]
+    )
+
+    kg_tool_result: dict[str, Any] | None = None
+    kg_block = ""
+    if kg_task is not None:
+        context_only = [ctx for _, ctx in pairs]
+        # Strong KB evidence → only a short grace wait for KG; otherwise use hard timeout.
+        budget = (
+            kg_soft_wait
+            if _kb_context_has_strong_hit(context_only)
+            else kg_hard_timeout
+        )
+        elapsed = time.perf_counter() - kg_started_at
+        remaining = max(0.05, budget - elapsed) if budget > 0 else 0.05
+        kg_result: ToolResult | None = None
+        timed_out = False
+        try:
+            if budget <= 0:
+                raise asyncio.TimeoutError()
+            kg_result = await asyncio.wait_for(asyncio.shield(kg_task), timeout=remaining)
+        except asyncio.TimeoutError:
+            timed_out = True
+            kg_task.cancel()
+            try:
+                await kg_task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
+            latency_ms = int((time.perf_counter() - kg_started_at) * 1000)
+            kg_result = ToolResult(
+                text="",
+                latency_ms=latency_ms,
+                error=(
+                    "kg_search skipped: strong KB hits already available"
+                    if _kb_context_has_strong_hit(context_only)
+                    else f"kg_search timed out after {latency_ms}ms"
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001
+            latency_ms = int((time.perf_counter() - kg_started_at) * 1000)
+            kg_result = ToolResult(text="", latency_ms=latency_ms, error=str(exc)[:800])
+
+        assert kg_result is not None
         await emit(
             {
                 "event": "tool_end",
@@ -1387,7 +1471,7 @@ async def kb_search_node(
                 "citations": [],
             }
         )
-        tool_result = {
+        kg_tool_result = {
             "id": kg_tool_id,
             "name": "search_kg",
             "input": kg_args,
@@ -1399,27 +1483,20 @@ async def kb_search_node(
             "latency_ms": kg_result.latency_ms,
             "error": "yes" if kg_result.error is not None else None,
             "citations": [],
+            "timed_out": timed_out,
         }
-        block = ""
         if kg_result.error is None and (kg_result.text or "").strip():
             filtered_kg, kg_sus_count, kg_sus_reasons = filter_untrusted_rag_text(
                 kg_result.text or ""
             )
-            tool_result["suspicious_count"] = kg_sus_count
-            tool_result["suspicious_reasons"] = kg_sus_reasons
+            kg_tool_result["suspicious_count"] = kg_sus_count
+            kg_tool_result["suspicious_reasons"] = kg_sus_reasons
             if filtered_kg.strip():
-                block = (
+                kg_block = (
                     f"## KG search query: {primary_q}\n"
                     f"latency_ms: {kg_result.latency_ms}\n{filtered_kg}"
                 )
-        return tool_result, block
 
-    pairs, kg_pair = await asyncio.gather(
-        asyncio.gather(
-            *[_run_search(idx, item) for idx, item in enumerate(bounded_queries, start=1)]
-        ),
-        _run_kg(),
-    )
     log = list(state.get("tool_call_log") or [])
     context_blocks: list[str] = []
     turn_citations = list(state.get("citations") or [])
@@ -1439,7 +1516,6 @@ async def kb_search_node(
         else:
             context_blocks.append(f"{header}\n{context_item['text']}")
 
-    kg_tool_result, kg_block = kg_pair
     if kg_tool_result is not None:
         log.append(kg_tool_result)
         rag_suspicious_chunks += int(kg_tool_result.get("suspicious_count") or 0)

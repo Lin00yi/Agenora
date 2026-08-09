@@ -43,6 +43,7 @@ type ChainSummary = {
 
 const NAME_LABEL: Record<string, string> = {
   search_kb: "\u68c0\u7d22 KB",
+  search_kg: "\u68c0\u7d22\u77e5\u8bc6\u56fe\u8c31",
   web_search: "\u641c\u7d22\u7f51\u7edc",
   generate_kb_report: "\u751f\u6210 KB \u62a5\u544a",
   get_current_time: "\u83b7\u53d6\u5f53\u524d\u65f6\u95f4",

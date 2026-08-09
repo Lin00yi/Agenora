@@ -30,8 +30,8 @@ class KGSearchTool(Tool):
             },
             "limit": {
                 "type": "integer",
-                "description": "图谱 top_k（实体或关系数），默认 40。",
-                "default": 40,
+                "description": "图谱 top_k（实体或关系数），默认取服务端配置。",
+                "default": 12,
             },
         },
         "required": ["query"],
@@ -63,10 +63,11 @@ class KGSearchTool(Tool):
                 error="LightRAG Server 未配置（LIGHTRAG_BASE_URL）",
             )
 
+        default_limit = int(getattr(settings, "lightrag_kg_top_k", 12) or 12)
         try:
-            limit = int(kwargs.get("limit") or 40)
+            limit = int(kwargs.get("limit") or default_limit)
         except (TypeError, ValueError):
-            limit = 40
+            limit = default_limit
         limit = max(1, min(limit, 60))
 
         try:

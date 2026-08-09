@@ -151,8 +151,13 @@ class Settings(BaseSettings):
     lightrag_enabled: bool = True
     lightrag_base_url: str = ""  # e.g. http://localhost:9621 or http://lightrag:9621
     lightrag_api_key: str = ""
-    lightrag_query_mode: str = "hybrid"  # local|global|hybrid|naive|mix
-    lightrag_timeout_s: float = 120.0
+    # ``local`` is much cheaper than ``hybrid`` (less LLM + graph work).
+    lightrag_query_mode: str = "local"  # local|global|hybrid|naive|mix
+    lightrag_timeout_s: float = 20.0
+    # Hard cap for search_kg top_k (node may pass a lower value).
+    lightrag_kg_top_k: int = 12
+    # When vector KB already has a strong hit (>=0.7), only wait this long for KG.
+    lightrag_kg_soft_wait_s: float = 1.5
 
     # ===== Server =====
     app_env: str = "dev"

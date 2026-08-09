@@ -19,6 +19,9 @@ log = structlog.get_logger()
 
 _WORKSPACE_RE = re.compile(r"[^a-zA-Z0-9_]+")
 
+# Process-wide client — avoids TLS/handshake cost on every KG query.
+_http_client: httpx.AsyncClient | None = None
+
 
 def workspace_for_kb(kb_id: str) -> str:
     """Sanitize KB id for LightRAG workspace header (alphanumeric + underscore)."""
@@ -30,6 +33,21 @@ def file_source_for_doc(kb_id: str, doc_id: str, filename: str = "") -> str:
     """Stable LightRAG file_source so deletes can be correlated."""
     safe_name = (filename or "doc").replace("/", "_").replace("\\", "_")[:180]
     return f"agenora/{kb_id}/{doc_id}/{safe_name}"
+
+
+def _get_http_client(timeout_s: float) -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(timeout=timeout_s)
+    return _http_client
+
+
+async def aclose_lightrag_http() -> None:
+    """Optional cleanup on app shutdown."""
+    global _http_client
+    if _http_client is not None and not _http_client.is_closed:
+        await _http_client.aclose()
+    _http_client = None
 
 
 class LightRAGClient:
@@ -63,11 +81,17 @@ class LightRAGClient:
             headers["X-API-Key"] = self.api_key
         return headers
 
+    def _client(self) -> httpx.AsyncClient:
+        return _get_http_client(self.timeout_s)
+
     async def health(self) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=min(10.0, self.timeout_s)) as client:
-            resp = await client.get(f"{self.base_url}/health", headers=self._headers("health"))
-            resp.raise_for_status()
-            return resp.json() if resp.content else {"status": "ok"}
+        resp = await self._client().get(
+            f"{self.base_url}/health",
+            headers=self._headers("health"),
+            timeout=min(10.0, self.timeout_s),
+        )
+        resp.raise_for_status()
+        return resp.json() if resp.content else {"status": "ok"}
 
     async def insert_text(
         self,
@@ -77,18 +101,18 @@ class LightRAGClient:
         file_source: str,
     ) -> dict[str, Any]:
         payload = {"text": text, "file_source": file_source}
-        async with httpx.AsyncClient(timeout=self.timeout_s) as client:
-            resp = await client.post(
-                f"{self.base_url}/documents/text",
-                headers=self._headers(kb_id),
-                json=payload,
+        resp = await self._client().post(
+            f"{self.base_url}/documents/text",
+            headers=self._headers(kb_id),
+            json=payload,
+            timeout=self.timeout_s,
+        )
+        if resp.status_code >= 400:
+            detail = (resp.text or "")[:800]
+            raise RuntimeError(
+                f"LightRAG insert failed ({resp.status_code}): {detail}"
             )
-            if resp.status_code >= 400:
-                detail = (resp.text or "")[:800]
-                raise RuntimeError(
-                    f"LightRAG insert failed ({resp.status_code}): {detail}"
-                )
-            return resp.json()
+        return resp.json()
 
     async def query_context(
         self,
@@ -111,18 +135,18 @@ class LightRAGClient:
         }
         if top_k is not None:
             payload["top_k"] = max(1, min(int(top_k), 60))
-        async with httpx.AsyncClient(timeout=self.timeout_s) as client:
-            resp = await client.post(
-                f"{self.base_url}/query",
-                headers=self._headers(kb_id),
-                json=payload,
+        resp = await self._client().post(
+            f"{self.base_url}/query",
+            headers=self._headers(kb_id),
+            json=payload,
+            timeout=self.timeout_s,
+        )
+        if resp.status_code >= 400:
+            detail = (resp.text or "")[:800]
+            raise RuntimeError(
+                f"LightRAG query failed ({resp.status_code}): {detail}"
             )
-            if resp.status_code >= 400:
-                detail = (resp.text or "")[:800]
-                raise RuntimeError(
-                    f"LightRAG query failed ({resp.status_code}): {detail}"
-                )
-            data = resp.json() if resp.content else {}
+        data = resp.json() if resp.content else {}
         # Response shapes vary by version: string, or {response|data|content|context}.
         if isinstance(data, str):
             return data
@@ -135,35 +159,35 @@ class LightRAGClient:
         return ""
 
     async def track_status(self, *, kb_id: str, track_id: str) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=min(30.0, self.timeout_s)) as client:
-            resp = await client.get(
-                f"{self.base_url}/documents/track_status/{track_id}",
-                headers=self._headers(kb_id),
+        resp = await self._client().get(
+            f"{self.base_url}/documents/track_status/{track_id}",
+            headers=self._headers(kb_id),
+            timeout=min(30.0, self.timeout_s),
+        )
+        if resp.status_code >= 400:
+            detail = (resp.text or "")[:500]
+            raise RuntimeError(
+                f"LightRAG track_status failed ({resp.status_code}): {detail}"
             )
-            if resp.status_code >= 400:
-                detail = (resp.text or "")[:500]
-                raise RuntimeError(
-                    f"LightRAG track_status failed ({resp.status_code}): {detail}"
-                )
-            return resp.json() if resp.content else {}
+        return resp.json() if resp.content else {}
 
     async def delete_documents(self, *, kb_id: str, doc_ids: list[str]) -> dict[str, Any]:
         ids = [d.strip() for d in doc_ids if d and d.strip()]
         if not ids:
             return {"status": "skipped", "message": "no doc ids"}
-        async with httpx.AsyncClient(timeout=self.timeout_s) as client:
-            resp = await client.request(
-                "DELETE",
-                f"{self.base_url}/documents/delete_document",
-                headers=self._headers(kb_id),
-                json={"doc_ids": ids, "delete_file": False, "delete_llm_cache": False},
+        resp = await self._client().request(
+            "DELETE",
+            f"{self.base_url}/documents/delete_document",
+            headers=self._headers(kb_id),
+            json={"doc_ids": ids, "delete_file": False, "delete_llm_cache": False},
+            timeout=self.timeout_s,
+        )
+        if resp.status_code >= 400:
+            detail = (resp.text or "")[:800]
+            raise RuntimeError(
+                f"LightRAG delete failed ({resp.status_code}): {detail}"
             )
-            if resp.status_code >= 400:
-                detail = (resp.text or "")[:800]
-                raise RuntimeError(
-                    f"LightRAG delete failed ({resp.status_code}): {detail}"
-                )
-            return resp.json() if resp.content else {"status": "success"}
+        return resp.json() if resp.content else {"status": "success"}
 
     async def resolve_doc_ids_from_track(
         self, *, kb_id: str, track_id: str

@@ -23,7 +23,6 @@ import {
 } from "@/lib/settings-api";
 import { LoadingState, StateView } from "@/components/ui/state-view";
 import ThemeToggle from "@/components/ThemeToggle";
-import { SettingsAreaNav } from "@/components/SettingsAreaNav";
 import { Switch } from "@/components/ui/switch";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -81,9 +80,7 @@ export default function SettingsPage() {
             <ArrowLeft className="h-4 w-4" />
             返回对话
           </Link>
-          <SettingsAreaNav active="model" className="ml-4 hidden sm:inline-flex" />
           <div className="ml-auto flex items-center gap-3">
-            <SettingsAreaNav active="model" className="sm:hidden" />
             <ThemeToggle />
           </div>
         </div>

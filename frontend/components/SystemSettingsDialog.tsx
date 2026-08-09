@@ -40,8 +40,8 @@ import {
   deleteAllConversations,
   exportConversations,
 } from "@/lib/conversations-api";
-import { SettingsAreaNav } from "@/components/SettingsAreaNav";
 import { cn } from "@/lib/cn";
+import Link from "next/link";
 
 type Tab = "general" | "account" | "data" | "about";
 
@@ -137,7 +137,22 @@ export default function SystemSettingsDialog({
             })}
             <div className="mt-auto hidden border-t border-surface-border/70 pt-2 sm:block">
               <p className="mb-2 px-2 text-[11px] text-muted">更多设置</p>
-              <SettingsAreaNav active="account" onNavigate={onClose} />
+              <div className="flex flex-col gap-0.5 px-1">
+                <Link
+                  href="/settings"
+                  onClick={onClose}
+                  className="rounded-md px-2 py-1.5 text-sm text-muted hover:bg-surface/75 hover:text-ink"
+                >
+                  模型设置
+                </Link>
+                <Link
+                  href="/memories"
+                  onClick={onClose}
+                  className="rounded-md px-2 py-1.5 text-sm text-muted hover:bg-surface/75 hover:text-ink"
+                >
+                  记忆系统
+                </Link>
+              </div>
             </div>
           </nav>
 
