@@ -351,25 +351,25 @@ chunk.security_reasons = [...]
 
 检索时优先排除中高风险 chunk，提高性能和可观测性。
 
+## 如何调整规则
+
+1. 编辑 `backend/config/prompt_injection_rules.yaml`（`high_risk` / `medium_risk`）。
+2. 每个规则是 `id` + `pattern` 列表；列表项用 `|` 拼成一条正则，`IGNORECASE` 默认开启。
+3. 在 `backend/config/prompt_injection_eval_cases.jsonl` 增加攻击/良性样本。
+4. 跑评测：`cd backend && pytest tests/test_prompt_injection_eval.py -q`
+5. 重启 API 进程以加载新 YAML（规则带进程内缓存）。
+
+代码内仍保留内置 fallback；YAML 缺失或解析失败时自动回退，不影响服务启动。
+
 ## 后续 TODO Roadmap
 
 ### 短期：1-2 周
 
-- [ ] 将 `_HIGH_RISK_PATTERNS` / `_MEDIUM_RISK_PATTERNS` 从代码迁移到配置文件，例如 `backend/config/prompt_injection_rules.yaml`。
-- [ ] 增加更多中文、英文、中英混合攻击样本测试。
-- [ ] 增加混淆样本测试：空格拆字、零宽字符、大小写、全角半角、错别字。
-- [ ] 增加良性问题测试，避免误伤：
-  - `API key 在哪里配置？`
-  - `如何设置 token？`
-  - `系统提示词是什么意思？`
-- [ ] 在日志中记录：
-  - `prompt_injection_risk`
-  - `prompt_injection_reasons`
-  - `rag_suspicious_chunks`
-  - 被禁用的 tools
+- [x] 将规则迁移到 `backend/config/prompt_injection_rules.yaml`（内置 fallback 保留）。
+- [x] 增加中英攻击 / 混淆 / 良性样本评测集：`prompt_injection_eval_cases.jsonl`。
+- [x] 给 docs 增加“如何调整规则”说明。
+- [x] 在日志中记录 `prompt_injection_risk` / `prompt_injection_reasons`（chat 入口；agent state 另含 `rag_suspicious_chunks`）。
 - [ ] 在 `kb_search_node` 中保留被过滤 chunk 的 metadata，用于后台审计，但不要进入 `kb_context`。
-- [ ] 给 README 或 docs 增加“如何调整规则”的说明。
-- [ ] 建立最小评测集：`prompt_injection_eval_cases.jsonl`。
 
 ### 中期：2-6 周
 

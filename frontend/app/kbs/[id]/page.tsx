@@ -166,6 +166,8 @@ export default function KbDetailPage({ params }: { params: { id: string } }) {
     setChunkTarget(String(kb.chunk_target ?? 1500));
     setChunkMaxSize(String(kb.chunk_max_size ?? 1800));
     setChunkOverlap(String(kb.chunk_overlap ?? 150));
+    // Sync form fields from KB chunk settings only — not every kb object identity change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional field deps
   }, [kb?.chunk_strategy, kb?.chunk_target, kb?.chunk_max_size, kb?.chunk_overlap, kb?.id]);
 
   const onSaveChunkSettings = async (e: FormEvent) => {

@@ -170,6 +170,9 @@ class Settings(BaseSettings):
     app_env: str = "dev"
     log_level: str = "INFO"
     rate_limit_per_hour: int = 20
+    # sqlite = shared WAL file (multi-worker on one host); memory = process-local only.
+    rate_limit_backend: str = "sqlite"
+    rate_limit_db_path: str = ""  # empty → backend/data/rate_limit.db
     cors_origins: str = "http://localhost:3000"
 
 

@@ -62,9 +62,15 @@ async def get_session() -> AsyncIterator[AsyncSession]:
 async def init_db() -> None:
     """Create all tables. Called once on app startup.
 
-    NOTE: For real schema evolution use Alembic. Auto-create is fine while we're
-    pre-production with throw-away local data. We do one-shot ALTER TABLE
-    fixups below for additive columns so existing dev DBs upgrade in place.
+    Schema bootstrap still uses create_all + additive ALTER helpers so personal
+    / Docker deploys upgrade in place without a manual migration step.
+
+    For *new* schema changes prefer Alembic (``backend/alembic``):
+
+        alembic revision --autogenerate -m "..."
+        alembic upgrade head
+
+    Existing databases that already match models: ``alembic stamp head``.
     """
     # Import models so they register with Base.metadata before create_all.
     from src.auth import models as _auth_models  # noqa: F401

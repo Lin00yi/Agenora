@@ -1,9 +1,8 @@
 """FastAPI entry — SSE chat endpoint + auth routes.
 
-M0: POST /api/chat takes full message history (multi-turn context).
-M1: /api/auth/{register,login,me} + chat endpoint requires Bearer JWT.
-M3: POST /api/chat optionally takes kb_id; when set, the agent runs in
-    KB-bound mode (search_kb only, no travel tools).
+POST /api/chat takes conversation_id or full message history (multi-turn).
+Auth: /api/auth/{register,login,me}; chat requires Bearer JWT when enabled.
+Optional kb_id binds the agent to KB search (no travel tools).
 """
 from __future__ import annotations
 
@@ -15,7 +14,7 @@ from dataclasses import replace as dc_replace
 from typing import Any, AsyncGenerator, Literal
 
 import structlog
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -98,7 +97,7 @@ app.include_router(admin_router)
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok", "version": "0.3.0"}
+    return {"status": "ok", "version": "3.1.0"}
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +119,7 @@ class ChatRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Shared session runner — used by both POST and the deprecated GET endpoint
+# Shared session runner — used by POST /api/chat
 # ---------------------------------------------------------------------------
 def _run_chat_session(
     messages: list[dict[str, str]],
@@ -150,6 +149,14 @@ def _run_chat_session(
     if blocked:
         raise HTTPException(status_code=400, detail=f"input_blocked: {blocked}")
     prompt_guard = assess_prompt_injection(cleaned)
+    if prompt_guard.level != "low":
+        log.warning(
+            "prompt_injection_detected",
+            prompt_injection_risk=prompt_guard.level,
+            prompt_injection_reasons=prompt_guard.reasons,
+            user_email=user_email,
+            conversation_id=conversation_id,
+        )
 
     full_messages = messages[:-1] + [{"role": "user", "content": cleaned}]
 

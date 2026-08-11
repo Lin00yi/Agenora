@@ -99,7 +99,7 @@ async def _probe_openai_compat_models(base_url: str, api_key: str) -> list[str]:
                 payload = r.json()
                 data = payload.get("data") if isinstance(payload, dict) else payload
                 if not isinstance(data, list):
-                    raise ProbeError(f"openai-compat: 响应格式异常 —— 期望 data 数组")
+                    raise ProbeError("openai-compat: 响应格式异常 —— 期望 data 数组")
                 ids = [m.get("id") for m in data if isinstance(m, dict) and m.get("id")]
                 ids.sort()
                 return ids

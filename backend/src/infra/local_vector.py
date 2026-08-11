@@ -7,7 +7,6 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from src.infra.embedding import embed
 
 # local_vector.py is at backend/src/infra/local_vector.py → parents[2] = backend/
 _DEFAULT_DB_PATH = str(Path(__file__).resolve().parents[2] / "data" / "local_vector.db")

@@ -18,7 +18,10 @@
 |---|---|
 | 前端 | Next.js 14 · React 18 · Tailwind |
 | 后端 | FastAPI · LangGraph · SQLAlchemy |
-| 存储 | SQLite / PostgreSQL · Milvus Lite（可换 Qdrant） |
+| 存储 | SQLite / PostgreSQL · Milvus Lite（可换 Qdrant）· 可选 LightRAG/Neo4j |
+
+本地开发安装 Postgres 驱动：`pip install -e '.[postgres]'`（Docker 镜像已含）。
+Schema 演进可用 Alembic（`backend/alembic`）；现有库可 `alembic stamp head`。
 
 ## 快速开始
 

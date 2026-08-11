@@ -491,7 +491,7 @@ async def purge_kb(session: AsyncSession, kb: KB) -> None:
     delete_kb_uploads(kb_id)
 
 
-@router.delete("/{kb_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{kb_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def delete_kb(
     kb_id: str,
     user: CurrentUser,
@@ -742,7 +742,9 @@ async def list_documents(
 
 
 @router.delete(
-    "/{kb_id}/documents/{doc_id}", status_code=status.HTTP_204_NO_CONTENT
+    "/{kb_id}/documents/{doc_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
 )
 async def delete_document(
     kb_id: str,
@@ -1026,6 +1028,7 @@ async def patch_chunk(
 @router.delete(
     "/{kb_id}/documents/{doc_id}/chunks/{chunk_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
 )
 async def delete_chunk(
     kb_id: str,
@@ -1248,7 +1251,9 @@ async def patch_member(
 
 
 @router.delete(
-    "/{kb_id}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT
+    "/{kb_id}/members/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
 )
 async def remove_member(
     kb_id: str,
@@ -1318,6 +1323,7 @@ async def create_invitation(
 @router.delete(
     "/{kb_id}/invitations/{invitation_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
 )
 async def revoke_invitation(
     kb_id: str,

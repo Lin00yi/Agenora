@@ -225,6 +225,8 @@ export default function DocumentDetailPage({
     setDocChunkTarget(doc.chunk_target == null ? "" : String(doc.chunk_target));
     setDocChunkMaxSize(doc.chunk_max_size == null ? "" : String(doc.chunk_max_size));
     setDocChunkOverlap(doc.chunk_overlap == null ? "" : String(doc.chunk_overlap));
+    // Sync form fields from doc chunk overrides only — not every doc object identity change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional field deps
   }, [
     doc?.id,
     doc?.chunk_strategy,

@@ -25,7 +25,7 @@ import httpx
 from src.infra.embedding import embed
 from src.infra.reranker import rerank
 from src.conversations.context import RAG_RESERVE, estimate_tokens, truncate_text_to_token_budget
-from src.infra.vector_store import QdrantStore, get_store
+from src.infra.vector_store import get_store
 from src.kb.models import KB
 from src.tools.base import Tool, ToolResult
 

@@ -1,13 +1,14 @@
 {
   "name": "agenora-frontend",
-  "version": "0.2.0",
+  "version": "3.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "vitest",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "fix:encoding": "node scripts/fix-frontend-encoding.js"
   },
   "dependencies": {
@@ -15,7 +16,7 @@
     "clsx": "2.1.1",
     "html2canvas": "^1.4.1",
     "lucide-react": "0.395.0",
-    "next": "14.2.5",
+    "next": "14.2.35",
     "radix-ui": "^1.6.2",
     "react": "18.3.1",
     "react-dom": "18.3.1",
@@ -32,7 +33,7 @@
     "@vitest/ui": "1.6.0",
     "autoprefixer": "10.4.19",
     "eslint": "8.57.0",
-    "eslint-config-next": "14.2.5",
+    "eslint-config-next": "14.2.35",
     "jsdom": "24.1.0",
     "playwright": "^1.62.1",
     "postcss": "8.4.39",
@@ -43,6 +44,6 @@
     "vitest": "1.6.0"
   },
   "optionalDependencies": {
-    "@next/swc-win32-x64-msvc": "14.2.5"
+    "@next/swc-win32-x64-msvc": "14.2.35"
   }
 }

@@ -24,13 +24,14 @@ RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python deps first for layer caching.
-# Extras: milvus (Milvus Lite embedded vector store) + asyncpg (PostgreSQL async driver)
+# Extras: milvus (Milvus Lite) + postgres (asyncpg for DATABASE_URL=postgresql+asyncpg://…)
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir --retries 5 -i https://pypi.tuna.tsinghua.edu.cn/simple -e '.[milvus]' asyncpg \
-    || pip install --no-cache-dir --retries 5 -i https://pypi.org/simple -e '.[milvus]' asyncpg
+RUN pip install --no-cache-dir --retries 5 -i https://pypi.tuna.tsinghua.edu.cn/simple -e '.[milvus,postgres]' \
+    || pip install --no-cache-dir --retries 5 -i https://pypi.org/simple -e '.[milvus,postgres]'
 
-# Source.
+# Source + prompt-injection rule/eval config.
 COPY src ./src
+COPY config ./config
 
 # Runtime data dir (PG handles app DB; this volume holds Milvus Lite .db + uploads).
 RUN mkdir -p /app/data/uploads

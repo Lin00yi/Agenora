@@ -314,7 +314,11 @@ async def export_memories(
     )
 
 
-@router.delete("/memories/{memory_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/memories/{memory_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
 async def delete_memory(
     memory_id: str,
     user: CurrentUser,
@@ -506,7 +510,11 @@ async def patch_conversation(
     return conv.to_summary_dict()
 
 
-@router.delete("/{conv_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{conv_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
 async def delete_conversation(
     conv_id: str,
     user: CurrentUser,

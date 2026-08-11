@@ -1,0 +1,34 @@
+# Prompt-injection detection rules for Agenora.
+# Edit patterns here; restart the API process to reload (rules are cached at import).
+#
+# Each entry: id (reason code) + pattern lines (Python regex; IGNORECASE applied).
+# Lines under `pattern` are concatenated after strip — put one alternative per line.
+# high → skip KB / strengthen prompt; medium → filter RAG chunks / caution.
+#
+# How to tune: add an id + pattern, add a row to prompt_injection_eval_cases.jsonl,
+# then run: pytest tests/test_prompt_injection_eval.py -q
+
+high_risk:
+  - id: prompt_leak_attempt
+    pattern:
+      - "(system|developer)\\s+(prompt|message|instruction)"
+      - "(reveal|show|print|dump|leak).{0,30}(prompt|instruction|system message)"
+      - "(输出|显示|打印|泄露|透露).{0,12}(系统提示词|开发者消息|system prompt|prompt)"
+  - id: secret_exfiltration_attempt
+    pattern:
+      - "(reveal|show|print|dump|leak|exfiltrate|tell me).{0,30}(api[_ -]?key|token|jwt|secret|password|private key|credential)"
+      - "(输出|显示|打印|泄露|透露|告诉我).{0,18}(api[_ -]?key|token|jwt|secret|password|private key|credential|密钥|令牌|凭据|密码|私钥)"
+
+medium_risk:
+  - id: instruction_override
+    pattern:
+      - "(ignore|forget|disregard|bypass|override).{0,40}(previous|above|system|developer|instruction|rules)"
+      - "(忽略|忘记|无视|绕过|覆盖).{0,20}(之前|以上|系统|开发者|规则|指令)"
+  - id: role_or_policy_change
+    pattern:
+      - "(you are now|act as|pretend to be|jailbreak|dan mode)"
+      - "(你现在是|扮演|假装|越狱|开发者模式)"
+  - id: tool_or_url_coercion
+    pattern:
+      - "(call|invoke|use).{0,20}(tool|function|web_search|browser)"
+      - "(访问|打开|调用|使用).{0,18}(工具|函数|链接|网址|url|web_search)"

@@ -228,7 +228,7 @@ async def save_llm(
     return _to_public(user_row)
 
 
-@router.delete("/llm", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/llm", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def clear_llm(
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
@@ -300,7 +300,7 @@ async def save_embedding(
     return _to_public(user_row)
 
 
-@router.delete("/embedding", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/embedding", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def clear_embedding(
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
@@ -460,7 +460,7 @@ async def save_reranker(
     return _to_public(user_row)
 
 
-@router.delete("/reranker", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/reranker", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def clear_reranker(
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),

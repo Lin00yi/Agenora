@@ -273,7 +273,7 @@ async def reset_password(
     return {"ok": True}
 
 
-@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def delete_user(
     user_id: str,
     admin: AdminUser,
@@ -318,7 +318,7 @@ async def list_kbs(
     }
 
 
-@router.delete("/kbs/{kb_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/kbs/{kb_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def delete_kb(
     kb_id: str,
     admin: AdminUser,
