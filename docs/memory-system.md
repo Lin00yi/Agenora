@@ -313,4 +313,4 @@ Token 计量使用 **tiktoken**（按模型族选择 `o200k_base` / `cl100k_base
 | Provider 安全系统提示词组装 | `backend/src/agent/nodes.py` |
 | 前端 API 类型与调用封装 | `frontend/lib/conversations-api.ts` |
 | 记忆管理页 | `frontend/app/memories/page.tsx` |
-| 设计评审（修复依据） | `context-memory-review.md` |
+| 设计评审（已落地） | Memory Profile/Memory 去重、mode-based RAG reserve 等见本文件 §10 与代码实现 |
