@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from typing import Any
 
 from src.agent.state import AgentState
 from src.observability import traced
-from src.safety.prompt_injection import filter_untrusted_rag_text
+from src.safety.prompt_injection import (
+    enrich_filtered_rag_chunks,
+    filter_untrusted_rag_text,
+)
 from src.settings import get_settings
 from src.tools.base import ToolRegistry, ToolResult
 from src.tools.citations import citations_from_tool_raw, merge_citations
@@ -18,6 +22,8 @@ from .constants import (
     _KB_STRONG_HIT_SCORE,
     _KG_NEED_HINTS,
 )
+
+log = logging.getLogger(__name__)
 
 
 def _query_needs_kg(text: str) -> bool:
@@ -53,6 +59,22 @@ def _kb_context_has_strong_hit(context_items: list[dict[str, Any]]) -> bool:
         except (TypeError, ValueError):
             continue
     return False
+
+
+def _log_filtered_chunks(chunks: list[dict[str, Any]]) -> None:
+    for row in chunks:
+        log.warning(
+            "rag_chunk_filtered channel=%s kb_id=%s doc_id=%s filename=%s "
+            "level=%s reasons=%s score=%s preview=%s",
+            row.get("channel"),
+            row.get("kb_id"),
+            row.get("doc_id"),
+            row.get("filename"),
+            row.get("level"),
+            row.get("reasons"),
+            row.get("score"),
+            (row.get("preview") or "")[:120],
+        )
 
 
 @traced("kb_search")
@@ -111,14 +133,21 @@ async def kb_search_node(
         filtered_text = tool_result["result"]
         suspicious_count = 0
         suspicious_reasons: list[str] = []
+        filtered_chunks: list[dict[str, Any]] = []
         if result.error is None:
             # KB text is user-controlled document data. Suspicious blocks are
             # removed before they become ``kb_context`` so indirect prompt
             # injection cannot ride along as trusted retrieval evidence.
-            filtered_text, suspicious_count, suspicious_reasons = filter_untrusted_rag_text(
-                tool_result["result"] or ""
+            filtered_text, suspicious_count, suspicious_reasons, details = (
+                filter_untrusted_rag_text(tool_result["result"] or "")
             )
             tool_result["result"] = filtered_text
+            filtered_chunks = enrich_filtered_rag_chunks(
+                details,
+                channel="kb",
+                query=query,
+                tool_raw=result.raw,
+            )
         context_item = {
             "query": query,
             "limit": args["limit"],
@@ -128,6 +157,7 @@ async def kb_search_node(
             "max_score": _max_score_from_tool_raw(result.raw),
             "suspicious_count": suspicious_count,
             "suspicious_reasons": suspicious_reasons,
+            "filtered_chunks": filtered_chunks,
         }
         return tool_result, context_item
 
@@ -173,6 +203,7 @@ async def kb_search_node(
 
     kg_tool_result: dict[str, Any] | None = None
     kg_block = ""
+    kg_filtered_chunks: list[dict[str, Any]] = []
     if kg_task is not None:
         # Strong KB evidence → abandon KG immediately (soft_wait defaults to 0).
         budget = kg_soft_wait if kb_strong else kg_hard_timeout
@@ -232,11 +263,18 @@ async def kb_search_node(
             "timed_out": timed_out,
         }
         if kg_result.error is None and (kg_result.text or "").strip():
-            filtered_kg, kg_sus_count, kg_sus_reasons = filter_untrusted_rag_text(
+            filtered_kg, kg_sus_count, kg_sus_reasons, kg_details = filter_untrusted_rag_text(
                 kg_result.text or ""
             )
             kg_tool_result["suspicious_count"] = kg_sus_count
             kg_tool_result["suspicious_reasons"] = kg_sus_reasons
+            kg_filtered_chunks = enrich_filtered_rag_chunks(
+                kg_details,
+                channel="kg",
+                query=primary_q,
+                tool_raw=kg_result.raw,
+            )
+            kg_tool_result["filtered_chunks"] = kg_filtered_chunks
             if filtered_kg.strip():
                 kg_block = (
                     f"## KG search query: {primary_q}\n"
@@ -248,11 +286,14 @@ async def kb_search_node(
     turn_citations = list(state.get("citations") or [])
     rag_suspicious_chunks = int(state.get("rag_suspicious_chunks") or 0)
     prompt_reasons = list(state.get("prompt_injection_reasons") or [])
+    rag_filtered_chunks = list(state.get("rag_filtered_chunks") or [])
     for tool_result, context_item in pairs:
         tool_log.append(tool_result)
         turn_citations = merge_citations(turn_citations, tool_result.get("citations") or [])
         rag_suspicious_chunks += int(context_item.get("suspicious_count") or 0)
         prompt_reasons.extend(context_item.get("suspicious_reasons") or [])
+        chunk_rows = list(context_item.get("filtered_chunks") or [])
+        rag_filtered_chunks.extend(chunk_rows)
         header = (
             f"## KB search query: {context_item['query']}\n"
             f"limit: {context_item['limit']}; latency_ms: {context_item['latency_ms']}"
@@ -266,8 +307,12 @@ async def kb_search_node(
         tool_log.append(kg_tool_result)
         rag_suspicious_chunks += int(kg_tool_result.get("suspicious_count") or 0)
         prompt_reasons.extend(kg_tool_result.get("suspicious_reasons") or [])
+        rag_filtered_chunks.extend(kg_filtered_chunks)
         if kg_block:
             context_blocks.append(kg_block)
+
+    if rag_filtered_chunks:
+        _log_filtered_chunks(rag_filtered_chunks)
 
     next_prompt_risk = state.get("prompt_injection_risk") or "low"
     if rag_suspicious_chunks and next_prompt_risk == "low":
@@ -281,6 +326,7 @@ async def kb_search_node(
         "tool_call_log": tool_log,
         "citations": turn_citations,
         "rag_suspicious_chunks": rag_suspicious_chunks,
+        "rag_filtered_chunks": rag_filtered_chunks,
         "prompt_injection_risk": next_prompt_risk,
         "prompt_injection_reasons": sorted(set(prompt_reasons)),
     }

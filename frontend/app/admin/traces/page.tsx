@@ -44,8 +44,10 @@ function TracesPanel() {
   const [loading, setLoading] = useState(true);
   const [conversationId, setConversationId] = useState("");
   const [userId, setUserId] = useState("");
+  const [minRisk, setMinRisk] = useState<"low" | "medium" | "high">("low");
   const [appliedConversationId, setAppliedConversationId] = useState("");
   const [appliedUserId, setAppliedUserId] = useState("");
+  const [appliedMinRisk, setAppliedMinRisk] = useState<"low" | "medium" | "high">("low");
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<AdminTraceDetail | null>(null);
@@ -75,6 +77,7 @@ function TracesPanel() {
           offset: nextOffset,
           conversation_id: appliedConversationId || undefined,
           user_id: appliedUserId || undefined,
+          min_risk: appliedMinRisk,
         });
         setTraces(r.traces);
         setTotal(r.total);
@@ -97,31 +100,37 @@ function TracesPanel() {
         setLoading(false);
       }
     },
-    [appliedConversationId, appliedUserId, openDetail]
+    [appliedConversationId, appliedUserId, appliedMinRisk, openDetail]
   );
 
   useEffect(() => {
     void load(0);
     // Re-fetch only when filters change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appliedConversationId, appliedUserId]);
+  }, [appliedConversationId, appliedUserId, appliedMinRisk]);
 
   const applyFilters = () => {
     setAppliedConversationId(conversationId.trim());
     setAppliedUserId(userId.trim());
+    setAppliedMinRisk(minRisk);
   };
 
   const clearFilters = () => {
     setConversationId("");
     setUserId("");
+    setMinRisk("low");
     setAppliedConversationId("");
     setAppliedUserId("");
+    setAppliedMinRisk("low");
   };
 
   const maxDuration = useMemo(
     () => Math.max(1, ...traces.map((t) => t.duration_ms ?? 0)),
     [traces]
   );
+
+  const filtersActive =
+    !!appliedConversationId || !!appliedUserId || appliedMinRisk !== "low";
 
   return (
     <div className="space-y-5">
@@ -135,7 +144,7 @@ function TracesPanel() {
             Trace 记录
           </h2>
           <p className="mt-2 text-sm text-muted">
-            共 {total} 条请求。点选左侧记录，右侧查看 span 树与耗时瀑布。
+            共 {total} 条请求。点选左侧记录，右侧查看 span 树、注入风险与已过滤 chunk。
           </p>
         </div>
         <Button
@@ -170,12 +179,26 @@ function TracesPanel() {
             onKeyDown={(e) => e.key === "Enter" && applyFilters()}
           />
         </label>
+        <label className="min-w-0 flex-1 space-y-1.5 text-xs sm:max-w-[12rem]">
+          <span className="font-medium text-muted">注入风险</span>
+          <select
+            className="admin-input"
+            value={minRisk}
+            onChange={(e) =>
+              setMinRisk(e.target.value as "low" | "medium" | "high")
+            }
+          >
+            <option value="low">全部</option>
+            <option value="medium">中 / 高</option>
+            <option value="high">仅高</option>
+          </select>
+        </label>
         <div className="flex shrink-0 gap-2">
           <Button type="button" onClick={applyFilters}>
             <Search className="h-4 w-4" />
             筛选
           </Button>
-          {(appliedConversationId || appliedUserId) && (
+          {filtersActive && (
             <Button type="button" variant="outline" onClick={clearFilters}>
               <X className="h-4 w-4" />
               清除
@@ -220,7 +243,10 @@ function TracesPanel() {
                       <span className="text-xs text-muted">
                         {formatDateTime(t.started_at)}
                       </span>
-                      <StatusChip status={t.status} />
+                      <div className="flex items-center gap-1.5">
+                        <RiskChip risk={metaRisk(t.metadata)} />
+                        <StatusChip status={t.status} />
+                      </div>
                     </div>
                     <div className="mt-1.5 flex items-baseline justify-between gap-2">
                       <span className="text-sm font-semibold tabular-nums">
@@ -228,6 +254,9 @@ function TracesPanel() {
                       </span>
                       <span className="text-xs text-muted">
                         {t.observation_count} spans · {formatCost(t.total_cost_usd)}
+                        {metaSuspiciousCount(t.metadata) > 0
+                          ? ` · 滤 ${metaSuspiciousCount(t.metadata)}`
+                          : ""}
                       </span>
                     </div>
                     <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2">
@@ -314,6 +343,10 @@ function TraceDetail({
     : flat[0]?.started_at
       ? Date.parse(flat[0].started_at)
       : 0;
+  const risk = metaRisk(detail.metadata);
+  const reasons = metaReasons(detail.metadata);
+  const filteredChunks = metaFilteredChunks(detail.metadata);
+  const suspiciousCount = metaSuspiciousCount(detail.metadata);
 
   return (
     <div className={cn("flex h-full max-h-[min(70dvh,52rem)] flex-col", loading && "opacity-70")}>
@@ -327,9 +360,13 @@ function TraceDetail({
             </div>
           </div>
           <div className="flex flex-wrap gap-2 text-xs">
+            <RiskChip risk={risk} />
             <StatusChip status={detail.status} />
             <span className="chip chip-muted">{formatDuration(detail.duration_ms)}</span>
             <span className="chip chip-muted">{formatCost(detail.total_cost_usd)}</span>
+            {suspiciousCount > 0 && (
+              <span className="chip chip-warning">过滤 {suspiciousCount} chunk</span>
+            )}
           </div>
         </div>
         <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
@@ -352,6 +389,15 @@ function TraceDetail({
             <span>KB {shortId(String(detail.metadata.kb_id))}</span>
           )}
         </div>
+        {reasons.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {reasons.map((reason) => (
+              <span key={reason} className="chip chip-muted font-mono text-[10px]">
+                {reason}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 space-y-4 overflow-y-auto p-5">
@@ -364,6 +410,10 @@ function TraceDetail({
               <PreviewBlock title="输出" text={detail.output_preview} />
             )}
           </div>
+        )}
+
+        {filteredChunks.length > 0 && (
+          <FilteredChunksPanel chunks={filteredChunks} />
         )}
 
         {detail.observations.length === 0 ? (
@@ -385,6 +435,79 @@ function TraceDetail({
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+type FilteredChunkRow = {
+  channel?: string;
+  query?: string | null;
+  kb_id?: string | null;
+  doc_id?: string | null;
+  filename?: string | null;
+  score?: number | null;
+  level?: string;
+  reasons?: string[];
+  preview?: string;
+  block_index?: number;
+};
+
+function FilteredChunksPanel({ chunks }: { chunks: FilteredChunkRow[] }) {
+  return (
+    <div className="rounded-lg border border-warning/30 bg-warning/5 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h4 className="text-sm font-semibold text-ink">安全审计 · 已过滤 chunk</h4>
+        <span className="text-xs text-muted">不进入模型上下文</span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="admin-table w-full min-w-[36rem] text-left text-xs">
+          <thead>
+            <tr>
+              <th>来源</th>
+              <th>文档</th>
+              <th>风险</th>
+              <th>分数</th>
+              <th>预览</th>
+            </tr>
+          </thead>
+          <tbody>
+            {chunks.map((row, idx) => (
+              <tr key={`${row.doc_id ?? "x"}-${row.block_index ?? idx}-${idx}`}>
+                <td className="align-top whitespace-nowrap">
+                  <span className="chip chip-muted">{row.channel || "kb"}</span>
+                </td>
+                <td className="align-top">
+                  <div className="font-medium text-ink">
+                    {row.filename || "（未知文件）"}
+                  </div>
+                  <div className="mt-0.5 font-mono text-[10px] text-muted">
+                    {row.doc_id ? shortId(String(row.doc_id)) : "—"}
+                    {row.kb_id ? ` · kb ${shortId(String(row.kb_id))}` : ""}
+                  </div>
+                </td>
+                <td className="align-top">
+                  <RiskChip risk={String(row.level || "medium")} />
+                  <div className="mt-1 flex max-w-[10rem] flex-wrap gap-1">
+                    {(row.reasons || []).map((r) => (
+                      <span key={r} className="chip chip-muted font-mono text-[10px]">
+                        {r}
+                      </span>
+                    ))}
+                  </div>
+                </td>
+                <td className="align-top tabular-nums text-muted">
+                  {typeof row.score === "number" ? row.score.toFixed(3) : "—"}
+                </td>
+                <td className="align-top max-w-[18rem]">
+                  <pre className="max-h-24 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted">
+                    {row.preview || "—"}
+                  </pre>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -574,6 +697,43 @@ function StatusChip({ status }: { status: string }) {
     return <span className="chip chip-danger">失败</span>;
   }
   return <span className="chip chip-success">成功</span>;
+}
+
+function RiskChip({ risk }: { risk: string }) {
+  const normalized = risk === "high" || risk === "medium" ? risk : "low";
+  if (normalized === "high") {
+    return <span className="chip chip-danger">高风险</span>;
+  }
+  if (normalized === "medium") {
+    return <span className="chip chip-warning">中风险</span>;
+  }
+  return <span className="chip chip-muted">低风险</span>;
+}
+
+function metaRisk(metadata: Record<string, unknown> | null | undefined): string {
+  const value = metadata?.prompt_injection_risk;
+  return typeof value === "string" ? value : "low";
+}
+
+function metaSuspiciousCount(
+  metadata: Record<string, unknown> | null | undefined
+): number {
+  const value = metadata?.rag_suspicious_chunks;
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function metaReasons(metadata: Record<string, unknown> | null | undefined): string[] {
+  const value = metadata?.prompt_injection_reasons;
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function metaFilteredChunks(
+  metadata: Record<string, unknown> | null | undefined
+): FilteredChunkRow[] {
+  const value = metadata?.rag_filtered_chunks;
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is FilteredChunkRow => !!item && typeof item === "object");
 }
 
 function TypeChip({ type }: { type: string }) {

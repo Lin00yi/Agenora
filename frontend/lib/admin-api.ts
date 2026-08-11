@@ -225,6 +225,7 @@ export type AdminTraceDetail = AdminTraceSummary & {
 export async function listTraces(params?: {
   conversation_id?: string;
   user_id?: string;
+  min_risk?: "low" | "medium" | "high";
   limit?: number;
   offset?: number;
 }): Promise<AdminTraceListResponse> {
@@ -236,6 +237,9 @@ export async function listTraces(params?: {
   }
   if (params?.user_id?.trim()) {
     qs.set("user_id", params.user_id.trim());
+  }
+  if (params?.min_risk && params.min_risk !== "low") {
+    qs.set("min_risk", params.min_risk);
   }
   return unwrap(await authFetch(`/api/admin/traces?${qs.toString()}`));
 }

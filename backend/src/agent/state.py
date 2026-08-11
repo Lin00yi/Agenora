@@ -27,6 +27,8 @@ class AgentState(TypedDict, total=False):
     prompt_injection_risk: str               # low | medium | high
     prompt_injection_reasons: list[str]      # direct/indirect injection signals
     rag_suspicious_chunks: int               # KB chunks removed before kb_context
+    # Audit-only rows for filtered RAG/KG chunks (never injected into kb_context).
+    rag_filtered_chunks: list[dict[str, Any]]
     citations: list[dict[str, Any]]          # structured KB/web source cards for the UI
     final_report: str | None
     report_streamed: bool                     # True when final answer tokens were SSE-streamed live

@@ -225,6 +225,7 @@ def _run_chat_session(
                 trace.input_preview = preview_text(
                     cleaned, store_io=_gs().trace_store_io
                 )
+        final_state: dict[str, Any] | None = None
         try:
             initial_state: dict[str, Any] = {
                 "messages": full_messages,
@@ -234,6 +235,7 @@ def _run_chat_session(
                 "prompt_injection_risk": prompt_guard.level,
                 "prompt_injection_reasons": prompt_guard.reasons,
                 "rag_suspicious_chunks": 0,
+                "rag_filtered_chunks": [],
             }
             final_state = await graph.ainvoke(initial_state)
             report = redact_sensitive_output(final_state.get("final_report") or "")
@@ -256,6 +258,19 @@ def _run_chat_session(
                         status="ok",
                         output=report,
                         total_cost_usd=cost_usd,
+                        metadata={
+                            "prompt_injection_risk": final_state.get("prompt_injection_risk")
+                            or "low",
+                            "prompt_injection_reasons": list(
+                                final_state.get("prompt_injection_reasons") or []
+                            ),
+                            "rag_suspicious_chunks": int(
+                                final_state.get("rag_suspicious_chunks") or 0
+                            ),
+                            "rag_filtered_chunks": list(
+                                final_state.get("rag_filtered_chunks") or []
+                            ),
+                        },
                     )
                 )
             if not report_streamed:
@@ -279,8 +294,29 @@ def _run_chat_session(
             log.exception("agent_failed", user=user_email, kb_id=kb.id if kb else None)
             if trace is not None:
                 try:
+                    err_meta: dict[str, Any] = {
+                        "prompt_injection_risk": prompt_guard.level,
+                        "prompt_injection_reasons": list(prompt_guard.reasons),
+                        "rag_suspicious_chunks": 0,
+                        "rag_filtered_chunks": [],
+                    }
+                    if isinstance(final_state, dict):
+                        err_meta = {
+                            "prompt_injection_risk": final_state.get("prompt_injection_risk")
+                            or prompt_guard.level,
+                            "prompt_injection_reasons": list(
+                                final_state.get("prompt_injection_reasons")
+                                or prompt_guard.reasons
+                            ),
+                            "rag_suspicious_chunks": int(
+                                final_state.get("rag_suspicious_chunks") or 0
+                            ),
+                            "rag_filtered_chunks": list(
+                                final_state.get("rag_filtered_chunks") or []
+                            ),
+                        }
                     await asyncio.shield(
-                        trace.finish(status="error", error=str(exc))
+                        trace.finish(status="error", error=str(exc), metadata=err_meta)
                     )
                 except Exception:  # noqa: BLE001
                     pass

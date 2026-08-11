@@ -16,7 +16,7 @@ import unicodedata
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 RiskLevel = Literal["low", "medium", "high"]
 
@@ -175,26 +175,45 @@ def assess_prompt_injection(text: str) -> PromptInjectionAssessment:
     return PromptInjectionAssessment(level, reasons, normalized)
 
 
-def filter_untrusted_rag_text(text: str) -> tuple[str, int, list[str]]:
+def filter_untrusted_rag_text(
+    text: str,
+    *,
+    preview_chars: int = 240,
+) -> tuple[str, int, list[str], list[dict[str, Any]]]:
     """Remove suspicious RAG blocks before they become model context.
 
     KB search results are formatted as chunk blocks separated by ``---``. Each
     block is untrusted user-controlled document data, so medium/high-risk blocks
     are replaced with a neutral marker instead of being injected into
     ``<kb_context>``.
+
+    Returns ``(filtered_text, suspicious_count, reasons, filtered_details)``.
+    ``filtered_details`` is audit-only metadata (never intended for the model).
     """
     if not text:
-        return "", 0, []
+        return "", 0, [], []
 
     blocks = text.split("\n\n---\n\n")
     safe_blocks: list[str] = []
     suspicious_count = 0
     reasons: list[str] = []
-    for block in blocks:
+    filtered_details: list[dict[str, Any]] = []
+    for index, block in enumerate(blocks):
         assessment = assess_prompt_injection(block)
         if assessment.level in {"medium", "high"}:
             suspicious_count += 1
             reasons.extend(assessment.reasons)
+            preview = " ".join((block or "").split())
+            if len(preview) > preview_chars:
+                preview = preview[: preview_chars - 1] + "…"
+            filtered_details.append(
+                {
+                    "block_index": index,
+                    "level": assessment.level,
+                    "reasons": list(assessment.reasons),
+                    "preview": preview,
+                }
+            )
             safe_blocks.append(
                 "[suspicious KB chunk filtered: possible prompt-injection instructions]"
             )
@@ -202,4 +221,54 @@ def filter_untrusted_rag_text(text: str) -> tuple[str, int, list[str]]:
         safe_blocks.append(block)
 
     deduped_reasons = sorted(set(reasons))
-    return "\n\n---\n\n".join(safe_blocks), suspicious_count, deduped_reasons
+    return "\n\n---\n\n".join(safe_blocks), suspicious_count, deduped_reasons, filtered_details
+
+
+def enrich_filtered_rag_chunks(
+    details: list[dict[str, Any]],
+    *,
+    channel: str,
+    query: str | None = None,
+    tool_raw: Any = None,
+) -> list[dict[str, Any]]:
+    """Attach retrieval metadata to filter audit rows (doc_id / score / …).
+
+    ``search_kb`` ``raw.results`` is ordered the same as ``---`` text blocks, so
+    ``block_index`` lines up with structured hit metadata when present.
+    """
+    structured: list[dict[str, Any]] = []
+    kb_id: str | None = None
+    if isinstance(tool_raw, dict):
+        kb_id = tool_raw.get("kb_id") if isinstance(tool_raw.get("kb_id"), str) else None
+        raw_results = tool_raw.get("results") or []
+        if isinstance(raw_results, list):
+            structured = [item for item in raw_results if isinstance(item, dict)]
+
+    enriched: list[dict[str, Any]] = []
+    for detail in details:
+        row = {
+            "channel": channel,
+            "query": query,
+            "kb_id": kb_id,
+            "block_index": detail.get("block_index"),
+            "level": detail.get("level"),
+            "reasons": list(detail.get("reasons") or []),
+            "preview": detail.get("preview") or "",
+            "doc_id": None,
+            "filename": None,
+            "score": None,
+        }
+        idx = detail.get("block_index")
+        if isinstance(idx, int) and 0 <= idx < len(structured):
+            hit = structured[idx]
+            row["doc_id"] = hit.get("doc_id")
+            row["filename"] = hit.get("filename")
+            try:
+                row["score"] = float(hit.get("score")) if hit.get("score") is not None else None
+            except (TypeError, ValueError):
+                row["score"] = None
+            # Prefer the structured preview when available (cleaner than header+text).
+            if hit.get("text_preview"):
+                row["preview"] = str(hit.get("text_preview"))[:240]
+        enriched.append(row)
+    return enriched

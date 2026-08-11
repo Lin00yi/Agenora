@@ -17,11 +17,12 @@ kb.routes.purge_kb) and leave a structlog "admin_action" breadcrumb.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.middleware import AdminUser
@@ -356,6 +357,8 @@ async def list_traces(
     session: AsyncSession = Depends(get_session),
     conversation_id: str | None = Query(None),
     user_id: str | None = Query(None),
+    # low = all; medium = medium+high; high = high only (JSON metadata filter).
+    min_risk: Literal["low", "medium", "high"] | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> dict:
@@ -366,6 +369,15 @@ async def list_traces(
         filters.append(Trace.conversation_id == conversation_id)
     if user_id:
         filters.append(Trace.user_id == user_id)
+    if min_risk == "high":
+        filters.append(Trace.metadata_json.contains('"prompt_injection_risk": "high"'))
+    elif min_risk == "medium":
+        filters.append(
+            or_(
+                Trace.metadata_json.contains('"prompt_injection_risk": "medium"'),
+                Trace.metadata_json.contains('"prompt_injection_risk": "high"'),
+            )
+        )
 
     count_q = select(func.count()).select_from(Trace)
     for clause in filters:

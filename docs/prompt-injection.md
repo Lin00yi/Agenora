@@ -216,15 +216,30 @@ AgentState 新增字段：
 prompt_injection_risk: str
 prompt_injection_reasons: list[str]
 rag_suspicious_chunks: int
+rag_filtered_chunks: list[dict]  # audit-only; never injected into kb_context
 ```
 
-建议后续在后台审计日志中记录：
+`rag_filtered_chunks` 每项大致包含：`channel`（kb/kg）、`kb_id`、`doc_id`、`filename`、`score`、`level`、`reasons`、`preview`。过滤时会打 `rag_chunk_filtered` 警告日志。
+
+建议后续在后台审计页展示这些字段：
 
 ```json
 {
   "prompt_injection_risk": "medium",
   "prompt_injection_reasons": ["instruction_override"],
   "rag_suspicious_chunks": 1,
+  "rag_filtered_chunks": [
+    {
+      "channel": "kb",
+      "kb_id": "…",
+      "doc_id": "…",
+      "filename": "attack.md",
+      "score": 0.82,
+      "level": "high",
+      "reasons": ["secret_exfiltration_attempt"],
+      "preview": "…"
+    }
+  ],
   "query_policy_action": "direct",
   "blocked_tools": ["web_search"]
 }
@@ -369,7 +384,8 @@ chunk.security_reasons = [...]
 - [x] 增加中英攻击 / 混淆 / 良性样本评测集：`prompt_injection_eval_cases.jsonl`。
 - [x] 给 docs 增加“如何调整规则”说明。
 - [x] 在日志中记录 `prompt_injection_risk` / `prompt_injection_reasons`（chat 入口；agent state 另含 `rag_suspicious_chunks`）。
-- [ ] 在 `kb_search_node` 中保留被过滤 chunk 的 metadata，用于后台审计，但不要进入 `kb_context`。
+- [x] 在 `kb_search_node` 中保留被过滤 chunk 的 metadata（`rag_filtered_chunks`：doc_id / filename / score / reasons / preview），用于审计日志，不进入 `kb_context`。
+- [x] 管理后台 Trace 详情展示风险芯片与已过滤 chunk 表；列表支持按 `min_risk` 筛选。
 
 ### 中期：2-6 周
 
