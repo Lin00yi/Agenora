@@ -355,13 +355,17 @@ export function ChatPage({
 
   const handleSendWithLlmGuard = useCallback(
     (message: string) => {
-      if (!llmReady) {
+      if (!llmReady && !currentProfileId && !currentModel) {
+        if (modelProfiles.length > 0) {
+          toast.info("请先在发送按钮左侧选择一个模型。");
+          return;
+        }
         setLlmConfigurationOpen(true);
         return;
       }
       void handleSend(message);
     },
-    [handleSend, llmReady]
+    [currentModel, currentProfileId, handleSend, llmReady, modelProfiles.length]
   );
 
   const submitComposerWithLlmGuard = useCallback(() => {
@@ -701,6 +705,7 @@ export function ChatPage({
                       onStop={handleStop}
                       onSelectKb={handleKbChange}
                       onModelChange={handleModelChange}
+                      onManageModels={openLlmSettings}
                     />
                   </div>
                 </div>
@@ -759,6 +764,7 @@ export function ChatPage({
                         onStop={handleStop}
                         onSelectKb={handleKbChange}
                         onModelChange={handleModelChange}
+                        onManageModels={openLlmSettings}
                       />
                     </div>
                   </div>

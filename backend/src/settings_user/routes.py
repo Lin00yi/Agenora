@@ -162,12 +162,30 @@ def _to_public(
     from src.settings import get_settings
 
     s = get_settings()
-    user_llm_configured = bool(
+    legacy_llm_configured = bool(
         user.llm_provider
         and user.llm_base_url
         and user.llm_api_key_enc
         and user.llm_default_model
     )
+    profiles_by_id = {profile.id: profile for profile in profiles or []}
+    connections_by_id = {connection.id: connection for connection in connections or []}
+    primary_profile = profiles_by_id.get(getattr(user, "llm_default_profile_id", None))
+    primary_connection = (
+        connections_by_id.get(primary_profile.connection_id)
+        if primary_profile and primary_profile.connection_id
+        else None
+    )
+    profile_llm_configured = bool(
+        primary_profile
+        and primary_profile.enabled
+        and primary_connection
+        and primary_connection.enabled
+        and primary_connection.api_key_enc
+    )
+    # A selected profile is a complete runtime configuration in its own right;
+    # it does not need to duplicate credentials into the legacy User columns.
+    user_llm_configured = legacy_llm_configured or profile_llm_configured
     system_llm_base_url = (
         s.deepseek_base_url if s.llm_provider == "deepseek" else s.anthropic_base_url
     )
@@ -182,8 +200,14 @@ def _to_public(
         if (not s.byok_required and system_llm_configured)
         else "missing"
     )
-    saved_default_model = normalize_model_name(user.llm_default_model)
-    saved_context_override = getattr(user, "llm_context_window", None)
+    saved_default_model = normalize_model_name(
+        primary_profile.model_id if profile_llm_configured and primary_profile else user.llm_default_model
+    )
+    saved_context_override = (
+        primary_profile.context_window
+        if profile_llm_configured and primary_profile
+        else getattr(user, "llm_context_window", None)
+    )
     saved_context = (
         resolve_context_window(saved_default_model, saved_context_override)
         if saved_default_model
@@ -214,7 +238,10 @@ def _to_public(
             "context_window": saved_context_override,
             "context_window_resolved": saved_context.value if saved_context else None,
             "context_window_source": saved_context.source if saved_context else None,
-            "has_key": bool(user.llm_api_key_enc),
+            "has_key": bool(
+                user.llm_api_key_enc
+                or (primary_connection and primary_connection.api_key_enc)
+            ),
             "configured": user_llm_configured,
             "effective_configured": effective_llm_source != "missing",
             "effective_source": effective_llm_source,
@@ -716,7 +743,17 @@ async def probe_llm(
         models = await probe_llm_models(body.provider, body.base_url, api_key)
     except ProbeError as e:
         raise HTTPException(status_code=502, detail=str(e))
-    return {"models": models}
+    return {
+        "models": models,
+        "context_windows": {
+            model: {
+                "value": resolution.value,
+                "source": resolution.source,
+            }
+            for model in models
+            if (resolution := resolve_context_window(model)).source == "registry"
+        },
+    }
 
 
 @router.post("/probe/embedding")

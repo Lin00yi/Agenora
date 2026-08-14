@@ -383,8 +383,6 @@ async def chat_post(
     configured their own LLM cfg; if kb_id is set they also need embedding cfg
     (KB-mode chat embeds the query for similarity search).
     """
-    require_user_llm(user)
-
     conv: Conversation | None = None
     conversation_lock_id: str | None = None
     if req.conversation_id:
@@ -407,6 +405,16 @@ async def chat_post(
         selected_profile_cfg = await resolve_llm_profile_config(
             session, user=user, profile_id=selected_profile_id
         )
+        # BYOK accepts either a legacy config or a selected, independently
+        # credentialed model profile.  The former synchronous gate cannot
+        # validate profile ownership/health, so run it only after resolution.
+        if (
+            get_settings().byok_required
+            and selected_profile_cfg is None
+            and routing_cfgs is None
+            and resolve_user_llm(user) is None
+        ):
+            require_user_llm(user)
         if selected_profile_id and selected_profile_cfg is None:
             raise HTTPException(status_code=422, detail="所选模型档案不可用，请重新选择。")
         if selected_profile_cfg is not None:

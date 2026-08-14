@@ -439,9 +439,12 @@ async def resolve_user_llm_routing_configs(
 ) -> UserLLMRoutingConfigs | None:
     """Resolve profile-ID routing policy to independently authenticated cfgs."""
     legacy_cfg = resolve_user_llm(user)
-    if legacy_cfg is None:
-        return None
-    await ensure_legacy_llm_model_profiles(session, user)
+    # New model profiles own their connection credentials.  They must remain
+    # usable even when the user has never populated the legacy default fields.
+    # Only materialise the compatibility profiles when such a legacy config
+    # actually exists.
+    if legacy_cfg is not None:
+        await ensure_legacy_llm_model_profiles(session, user)
 
     async def _resolve(field_name: str) -> UserLLMConfig | None:
         selected = await resolve_llm_profile_config(
@@ -450,6 +453,8 @@ async def resolve_user_llm_routing_configs(
         return selected[1] if selected is not None else None
 
     primary = await _resolve("llm_default_profile_id") or legacy_cfg
+    if primary is None:
+        return None
     complex_cfg = await _resolve("llm_complex_profile_id")
     triage_cfg = await _resolve("llm_triage_profile_id")
     fallback_cfg = await _resolve("llm_fallback_profile_id")

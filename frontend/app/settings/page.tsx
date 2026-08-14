@@ -2,13 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   Bot,
-  Check,
   CheckCircle2,
-  ChevronDown,
   CircleAlert,
   Cloud,
   Globe2,
@@ -16,7 +14,6 @@ import {
   Loader2,
   Plus,
   ShieldCheck,
-  SlidersHorizontal,
   Trash2,
 } from "lucide-react";
 
@@ -56,18 +53,16 @@ type ProbeState =
   | { kind: "empty" }
   | { kind: "error"; message: string };
 
-type ProviderPreset = {
-  label: string;
-  caption: string;
+type ServicePreset = {
   provider: LLMProvider;
   baseUrl: string;
 };
 
-const PROVIDER_PRESETS: ProviderPreset[] = [
-  { label: "DeepSeek", caption: "兼容接口", provider: "openai-compat", baseUrl: "https://api.deepseek.com" },
-  { label: "OpenAI", caption: "官方接口", provider: "openai-compat", baseUrl: "https://api.openai.com/v1" },
-  { label: "Anthropic", caption: "Messages API", provider: "anthropic", baseUrl: "https://api.anthropic.com" },
-];
+const SERVICE_PRESETS = {
+  anthropic: { provider: "anthropic", baseUrl: "https://api.anthropic.com" },
+  openai: { provider: "openai-compat", baseUrl: "https://api.openai.com/v1" },
+  deepseek: { provider: "openai-compat", baseUrl: "https://api.deepseek.com" },
+} satisfies Record<string, ServicePreset>;
 
 /** User-level LLM configuration. KB retrieval options remain a separate region below. */
 export default function SettingsPage() {
@@ -124,7 +119,7 @@ export default function SettingsPage() {
           <p className="text-xs font-semibold tracking-[0.16em] text-brand">模型与运行策略</p>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-ink">模型设置</h1>
           <p className="mt-2 text-sm leading-6 text-muted">
-            连接你的 LLM 服务，选择默认模型，并明确它在对话中的实际使用方式。
+            创建可复用的模型配置，再在路由策略中选择默认模型和自动执行方式。
             知识库的 Embedding 与 Reranker 仍在创建知识库时按库配置。
           </p>
         </header>
@@ -157,45 +152,43 @@ function LLMSettingsPanel({
   initial?: MyLLMSettings;
   onChanged: () => Promise<MySettings>;
 }) {
-  const modelListId = useId();
   const [provider, setProvider] = useState<LLMProvider>((initial?.provider as LLMProvider) || "openai-compat");
   const [baseUrl, setBaseUrl] = useState(initial?.base_url || "");
   const [apiKey, setApiKey] = useState("");
   const [models, setModels] = useState<string[]>([]);
+  const [modelContextWindows, setModelContextWindows] = useState<Record<string, number>>({});
   const [defaultModel, setDefaultModel] = useState(initial?.default_model || "");
-  const [customConnectionSelected, setCustomConnectionSelected] = useState(false);
   const [contextWindow, setContextWindow] = useState<number | null>(initial?.context_window ?? null);
   const [probeState, setProbeState] = useState<ProbeState>({ kind: "idle" });
   const [saving, setSaving] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [activeSection, setActiveSection] = useState<"models" | "routing">("models");
+  const [connectionEditor, setConnectionEditor] = useState<"create" | "edit" | null>(null);
 
   const hasSavedKey = initial?.has_key ?? false;
+  const hasProfiles = Boolean(initial?.model_profiles?.length);
+  const isCreatingFirstProfile = connectionEditor === "create" && !hasProfiles;
   const effectiveSource = initial?.effective_source ?? (initial?.configured ? "user" : "missing");
-  const effectiveModel =
-    effectiveSource === "user" ? initial?.default_model : initial?.effective_model;
-  const contextWindowLabel = formatContextSummary(
-    initial?.effective_context_window,
-    initial?.effective_context_window_source
-  );
-  const savedModelChanged = defaultModel.trim() !== (initial?.default_model || "");
-  const automaticContextLabel = savedModelChanged
-    ? "保存后自动识别"
-    : formatContextSummary(initial?.context_window_resolved, initial?.context_window_source);
   const canProbe = Boolean(baseUrl.trim() && (apiKey.trim() || hasSavedKey) && probeState.kind !== "loading");
   const canSave =
-    Boolean(initial?.configured || defaultModel.trim()) &&
+    Boolean((isCreatingFirstProfile && defaultModel.trim()) || (!isCreatingFirstProfile && initial?.configured)) &&
     (contextWindow === null ||
       (Number.isInteger(contextWindow) && contextWindow >= 4_096 && contextWindow <= 2_000_000)) &&
     Boolean(baseUrl.trim()) &&
-    Boolean(apiKey.trim() || hasSavedKey) &&
+    Boolean(apiKey.trim() || (!isCreatingFirstProfile && hasSavedKey)) &&
     !saving;
-
-  const modelOptions = useMemo(() => {
-    const merged = new Set(models);
-    if (defaultModel.trim()) merged.add(defaultModel.trim());
-    return [...merged].sort();
-  }, [defaultModel, models]);
+  const hasVerifiedModels = probeState.kind === "success" && models.length > 0;
+  const detectedContextWindow =
+    modelContextWindows[defaultModel] ??
+    (contextWindow === null && initial?.context_window_source === "registry"
+      ? initial.context_window_resolved ?? undefined
+      : undefined);
+  const contextWindowIsAutomatic = contextWindow === null && Boolean(detectedContextWindow);
+  const contextWindowValue = contextWindowIsAutomatic ? detectedContextWindow : contextWindow ?? "";
+  const contextWindowDescription = contextWindowIsAutomatic
+    ? "已由模型能力库自动识别，保存后会用于历史保留、摘要触发与输出预算。"
+    : "未识别的模型可填写实际窗口；范围 4,096 到 2,000,000。";
 
   useEffect(() => {
     setProvider((initial?.provider as LLMProvider) || "openai-compat");
@@ -204,7 +197,7 @@ function LLMSettingsPanel({
     setDefaultModel(initial?.default_model || "");
     setContextWindow(initial?.context_window ?? null);
     setModels([]);
-    setCustomConnectionSelected(false);
+    setModelContextWindows({});
     setProbeState({ kind: "idle" });
   }, [
     initial?.base_url,
@@ -213,10 +206,28 @@ function LLMSettingsPanel({
     initial?.provider,
   ]);
 
+  useEffect(() => {
+    if (hasProfiles && connectionEditor === "create") {
+      setConnectionEditor(null);
+    }
+  }, [connectionEditor, hasProfiles]);
+
+  useEffect(() => {
+    if (!hasProfiles) setActiveSection("models");
+  }, [hasProfiles]);
+
   const providerHelp =
     provider === "anthropic"
       ? "使用 Anthropic 的 Messages API。"
       : "兼容 OpenAI API 的服务，如 DeepSeek、OpenAI、vLLM 或 LM Studio。";
+  const serviceProtocolValue =
+    provider === "anthropic"
+      ? "anthropic"
+      : baseUrl === SERVICE_PRESETS.openai.baseUrl
+        ? "openai"
+        : baseUrl === SERVICE_PRESETS.deepseek.baseUrl
+          ? "deepseek"
+          : "custom-compatible";
 
   const handleProbe = async () => {
     if (!canProbe) return;
@@ -228,6 +239,16 @@ function LLMSettingsPanel({
         api_key: apiKey.trim(),
       });
       setModels(result.models);
+      setModelContextWindows(
+        Object.fromEntries(
+          Object.entries(result.context_windows ?? {}).map(([model, context]) => [model, context.value])
+        )
+      );
+      if (result.models.length) {
+        setDefaultModel((current) =>
+          result.models.includes(current) ? current : result.models[0]
+        );
+      }
       setProbeState(result.models.length ? { kind: "success", count: result.models.length } : { kind: "empty" });
     } catch (error) {
       setModels([]);
@@ -242,15 +263,34 @@ function LLMSettingsPanel({
     if (!canSave) return;
     setSaving(true);
     try {
-      await saveLLMSettings({
-        provider,
-        base_url: baseUrl.trim(),
-        api_key: apiKey,
-        ...(initial?.configured ? {} : { default_model: defaultModel.trim() }),
-        context_window: contextWindow,
-      });
-      toast.success("模型设置已保存并应用到后续对话");
+      if (isCreatingFirstProfile) {
+        const connection = await createLLMConnection({
+          display_name: provider === "anthropic" ? "Anthropic 连接" : "OpenAI 兼容连接",
+          provider,
+          base_url: baseUrl.trim(),
+          api_key: apiKey.trim(),
+          enabled: true,
+        });
+        await createLLMModelProfile({
+          connection_id: connection.id,
+          display_name: defaultModel.trim(),
+          model_id: defaultModel.trim(),
+          context_window: contextWindow,
+          enabled: true,
+          supports_tools: true,
+        });
+        toast.success("模型配置已创建，请在路由策略中选择默认模型");
+      } else {
+        await saveLLMSettings({
+          provider,
+          base_url: baseUrl.trim(),
+          api_key: apiKey,
+          context_window: contextWindow,
+        });
+        toast.success("默认连接已保存");
+      }
       await onChanged();
+      setConnectionEditor(null);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "保存模型设置失败");
     } finally {
@@ -272,161 +312,84 @@ function LLMSettingsPanel({
     }
   };
 
-  const applyPreset = (preset: ProviderPreset) => {
+  const applyPreset = (preset: ServicePreset) => {
     setProvider(preset.provider);
     setBaseUrl(preset.baseUrl);
-    setCustomConnectionSelected(false);
     setModels([]);
+    setModelContextWindows({});
     setProbeState({ kind: "idle" });
   };
 
   const applyCustomConnection = () => {
     setProvider("openai-compat");
     setBaseUrl("");
-    setCustomConnectionSelected(true);
     setModels([]);
+    setModelContextWindows({});
     setProbeState({ kind: "idle" });
+  };
+
+  const handleServiceProtocolChange = (value: string) => {
+    if (value === "anthropic") return applyPreset(SERVICE_PRESETS.anthropic);
+    if (value === "openai") return applyPreset(SERVICE_PRESETS.openai);
+    if (value === "deepseek") return applyPreset(SERVICE_PRESETS.deepseek);
+    applyCustomConnection();
   };
 
   return (
     <section className="admin-panel overflow-hidden" aria-labelledby="llm-settings-heading">
       <div className="border-b border-surface-border/70 px-5 py-5 sm:px-6">
-        {initial?.configured ? (
-          <>
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-              <div className="flex min-w-0 items-start gap-3">
-                <span className="admin-icon-tile admin-icon-tile-brand" aria-hidden>
-                  <Bot className="h-4 w-4" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold text-muted">当前运行配置</p>
-                  <h2 id="llm-settings-heading" className="mt-1 text-balance text-lg font-semibold">你的对话正在使用什么模型</h2>
-                  <p className="mt-1 max-w-2xl text-pretty text-sm leading-6 text-muted">
-                    {effectiveSource === "user"
-                      ? "个人配置会作为未指定模型会话的默认值。"
-                      : "当前使用平台默认配置。保存个人配置后会优先使用你的服务。"}
-                  </p>
-                </div>
-              </div>
-              <EffectiveStatus source={effectiveSource} />
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="admin-icon-tile admin-icon-tile-brand" aria-hidden><Bot className="h-4 w-4" /></span>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-brand">模型设置</p>
+              <h2 id="llm-settings-heading" className="mt-1 text-balance text-xl font-semibold">管理模型配置与路由策略</h2>
+              <p className="mt-1 max-w-2xl text-pretty text-sm leading-6 text-muted">模型配置是可复用资产。默认模型和自动路由在单独的策略中维护。</p>
             </div>
-
-            <dl className="mt-6 grid divide-y divide-surface-border/70 border-y border-surface-border/70 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-              <SummaryItem label="来源" value={sourceLabel(effectiveSource)} />
-              <SummaryItem label="默认模型" value={effectiveModel || "尚未设置"} mono />
-              <SummaryItem label="上下文窗口" value={contextWindowLabel} />
-            </dl>
-          </>
-        ) : (
-          <>
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex min-w-0 items-start gap-3">
-                <span className="admin-icon-tile admin-icon-tile-brand" aria-hidden>
-                  <Bot className="h-4 w-4" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold text-brand">模型设置</p>
-                  <h2 id="llm-settings-heading" className="mt-1 text-balance text-xl font-semibold">接入你的第一个模型</h2>
-                  <p className="mt-1 max-w-2xl text-pretty text-sm leading-6 text-muted">完成这一步后，即可开始对话。模型目录和自动路由会在保存连接后按需解锁。</p>
-                </div>
-              </div>
-              <EffectiveStatus source="missing" />
-            </div>
-            <ol className="mt-6 flex items-center gap-3 border-t border-surface-border/70 pt-4 text-sm" aria-label="模型设置步骤">
-              <li className="flex items-center gap-2 font-semibold text-ink" aria-current="step"><span className="flex size-6 items-center justify-center rounded-full bg-brand text-xs text-on-brand">1</span>连接服务</li>
-              <li className="hidden h-px w-8 bg-surface-border sm:block" aria-hidden />
-              <li className="flex items-center gap-2 text-muted"><span className="flex size-6 items-center justify-center rounded-full bg-surface-2 text-xs">2</span>添加模型</li>
-              <li className="hidden h-px w-8 bg-surface-border sm:block" aria-hidden />
-              <li className="flex items-center gap-2 text-muted"><span className="flex size-6 items-center justify-center rounded-full bg-surface-2 text-xs">3</span>自动路由</li>
-            </ol>
-          </>
-        )}
+          </div>
+          <EffectiveStatus source={effectiveSource} />
+        </div>
+        <div className="mt-6 flex border-b border-surface-border/70" role="tablist" aria-label="模型设置区域">
+          <button type="button" role="tab" aria-selected={activeSection === "models"} onClick={() => setActiveSection("models")} className={cn("border-b-2 px-4 py-2.5 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30", activeSection === "models" ? "border-brand text-ink" : "border-transparent text-muted hover:text-ink")}>模型配置{hasProfiles ? ` (${initial?.model_profiles?.length ?? 0})` : ""}</button>
+          <button type="button" role="tab" aria-selected={activeSection === "routing"} onClick={() => setActiveSection("routing")} disabled={!hasProfiles} className={cn("flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 disabled:cursor-not-allowed disabled:text-muted", activeSection === "routing" ? "border-brand text-ink" : "border-transparent text-muted hover:text-ink")}>{!hasProfiles && <span aria-hidden>🔒</span>}路由策略</button>
+        </div>
       </div>
 
-      <div id="model-connections" className="scroll-mt-5 px-5 py-6 sm:px-6">
+      {activeSection === "models" && connectionEditor && (
+      <div id="model-connections" className="scroll-mt-5 px-5 py-5 sm:px-6">
         <div className="max-w-2xl">
-          <p className="text-xs font-semibold text-brand">{initial?.configured ? "默认连接" : "第一步"}</p>
-          <h3 className="mt-1 text-balance text-lg font-semibold">{initial?.configured ? "维护默认连接" : "选择服务商并填写连接信息"}</h3>
+          <p className="text-xs font-semibold text-brand">{isCreatingFirstProfile ? "创建模型配置" : "默认连接"}</p>
+          <h3 className="mt-1 text-balance text-lg font-semibold">{isCreatingFirstProfile ? "填写第一个模型配置" : "维护默认连接"}</h3>
           <p className="mt-1 text-pretty text-sm leading-6 text-muted">
             {initial?.configured ? "其他服务商可在模型目录中按需添加，不会覆盖这里已保存的凭据。" : "先连接一个可用模型。保存后，系统会自动创建首个模型档案。"}
           </p>
         </div>
 
-        {!initial?.configured && (
-          <section className="mt-6 rounded-lg border border-surface-border/70 bg-surface-2/35 p-4" aria-labelledby="provider-presets-heading">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
-              <h4 id="provider-presets-heading" className="text-sm font-semibold text-ink">选择服务商</h4>
-              <p className="text-xs leading-5 text-muted">官方预设会填入接口地址，之后仍可修改。</p>
-            </div>
-            <div className="mt-3 grid gap-2 sm:grid-cols-4" role="group" aria-label="选择服务商预设">
-              {PROVIDER_PRESETS.map((preset) => {
-                const selected = provider === preset.provider && baseUrl === preset.baseUrl;
-                return (
-                  <button
-                    key={preset.label}
-                    type="button"
-                    onClick={() => applyPreset(preset)}
-                    aria-pressed={selected}
-                    className={cn(
-                      "group flex min-h-[52px] items-center gap-2.5 rounded-lg border px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30",
-                      selected
-                        ? "border-brand/45 bg-brand/10 text-ink shadow-sm"
-                        : "border-surface-border/80 bg-surface hover:border-brand/35 hover:bg-surface-2"
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "flex size-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold transition-colors",
-                        selected
-                          ? "border-brand/30 bg-brand/15 text-brand"
-                          : "border-surface-border bg-surface-2 text-muted group-hover:border-brand/25 group-hover:text-brand"
-                      )}
-                      aria-hidden
-                    >
-                      {selected ? <Check className="size-3.5" /> : preset.label.slice(0, 1)}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium leading-4">{preset.label}</span>
-                      <span className="mt-0.5 block text-[11px] leading-4 text-muted">{preset.caption}</span>
-                    </span>
-                  </button>
-                );
-              })}
-              <button
-                type="button"
-                onClick={applyCustomConnection}
-                aria-pressed={customConnectionSelected}
-                className={cn(
-                  "flex min-h-[52px] items-center rounded-lg border px-3 text-left text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30",
-                  customConnectionSelected
-                    ? "border-brand/45 bg-brand/10 text-ink"
-                    : "border-surface-border/80 bg-surface text-ink hover:border-brand/35 hover:bg-surface-2"
-                )}
-              >
-                自定义兼容接口
-              </button>
-            </div>
-          </section>
-        )}
-
-        <div className="mt-6 grid gap-5 lg:grid-cols-2">
-          {initial?.configured && (
-            <Field label="服务协议" htmlFor="llm-provider" description={providerHelp}>
-              <Select
-                id="llm-provider"
-                value={provider}
-                onChange={(event) => {
-                  setProvider(event.target.value as LLMProvider);
-                  setModels([]);
-                  setProbeState({ kind: "idle" });
-                }}
-                options={[
-                  { value: "anthropic", label: "Anthropic" },
-                  { value: "openai-compat", label: "OpenAI Compatible" },
-                ]}
-              />
-            </Field>
-          )}
+        <div className="mt-5 grid gap-x-4 gap-y-4 lg:grid-cols-2">
+          <Field
+            label="服务协议"
+            htmlFor="llm-provider"
+            description={providerHelp}
+          >
+            <Select
+              id="llm-provider"
+              value={serviceProtocolValue}
+              onChange={(event) => handleServiceProtocolChange(event.target.value)}
+              options={[
+                { value: "anthropic", label: "Anthropic Messages" },
+                { value: "openai", label: "OpenAI" },
+              ]}
+              submenus={[
+                {
+                  label: "OpenAI Compatible",
+                  options: [
+                    { value: "deepseek", label: "DeepSeek" },
+                    { value: "custom-compatible", label: "自定义兼容地址" },
+                  ],
+                },
+              ]}
+            />
+          </Field>
 
           <Field
             label="Base URL"
@@ -442,6 +405,8 @@ function LLMSettingsPanel({
               value={baseUrl}
               onChange={(event) => {
                 setBaseUrl(event.target.value);
+                setModels([]);
+                setModelContextWindows({});
                 setProbeState({ kind: "idle" });
               }}
               placeholder={provider === "anthropic" ? "https://api.anthropic.com" : "https://api.example.com/v1"}
@@ -467,6 +432,8 @@ function LLMSettingsPanel({
                   value={apiKey}
                   onChange={(event) => {
                     setApiKey(event.target.value);
+                    setModels([]);
+                    setModelContextWindows({});
                     setProbeState({ kind: "idle" });
                   }}
                   placeholder={hasSavedKey ? "已保存，留空保持不变" : provider === "anthropic" ? "sk-ant-..." : "sk-..."}
@@ -481,149 +448,78 @@ function LLMSettingsPanel({
           </Field>
 
           {!initial?.configured && (
-            <div className="lg:col-span-2">
+            <div>
               <Field
                 label="初始模型 ID"
                 htmlFor="llm-default-model"
-                description={modelOptions.length ? "从测试结果选择，保存后会建立第一个模型档案。" : "例如 deepseek-v4-flash，也可填写服务商要求的精确模型 ID。"}
+                description={hasVerifiedModels ? "已从当前连接读取模型目录。选择后会建立第一个模型配置。" : "例如 deepseek-v4-flash，也可填写服务商要求的精确模型 ID。"}
               >
-                <input
-                  id="llm-default-model"
-                  name="llm-default-model"
-                  value={defaultModel}
-                  onChange={(event) => setDefaultModel(event.target.value)}
-                  list={modelListId}
-                  placeholder="例如 deepseek-v4-flash"
-                  className="admin-input font-mono"
-                  autoComplete="off"
-                />
+                {hasVerifiedModels ? (
+                  <Select
+                    id="llm-default-model"
+                    name="llm-default-model"
+                    value={defaultModel}
+                    onChange={(event) => setDefaultModel(event.target.value)}
+                    options={models.map((model) => ({ value: model, label: model }))}
+                    contentAlign="start"
+                    contentClassName="w-[var(--radix-select-trigger-width)]"
+                    contentPosition="popper"
+                  />
+                ) : (
+                  <input
+                    id="llm-default-model"
+                    name="llm-default-model"
+                    value={defaultModel}
+                    onChange={(event) => setDefaultModel(event.target.value)}
+                    placeholder="例如 deepseek-v4-flash"
+                    className="admin-input font-mono"
+                    autoComplete="off"
+                  />
+                )}
               </Field>
             </div>
           )}
+
+          <div>
+            <Field
+              label="上下文窗口"
+              htmlFor="llm-context-window"
+              description={contextWindowDescription}
+            >
+              <input
+                id="llm-context-window"
+                type="number"
+                min={4096}
+                max={2000000}
+                step={1024}
+                value={contextWindowValue}
+                onChange={(event) => setContextWindow(event.target.value ? Number(event.target.value) : null)}
+                placeholder="例如 128000"
+                disabled={contextWindowIsAutomatic}
+                className="admin-input font-mono disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-muted"
+                aria-invalid={contextWindow !== null && (!Number.isInteger(contextWindow) || contextWindow < 4096 || contextWindow > 2000000)}
+              />
+            </Field>
+          </div>
         </div>
 
-        {!initial?.configured && (
-          <details className="mt-4 max-w-2xl text-sm">
-            <summary className="cursor-pointer text-muted underline-offset-4 hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30">使用代理、自托管或 Anthropic 兼容地址？</summary>
-            <div className="mt-3 max-w-md">
-              <Field label="服务协议" htmlFor="llm-provider" description={providerHelp}>
-                <Select
-                  id="llm-provider"
-                  value={provider}
-                  onChange={(event) => {
-                    setProvider(event.target.value as LLMProvider);
-                    setModels([]);
-                    setProbeState({ kind: "idle" });
-                  }}
-                  options={[
-                    { value: "openai-compat", label: "OpenAI Compatible" },
-                    { value: "anthropic", label: "Anthropic Messages" },
-                  ]}
-                />
-              </Field>
-            </div>
-          </details>
-        )}
-
-        <datalist id={modelListId}>
-          {modelOptions.map((model) => <option key={model} value={model} />)}
-        </datalist>
         <ProbeFeedback state={probeState} />
       </div>
+      )}
 
-      <div id="model-catalog" className="scroll-mt-5 border-t border-surface-border/70 px-5 py-6 sm:px-6">
-        {initial?.configured ? (
-          <div className="max-w-2xl">
-            <p className="text-xs font-semibold text-brand">模型目录</p>
-            <h3 className="mt-1 text-balance text-lg font-semibold">添加可用模型，再编排自动路由</h3>
-            <p className="mt-1 text-pretty text-sm leading-6 text-muted">每个档案绑定一个连接和上下文窗口。会话可固定选择档案，未固定时才会进入下方自动路由。</p>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3 rounded-lg border border-dashed border-surface-border/90 bg-surface-2/35 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 items-start gap-3">
-              <span className="admin-icon-tile admin-icon-tile-sm mt-0.5 text-muted" aria-hidden><Plus className="h-3.5 w-3.5" /></span>
-              <div>
-                <p className="text-sm font-semibold text-ink">下一步：模型目录与自动路由</p>
-                <p className="mt-1 text-pretty text-xs leading-5 text-muted">保存第一个连接后解锁。届时可添加 Flash、复杂任务或备用模型。</p>
-              </div>
-            </div>
-            <span className="shrink-0 text-xs font-medium text-muted">保存后解锁</span>
-          </div>
-        )}
-
-        {initial?.configured && (
-          <details className="group mt-6 border-y border-surface-border/70 py-5">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-medium text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30">
-              <span className="flex items-center gap-2">
-                <SlidersHorizontal className="h-4 w-4 text-muted" aria-hidden />
-                默认连接兼容选项
-              </span>
-              <ChevronDown className="h-4 w-4 text-muted transition-transform duration-200 group-open:rotate-180" aria-hidden />
-            </summary>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-              主流模型会自动识别上下文窗口。仅当默认连接使用别名或自托管模型时，才需要填写兼容覆盖；新建档案请优先单独指定窗口。
-            </p>
-
-            <div className="mt-5 max-w-2xl">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm font-medium text-ink">上下文窗口</p>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        contextWindow === null
-                          ? "border-brand/25 bg-brand/10 text-brand"
-                          : "border-warning/30 bg-warning/10 text-warning"
-                      )}
-                    >
-                      {contextWindow === null ? "自动识别" : "手动覆盖"}
-                    </Badge>
-                  </div>
-                  <p className="mt-1 text-xs leading-5 text-muted">
-                    {contextWindow === null
-                      ? `${automaticContextLabel}。它决定历史保留、摘要触发与输出预算。`
-                      : "手动值优先于模型能力库，适合服务商别名或自托管模型。"}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setContextWindow(contextWindow === null ? initial?.context_window_resolved ?? 16_000 : null)}
-                >
-                  {contextWindow === null ? "手动覆盖" : "恢复自动识别"}
-                </Button>
-              </div>
-
-              {contextWindow !== null && (
-                <div className="mt-4 max-w-sm">
-                  <Field
-                    label="覆盖值（tokens）"
-                    htmlFor="llm-context-window"
-                    description="范围 4,096 到 2,000,000。恢复自动识别会移除此覆盖值。"
-                  >
-                    <input
-                      id="llm-context-window"
-                      type="number"
-                      min={4096}
-                      max={2000000}
-                      step={1024}
-                      value={contextWindow}
-                      onChange={(event) => setContextWindow(Number(event.target.value))}
-                      className="admin-input font-mono"
-                      aria-invalid={!Number.isInteger(contextWindow) || contextWindow < 4096 || contextWindow > 2000000}
-                    />
-                  </Field>
-                </div>
-              )}
-            </div>
-          </details>
-        )}
-
-        {initial?.configured && <ModelProfilesManager initial={initial} onChanged={onChanged} />}
+      {activeSection === "models" && !connectionEditor && (
+      <div id="model-catalog" className="scroll-mt-5 px-5 py-6 sm:px-6">
+        <ModelProfilesManager initial={initial} onChanged={onChanged} view="models" onCreateFirst={() => setConnectionEditor("create")} onEditDefaultConnection={initial?.base_url && initial?.has_key ? () => setConnectionEditor("edit") : undefined} />
       </div>
+      )}
 
+      {activeSection === "routing" && hasProfiles && (
+      <div id="model-routing" className="scroll-mt-5 px-5 py-6 sm:px-6">
+        <ModelProfilesManager initial={initial} onChanged={onChanged} view="routing" />
+      </div>
+      )}
+
+      {connectionEditor && (
       <footer className="flex flex-col gap-4 border-t border-surface-border/70 bg-surface-2/35 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div className="min-w-0 text-sm text-muted" aria-live="polite">
           {canSave
@@ -633,18 +529,15 @@ function LLMSettingsPanel({
             : "请补全 Base URL、API Key 和模型 ID。"}
         </div>
         <div className="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row">
-          {initial?.configured && (
-            <Button type="button" variant="destructive" onClick={() => setClearOpen(true)} disabled={saving}>
-              <Trash2 className="h-4 w-4" />
-              清除个人配置
-            </Button>
-          )}
+          <Button type="button" variant="ghost" onClick={() => setConnectionEditor(null)} disabled={saving}>取消</Button>
+          {initial?.configured && <Button type="button" variant="destructive" onClick={() => setClearOpen(true)} disabled={saving}><Trash2 className="h-4 w-4" />清除个人配置</Button>}
           <Button type="button" onClick={handleSave} disabled={!canSave}>
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
             {saving ? "正在保存" : initial?.configured ? "保存并应用" : "保存并继续"}
           </Button>
         </div>
       </footer>
+      )}
 
       <ConfirmDialog
         open={clearOpen}
@@ -663,9 +556,15 @@ function LLMSettingsPanel({
 function ModelProfilesManager({
   initial,
   onChanged,
+  view,
+  onCreateFirst,
+  onEditDefaultConnection,
 }: {
   initial?: MyLLMSettings;
   onChanged: () => Promise<MySettings>;
+  view: "models" | "routing";
+  onCreateFirst?: () => void;
+  onEditDefaultConnection?: () => void;
 }) {
   const profiles = initial?.model_profiles ?? [];
   const connections = useMemo(() => initial?.connections ?? [], [initial?.connections]);
@@ -824,22 +723,66 @@ function ModelProfilesManager({
     label: `${connections.find((connection) => connection.id === profile.connection_id)?.display_name ?? "默认连接"} / ${profile.display_name} · ${profile.model_id}`,
   }));
 
-  if (!initial?.configured) {
+  if (view === "routing") {
     return (
-      <section className="mt-7 border-t border-surface-border/70 pt-5" aria-labelledby="model-catalog-next-heading">
-        <div className="flex flex-col gap-3 rounded-lg border border-dashed border-surface-border/90 bg-surface-2/35 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 items-start gap-3">
-            <span className="admin-icon-tile admin-icon-tile-sm mt-0.5 text-muted" aria-hidden>
-              <Plus className="h-3.5 w-3.5" />
-            </span>
-            <div>
-              <p className="text-xs font-semibold tracking-[0.12em] text-muted">下一步</p>
-              <h3 id="model-catalog-next-heading" className="mt-0.5 text-sm font-semibold text-ink">保存连接后，继续添加模型与自动路由</h3>
-              <p className="mt-1 text-xs leading-5 text-muted">系统会先创建第一个模型档案。需要 Flash、复杂任务或备用模型时，再按需添加专用连接。</p>
-            </div>
-          </div>
-          <span className="shrink-0 text-xs font-medium text-muted">第 2 步将在保存后解锁</span>
+      <section aria-labelledby="model-routing-heading">
+        <div className="max-w-2xl">
+          <p className="text-xs font-semibold text-brand">路由策略</p>
+          <h3 id="model-routing-heading" className="mt-1 text-balance text-lg font-semibold">选择未固定模型的会话如何执行</h3>
+          <p className="mt-1 text-pretty text-sm leading-6 text-muted">模型配置不会自动改变会话行为。在这里选择默认、复杂任务、Flash 意图识别和备用模型。</p>
         </div>
+        <div className="mt-6 grid gap-4 border-t border-surface-border/70 pt-5 sm:grid-cols-2">
+          <Field label="默认模型" htmlFor="policy-default-model" description="未在会话中固定模型时使用。">
+            <Select id="policy-default-model" value={defaultModel} onChange={(event) => setDefaultModel(event.target.value)} options={selectOptions} />
+          </Field>
+          <div className="flex min-h-[var(--control-h)] items-start justify-between gap-4 pt-6">
+            <div>
+              <p className="text-sm font-medium text-ink">复杂任务模型</p>
+              <p className="mt-1 text-xs leading-5 text-muted">关闭时自动会话始终使用默认模型。</p>
+            </div>
+            <Switch checked={complexEnabled} onCheckedChange={setComplexEnabled} aria-label="开启复杂任务模型" />
+          </div>
+          {complexEnabled && (
+            <Field label="复杂模型" htmlFor="policy-complex-model" description="多工具或超长输入时升级使用。">
+              <Select id="policy-complex-model" value={complexModel} onChange={(event) => setComplexModel(event.target.value)} options={selectOptions} />
+            </Field>
+          )}
+          <Field label="Flash 意图模型（可选）" htmlFor="policy-triage-model" description="只用于 KB 查询策略与意图判断，不承担最终回答。">
+            <Select id="policy-triage-model" value={triageModel} onChange={(event) => setTriageModel(event.target.value)} options={selectOptions} placeholderOption={{ value: "", label: "不单独配置" }} />
+          </Field>
+          <Field label="备用模型（可选）" htmlFor="policy-fallback-model" description="首个输出前请求失败或空回答时才会接管。">
+            <Select id="policy-fallback-model" value={fallbackModel} onChange={(event) => setFallbackModel(event.target.value)} options={selectOptions} placeholderOption={{ value: "", label: "不单独配置" }} />
+          </Field>
+          <div className="flex items-end">
+            <Button type="button" onClick={savePolicy} disabled={savingPolicy}>
+              {savingPolicy && <Loader2 className="h-4 w-4 animate-spin" />}
+              {savingPolicy ? "正在保存" : "保存路由策略"}
+            </Button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (profiles.length === 0) {
+    return (
+      <section className="py-2" aria-labelledby="model-empty-heading">
+        <div className="flex flex-col gap-4 border-b border-surface-border/70 pb-5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="max-w-2xl">
+            <p className="text-xs font-semibold text-brand">模型配置</p>
+            <h3 id="model-empty-heading" className="mt-1 text-balance text-lg font-semibold">还没有模型配置</h3>
+            <p className="mt-1 text-pretty text-sm leading-6 text-muted">创建一个配置后，才能在会话中选择模型或在路由策略中指定其职责。</p>
+          </div>
+        </div>
+        <div className="mt-6 flex min-h-72 flex-col items-center justify-center rounded-lg border border-dashed border-surface-border/90 bg-surface-2/35 px-5 py-10 text-center">
+          <span className="admin-icon-tile admin-icon-tile-lg text-brand" aria-hidden><Plus className="h-5 w-5" /></span>
+          <p className="mt-4 text-balance text-base font-semibold text-ink">从第一个模型配置开始</p>
+          <p className="mt-2 max-w-lg text-pretty text-sm leading-6 text-muted">它会保存服务商、连接地址、模型 ID 和上下文窗口。默认模型和自动路由将在下一步单独配置。</p>
+          <Button type="button" className="mt-5" onClick={onCreateFirst}>
+            <Plus className="h-4 w-4" />创建模型配置
+          </Button>
+        </div>
+        <p className="mt-4 flex items-start gap-2 rounded-lg border border-surface-border/70 bg-surface-2/35 px-3 py-2.5 text-sm leading-5 text-muted"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand" aria-hidden />创建模型配置不会立即改变会话行为。路由策略会在创建后解锁。</p>
       </section>
     );
   }
@@ -848,23 +791,42 @@ function ModelProfilesManager({
     <section className="mt-8 border-t border-surface-border/70 pt-6" aria-labelledby="model-profiles-heading">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="max-w-2xl">
-          <p className="text-xs font-semibold tracking-[0.14em] text-brand">模型档案</p>
-          <h3 id="model-profiles-heading" className="mt-1 text-base font-semibold">每个模型都绑定一个可验证的连接</h3>
-          <p className="mt-1 text-sm leading-6 text-muted">
-            可添加任意模型 ID。档案同时记录连接、模型 ID 和上下文窗口；会话固定选择与自动路由都使用这份目录。
+          <p className="text-xs font-semibold text-brand">模型配置</p>
+          <h3 id="model-profiles-heading" className="mt-1 text-balance text-lg font-semibold">可用模型配置</h3>
+          <p className="mt-1 text-pretty text-sm leading-6 text-muted">
+            每个配置绑定一个连接、模型 ID 和上下文窗口。会话固定选择与路由策略都使用这份列表。
           </p>
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={() => setAdding((open) => !open)} disabled={!initial?.configured}>
-          <Plus className="h-4 w-4" />
-          添加模型
-        </Button>
+        <div className="flex shrink-0 gap-2">{onEditDefaultConnection && <Button type="button" variant="ghost" size="sm" onClick={onEditDefaultConnection}>默认连接</Button>}<Button type="button" variant="outline" size="sm" onClick={() => setAdding((open) => !open)}><Plus className="h-4 w-4" />添加模型</Button></div>
+      </div>
+
+      <div className="mt-5 divide-y divide-surface-border/70 border-y border-surface-border/70">
+        {profiles.map((profile) => (
+          <div key={profile.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm font-medium text-ink">{profile.display_name}</p>
+                <Badge variant="outline" className={profile.enabled ? "border-brand/25 bg-brand/10 text-brand" : "border-surface-border bg-surface-2 text-muted"}>
+                  {profile.enabled ? "可选" : "已停用"}
+                </Badge>
+                <span className="text-xs text-muted">{profile.context_window ? `${profile.context_window / 1000}K` : "自动窗口"}</span>
+              </div>
+              <p className="mt-1 truncate font-mono text-xs text-muted" title={profile.model_id}>{profile.model_id}</p>
+              <p className="mt-1 text-xs text-muted">{connections.find((connection) => connection.id === profile.connection_id)?.display_name ?? "默认连接"}</p>
+            </div>
+            <Button type="button" variant="ghost" size="sm" onClick={() => removeProfile(profile)} disabled={deletingId === profile.id}>
+              {deletingId === profile.id && <Loader2 className="h-4 w-4 animate-spin" />}
+              移除
+            </Button>
+          </div>
+        ))}
       </div>
 
       <div className="mt-5 border-y border-surface-border/70 py-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm font-medium text-ink">其他连接</p>
-            <p className="mt-1 text-xs leading-5 text-muted">默认连接在上方维护；在此添加专用、备用或本地服务。模型档案会使用其对应的服务商、地址和加密密钥。</p>
+            <p className="text-sm font-medium text-ink">连接管理</p>
+            <p className="mt-1 text-xs leading-5 text-muted">模型配置必须绑定连接。在此添加专用、备用或本地服务，并管理对应的密钥。</p>
           </div>
           <Button type="button" variant="ghost" size="sm" onClick={() => setAddingConnection((open) => !open)}>
             <Plus className="h-4 w-4" />添加连接
@@ -921,72 +883,7 @@ function ModelProfilesManager({
         </div>
       )}
 
-      {profiles.length > 0 ? (
-        <div className="mt-5 divide-y divide-surface-border/70 border-y border-surface-border/70">
-          {profiles.map((profile) => (
-            <div key={profile.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-sm font-medium text-ink">{profile.display_name}</p>
-                  <Badge variant="outline" className={profile.enabled ? "border-brand/25 bg-brand/10 text-brand" : "border-surface-border bg-surface-2 text-muted"}>
-                    {profile.enabled ? "可选" : "已停用"}
-                  </Badge>
-                  <span className="text-xs text-muted">{profile.context_window ? `${profile.context_window / 1000}K` : "自动窗口"}</span>
-                </div>
-                <p className="mt-1 truncate font-mono text-xs text-muted" title={profile.model_id}>{profile.model_id}</p>
-                <p className="mt-1 text-xs text-muted">{connections.find((connection) => connection.id === profile.connection_id)?.display_name ?? "默认连接"}</p>
-              </div>
-              <Button type="button" variant="ghost" size="sm" onClick={() => removeProfile(profile)} disabled={deletingId === profile.id}>
-                {deletingId === profile.id && <Loader2 className="h-4 w-4 animate-spin" />}
-                移除
-              </Button>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="mt-5 border-y border-dashed border-surface-border/80 py-4 text-sm text-muted">
-          保存连接后会自动加入默认模型；也可以在这里添加服务商未返回的模型 ID。
-        </p>
-      )}
 
-      {enabledProfiles.length > 0 && (
-        <section id="model-routing" className="scroll-mt-5 mt-8 border-t border-surface-border/70 pt-6" aria-labelledby="model-routing-heading">
-          <div className="max-w-2xl">
-            <p className="text-xs font-semibold tracking-[0.14em] text-brand">自动路由</p>
-            <h3 id="model-routing-heading" className="mt-1 text-base font-semibold">为未固定模型的会话选择执行策略</h3>
-            <p className="mt-1 text-sm leading-6 text-muted">默认模型负责常规回答；复杂任务按开关升级；Flash 只做意图识别；备用模型仅在首个输出前失败或空回答时接管。</p>
-          </div>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          <Field label="默认模型" htmlFor="policy-default-model" description="自动会话的常规模型。">
-            <Select id="policy-default-model" value={defaultModel} onChange={(event) => setDefaultModel(event.target.value)} options={selectOptions} />
-          </Field>
-          <div className="flex min-h-[var(--control-h)] items-start justify-between gap-4 pt-6">
-            <div>
-              <p className="text-sm font-medium text-ink">复杂任务模型</p>
-              <p className="mt-1 text-xs leading-5 text-muted">关闭时自动会话始终使用默认模型。</p>
-            </div>
-            <Switch checked={complexEnabled} onCheckedChange={setComplexEnabled} aria-label="开启复杂任务模型" />
-          </div>
-          {complexEnabled && (
-            <Field label="复杂模型" htmlFor="policy-complex-model" description="多工具或超长输入时升级使用。">
-              <Select id="policy-complex-model" value={complexModel} onChange={(event) => setComplexModel(event.target.value)} options={selectOptions} />
-            </Field>
-          )}
-          <Field label="Flash 意图模型（可选）" htmlFor="policy-triage-model" description="用于 KB 查询策略与意图判断，不承担最终回答。">
-            <Select id="policy-triage-model" value={triageModel} onChange={(event) => setTriageModel(event.target.value)} options={selectOptions} placeholderOption={{ value: "", label: "不单独配置" }} />
-          </Field>
-          <Field label="备用模型（可选）" htmlFor="policy-fallback-model" description="首 token 前请求失败或空回答恢复时尝试；内容开始输出后不会悄悄切换。">
-            <Select id="policy-fallback-model" value={fallbackModel} onChange={(event) => setFallbackModel(event.target.value)} options={selectOptions} placeholderOption={{ value: "", label: "不单独配置" }} />
-          </Field>
-          <div className="flex items-end">
-            <Button type="button" onClick={savePolicy} disabled={savingPolicy}>
-              {savingPolicy && <Loader2 className="h-4 w-4 animate-spin" />}
-              {savingPolicy ? "正在保存" : "保存路由策略"}
-            </Button>
-          </div>
-          </div>
-        </section>
-      )}
     </section>
   );
 }
@@ -1075,17 +972,6 @@ function EffectiveStatus({ source }: { source: "user" | "system" | "missing" }) 
   );
 }
 
-function SummaryItem({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="min-w-0 px-0 py-3 first:pt-0 last:pb-0 sm:px-4 sm:py-0 sm:first:pl-0 sm:last:pr-0">
-      <dt className="text-xs font-medium text-muted">{label}</dt>
-      <dd className={cn("mt-1 truncate text-sm font-medium text-ink", mono && "font-mono text-[13px]")} title={value}>
-        {value}
-      </dd>
-    </div>
-  );
-}
-
 function ProbeFeedback({ state }: { state: ProbeState }) {
   if (state.kind === "idle") return null;
   if (state.kind === "loading") {
@@ -1141,19 +1027,4 @@ function Field({
       <p className="mt-1.5 text-xs leading-5 text-muted">{description}</p>
     </div>
   );
-}
-
-function sourceLabel(source: "user" | "system" | "missing") {
-  return source === "user" ? "个人配置" : source === "system" ? "系统默认" : "未配置";
-}
-
-function formatContextSummary(
-  value: number | null | undefined,
-  source: "manual" | "registry" | "fallback" | null | undefined
-) {
-  if (!value) return "待模型识别";
-  const label = value >= 1000 ? `${value / 1000}K` : String(value);
-  if (source === "manual") return `${label} · 手动覆盖`;
-  if (source === "registry") return `${label} · 自动识别`;
-  return `${label} · 保守兜底`;
 }

@@ -303,7 +303,10 @@ export async function clearEmbeddingSettings(): Promise<void> {
   await unwrap(await authFetch("/api/settings/embedding", { method: "DELETE" }));
 }
 
-export async function probeLLM(body: ProbeLLMBody): Promise<{ models: string[] }> {
+export async function probeLLM(body: ProbeLLMBody): Promise<{
+  models: string[];
+  context_windows?: Record<string, { value: number; source: "registry" }>;
+}> {
   return unwrap(
     await authFetch("/api/settings/probe/llm", {
       method: "POST",

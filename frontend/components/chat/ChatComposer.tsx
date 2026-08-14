@@ -18,6 +18,8 @@ import { cn } from "@/lib/cn";
 import type { LlmSource } from "./types";
 import { formatContextUsagePercent, formatTokenCount, resolveContextUsagePercent } from "./utils";
 
+const MANAGE_MODELS_VALUE = "__manage_models__";
+
 export function SmallAction({
   label,
   icon,
@@ -68,6 +70,7 @@ export function Composer({
   onStop,
   onSelectKb,
   onModelChange,
+  onManageModels,
   centered = false,
 }: {
   value: string;
@@ -90,6 +93,7 @@ export function Composer({
   onStop: () => void;
   onSelectKb: (id: string | null) => void;
   onModelChange: (model: string | null) => void;
+  onManageModels: () => void;
   centered?: boolean;
 }) {
   const profileOptions = modelProfiles.map((profile) => ({
@@ -101,10 +105,13 @@ export function Composer({
       ? profileOptions
       : (currentModel && !modelOptions.includes(currentModel) ? [currentModel, ...modelOptions] : modelOptions)
           .map((model) => ({ value: model, label: modelLabels[model] ? `${modelLabels[model]} · ${model}` : model }));
-  const showModelSelector = visibleModelOptions.length > 1;
   const defaultModelLabel = llmReady
-    ? "\u81ea\u52a8"
-    : "\u672a\u914d\u7f6e\u6a21\u578b";
+    ? "自动路由"
+    : "选择模型";
+  const selectableModelOptions = [
+    ...visibleModelOptions,
+    { value: MANAGE_MODELS_VALUE, label: "管理模型配置" },
+  ];
 
   return (
     <div
@@ -167,22 +174,26 @@ export function Composer({
               contextStatus={contextStatus}
               loading={contextStatusLoading}
             />
-            {showModelSelector && (
-              <ModelSelect
-                aria-label="\u6a21\u578b\u9009\u62e9"
-                className="kf-model-trigger h-[var(--control-h)] min-w-[132px] max-w-[200px] text-sm"
-                tone="plain"
-                contentAlign="end"
-                contentClassName="kf-model-content"
-                contentPosition="popper"
-                disabled={busy}
-                onChange={(event) => onModelChange(event.target.value || null)}
-                options={visibleModelOptions}
-                placeholderOption={{ value: "", label: defaultModelLabel }}
-                title="\u6a21\u578b\u9009\u62e9"
-                value={modelProfiles.length > 0 ? currentProfileId ?? "" : currentModel ?? ""}
-              />
-            )}
+            <ModelSelect
+              aria-label="模型选择"
+              className="kf-model-trigger h-[var(--control-h)] min-w-[132px] max-w-[200px] text-sm"
+              tone="plain"
+              contentAlign="end"
+              contentClassName="kf-model-content"
+              contentPosition="popper"
+              disabled={busy}
+              onChange={(event) => {
+                if (event.target.value === MANAGE_MODELS_VALUE) {
+                  onManageModels();
+                  return;
+                }
+                onModelChange(event.target.value || null);
+              }}
+              options={selectableModelOptions}
+              placeholderOption={{ value: "", label: defaultModelLabel }}
+              title="选择模型或管理模型配置"
+              value={modelProfiles.length > 0 ? currentProfileId ?? "" : currentModel ?? ""}
+            />
           </div>
           {busy ? (
             <button

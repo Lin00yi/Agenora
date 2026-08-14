@@ -98,17 +98,27 @@ export function useChatBoot({
           const effectiveSource =
             settings.llm.effective_source ?? (settings.llm.configured ? "user" : "missing");
           const effectiveReady = settings.llm.effective_configured ?? settings.llm.configured;
-          if (
-            !cancelled &&
-            settings.llm.configured &&
-            settings.llm.provider &&
-            settings.llm.base_url
-          ) {
-            setLlmReady(true);
-            setLlmSource("user");
-            const profileModels = (settings.llm.model_profiles ?? [])
-              .filter((profile) => profile.enabled)
-              .map((profile) => profile.model_id);
+          const enabledProfiles = (settings.llm.model_profiles ?? []).filter((profile) => {
+            if (!profile.enabled) return false;
+            const connection = (settings.llm.connections ?? []).find(
+              (item) => item.id === profile.connection_id
+            );
+            return Boolean(connection?.enabled && connection.has_key);
+          });
+          const profileModels = enabledProfiles.map((profile) => profile.model_id);
+          const labels = Object.fromEntries(
+            enabledProfiles.flatMap((profile) => {
+              const connection = (settings.llm.connections ?? []).find(
+                (item) => item.id === profile.connection_id
+              );
+              return [
+                [profile.model_id, profile.display_name],
+                [profile.id, `${connection?.display_name ?? "默认连接"} / ${profile.display_name}`],
+              ];
+            })
+          );
+          let discoveredModels: string[] = [];
+          if (settings.llm.provider && settings.llm.base_url) {
             let models: string[] = [];
             try {
               ({ models } = await probeLLM({
@@ -119,45 +129,22 @@ export function useChatBoot({
             } catch (error) {
               console.warn("LLM model probe failed; using saved model profiles", error);
             }
-            if (!cancelled) {
-              setModelLabels(
-                Object.fromEntries(
-                  (settings.llm.model_profiles ?? []).flatMap((profile) => {
-                    const connection = (settings.llm.connections ?? []).find(
-                      (item) => item.id === profile.connection_id
-                    );
-                    return [
-                      [profile.model_id, profile.display_name],
-                      [profile.id, `${connection?.display_name ?? "默认连接"} / ${profile.display_name}`],
-                    ];
-                  })
-                )
-              );
-              setModelProfiles((settings.llm.model_profiles ?? []).filter((profile) => profile.enabled));
-              setModelOptions(
-                uniqueStrings([
-                  ...models,
-                  ...profileModels,
-                ])
-              );
-            }
-          } else if (!cancelled && effectiveReady && effectiveSource === "system") {
-            setLlmReady(true);
-            setLlmSource("system");
+            discoveredModels = models;
+          }
+          if (!cancelled) {
+            setModelLabels(labels);
+            setModelProfiles(enabledProfiles);
             setModelOptions(
               uniqueStrings([
-                settings.llm.effective_model,
-                settings.llm.effective_complex_model,
+                ...discoveredModels,
+                ...profileModels,
+                ...(effectiveSource === "system"
+                  ? [settings.llm.effective_model, settings.llm.effective_complex_model]
+                  : []),
               ])
             );
-            setModelLabels({});
-            setModelProfiles([]);
-          } else if (!cancelled) {
-            setLlmReady(false);
-            setLlmSource("missing");
-            setModelOptions([]);
-            setModelLabels({});
-            setModelProfiles([]);
+            setLlmReady(effectiveReady);
+            setLlmSource(effectiveReady ? effectiveSource : "missing");
           }
         } catch (e) {
           console.warn("LLM model probe failed", e);
