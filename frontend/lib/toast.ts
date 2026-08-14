@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { toast as sonnerToast, type ExternalToast } from "sonner";
+import { toast as sonnerToast, type ExternalToast, type ToastT } from "sonner";
 
 const MAX_VISIBLE_TOASTS = 4;
 const DEFAULT_DURATION_MS = 5000;
@@ -17,7 +17,7 @@ type QueuedToast = {
 };
 
 const pending: QueuedToast[] = [];
-const active = new Set<ToastId>();
+const active = new Map<ToastId, ReturnType<typeof setTimeout>>();
 let nextId = 0;
 let flushTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -40,7 +40,9 @@ function scheduleFlush() {
 }
 
 function release(id: ToastId) {
-  if (!active.delete(id)) return;
+  if (!active.has(id)) return;
+  clearTimeout(active.get(id));
+  active.delete(id);
   scheduleFlush();
 }
 
@@ -48,18 +50,23 @@ function show(entry: QueuedToast) {
   // Entries that start together are deliberately staggered, so the oldest
   // closes first instead of all four expiring during the same frame.
   const position = active.size;
-  active.add(entry.id);
   const { onAutoClose, onDismiss, duration, ...options } = entry.options;
   const baseDuration = duration ?? DEFAULT_DURATION_MS;
+  const closeAfterMs = baseDuration + position * DISMISS_STAGGER_MS;
+  const timer = setTimeout(() => {
+    if (!active.has(entry.id)) return;
+    onAutoClose?.({ id: entry.id } as ToastT);
+    sonnerToast.dismiss(entry.id);
+    release(entry.id);
+  }, closeAfterMs);
+  active.set(entry.id, timer);
 
   callSonner(entry.kind, entry.message, {
     ...options,
     id: entry.id,
-    duration: baseDuration + position * DISMISS_STAGGER_MS,
-    onAutoClose: (toast) => {
-      onAutoClose?.(toast);
-      release(entry.id);
-    },
+    // The queue owns the clock. Sonner's own timer starts for hidden entries
+    // too, which can collapse a burst of notifications at the same moment.
+    duration: Infinity,
     onDismiss: (toast) => {
       onDismiss?.(toast);
       release(entry.id);
@@ -68,10 +75,19 @@ function show(entry: QueuedToast) {
 }
 
 function flush() {
-  while (active.size < MAX_VISIBLE_TOASTS && pending.length > 0) {
-    const entry = pending.shift();
-    if (entry) show(entry);
-  }
+  if (active.size >= MAX_VISIBLE_TOASTS || pending.length === 0) return;
+  // Only the most recent overflow notice remains pending during the exit
+  // transition. A delayed, older notification should never displace it.
+  const entry = pending.pop();
+  pending.length = 0;
+  if (entry) show(entry);
+}
+
+function evictOldest() {
+  const oldestId = active.keys().next().value as ToastId | undefined;
+  if (oldestId === undefined) return;
+  sonnerToast.dismiss(oldestId);
+  release(oldestId);
 }
 
 function enqueue(kind: ToastKind, message: ReactNode, options: ExternalToast = {}): ToastId {
@@ -83,20 +99,28 @@ function enqueue(kind: ToastKind, message: ReactNode, options: ExternalToast = {
     return callSonner(kind, message, { ...options, id });
   }
 
-  const existingPending = pending.findIndex((entry) => entry.id === id);
   const entry = { id, kind, message, options: { ...options, id } };
-  if (existingPending >= 0) {
-    pending[existingPending] = entry;
-  } else {
+  if (active.size >= MAX_VISIBLE_TOASTS) {
+    evictOldest();
+    pending.length = 0;
     pending.push(entry);
+    return id;
   }
-  flush();
+
+  if (pending.length > 0) {
+    pending.length = 0;
+    pending.push(entry);
+    return id;
+  }
+
+  show(entry);
   return id;
 }
 
 function dismiss(id?: ToastId): ToastId | undefined {
   if (id === undefined) {
     pending.length = 0;
+    active.forEach((timer) => clearTimeout(timer));
     active.clear();
     return sonnerToast.dismiss();
   }
@@ -107,13 +131,13 @@ function dismiss(id?: ToastId): ToastId | undefined {
     return id;
   }
 
-  if (active.delete(id)) scheduleFlush();
+  if (active.has(id)) release(id);
   return sonnerToast.dismiss(id);
 }
 
 /**
- * Application notification queue. Four notices may be visible at once; their
- * lifetime is FIFO, and queued notices do not start counting down early.
+ * Application notification stack. Four notices may be visible at once; new
+ * notices enter at the front and replace the oldest item when the stack is full.
  */
 export const toast = Object.assign(
   (message: ReactNode, options?: ExternalToast) => enqueue("message", message, options),

@@ -1,7 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { BookOpen, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { EMPTY_PROMPTS } from "./constants";
 
@@ -45,27 +44,6 @@ export function EmptyWorkbench({
           </div>
         )}
       </section>
-    </div>
-  );
-}
-
-export function StarterPromptCards({ onPick }: { onPick: (q: string) => void }) {
-  const cards = [
-    { icon: <BookOpen className="h-4 w-4" />, title: "资料总结", prompt: EMPTY_PROMPTS[1] },
-    { icon: <ShieldCheck className="h-4 w-4" />, title: "权限与安全", prompt: EMPTY_PROMPTS[2] },
-    { icon: <SlidersHorizontal className="h-4 w-4" />, title: "开始探索", prompt: EMPTY_PROMPTS[0] },
-  ];
-  return (
-    <div className="kf-starter-prompts grid gap-3 pb-8 sm:grid-cols-3">
-      {cards.map((card) => (
-        <button key={card.title} className="kf-starter-card text-left" onClick={() => onPick(card.prompt)} type="button">
-          <span className="kf-starter-icon">{card.icon}</span>
-          <span className="min-w-0">
-            <span className="block text-sm font-medium">{card.title}</span>
-            <span className="mt-1 block truncate text-xs">{card.prompt}</span>
-          </span>
-        </button>
-      ))}
     </div>
   );
 }

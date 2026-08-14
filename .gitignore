@@ -62,4 +62,5 @@ PROGRESS.md
 .kilocode/
 .opencode/
 .trellis/
+.playwright-cli/
 AGENTS.md

@@ -38,7 +38,6 @@ import {
   Composer,
   ContextCompressionNotice,
   EmptyWorkbench,
-  StarterPromptCards,
   DEFAULT_TITLE,
   formatMessageStats,
 } from "@/components/chat";
@@ -563,20 +562,11 @@ export function ChatPage({
   const showBootShell = !authChecked || bootPhase !== "gone";
   const showChatApp = authChecked && initialLoadDone;
 
-  if (!authChecked) {
-    return (
-      <ChatLoadingShell
-        label={`正在打开 ${APP_NAME}`}
-        description="正在恢复你的知识库和会话。"
-      />
-    );
-  }
-
   return (
     <div className="relative h-dvh w-screen overflow-hidden" data-kf-root>
       {showChatApp && (
       <div
-        className="kf-chat kf-chat-root kf-page-transition h-dvh w-screen overflow-hidden"
+        className="kf-chat kf-chat-root h-dvh w-screen overflow-hidden"
         data-kf-shell
       >
       {sidebarOpen && (
@@ -692,7 +682,6 @@ export function ChatPage({
                       onSelectKb={handleKbChange}
                       onModelChange={handleModelChange}
                     />
-                    <StarterPromptCards onPick={handleSendWithLlmGuard} />
                   </div>
                 </div>
               ) : (
@@ -798,7 +787,7 @@ export default function Page() {
   return (
     <Suspense
       fallback={
-        <ChatLoadingShell label="正在打开工作台" />
+        <ChatLoadingShell animated={false} label="正在打开工作台" />
       }
     >
       <SearchParamChatPage />
