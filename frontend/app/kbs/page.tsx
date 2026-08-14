@@ -19,7 +19,7 @@ import {
   KeyRound,
   AlertCircle,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 import { getToken } from "@/lib/auth";
 import { listKbs, createKb, deleteKb, type KB, type CreateKbBody } from "@/lib/kb-api";

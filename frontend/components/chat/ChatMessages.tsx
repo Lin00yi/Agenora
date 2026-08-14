@@ -7,11 +7,13 @@ import {
   BrainCircuit,
   ChevronDown,
   ChevronRight,
+  Copy,
   LoaderCircle,
   ShieldCheck,
 } from "lucide-react";
 import ExportActions from "@/components/ExportActions";
 import ThinkingChain from "@/components/ThinkingChain";
+import { toast } from "@/lib/toast";
 import type { ConversationContextStatus } from "@/lib/conversations-api";
 import { joinAssistantText, type Message } from "@/lib/conversationStore";
 import type { MemoryTrace } from "@/lib/sseClient";
@@ -31,13 +33,35 @@ import {
 
 export const ChatMessage = memo(function ChatMessage({ message }: { message: Message }) {
   if (message.role === "user") {
+    const copyMessage = async () => {
+      try {
+        await navigator.clipboard.writeText(message.content);
+        toast.success("已复制消息");
+      } catch {
+        toast.error("复制失败");
+      }
+    };
+
     return (
       <div className="flex items-start justify-end">
         <div className="flex max-w-[78%] flex-col items-end">
           <div className="kf-message-user max-w-full whitespace-pre-wrap break-words rounded-[1.25rem] px-4 py-2.5 text-left text-[15px] leading-7 sm:px-5 sm:py-3">
             {message.content}
           </div>
-          <div className="kf-message-time mt-1.5 text-xs">{formatMessageTime(message.created_at)}</div>
+          <div className="kf-message-time mt-1.5 flex items-center gap-1 text-xs tabular-nums">
+            <time dateTime={new Date(message.created_at).toISOString()}>
+              {formatMessageTime(message.created_at)}
+            </time>
+            <button
+              type="button"
+              onClick={copyMessage}
+              className="inline-flex size-5 items-center justify-center rounded text-muted hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+              aria-label="复制用户消息"
+              title="复制消息"
+            >
+              <Copy className="size-3" aria-hidden="true" />
+            </button>
+          </div>
         </div>
       </div>
     );

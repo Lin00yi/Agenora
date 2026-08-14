@@ -19,6 +19,8 @@ dependencies = [
   "python-multipart>=0.0.9",
   # M1 — auth + app DB
   "sqlalchemy>=2.0",
+  # SQLAlchemy async engine bridges to synchronous DB drivers through greenlet.
+  "greenlet>=3.0",
   "aiosqlite>=0.20",
   "bcrypt>=4.1",
   "pyjwt>=2.8",

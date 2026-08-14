@@ -3,6 +3,17 @@
 # - Skip production nginx (needs Let's Encrypt certs on :443)
 
 services:
+  # Debug ports stay local-only. Production uses the internal Compose network
+  # and exposes only nginx on 80/443.
+  neo4j:
+    ports:
+      - "${NEO4J_HTTP_PORT:-7474}:7474"
+      - "${NEO4J_BOLT_PORT:-7687}:7687"
+
+  lightrag:
+    ports:
+      - "${LIGHTRAG_HOST_PORT:-9621}:9621"
+
   backend:
     ports:
       - "8000:8000"

@@ -10,10 +10,11 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import SystemSettingsDialog from "@/components/SystemSettingsDialog";
+import { LLMConfigurationDialog } from "@/components/LLMConfigurationDialog";
 import { Button } from "@/components/ui/button";
 import { StateView } from "@/components/ui/state-view";
 import { ArrowDown } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { APP_NAME } from "@/components/Brand";
 import { logout } from "@/lib/auth";
 import { cn } from "@/lib/cn";
@@ -81,6 +82,7 @@ export function ChatPage({
   const [contextStatusLoading, setContextStatusLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [llmConfigurationOpen, setLlmConfigurationOpen] = useState(false);
   const [composerValue, setComposerValue] = useState("");
 
   const messagesCache = useRef<Map<string, Message[]>>(new Map());
@@ -312,7 +314,7 @@ export function ChatPage({
     []
   );
 
-  const { busy, handleSend, handleStop, submitComposer, abortStreaming } = useChatSend({
+  const { busy, handleSend, handleStop, abortStreaming } = useChatSend({
     currentId,
     currentKbId,
     currentMessages,
@@ -341,6 +343,26 @@ export function ChatPage({
     logout();
     router.replace("/login");
   }, [abortStreaming, router]);
+
+  const handleSendWithLlmGuard = useCallback(
+    (message: string) => {
+      if (!llmReady) {
+        setLlmConfigurationOpen(true);
+        return;
+      }
+      void handleSend(message);
+    },
+    [handleSend, llmReady]
+  );
+
+  const submitComposerWithLlmGuard = useCallback(() => {
+    handleSendWithLlmGuard(composerValue);
+  }, [composerValue, handleSendWithLlmGuard]);
+
+  const openLlmSettings = useCallback(() => {
+    setLlmConfigurationOpen(false);
+    router.push("/settings");
+  }, [router]);
 
   const finalizeSilently = useCallback((id: string | null) => {
     if (!id) return;
@@ -648,7 +670,7 @@ export function ChatPage({
                     <EmptyWorkbench
                       centered
                       currentKbName={currentKb?.name ?? "\u901a\u7528\u5bf9\u8bdd"}
-                      onPick={handleSend}
+                      onPick={handleSendWithLlmGuard}
                     />
                     <Composer
                       centered
@@ -665,12 +687,12 @@ export function ChatPage({
                       contextStatusLoading={contextStatusLoading}
                       kbLocked={false}
                       onChange={setComposerValue}
-                      onSubmit={submitComposer}
+                      onSubmit={submitComposerWithLlmGuard}
                       onStop={handleStop}
                       onSelectKb={handleKbChange}
                       onModelChange={handleModelChange}
                     />
-                    <StarterPromptCards onPick={handleSend} />
+                    <StarterPromptCards onPick={handleSendWithLlmGuard} />
                   </div>
                 </div>
               ) : (
@@ -687,7 +709,7 @@ export function ChatPage({
                     <div className="kf-thread-inner mx-auto flex w-full max-w-[860px] flex-col gap-7 px-5 pt-5" data-kf-region="thread-inner">
                       <ContextCompressionNotice contextStatus={currentContextStatus} />
                       {visibleMessages.length === 0 ? (
-                        <EmptyWorkbench currentKbName={currentKb?.name ?? "\u901a\u7528\u5bf9\u8bdd"} onPick={handleSend} />
+                        <EmptyWorkbench currentKbName={currentKb?.name ?? "\u901a\u7528\u5bf9\u8bdd"} onPick={handleSendWithLlmGuard} />
                       ) : (
                         visibleMessages.map((message) => <ChatMessage key={message.id} message={message} />)
                       )}
@@ -721,7 +743,7 @@ export function ChatPage({
                         contextStatusLoading={contextStatusLoading}
                         kbLocked={!!currentId && hasConversationMessages}
                         onChange={setComposerValue}
-                        onSubmit={submitComposer}
+                        onSubmit={submitComposerWithLlmGuard}
                         onStop={handleStop}
                         onSelectKb={handleKbChange}
                         onModelChange={handleModelChange}
@@ -742,6 +764,11 @@ export function ChatPage({
           onUserChanged={setUser}
         />
       )}
+      <LLMConfigurationDialog
+        open={llmConfigurationOpen}
+        onOpenChange={setLlmConfigurationOpen}
+        onConfigure={openLlmSettings}
+      />
       </div>
       )}
       {showBootShell && (

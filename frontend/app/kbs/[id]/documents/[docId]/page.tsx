@@ -23,7 +23,7 @@ import {
   Split,
   Merge,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 import { getToken } from "@/lib/auth";
 import {

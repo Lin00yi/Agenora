@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { BookOpen, Database, Lock, RefreshCw, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 import { listKbs, deleteKb, type AdminKb } from "@/lib/admin-api";
 import { cn } from "@/lib/cn";

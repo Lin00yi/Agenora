@@ -92,6 +92,19 @@ export function uniqueStrings(values: Array<string | null | undefined>) {
   return Array.from(new Set(values.filter((value): value is string => !!value)));
 }
 
+/**
+ * Parse API timestamps as instants.  Conversation timestamps are stored in
+ * UTC; old SQLite responses omitted the UTC offset, so retain compatibility
+ * by treating those legacy values as UTC rather than as browser-local time.
+ */
+export function parseServerTimestamp(value: string | null | undefined): number {
+  if (!value) return Date.now();
+  const hasOffset = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value);
+  const normalized = hasOffset ? value : `${value}Z`;
+  const parsed = new Date(normalized).getTime();
+  return Number.isNaN(parsed) ? Date.now() : parsed;
+}
+
 function isRenderableMessage(message: Message) {
   if (message.role === "user") return true;
   return Boolean(
@@ -107,7 +120,7 @@ export function normalizeMessages(messages: Message[]) {
 }
 
 export function serverMsgToLocal(m: MessagePayload): Message {
-  const ts = m.created_at ? new Date(m.created_at).getTime() : Date.now();
+  const ts = parseServerTimestamp(m.created_at);
   if (m.role === "user") {
     return { id: m.id, role: "user", content: m.content, created_at: ts };
   }
@@ -125,9 +138,9 @@ export function serverMsgToLocal(m: MessagePayload): Message {
 }
 
 export function summaryToConv(s: ConversationSummary, messages: Message[] = []): Conversation {
-  const createdMs = s.created_at ? new Date(s.created_at).getTime() : Date.now();
-  const updatedMs = s.updated_at ? new Date(s.updated_at).getTime() : createdMs;
-  const finalizedMs = s.finalized_at ? new Date(s.finalized_at).getTime() : null;
+  const createdMs = parseServerTimestamp(s.created_at);
+  const updatedMs = s.updated_at ? parseServerTimestamp(s.updated_at) : createdMs;
+  const finalizedMs = s.finalized_at ? parseServerTimestamp(s.finalized_at) : null;
   return {
     id: s.id,
     title: s.title,

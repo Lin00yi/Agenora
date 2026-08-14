@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, FormEvent } from "react";
 import { ArrowRight, ChevronLeft, Lock, Mail, User as UserIcon, UserPlus } from "lucide-react";
 import Link from "next/link";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 import Brand, { APP_NAME } from "@/components/Brand";
 import BrandPanel from "@/components/BrandPanel";

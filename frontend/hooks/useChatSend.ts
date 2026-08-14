@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 import { type ToolEvent } from "@/components/ThinkingChain";
 import { DEFAULT_TITLE, mergeCitations, updateToolEvent } from "@/components/chat";

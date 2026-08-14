@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Users, Eye, CheckCircle, BookOpen, ShieldCheck } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 import Brand, { APP_NAME } from "@/components/Brand";
 import { getToken } from "@/lib/auth";

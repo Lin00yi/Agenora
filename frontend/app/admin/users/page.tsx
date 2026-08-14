@@ -11,7 +11,7 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 import { getUser as getCachedUser } from "@/lib/auth";
 import {

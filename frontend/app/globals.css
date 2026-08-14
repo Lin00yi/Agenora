@@ -1919,6 +1919,158 @@ body {
   font-weight: 600;
 }
 
+/* Global Sonner notifications. Keep status color restrained so a stack of
+   operational messages remains readable in both application themes. */
+.agenora-toaster [data-sonner-toast].agenora-toast {
+  width: min(356px, calc(100vw - 2rem));
+  min-height: 52px;
+  gap: 10px;
+  padding: 12px 42px 12px 14px;
+  border: 1px solid rgb(var(--surface-border));
+  border-radius: 14px;
+  background: rgb(var(--surface));
+  color: rgb(var(--ink));
+  box-shadow: 0 2px 6px rgb(var(--ink) / 0.06), 0 18px 42px rgb(var(--ink) / 0.1);
+}
+
+.agenora-toaster [data-sonner-toast].agenora-toast [data-icon].agenora-toast-icon {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  margin: 0;
+}
+
+.agenora-toaster .agenora-toast-title {
+  color: rgb(var(--ink));
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.agenora-toaster .agenora-toast-description {
+  margin-top: 2px;
+  color: rgb(var(--text-subtle));
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.agenora-toaster [data-sonner-toast].agenora-toast[data-type="success"] {
+  border-color: color-mix(in srgb, rgb(var(--success)) 30%, rgb(var(--surface-border)));
+  background: color-mix(in srgb, rgb(var(--success)) 8%, rgb(var(--surface)));
+}
+
+.agenora-toaster [data-sonner-toast].agenora-toast[data-type="success"] .agenora-toast-icon {
+  color: rgb(var(--success));
+}
+
+.agenora-toaster [data-sonner-toast].agenora-toast[data-type="warning"] {
+  border-color: color-mix(in srgb, rgb(var(--warning)) 34%, rgb(var(--surface-border)));
+  background: color-mix(in srgb, rgb(var(--warning)) 9%, rgb(var(--surface)));
+}
+
+.agenora-toaster [data-sonner-toast].agenora-toast[data-type="warning"] .agenora-toast-icon {
+  color: rgb(var(--warning));
+}
+
+.agenora-toaster [data-sonner-toast].agenora-toast[data-type="error"] {
+  border-color: color-mix(in srgb, rgb(var(--danger)) 34%, rgb(var(--surface-border)));
+  background: color-mix(in srgb, rgb(var(--danger)) 8%, rgb(var(--surface)));
+}
+
+.agenora-toaster [data-sonner-toast].agenora-toast[data-type="error"] .agenora-toast-icon {
+  color: rgb(var(--danger));
+}
+
+.agenora-toaster [data-sonner-toast].agenora-toast[data-type="info"] .agenora-toast-icon,
+.agenora-toaster [data-sonner-toast].agenora-toast[data-type="loading"] .agenora-toast-icon {
+  color: rgb(var(--brand));
+}
+
+.agenora-toaster .agenora-toast-action[data-button],
+.agenora-toaster .agenora-toast-cancel[data-button] {
+  height: 28px;
+  margin: 0 0 0 auto;
+  border-radius: 8px;
+  padding: 0 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.agenora-toaster .agenora-toast-action[data-button] {
+  background: rgb(var(--brand));
+  color: rgb(var(--on-brand));
+}
+
+.agenora-toaster .agenora-toast-cancel[data-button] {
+  background: rgb(var(--surface-2));
+  color: rgb(var(--ink-2));
+}
+
+.agenora-toaster .agenora-toast-action[data-button]:focus-visible,
+.agenora-toaster .agenora-toast-cancel[data-button]:focus-visible,
+.agenora-toaster .agenora-toast-close[data-close-button]:focus-visible {
+  outline: 2px solid rgb(var(--brand));
+  outline-offset: 2px;
+}
+
+.agenora-toaster .agenora-toast-close[data-close-button] {
+  top: 50%;
+  right: 10px;
+  left: auto;
+  width: 24px;
+  height: 24px;
+  transform: translateY(-50%);
+  border-color: transparent;
+  background: transparent;
+  color: rgb(var(--text-subtle));
+}
+
+.agenora-toaster [data-sonner-toast].agenora-toast[data-type="success"] .agenora-toast-close,
+.agenora-toaster [data-sonner-toast].agenora-toast[data-type="warning"] .agenora-toast-close,
+.agenora-toaster [data-sonner-toast].agenora-toast[data-type="error"] .agenora-toast-close {
+  background: transparent;
+}
+
+.agenora-toaster .agenora-toast-close[data-close-button]:hover {
+  border-color: transparent;
+  background: rgb(var(--ink) / 0.07);
+  color: rgb(var(--ink));
+}
+
+/* Sonner's rich-color defaults are tuned for a light surface. In the charcoal
+   theme, give every status an explicit dark surface so status feedback stays
+   distinct without lowering text or close-control contrast. */
+.dark .agenora-toaster [data-sonner-toast].agenora-toast {
+  border-color: rgb(var(--surface-border-strong));
+  background: rgb(var(--surface));
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.3), 0 18px 42px rgb(0 0 0 / 0.42);
+}
+
+.dark .agenora-toaster [data-sonner-toast].agenora-toast[data-type="success"] {
+  border-color: color-mix(in srgb, rgb(var(--success)) 48%, rgb(var(--surface-border-strong)));
+  background: color-mix(in srgb, rgb(var(--success)) 18%, rgb(var(--surface)));
+}
+
+.dark .agenora-toaster [data-sonner-toast].agenora-toast[data-type="warning"] {
+  border-color: color-mix(in srgb, rgb(var(--warning)) 50%, rgb(var(--surface-border-strong)));
+  background: color-mix(in srgb, rgb(var(--warning)) 18%, rgb(var(--surface)));
+}
+
+.dark .agenora-toaster [data-sonner-toast].agenora-toast[data-type="error"] {
+  border-color: color-mix(in srgb, rgb(var(--danger)) 48%, rgb(var(--surface-border-strong)));
+  background: color-mix(in srgb, rgb(var(--danger)) 18%, rgb(var(--surface)));
+}
+
+.dark .agenora-toaster .agenora-toast-close[data-close-button] {
+  color: rgb(var(--ink-2));
+}
+
+.dark .agenora-toaster .agenora-toast-close[data-close-button]:hover {
+  background: rgb(255 255 255 / 0.1);
+  color: rgb(var(--ink));
+}
+
 @layer base {
   .theme {
     --font-heading: var(--font-sans);

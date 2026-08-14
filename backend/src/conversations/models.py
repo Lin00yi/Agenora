@@ -14,6 +14,21 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _isoformat_utc(value: datetime | None) -> str | None:
+    """Serialize persisted timestamps as explicit UTC instants.
+
+    SQLite does not retain timezone metadata for ``DateTime(timezone=True)``.
+    The project stores these values in UTC, so values read back from SQLite can
+    be naive even though they represent UTC.  Re-attaching UTC here keeps the
+    API unambiguous and lets browsers render the user's local timezone.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat()
+
+
 class Conversation(Base):
     """One chat thread owned by exactly one user."""
 
@@ -49,9 +64,9 @@ class Conversation(Base):
             "kb_id": self.kb_id,
             "llm_model": self.llm_model,
             "message_count": len(self.messages) if self.messages is not None else 0,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-            "finalized_at": self.finalized_at.isoformat() if self.finalized_at else None,
+            "created_at": _isoformat_utc(self.created_at),
+            "updated_at": _isoformat_utc(self.updated_at),
+            "finalized_at": _isoformat_utc(self.finalized_at),
         }
 
     def to_dict_with_messages(self) -> dict:
@@ -116,7 +131,7 @@ class Message(Base):
             "citations": citations,
             "cost_usd": self.cost_usd,
             "error": self.error or None,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "created_at": _isoformat_utc(self.created_at),
         }
 
     @staticmethod

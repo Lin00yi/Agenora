@@ -372,12 +372,19 @@ export function formatTime(value?: number | null) {
   }).format(value);
 }
 
-export function formatMessageTime(value?: number | null) {
+export function formatMessageTime(value?: number | null, now: number = Date.now()) {
   if (!value) return "";
-  return new Intl.DateTimeFormat("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(value);
+  const date = new Date(value);
+  const current = new Date(now);
+  const pad = (part: number) => String(part).padStart(2, "0");
+  const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const isToday =
+    date.getFullYear() === current.getFullYear() &&
+    date.getMonth() === current.getMonth() &&
+    date.getDate() === current.getDate();
+
+  if (isToday) return time;
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${time}:${pad(date.getSeconds())}`;
 }
 
 export function hasVisibleCitations(citations?: Citation[] | null) {

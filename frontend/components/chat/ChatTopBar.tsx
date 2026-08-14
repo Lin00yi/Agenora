@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ChevronLeft, Copy, Database, MoreHorizontal } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import {
   DropdownMenu,
   DropdownMenuContent,

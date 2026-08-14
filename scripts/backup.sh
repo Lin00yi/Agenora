@@ -4,7 +4,6 @@
 #   ./scripts/backup.sh                  备份到 ./backups/agenora-*-YYYY-MM-DD.tgz
 #   ./scripts/backup.sh /mnt/backups     备份到指定目录
 #
-# Volume names remain anykb_* for backward compatibility with existing installs.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -18,13 +17,13 @@ DATA_OUT="$DEST_DIR/agenora-data-$STAMP.tgz"
 
 echo "==> Backing up postgres volume → $PG_OUT"
 docker run --rm \
-  -v anykb_postgres-data:/src:ro \
+  -v agenora_postgres-data:/src:ro \
   -v "$(realpath "$DEST_DIR")":/dst \
   alpine tar czf "/dst/agenora-pg-$STAMP.tgz" -C /src .
 
 echo "==> Backing up backend data volume (Milvus Lite + uploads) → $DATA_OUT"
 docker run --rm \
-  -v anykb_backend-data:/src:ro \
+  -v agenora_backend-data:/src:ro \
   -v "$(realpath "$DEST_DIR")":/dst \
   alpine tar czf "/dst/agenora-data-$STAMP.tgz" -C /src .
 

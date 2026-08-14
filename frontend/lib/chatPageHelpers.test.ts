@@ -3,6 +3,7 @@ import {
   conversationHref,
   conversationIdFromPath,
   getContextWindowForModel,
+  parseServerTimestamp,
   uniqueStrings,
 } from "@/lib/chatPageHelpers";
 
@@ -21,5 +22,11 @@ describe("chatPageHelpers", () => {
 
   it("dedupes strings while dropping empties", () => {
     expect(uniqueStrings(["a", null, "a", "", "b", undefined])).toEqual(["a", "b"]);
+  });
+
+  it("treats legacy timezone-less API timestamps as UTC", () => {
+    const expected = Date.UTC(2026, 7, 14, 7, 22, 0);
+    expect(parseServerTimestamp("2026-08-14T07:22:00")).toBe(expected);
+    expect(parseServerTimestamp("2026-08-14T07:22:00+00:00")).toBe(expected);
   });
 });

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Copy, Image as ImageIcon } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 import ShareCardDialog from "@/components/ShareCardDialog";
 

@@ -2,18 +2,17 @@ name: agenora
 
 services:
   # ===== App DB (PostgreSQL — commercial-grade, multi-worker safe) =====
-  # DB credentials stay `anykb` so existing postgres volumes keep working.
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-anykb}
-      POSTGRES_USER: ${POSTGRES_USER:-anykb}
+      POSTGRES_DB: ${POSTGRES_DB:-agenora}
+      POSTGRES_USER: ${POSTGRES_USER:-agenora}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-anykb} -d $${POSTGRES_DB:-anykb}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-agenora} -d $${POSTGRES_DB:-agenora}"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -27,9 +26,6 @@ services:
       NEO4J_PLUGINS: '["apoc"]'
       NEO4J_server_memory_heap_initial__size: 512m
       NEO4J_server_memory_heap_max__size: 1G
-    ports:
-      - "${NEO4J_HTTP_PORT:-7474}:7474"
-      - "${NEO4J_BOLT_PORT:-7687}:7687"
     volumes:
       - neo4j-data:/data
     healthcheck:
@@ -51,8 +47,6 @@ services:
     depends_on:
       neo4j:
         condition: service_healthy
-    ports:
-      - "${LIGHTRAG_HOST_PORT:-9621}:9621"
     environment:
       HOST: "0.0.0.0"
       PORT: "9621"
@@ -97,10 +91,10 @@ services:
       postgres:
         condition: service_healthy
       lightrag:
-        condition: service_started
+        condition: service_healthy
     environment:
       # --- App DB ---
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-anykb}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-anykb}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-agenora}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-agenora}
 
       # --- Vector store (Milvus Lite embedded) ---
       VECTOR_STORE: milvus
@@ -162,7 +156,8 @@ services:
     build: ./frontend
     restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     environment:
       BACKEND_URL: http://backend:8000
       NEXT_PUBLIC_APP_NAME: Agenora
@@ -175,13 +170,15 @@ services:
     image: nginx:1.27-alpine
     restart: unless-stopped
     depends_on:
-      - backend
-      - frontend
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
     ports:
       - "80:80"
       - "443:443"
     environment:
-      DOMAIN: ${DOMAIN:-anykb.cc.cd}
+      DOMAIN: ${DOMAIN:-agenora.cc.cd}
       NGINX_ENVSUBST_FILTER: DOMAIN
     volumes:
       - ./nginx/agenora.conf.template:/etc/nginx/templates/default.conf.template:ro
@@ -190,11 +187,11 @@ services:
 
 volumes:
   postgres-data:
-    name: anykb_postgres-data
+    name: agenora_postgres-data
   backend-data:
-    name: anykb_backend-data
+    name: agenora_backend-data
   certbot-www:
-    name: anykb_certbot-www
+    name: agenora_certbot-www
   neo4j-data:
     name: agenora_neo4j-data
   lightrag-data:

@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Download, Copy, Loader2, Image as ImageIcon, Sparkles } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 import AppModal from "@/components/AppModal";
 import { APP_NAME } from "@/components/Brand";

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Bot, Globe2, KeyRound, Loader2, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 import Select from "@/components/Select";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
