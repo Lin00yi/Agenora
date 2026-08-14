@@ -32,6 +32,7 @@ from src.infra.crypto import decrypt, encrypt
 from src.infra.database import get_session
 from src.infra.llm import normalize_model_name
 from src.kb.models import KB
+from src.conversations.context import resolve_context_window
 from src.settings_user.probe import (
     EmbeddingProbeResult,
     ProbeError,
@@ -56,7 +57,9 @@ class LLMBody(BaseModel):
     api_key: str = Field(default="", max_length=512)  # "" = keep existing
     default_model: str = Field(min_length=1, max_length=128)
     complex_model: str = Field(default="", max_length=128)
-    context_window: int = Field(default=16_000, ge=4_096, le=2_000_000)
+    # None is the default for new configurations: resolve well-known model IDs
+    # in the server registry. A number is an explicit BYOK override.
+    context_window: int | None = Field(default=None, ge=4_096, le=2_000_000)
 
 
 class EmbeddingBody(BaseModel):
@@ -79,7 +82,9 @@ class RerankerBody(BaseModel):
 class ProbeLLMBody(BaseModel):
     provider: LLM_PROVIDERS
     base_url: str = Field(min_length=1, max_length=255)
-    api_key: str = Field(min_length=1, max_length=512)
+    # Empty means "reuse the key already saved for this exact provider + URL".
+    # The route below deliberately rejects an empty value for any other target.
+    api_key: str = Field(default="", max_length=512)
 
 
 class ProbeEmbeddingBody(BaseModel):
@@ -132,25 +137,43 @@ def _to_public(user: User) -> dict:
         if (not s.byok_required and system_llm_configured)
         else "missing"
     )
+    saved_default_model = normalize_model_name(user.llm_default_model)
+    saved_context_override = getattr(user, "llm_context_window", None)
+    saved_context = (
+        resolve_context_window(saved_default_model, saved_context_override)
+        if saved_default_model
+        else None
+    )
+    effective_model = (
+        saved_default_model
+        if user_llm_configured
+        else normalize_model_name(s.llm_default_model)
+        if effective_llm_source == "system"
+        else None
+    )
+    effective_context = (
+        resolve_context_window(
+            effective_model,
+            saved_context_override if effective_llm_source == "user" else None,
+        )
+        if effective_model
+        else None
+    )
 
     return {
         "llm": {
             "provider": user.llm_provider,
             "base_url": user.llm_base_url,
-            "default_model": normalize_model_name(user.llm_default_model),
+            "default_model": saved_default_model,
             "complex_model": normalize_model_name(user.llm_complex_model),
-            "context_window": getattr(user, "llm_context_window", None) or 16_000,
+            "context_window": saved_context_override,
+            "context_window_resolved": saved_context.value if saved_context else None,
+            "context_window_source": saved_context.source if saved_context else None,
             "has_key": bool(user.llm_api_key_enc),
             "configured": user_llm_configured,
             "effective_configured": effective_llm_source != "missing",
             "effective_source": effective_llm_source,
-            "effective_model": (
-                normalize_model_name(user.llm_default_model)
-                if user_llm_configured
-                else normalize_model_name(s.llm_default_model)
-                if effective_llm_source == "system"
-                else None
-            ),
+            "effective_model": effective_model,
             "effective_complex_model": (
                 normalize_model_name(user.llm_complex_model or user.llm_default_model)
                 if user_llm_configured
@@ -158,6 +181,8 @@ def _to_public(user: User) -> dict:
                 if effective_llm_source == "system"
                 else None
             ),
+            "effective_context_window": effective_context.value if effective_context else None,
+            "effective_context_window_source": effective_context.source if effective_context else None,
         },
         "embedding": {
             "provider": user.embedding_provider,

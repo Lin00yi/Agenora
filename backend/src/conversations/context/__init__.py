@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from .assemble import build_context_for_conversation
 from .budget import (
+    ContextWindowResolution,
+    ContextWindowSource,
     OutputTask,
     compute_budget,
     context_status_payload,
@@ -16,6 +18,7 @@ from .budget import (
     estimate_messages_tokens,
     estimate_tokens,
     rag_reserve_for_kb,
+    resolve_context_window,
     resolve_output_token_budget,
     trim_messages_to_token_budget,
     truncate_text_to_token_budget,
@@ -121,6 +124,8 @@ __all__ = [
     "SYSTEM_AND_TOOL_RESERVE",
     "BuiltContext",
     "ContextBudget",
+    "ContextWindowResolution",
+    "ContextWindowSource",
     "MemoryCandidate",
     "OutputTask",
     "backfill_user_memory_embeddings",
@@ -151,6 +156,7 @@ __all__ = [
     "refresh_memory_embedding",
     "resolve_output_token_budget",
     "retrieve_user_memories",
+    "resolve_context_window",
     "run_memory_heavy_background",
     "store_explicit_user_memory",
     "store_memory_candidates",

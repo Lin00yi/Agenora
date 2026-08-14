@@ -18,13 +18,18 @@ export type MyLLMSettings = {
   base_url: string | null;
   default_model: string | null;
   complex_model: string | null;
-  context_window: number;
+  /** Explicit user override. Null means resolve from the server-owned model registry. */
+  context_window: number | null;
+  context_window_resolved?: number | null;
+  context_window_source?: "manual" | "registry" | "fallback" | null;
   has_key: boolean;
   configured: boolean;
   effective_configured?: boolean;
   effective_source?: "user" | "system" | "missing";
   effective_model?: string | null;
   effective_complex_model?: string | null;
+  effective_context_window?: number | null;
+  effective_context_window_source?: "manual" | "registry" | "fallback" | null;
 };
 
 export type MyEmbeddingSettings = {
@@ -66,7 +71,7 @@ export type SaveLLMBody = {
   api_key: string;
   default_model: string;
   complex_model?: string;
-  context_window: number;
+  context_window: number | null;
 };
 
 export type SaveEmbeddingBody = {

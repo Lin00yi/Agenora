@@ -388,10 +388,13 @@ async def test_consolidation_rewrites_legacy_hash_constraint_keys(db, create_use
 
 
 def test_unknown_models_use_a_conservative_context_window() -> None:
-    from src.conversations.context import context_window_for_model
+    from src.conversations.context import context_window_for_model, resolve_context_window
 
     assert context_window_for_model("custom-small-model") == 16_000
     assert context_window_for_model("custom-small-model", configured_window=8_192) == 8_192
+    assert resolve_context_window("gpt-4o").source == "registry"
+    assert resolve_context_window("custom-small-model").source == "fallback"
+    assert resolve_context_window("gpt-4o", configured_window=8_192).source == "manual"
 
 
 def test_deterministic_summary_fallback_keeps_the_structured_contract() -> None:

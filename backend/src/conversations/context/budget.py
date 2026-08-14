@@ -1,6 +1,7 @@
 """Token estimation and context budget helpers."""
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Literal
 
 from src.conversations.models import ConversationSummary, Message
@@ -137,18 +138,42 @@ def trim_messages_to_token_budget(
     return kept
 
 
-def context_window_for_model(model: str | None, configured_window: int | None = None) -> int:
+ContextWindowSource = Literal["manual", "registry", "fallback"]
+
+
+@dataclass(frozen=True)
+class ContextWindowResolution:
+    """The effective context capacity and why it was selected."""
+
+    value: int
+    source: ContextWindowSource
+
+
+def resolve_context_window(
+    model: str | None, configured_window: int | None = None
+) -> ContextWindowResolution:
+    """Resolve a model's usable input window from one server-owned registry.
+
+    A stored value is an intentional BYOK override. Unknown OpenAI-compatible
+    models fall back conservatively rather than assuming the capacity of a
+    similarly named public model.
+    """
     if configured_window is not None:
-        return configured_window
+        return ContextWindowResolution(configured_window, "manual")
     if not model:
-        return DEFAULT_CONTEXT_WINDOW
+        return ContextWindowResolution(DEFAULT_CONTEXT_WINDOW, "fallback")
     configured = MODEL_CONTEXT_WINDOWS.get(model)
     if configured:
-        return configured
+        return ContextWindowResolution(configured, "registry")
     normalized = model.lower()
     if normalized.startswith(("gpt-3.5", "gpt-4-0613", "gpt-4-32k")):
-        return 16_000
-    return DEFAULT_CONTEXT_WINDOW
+        return ContextWindowResolution(16_000, "registry")
+    return ContextWindowResolution(DEFAULT_CONTEXT_WINDOW, "fallback")
+
+
+def context_window_for_model(model: str | None, configured_window: int | None = None) -> int:
+    """Compatibility helper for call sites that only need the numeric budget."""
+    return resolve_context_window(model, configured_window).value
 
 
 OutputTask = Literal["answer", "long_answer", "report"]
@@ -286,4 +311,3 @@ def context_status_payload(
         "summary": summary.to_public_dict() if summary else None,
         "retained_recent_turns": RECENT_TURNS,
     }
-
