@@ -13,6 +13,7 @@ import {
 import ModelSelect from "@/components/Select";
 import type { ConversationContextStatus } from "@/lib/conversations-api";
 import type { KB } from "@/lib/kb-api";
+import type { LLMModelProfile } from "@/lib/settings-api";
 import { cn } from "@/lib/cn";
 import type { LlmSource } from "./types";
 import { formatContextUsagePercent, formatTokenCount, resolveContextUsagePercent } from "./utils";
@@ -53,7 +54,10 @@ export function Composer({
   currentKbId,
   kbs,
   currentModel,
+  currentProfileId,
   modelOptions,
+  modelProfiles = [],
+  modelLabels = {},
   llmReady,
   llmSource,
   contextStatus,
@@ -72,7 +76,10 @@ export function Composer({
   currentKbId: string | null;
   kbs: KB[];
   currentModel: string | null;
+  currentProfileId?: string | null;
   modelOptions: string[];
+  modelProfiles?: LLMModelProfile[];
+  modelLabels?: Record<string, string>;
   llmReady: boolean;
   llmSource: LlmSource;
   contextStatus: ConversationContextStatus | null;
@@ -85,10 +92,15 @@ export function Composer({
   onModelChange: (model: string | null) => void;
   centered?: boolean;
 }) {
+  const profileOptions = modelProfiles.map((profile) => ({
+    value: profile.id,
+    label: modelLabels[profile.id] ?? `${profile.display_name} · ${profile.model_id}`,
+  }));
   const visibleModelOptions =
-    currentModel && !modelOptions.includes(currentModel)
-      ? [currentModel, ...modelOptions]
-      : modelOptions;
+    profileOptions.length > 0
+      ? profileOptions
+      : (currentModel && !modelOptions.includes(currentModel) ? [currentModel, ...modelOptions] : modelOptions)
+          .map((model) => ({ value: model, label: modelLabels[model] ? `${modelLabels[model]} · ${model}` : model }));
   const showModelSelector = visibleModelOptions.length > 1;
   const defaultModelLabel = llmReady
     ? "\u81ea\u52a8"
@@ -165,10 +177,10 @@ export function Composer({
                 contentPosition="popper"
                 disabled={busy}
                 onChange={(event) => onModelChange(event.target.value || null)}
-                options={visibleModelOptions.map((model) => ({ value: model, label: model }))}
+                options={visibleModelOptions}
                 placeholderOption={{ value: "", label: defaultModelLabel }}
                 title="\u6a21\u578b\u9009\u62e9"
-                value={currentModel ?? ""}
+                value={modelProfiles.length > 0 ? currentProfileId ?? "" : currentModel ?? ""}
               />
             )}
           </div>

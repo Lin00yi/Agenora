@@ -34,6 +34,9 @@ def build_graph(
     *,
     kb=None,  # KB row from src.kb.models, or None for general chat mode
     llm_cfg: "UserLLMConfig | None" = None,
+    complex_llm_cfg: "UserLLMConfig | None" = None,
+    triage_llm_cfg: "UserLLMConfig | None" = None,
+    fallback_llm_cfg: "UserLLMConfig | None" = None,
     embedding_cfg: "UserEmbeddingConfig | None" = None,
     reranker_cfg: "UserRerankerConfig | None" = None,
     kb_web_search_enabled: bool = False,
@@ -113,7 +116,7 @@ def build_graph(
                 cost=cost,
                 kb_name=kb.name,
                 kb_description=kb.description or "",
-                llm_cfg=llm_cfg,
+                llm_cfg=triage_llm_cfg or llm_cfg,
             ),
         )
         g.add_node(
@@ -132,6 +135,8 @@ def build_graph(
             include_kb_skill=include_kb_skill,
             excluded_tool_names={"search_kb", "search_kg"} if user_kb_mode else set(),
             llm_cfg=llm_cfg,
+            complex_llm_cfg=complex_llm_cfg,
+            fallback_llm_cfg=fallback_llm_cfg,
             emit=em,
         ),
     )

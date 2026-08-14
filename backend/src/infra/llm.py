@@ -84,6 +84,22 @@ def get_client(cfg: "UserLLMConfig | None" = None):
     return AsyncAnthropic(api_key=s.anthropic_api_key, base_url=s.anthropic_base_url)
 
 
+def should_route_to_complex(
+    messages: list[dict], tools: list[dict], cfg: "UserLLMConfig | None" = None
+) -> bool:
+    """Deterministic complexity threshold shared by model and config routing."""
+    last_user = next((m for m in reversed(messages) if m.get("role") == "user"), None)
+    text_len = 0
+    if last_user:
+        content = last_user.get("content", "")
+        if isinstance(content, str):
+            text_len = len(content)
+        elif isinstance(content, list):
+            text_len = sum(len(b.get("text", "")) for b in content if isinstance(b, dict))
+    # Upgrade to complex model if many tools OR very long user input.
+    return bool(getattr(cfg, "complex_enabled", True) and (len(tools) > 5 or text_len > 2000))
+
+
 def pick_model(messages: list[dict], tools: list[dict], cfg: "UserLLMConfig | None" = None) -> str:
     """Route between default and complex model."""
     if cfg is not None:
@@ -96,19 +112,7 @@ def pick_model(messages: list[dict], tools: list[dict], cfg: "UserLLMConfig | No
 
     default_model = normalize_model_name(default_model) or default_model
     complex_model = normalize_model_name(complex_model) or complex_model
-
-    last_user = next((m for m in reversed(messages) if m.get("role") == "user"), None)
-    text_len = 0
-    if last_user:
-        content = last_user.get("content", "")
-        if isinstance(content, str):
-            text_len = len(content)
-        elif isinstance(content, list):
-            text_len = sum(len(b.get("text", "")) for b in content if isinstance(b, dict))
-    # Upgrade to complex model if many tools OR very long user input.
-    if len(tools) > 5 or text_len > 2000:
-        return complex_model
-    return default_model
+    return complex_model if should_route_to_complex(messages, tools, cfg) else default_model
 
 
 def resolve_empty_answer_fallback_model(
@@ -132,7 +136,11 @@ def resolve_empty_answer_fallback_model(
     default_model = normalize_model_name(default_model) or default_model
     complex_model = normalize_model_name(complex_model) or complex_model
 
-    if complex_model and complex_model != current:
+    fallback_model = getattr(cfg, "fallback_model", None) if cfg is not None else None
+    fallback_model = normalize_model_name(fallback_model) or (fallback_model or "").strip()
+    if fallback_model and fallback_model != current:
+        return fallback_model
+    if getattr(cfg, "complex_enabled", True) and complex_model and complex_model != current:
         return complex_model
     if default_model and default_model != current:
         return default_model
@@ -147,4 +155,3 @@ def with_cache_control(blocks: list[dict], cfg: "UserLLMConfig | None" = None) -
     out = [dict(b) for b in blocks]
     out[-1]["cache_control"] = {"type": "ephemeral"}
     return out
-

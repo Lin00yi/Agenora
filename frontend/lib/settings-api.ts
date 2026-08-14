@@ -30,6 +30,42 @@ export type MyLLMSettings = {
   effective_complex_model?: string | null;
   effective_context_window?: number | null;
   effective_context_window_source?: "manual" | "registry" | "fallback" | null;
+  complex_enabled?: boolean;
+  default_profile_id?: string | null;
+  complex_profile_id?: string | null;
+  triage_profile_id?: string | null;
+  fallback_profile_id?: string | null;
+  triage_model?: string | null;
+  fallback_model?: string | null;
+  connections?: LLMConnection[];
+  model_profiles?: LLMModelProfile[];
+};
+
+export type LLMConnection = {
+  id: string;
+  display_name: string;
+  provider: LLMProvider;
+  base_url: string;
+  has_key: boolean;
+  enabled: boolean;
+  is_legacy_default: boolean;
+  health?: {
+    state: "open" | "closed";
+    consecutive_failures: number;
+    retry_at: string | null;
+    last_success_at: string | null;
+    last_error_category: string | null;
+  };
+};
+
+export type LLMModelProfile = {
+  id: string;
+  connection_id: string | null;
+  display_name: string;
+  model_id: string;
+  context_window: number | null;
+  enabled: boolean;
+  supports_tools: boolean;
 };
 
 export type MyEmbeddingSettings = {
@@ -69,9 +105,35 @@ export type SaveLLMBody = {
   provider: LLMProvider;
   base_url: string;
   api_key: string;
-  default_model: string;
+  /** Required only for the first connection. Subsequent saves preserve routing. */
+  default_model?: string;
   complex_model?: string;
   context_window: number | null;
+};
+
+export type SaveLLMModelProfileBody = {
+  connection_id?: string | null;
+  display_name: string;
+  model_id: string;
+  context_window: number | null;
+  enabled: boolean;
+  supports_tools: boolean;
+};
+
+export type SaveLLMConnectionBody = {
+  display_name: string;
+  provider: LLMProvider;
+  base_url: string;
+  api_key: string;
+  enabled: boolean;
+};
+
+export type SaveLLMModelPolicyBody = {
+  default_profile_id: string;
+  complex_enabled: boolean;
+  complex_profile_id: string | null;
+  triage_profile_id: string | null;
+  fallback_profile_id: string | null;
 };
 
 export type SaveEmbeddingBody = {
@@ -168,6 +230,61 @@ export async function saveLLMSettings(body: SaveLLMBody): Promise<MySettings> {
 
 export async function clearLLMSettings(): Promise<void> {
   await unwrap(await authFetch("/api/settings/llm", { method: "DELETE" }));
+}
+
+export async function createLLMConnection(
+  body: SaveLLMConnectionBody
+): Promise<LLMConnection> {
+  return unwrap(
+    await authFetch("/api/settings/llm/connections", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+  );
+}
+
+export async function deleteLLMConnection(id: string): Promise<void> {
+  await unwrap(await authFetch(`/api/settings/llm/connections/${id}`, { method: "DELETE" }));
+}
+
+export async function createLLMModelProfile(
+  body: SaveLLMModelProfileBody
+): Promise<LLMModelProfile> {
+  return unwrap(
+    await authFetch("/api/settings/llm/models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+  );
+}
+
+export async function updateLLMModelProfile(
+  id: string,
+  body: SaveLLMModelProfileBody
+): Promise<LLMModelProfile> {
+  return unwrap(
+    await authFetch(`/api/settings/llm/models/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+  );
+}
+
+export async function deleteLLMModelProfile(id: string): Promise<void> {
+  await unwrap(await authFetch(`/api/settings/llm/models/${id}`, { method: "DELETE" }));
+}
+
+export async function saveLLMModelPolicy(body: SaveLLMModelPolicyBody): Promise<MySettings> {
+  return unwrap(
+    await authFetch("/api/settings/llm/policy", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+  );
 }
 
 export async function saveEmbeddingSettings(

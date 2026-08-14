@@ -7,9 +7,15 @@ from typing import Any, TYPE_CHECKING
 from src.agent.prompts import SYSTEM_PROMPT
 from src.agent.state import AgentState
 from src.conversations.context import MAX_OUTPUT_TOKENS, resolve_output_token_budget
-from src.infra.llm import CostTracker, pick_model, resolve_empty_answer_fallback_model
+from src.infra.llm import (
+    CostTracker,
+    pick_model,
+    resolve_empty_answer_fallback_model,
+    should_route_to_complex,
+)
 from src.infra.llm_adapters import create_tool_adapter
 from src.observability import traced
+from src.settings_user import configured_context_window_for_model
 from src.tools.base import ToolRegistry
 
 from .constants import EMPTY_ANSWER_FALLBACK, MAX_AUTO_CONTINUATIONS, MAX_ITERATIONS
@@ -37,6 +43,8 @@ async def reason_node(
     include_kb_skill: bool = False,
     excluded_tool_names: set[str] | None = None,
     llm_cfg: "UserLLMConfig | None" = None,
+    complex_llm_cfg: "UserLLMConfig | None" = None,
+    fallback_llm_cfg: "UserLLMConfig | None" = None,
     emit: Any = None,
 ) -> AgentState:
     """LLM decides next action: call tools, call skill, or finish.
@@ -109,10 +117,16 @@ async def reason_node(
         for schema in registry.all_schemas()
         if schema.get("name") not in excluded_tool_names
     ]
-    model = pick_model(messages, tools_schema, llm_cfg)
-    configured_context_window = (
-        getattr(llm_cfg, "context_window", None) if llm_cfg is not None else None
+    use_complex_profile = bool(
+        complex_llm_cfg is not None and should_route_to_complex(messages, tools_schema, llm_cfg)
     )
+    active_llm_cfg = complex_llm_cfg if use_complex_profile else llm_cfg
+    model = (
+        active_llm_cfg.default_model
+        if use_complex_profile and active_llm_cfg is not None
+        else pick_model(messages, tools_schema, llm_cfg)
+    )
+    configured_context_window = configured_context_window_for_model(active_llm_cfg, model)
     output_task = _infer_output_task(messages, kb_context)
     output_token_budget = resolve_output_token_budget(
         model=model,
@@ -128,7 +142,7 @@ async def reason_node(
         configured_context_window=configured_context_window,
         output_token_budget=output_token_budget,
     )
-    adapter = create_tool_adapter(llm_cfg)
+    adapter = create_tool_adapter(active_llm_cfg)
 
     # Phase 3: every reason text round streams as timeline tokens. If the model
     # then chooses tools, seal the text segment (frontend keeps it above tools)
@@ -159,19 +173,59 @@ async def reason_node(
 
     from src.infra.llm_adapters import StreamHooks
 
-    resp = await _chat_with_budget_retry(
-        adapter,
-        model=model,
-        system_prompt=effective_system_prompt,
-        messages=provider_messages,
-        tools=tools_schema,
-        max_tokens=output_token_budget,
-        stream=True,
-        hooks=StreamHooks(
-            on_text_delta=_on_text_delta,
-            on_tool_detected=_on_tool_detected,
-        ),
-    )
+    try:
+        resp = await _chat_with_connection_health(
+            adapter,
+            active_llm_cfg,
+            model=model,
+            system_prompt=effective_system_prompt,
+            messages=provider_messages,
+            tools=tools_schema,
+            max_tokens=output_token_budget,
+            stream=True,
+            hooks=StreamHooks(
+                on_text_delta=_on_text_delta,
+                on_tool_detected=_on_tool_detected,
+            ),
+        )
+    except Exception:  # noqa: BLE001
+        # A streaming response is irrevocable after client-visible content.
+        # Only retry another provider before the first token/tool signal.
+        if report_started or fallback_llm_cfg is None or fallback_llm_cfg == active_llm_cfg:
+            raise
+        log.exception("reason_pre_token_failure model=%s; trying configured fallback", model)
+        active_llm_cfg = fallback_llm_cfg
+        model = fallback_llm_cfg.default_model
+        configured_context_window = configured_context_window_for_model(active_llm_cfg, model)
+        output_token_budget = resolve_output_token_budget(
+            model=model,
+            configured_window=configured_context_window,
+            task=output_task,  # type: ignore[arg-type]
+            reserved_prompt_tokens=_prompt_reserve_tokens(effective_system_prompt, tools_schema),
+        )
+        provider_messages = allocate_provider_context(
+            model=model,
+            system_prompt=effective_system_prompt,
+            tools_schema=tools_schema,
+            conversation_messages=conversation_messages,
+            configured_context_window=configured_context_window,
+            output_token_budget=output_token_budget,
+        )
+        adapter = create_tool_adapter(active_llm_cfg)
+        resp = await _chat_with_connection_health(
+            adapter,
+            active_llm_cfg,
+            model=model,
+            system_prompt=effective_system_prompt,
+            messages=provider_messages,
+            tools=tools_schema,
+            max_tokens=output_token_budget,
+            stream=True,
+            hooks=StreamHooks(
+                on_text_delta=_on_text_delta,
+                on_tool_detected=_on_tool_detected,
+            ),
+        )
     cost.add(model, resp.usage)
 
     text_parts = resp.text_parts
@@ -219,12 +273,21 @@ async def reason_node(
             model,
             iters + 1,
         )
-        fallback_model = resolve_empty_answer_fallback_model(model, llm_cfg)
+        fallback_model = (
+            fallback_llm_cfg.default_model
+            if fallback_llm_cfg is not None and fallback_llm_cfg != active_llm_cfg
+            else resolve_empty_answer_fallback_model(model, active_llm_cfg)
+        )
         recovered, recovered_streamed = await _recover_empty_answer_pipeline(
             adapter,
             cost=cost,
             model=model,
             fallback_model=fallback_model,
+            fallback_adapter=(
+                create_tool_adapter(fallback_llm_cfg)
+                if fallback_llm_cfg is not None and fallback_llm_cfg != active_llm_cfg
+                else adapter
+            ),
             system_prompt=effective_system_prompt,
             provider_messages=provider_messages,
             max_tokens=output_token_budget,
@@ -363,6 +426,7 @@ async def _recover_empty_answer_pipeline(
     cost: CostTracker,
     model: str,
     fallback_model: str | None,
+    fallback_adapter: Any | None = None,
     system_prompt: str,
     provider_messages: list[dict[str, Any]],
     max_tokens: int,
@@ -392,7 +456,7 @@ async def _recover_empty_answer_pipeline(
         fallback_model,
     )
     recovered2, streamed2 = await _recover_empty_answer(
-        adapter,
+        fallback_adapter or adapter,
         cost=cost,
         model=fallback_model,
         system_prompt=system_prompt,
@@ -454,6 +518,29 @@ async def _chat_with_budget_retry(
         if max_tokens > MAX_OUTPUT_TOKENS and _looks_like_output_budget_rejection(exc):
             return await _call(MAX_OUTPUT_TOKENS)
         raise
+
+
+async def _chat_with_connection_health(
+    adapter: Any,
+    llm_cfg: "UserLLMConfig | None",
+    **kwargs: Any,
+):
+    """Run an initial provider attempt and persist connection health."""
+    from src.settings_user.connection_health import (
+        assert_llm_connection_available,
+        record_llm_connection_failure,
+        record_llm_connection_success,
+    )
+
+    connection_id = getattr(llm_cfg, "connection_id", None)
+    await assert_llm_connection_available(connection_id)
+    try:
+        response = await _chat_with_budget_retry(adapter, **kwargs)
+    except Exception as exc:  # noqa: BLE001
+        await record_llm_connection_failure(connection_id, exc)
+        raise
+    await record_llm_connection_success(connection_id)
+    return response
 
 
 async def _auto_continue_report(

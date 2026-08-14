@@ -39,6 +39,9 @@ class Conversation(Base):
     title: Mapped[str] = mapped_column(String(128), default="新对话", nullable=False)
     kb_id: Mapped[str | None] = mapped_column(String(36), nullable=True, default=None)
     llm_model: Mapped[str | None] = mapped_column(String(128), nullable=True, default=None)
+    # Stable selection used by the multi-connection pool.  Keep llm_model for
+    # old clients, imports, and a readable denormalised model identifier.
+    llm_profile_id: Mapped[str | None] = mapped_column(String(36), nullable=True, default=None)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
@@ -63,6 +66,7 @@ class Conversation(Base):
             "title": self.title,
             "kb_id": self.kb_id,
             "llm_model": self.llm_model,
+            "llm_profile_id": self.llm_profile_id,
             "message_count": len(self.messages) if self.messages is not None else 0,
             "created_at": _isoformat_utc(self.created_at),
             "updated_at": _isoformat_utc(self.updated_at),

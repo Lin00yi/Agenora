@@ -14,6 +14,7 @@ import {
   Globe2,
   KeyRound,
   Loader2,
+  Plus,
   ShieldCheck,
   SlidersHorizontal,
   Trash2,
@@ -30,11 +31,18 @@ import { getToken } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import {
   clearLLMSettings,
+  createLLMConnection,
+  createLLMModelProfile,
+  deleteLLMConnection,
+  deleteLLMModelProfile,
   getMySettings,
   probeLLM,
   saveKbOptions,
   saveLLMSettings,
+  saveLLMModelPolicy,
   type LLMProvider,
+  type LLMModelProfile,
+  type LLMConnection,
   type MyKbOptions,
   type MyLLMSettings,
   type MySettings,
@@ -155,10 +163,6 @@ function LLMSettingsPanel({
   const [apiKey, setApiKey] = useState("");
   const [models, setModels] = useState<string[]>([]);
   const [defaultModel, setDefaultModel] = useState(initial?.default_model || "");
-  const [complexModel, setComplexModel] = useState(initial?.complex_model || "");
-  const [useComplexModel, setUseComplexModel] = useState(
-    Boolean(initial?.complex_model && initial.complex_model !== initial.default_model)
-  );
   const [contextWindow, setContextWindow] = useState<number | null>(initial?.context_window ?? null);
   const [probeState, setProbeState] = useState<ProbeState>({ kind: "idle" });
   const [saving, setSaving] = useState(false);
@@ -179,8 +183,7 @@ function LLMSettingsPanel({
     : formatContextSummary(initial?.context_window_resolved, initial?.context_window_source);
   const canProbe = Boolean(baseUrl.trim() && (apiKey.trim() || hasSavedKey) && probeState.kind !== "loading");
   const canSave =
-    Boolean(defaultModel.trim()) &&
-    (!useComplexModel || Boolean(complexModel.trim())) &&
+    Boolean(initial?.configured || defaultModel.trim()) &&
     (contextWindow === null ||
       (Number.isInteger(contextWindow) && contextWindow >= 4_096 && contextWindow <= 2_000_000)) &&
     Boolean(baseUrl.trim()) &&
@@ -190,23 +193,19 @@ function LLMSettingsPanel({
   const modelOptions = useMemo(() => {
     const merged = new Set(models);
     if (defaultModel.trim()) merged.add(defaultModel.trim());
-    if (useComplexModel && complexModel.trim()) merged.add(complexModel.trim());
     return [...merged].sort();
-  }, [complexModel, defaultModel, models, useComplexModel]);
+  }, [defaultModel, models]);
 
   useEffect(() => {
     setProvider((initial?.provider as LLMProvider) || "openai-compat");
     setBaseUrl(initial?.base_url || "");
     setApiKey("");
     setDefaultModel(initial?.default_model || "");
-    setComplexModel(initial?.complex_model || "");
-    setUseComplexModel(Boolean(initial?.complex_model && initial.complex_model !== initial.default_model));
     setContextWindow(initial?.context_window ?? null);
     setModels([]);
     setProbeState({ kind: "idle" });
   }, [
     initial?.base_url,
-    initial?.complex_model,
     initial?.context_window,
     initial?.default_model,
     initial?.provider,
@@ -245,8 +244,7 @@ function LLMSettingsPanel({
         provider,
         base_url: baseUrl.trim(),
         api_key: apiKey,
-        default_model: defaultModel.trim(),
-        complex_model: useComplexModel ? complexModel.trim() : "",
+        ...(initial?.configured ? {} : { default_model: defaultModel.trim() }),
         context_window: contextWindow,
       });
       toast.success("模型设置已保存并应用到后续对话");
@@ -309,14 +307,19 @@ function LLMSettingsPanel({
           <SummaryItem label="默认模型" value={effectiveModel || "尚未设置"} mono />
           <SummaryItem label="上下文窗口" value={contextWindowLabel} />
         </dl>
+        <nav className="mt-5 flex gap-1 overflow-x-auto border-b border-surface-border/70 pb-2 text-sm" aria-label="模型设置步骤">
+          <a className="shrink-0 rounded-md px-3 py-1.5 text-muted transition hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30" href="#model-connections">1. 连接</a>
+          <a className="shrink-0 rounded-md px-3 py-1.5 text-muted transition hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30" href="#model-catalog">2. 模型目录</a>
+          <a className="shrink-0 rounded-md px-3 py-1.5 text-muted transition hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30" href="#model-routing">3. 自动路由</a>
+        </nav>
       </div>
 
-      <div className="px-5 py-6 sm:px-6">
+      <div id="model-connections" className="scroll-mt-5 px-5 py-6 sm:px-6">
         <div className="max-w-2xl">
-          <p className="text-xs font-semibold tracking-[0.14em] text-brand">连接服务</p>
-          <h3 className="mt-1 text-base font-semibold">选择提供商并验证连接</h3>
+          <p className="text-xs font-semibold tracking-[0.14em] text-brand">默认连接</p>
+          <h3 className="mt-1 text-base font-semibold">接入并验证第一个模型服务</h3>
           <p className="mt-1 text-sm leading-6 text-muted">
-            先测试连接，再从返回的模型中选择。兼容接口未返回模型列表时，也可以手动填写模型 ID。
+            这是自动路由的初始连接。其他服务商可在模型目录中按需添加，不会覆盖这里已保存的凭据。
           </p>
         </div>
 
@@ -426,99 +429,56 @@ function LLMSettingsPanel({
               </Button>
             </div>
           </Field>
+
+          {!initial?.configured && (
+            <Field
+              label="初始模型 ID"
+              htmlFor="llm-default-model"
+              description={modelOptions.length ? "从测试结果选择，保存后会建立第一个模型档案。" : "可直接填写服务商要求的精确模型 ID。"}
+            >
+              <input
+                id="llm-default-model"
+                name="llm-default-model"
+                value={defaultModel}
+                onChange={(event) => setDefaultModel(event.target.value)}
+                list={modelListId}
+                placeholder="例如 deepseek-v4-flash"
+                className="admin-input font-mono"
+                autoComplete="off"
+              />
+            </Field>
+          )}
         </div>
 
+        <datalist id={modelListId}>
+          {modelOptions.map((model) => <option key={model} value={model} />)}
+        </datalist>
         <ProbeFeedback state={probeState} />
       </div>
 
-      <div className="border-t border-surface-border/70 px-5 py-6 sm:px-6">
+      <div id="model-catalog" className="scroll-mt-5 border-t border-surface-border/70 px-5 py-6 sm:px-6">
         <div className="max-w-2xl">
-          <p className="text-xs font-semibold tracking-[0.14em] text-brand">模型策略</p>
-          <h3 className="mt-1 text-base font-semibold">设定默认使用方式</h3>
+          <p className="text-xs font-semibold tracking-[0.14em] text-brand">模型目录</p>
+          <h3 className="mt-1 text-base font-semibold">添加可用模型，再编排自动路由</h3>
           <p className="mt-1 text-sm leading-6 text-muted">
-            默认模型用于没有会话级选择的对话。已在聊天框中单独选择的模型不会被这里的保存操作覆盖。
+            每个档案绑定一个连接和上下文窗口。会话可固定选择档案，未固定时才会进入下方自动路由。
           </p>
         </div>
 
-        <div className="mt-5 max-w-2xl">
-          <Field
-            label="默认模型"
-            htmlFor="llm-default-model"
-            description={modelOptions.length ? "可从测试结果选择，也可填写服务商要求的精确模型 ID。" : "可直接填写模型 ID；测试连接后会自动提供可选模型。"}
-          >
-            <input
-              id="llm-default-model"
-              name="llm-default-model"
-              value={defaultModel}
-              onChange={(event) => setDefaultModel(event.target.value)}
-              list={modelListId}
-              placeholder="例如 deepseek-chat"
-              className="admin-input font-mono"
-              autoComplete="off"
-            />
-          </Field>
-          <datalist id={modelListId}>
-            {modelOptions.map((model) => <option key={model} value={model} />)}
-          </datalist>
-        </div>
-
-        <details className="group mt-6 border-t border-surface-border/70 pt-5">
+        <details className="group mt-6 border-y border-surface-border/70 py-5">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-medium text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30">
             <span className="flex items-center gap-2">
               <SlidersHorizontal className="h-4 w-4 text-muted" aria-hidden />
-              高级模型策略
+              默认连接兼容选项
             </span>
             <ChevronDown className="h-4 w-4 text-muted transition-transform duration-200 group-open:rotate-180" aria-hidden />
           </summary>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-            主流模型会由服务端能力库自动识别上下文窗口。只有自托管、别名或需要特殊限制的模型才需要手动覆盖。
+            主流模型会自动识别上下文窗口。仅当默认连接使用别名或自托管模型时，才需要填写兼容覆盖；新建档案请优先单独指定窗口。
           </p>
 
-          <div className="mt-5 max-w-2xl divide-y divide-surface-border/70 border-y border-surface-border/70">
-            <div className="py-5">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm font-medium text-ink">复杂任务模型</p>
-                    <Badge variant="outline" className={useComplexModel ? "border-brand/25 bg-brand/10 text-brand" : "border-surface-border bg-surface-2 text-muted"}>
-                      {useComplexModel ? "已单独指定" : "跟随默认模型"}
-                    </Badge>
-                  </div>
-                  <p className="mt-1 text-xs leading-5 text-muted">
-                    工具数超过 5 个或用户输入超过 2,000 个字符时使用。只在需要时单独指定，避免维护两套常规模型配置。
-                  </p>
-                </div>
-                <Switch
-                  checked={useComplexModel}
-                  onCheckedChange={setUseComplexModel}
-                  aria-label="为复杂任务单独指定模型"
-                  className="shrink-0"
-                />
-              </div>
-
-              {useComplexModel && (
-                <div className="mt-4 max-w-xl">
-                  <Field
-                    label="复杂任务模型 ID"
-                    htmlFor="llm-complex-model"
-                    description="保存后仅在复杂任务场景优先使用此模型。"
-                  >
-                    <input
-                      id="llm-complex-model"
-                      name="llm-complex-model"
-                      value={complexModel}
-                      onChange={(event) => setComplexModel(event.target.value)}
-                      list={modelListId}
-                      placeholder="例如 deepseek-reasoner"
-                      className="admin-input font-mono"
-                      autoComplete="off"
-                    />
-                  </Field>
-                </div>
-              )}
-            </div>
-
-            <div className="py-5">
+          <div className="mt-5 max-w-2xl">
+            <div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
@@ -574,15 +534,15 @@ function LLMSettingsPanel({
             </div>
           </div>
         </details>
+
+        <ModelProfilesManager initial={initial} onChanged={onChanged} />
       </div>
 
       <footer className="flex flex-col gap-4 border-t border-surface-border/70 bg-surface-2/35 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div className="min-w-0 text-sm text-muted" aria-live="polite">
           {canSave
-            ? "保存后会应用到后续未指定模型的对话。"
-            : useComplexModel && !complexModel.trim()
-              ? "已启用复杂任务模型，请填写对应的模型 ID。"
-              : "请补全 Base URL、API Key、默认模型；手动覆盖时还需填写有效窗口。"}
+            ? "保存默认连接不会改动自动路由或会话中的固定模型选择。"
+            : "请补全 Base URL、API Key、初始模型；手动覆盖时还需填写有效窗口。"}
         </div>
         <div className="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row">
           {initial?.configured && (
@@ -608,6 +568,317 @@ function LLMSettingsPanel({
         busy={clearing}
         onConfirm={handleClear}
       />
+    </section>
+  );
+}
+
+function ModelProfilesManager({
+  initial,
+  onChanged,
+}: {
+  initial?: MyLLMSettings;
+  onChanged: () => Promise<MySettings>;
+}) {
+  const profiles = initial?.model_profiles ?? [];
+  const connections = useMemo(() => initial?.connections ?? [], [initial?.connections]);
+  const enabledProfiles = profiles.filter((profile) => profile.enabled);
+  const [adding, setAdding] = useState(false);
+  const [addingConnection, setAddingConnection] = useState(false);
+  const [name, setName] = useState("");
+  const [modelId, setModelId] = useState("");
+  const [connectionId, setConnectionId] = useState("");
+  const [windowValue, setWindowValue] = useState("");
+  const [connectionName, setConnectionName] = useState("");
+  const [connectionProvider, setConnectionProvider] = useState<LLMProvider>("openai-compat");
+  const [connectionUrl, setConnectionUrl] = useState("");
+  const [connectionKey, setConnectionKey] = useState("");
+  const [savingConnection, setSavingConnection] = useState(false);
+  const [deletingConnectionId, setDeletingConnectionId] = useState<string | null>(null);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [savingPolicy, setSavingPolicy] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [defaultModel, setDefaultModel] = useState(initial?.default_profile_id ?? "");
+  const [complexEnabled, setComplexEnabled] = useState(initial?.complex_enabled ?? false);
+  const [complexModel, setComplexModel] = useState(initial?.complex_profile_id ?? "");
+  const [triageModel, setTriageModel] = useState(initial?.triage_profile_id ?? "");
+  const [fallbackModel, setFallbackModel] = useState(initial?.fallback_profile_id ?? "");
+
+  useEffect(() => {
+    setDefaultModel(initial?.default_profile_id ?? "");
+    setComplexEnabled(initial?.complex_enabled ?? false);
+    setComplexModel(initial?.complex_profile_id ?? "");
+    setTriageModel(initial?.triage_profile_id ?? "");
+    setFallbackModel(initial?.fallback_profile_id ?? "");
+  }, [
+    initial?.complex_enabled,
+    initial?.complex_profile_id,
+    initial?.default_profile_id,
+    initial?.fallback_profile_id,
+    initial?.triage_profile_id,
+  ]);
+
+  useEffect(() => {
+    if (connectionId || connections.length === 0) return;
+    setConnectionId(connections.find((connection) => connection.enabled)?.id ?? "");
+  }, [connectionId, connections]);
+
+  const addProfile = async () => {
+    const parsedWindow = windowValue.trim() ? Number(windowValue) : null;
+    if (!name.trim() || !modelId.trim()) return;
+    if (parsedWindow !== null && (!Number.isInteger(parsedWindow) || parsedWindow < 4_096 || parsedWindow > 2_000_000)) {
+      toast.error("上下文窗口需在 4,096 到 2,000,000 之间。");
+      return;
+    }
+    setSavingProfile(true);
+    try {
+      await createLLMModelProfile({
+        connection_id: connectionId || null,
+        display_name: name.trim(),
+        model_id: modelId.trim(),
+        context_window: parsedWindow,
+        enabled: true,
+        supports_tools: true,
+      });
+      setName("");
+      setModelId("");
+      setWindowValue("");
+      setAdding(false);
+      await onChanged();
+      toast.success("模型已加入可用列表");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "添加模型失败");
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const addConnection = async () => {
+    if (!connectionName.trim() || !connectionUrl.trim() || !connectionKey.trim()) return;
+    setSavingConnection(true);
+    try {
+      const created = await createLLMConnection({
+        display_name: connectionName.trim(),
+        provider: connectionProvider,
+        base_url: connectionUrl.trim(),
+        api_key: connectionKey.trim(),
+        enabled: true,
+      });
+      setConnectionName("");
+      setConnectionUrl("");
+      setConnectionKey("");
+      setConnectionId(created.id);
+      setAddingConnection(false);
+      await onChanged();
+      toast.success("连接已加入连接池");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "添加连接失败");
+    } finally {
+      setSavingConnection(false);
+    }
+  };
+
+  const removeConnection = async (connection: LLMConnection) => {
+    setDeletingConnectionId(connection.id);
+    try {
+      await deleteLLMConnection(connection.id);
+      if (connection.id === connectionId) setConnectionId("");
+      await onChanged();
+      toast.success("连接已移除");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "移除连接失败");
+    } finally {
+      setDeletingConnectionId(null);
+    }
+  };
+
+  const savePolicy = async () => {
+    if (!defaultModel) {
+      toast.error("请选择默认模型。");
+      return;
+    }
+    if (complexEnabled && !complexModel) {
+      toast.error("已开启复杂任务路由，请选择复杂模型。");
+      return;
+    }
+    setSavingPolicy(true);
+    try {
+      await saveLLMModelPolicy({
+        default_profile_id: defaultModel,
+        complex_enabled: complexEnabled,
+        complex_profile_id: complexEnabled ? complexModel : null,
+        triage_profile_id: triageModel || null,
+        fallback_profile_id: fallbackModel || null,
+      });
+      await onChanged();
+      toast.success("模型路由策略已保存");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "保存路由策略失败");
+    } finally {
+      setSavingPolicy(false);
+    }
+  };
+
+  const removeProfile = async (profile: LLMModelProfile) => {
+    setDeletingId(profile.id);
+    try {
+      await deleteLLMModelProfile(profile.id);
+      await onChanged();
+      toast.success("模型已从可用列表移除");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "移除模型失败");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const selectOptions = enabledProfiles.map((profile) => ({
+    value: profile.id,
+    label: `${connections.find((connection) => connection.id === profile.connection_id)?.display_name ?? "默认连接"} / ${profile.display_name} · ${profile.model_id}`,
+  }));
+
+  return (
+    <section className="mt-8 border-t border-surface-border/70 pt-6" aria-labelledby="model-profiles-heading">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="max-w-2xl">
+          <p className="text-xs font-semibold tracking-[0.14em] text-brand">模型档案</p>
+          <h3 id="model-profiles-heading" className="mt-1 text-base font-semibold">每个模型都绑定一个可验证的连接</h3>
+          <p className="mt-1 text-sm leading-6 text-muted">
+            可添加任意模型 ID。档案同时记录连接、模型 ID 和上下文窗口；会话固定选择与自动路由都使用这份目录。
+          </p>
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={() => setAdding((open) => !open)} disabled={!initial?.configured}>
+          <Plus className="h-4 w-4" />
+          添加模型
+        </Button>
+      </div>
+
+      <div className="mt-5 border-y border-surface-border/70 py-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-medium text-ink">其他连接</p>
+            <p className="mt-1 text-xs leading-5 text-muted">默认连接在上方维护；在此添加专用、备用或本地服务。模型档案会使用其对应的服务商、地址和加密密钥。</p>
+          </div>
+          <Button type="button" variant="ghost" size="sm" onClick={() => setAddingConnection((open) => !open)}>
+            <Plus className="h-4 w-4" />添加连接
+          </Button>
+        </div>
+        <div className="mt-3 divide-y divide-surface-border/70">
+          {connections.map((connection) => (
+            <div key={connection.id} className="flex min-w-0 items-center justify-between gap-3 py-2.5">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="truncate text-sm font-medium text-ink">{connection.display_name}</p>
+                  {connection.health?.state === "open" && <Badge variant="outline" className="border-warning/30 bg-warning/10 text-warning">暂时熔断</Badge>}
+                  {connection.health?.state === "closed" && connection.health.consecutive_failures > 0 && <Badge variant="outline" className="border-warning/25 bg-warning/10 text-warning">正在观察</Badge>}
+                </div>
+                <p className="truncate font-mono text-xs text-muted">{connection.provider} · {connection.base_url}</p>
+                {connection.health?.state === "open" && <p className="mt-1 text-xs text-warning">将在 {connection.health.retry_at ? new Date(connection.health.retry_at).toLocaleTimeString() : "恢复窗口结束后"} 自动探测恢复。</p>}
+              </div>
+              {connection.is_legacy_default ? <Badge variant="outline">默认</Badge> : <Button type="button" variant="ghost" size="sm" onClick={() => removeConnection(connection)} disabled={deletingConnectionId === connection.id}>{deletingConnectionId === connection.id && <Loader2 className="h-4 w-4 animate-spin" />}移除</Button>}
+            </div>
+          ))}
+        </div>
+        {addingConnection && (
+          <div className="mt-4 grid gap-4 border-t border-surface-border/70 pt-4 sm:grid-cols-2">
+            <Field label="连接名称" htmlFor="connection-name" description="例如 OpenAI 团队账号或本地推理服务。"><input id="connection-name" value={connectionName} onChange={(event) => setConnectionName(event.target.value)} className="admin-input" autoComplete="off" /></Field>
+            <Field label="协议" htmlFor="connection-provider" description="决定聊天请求的兼容接口。"><Select id="connection-provider" value={connectionProvider} onChange={(event) => setConnectionProvider(event.target.value as LLMProvider)} options={[{ value: "openai-compat", label: "OpenAI Compatible" }, { value: "anthropic", label: "Anthropic Messages" }]} /></Field>
+            <Field label="Base URL" htmlFor="connection-url" description="填写服务商 API 根地址。"><input id="connection-url" value={connectionUrl} onChange={(event) => setConnectionUrl(event.target.value)} className="admin-input font-mono" autoComplete="url" /></Field>
+            <Field label="API Key" htmlFor="connection-key" description="仅用于此连接并加密保存。"><input id="connection-key" type="password" value={connectionKey} onChange={(event) => setConnectionKey(event.target.value)} className="admin-input font-mono" autoComplete="off" /></Field>
+            <div className="flex items-end gap-2"><Button type="button" onClick={addConnection} disabled={savingConnection || !connectionName.trim() || !connectionUrl.trim() || !connectionKey.trim()}>{savingConnection && <Loader2 className="h-4 w-4 animate-spin" />}{savingConnection ? "正在添加" : "加入连接池"}</Button><Button type="button" variant="ghost" onClick={() => setAddingConnection(false)} disabled={savingConnection}>取消</Button></div>
+          </div>
+        )}
+      </div>
+
+      {adding && (
+        <div className="mt-5 grid gap-4 border-y border-surface-border/70 py-5 sm:grid-cols-2">
+          <Field label="显示名称" htmlFor="profile-name" description="例如 快速问答、长文分析或本地 Qwen。">
+            <input id="profile-name" value={name} onChange={(event) => setName(event.target.value)} className="admin-input" autoComplete="off" />
+          </Field>
+          <Field label="使用连接" htmlFor="profile-connection" description="模型 ID 只在所选服务连接下解析。">
+            <Select id="profile-connection" value={connectionId} onChange={(event) => setConnectionId(event.target.value)} options={connections.filter((connection) => connection.enabled).map((connection) => ({ value: connection.id, label: connection.display_name }))} />
+          </Field>
+          <Field label="模型 ID" htmlFor="profile-model-id" description="保留服务商要求的精确 ID。">
+            <input id="profile-model-id" value={modelId} onChange={(event) => setModelId(event.target.value)} className="admin-input font-mono" autoComplete="off" />
+          </Field>
+          <Field label="上下文窗口（可选）" htmlFor="profile-context-window" description="留空使用能力库识别，未知模型会采用保守预算。">
+            <input id="profile-context-window" type="number" min={4096} max={2000000} step={1024} value={windowValue} onChange={(event) => setWindowValue(event.target.value)} className="admin-input font-mono" />
+          </Field>
+          <div className="flex items-end gap-2">
+            <Button type="button" onClick={addProfile} disabled={savingProfile || !connectionId || !name.trim() || !modelId.trim()}>
+              {savingProfile && <Loader2 className="h-4 w-4 animate-spin" />}
+              {savingProfile ? "正在添加" : "加入可用列表"}
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => setAdding(false)} disabled={savingProfile}>取消</Button>
+          </div>
+        </div>
+      )}
+
+      {profiles.length > 0 ? (
+        <div className="mt-5 divide-y divide-surface-border/70 border-y border-surface-border/70">
+          {profiles.map((profile) => (
+            <div key={profile.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-medium text-ink">{profile.display_name}</p>
+                  <Badge variant="outline" className={profile.enabled ? "border-brand/25 bg-brand/10 text-brand" : "border-surface-border bg-surface-2 text-muted"}>
+                    {profile.enabled ? "可选" : "已停用"}
+                  </Badge>
+                  <span className="text-xs text-muted">{profile.context_window ? `${profile.context_window / 1000}K` : "自动窗口"}</span>
+                </div>
+                <p className="mt-1 truncate font-mono text-xs text-muted" title={profile.model_id}>{profile.model_id}</p>
+                <p className="mt-1 text-xs text-muted">{connections.find((connection) => connection.id === profile.connection_id)?.display_name ?? "默认连接"}</p>
+              </div>
+              <Button type="button" variant="ghost" size="sm" onClick={() => removeProfile(profile)} disabled={deletingId === profile.id}>
+                {deletingId === profile.id && <Loader2 className="h-4 w-4 animate-spin" />}
+                移除
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-5 border-y border-dashed border-surface-border/80 py-4 text-sm text-muted">
+          保存连接后会自动加入默认模型；也可以在这里添加服务商未返回的模型 ID。
+        </p>
+      )}
+
+      {enabledProfiles.length > 0 && (
+        <section id="model-routing" className="scroll-mt-5 mt-8 border-t border-surface-border/70 pt-6" aria-labelledby="model-routing-heading">
+          <div className="max-w-2xl">
+            <p className="text-xs font-semibold tracking-[0.14em] text-brand">自动路由</p>
+            <h3 id="model-routing-heading" className="mt-1 text-base font-semibold">为未固定模型的会话选择执行策略</h3>
+            <p className="mt-1 text-sm leading-6 text-muted">默认模型负责常规回答；复杂任务按开关升级；Flash 只做意图识别；备用模型仅在首个输出前失败或空回答时接管。</p>
+          </div>
+          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <Field label="默认模型" htmlFor="policy-default-model" description="自动会话的常规模型。">
+            <Select id="policy-default-model" value={defaultModel} onChange={(event) => setDefaultModel(event.target.value)} options={selectOptions} />
+          </Field>
+          <div className="flex min-h-[var(--control-h)] items-start justify-between gap-4 pt-6">
+            <div>
+              <p className="text-sm font-medium text-ink">复杂任务模型</p>
+              <p className="mt-1 text-xs leading-5 text-muted">关闭时自动会话始终使用默认模型。</p>
+            </div>
+            <Switch checked={complexEnabled} onCheckedChange={setComplexEnabled} aria-label="开启复杂任务模型" />
+          </div>
+          {complexEnabled && (
+            <Field label="复杂模型" htmlFor="policy-complex-model" description="多工具或超长输入时升级使用。">
+              <Select id="policy-complex-model" value={complexModel} onChange={(event) => setComplexModel(event.target.value)} options={selectOptions} />
+            </Field>
+          )}
+          <Field label="Flash 意图模型（可选）" htmlFor="policy-triage-model" description="用于 KB 查询策略与意图判断，不承担最终回答。">
+            <Select id="policy-triage-model" value={triageModel} onChange={(event) => setTriageModel(event.target.value)} options={selectOptions} placeholderOption={{ value: "", label: "不单独配置" }} />
+          </Field>
+          <Field label="备用模型（可选）" htmlFor="policy-fallback-model" description="首 token 前请求失败或空回答恢复时尝试；内容开始输出后不会悄悄切换。">
+            <Select id="policy-fallback-model" value={fallbackModel} onChange={(event) => setFallbackModel(event.target.value)} options={selectOptions} placeholderOption={{ value: "", label: "不单独配置" }} />
+          </Field>
+          <div className="flex items-end">
+            <Button type="button" onClick={savePolicy} disabled={savingPolicy}>
+              {savingPolicy && <Loader2 className="h-4 w-4 animate-spin" />}
+              {savingPolicy ? "正在保存" : "保存路由策略"}
+            </Button>
+          </div>
+          </div>
+        </section>
+      )}
     </section>
   );
 }

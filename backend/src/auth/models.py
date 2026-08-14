@@ -37,6 +37,19 @@ class User(Base):
     # User-declared maximum input window for arbitrary BYOK model IDs. NULL
     # keeps backward-compatible conservative fallback handling.
     llm_context_window: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
+    # Routing policy references model IDs registered in ``llm_model_profiles``.
+    # Nullable fields preserve the original single-default behavior.
+    llm_complex_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    llm_triage_model: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, default=None)
+    llm_fallback_model: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, default=None)
+    # v5: stable routing targets.  The original model-name fields above remain
+    # denormalised compatibility values for older clients and logs.
+    llm_default_profile_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, default=None)
+    llm_complex_profile_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, default=None)
+    llm_triage_profile_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, default=None)
+    llm_fallback_profile_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, default=None)
 
     embedding_provider: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, default=None)
     embedding_base_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, default=None)

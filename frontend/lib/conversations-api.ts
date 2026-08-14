@@ -24,6 +24,8 @@ export type ConversationSummary = {
   kb_id: string | null;
   /** v3-M6: per-conversation LLM model override. null = use user default. */
   llm_model: string | null;
+  /** Stable model-profile selection. Null keeps the automatic route. */
+  llm_profile_id: string | null;
   message_count: number;
   created_at: string | null;
   updated_at: string | null;
@@ -207,7 +209,7 @@ export async function createConversation(
 
 export async function patchConversation(
   id: string,
-  patch: { title?: string; kb_id?: string | null; llm_model?: string | null }
+  patch: { title?: string; kb_id?: string | null; llm_model?: string | null; llm_profile_id?: string | null }
 ): Promise<ConversationSummary> {
   return unwrap(
     await authFetch(`/api/conversations/${id}`, {

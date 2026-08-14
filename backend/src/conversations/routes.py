@@ -28,7 +28,15 @@ from src.conversations.context import (
 from src.conversations.models import Conversation, Message, UserMemory
 from src.infra.database import get_session
 from src.infra.llm import normalize_model_name
-from src.settings_user import resolve_system_llm, resolve_user_embedding, resolve_user_llm
+from src.settings_user import (
+    configured_context_window_for_model,
+    list_llm_model_profiles,
+    resolve_llm_profile_config,
+    resolve_system_llm,
+    resolve_user_embedding,
+    resolve_user_llm,
+    with_model_profile_context,
+)
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
@@ -42,6 +50,7 @@ class PatchConversationRequest(BaseModel):
     title: str | None = Field(default=None, max_length=128)
     kb_id: str | None = Field(default=None, max_length=36)
     llm_model: str | None = Field(default=None, max_length=128)
+    llm_profile_id: str | None = Field(default=None, max_length=36)
 
 
 class AppendMessageRequest(BaseModel):
@@ -123,6 +132,25 @@ async def _build_context_status(
         summary=summary,
         effective_tokens=effective,
     )
+
+
+async def _context_cfg_for_user(session: AsyncSession, user: User):
+    cfg = resolve_user_llm(user) or resolve_system_llm()
+    if resolve_user_llm(user) is not None:
+        profiles = await list_llm_model_profiles(session, user_id=user.id)
+        return with_model_profile_context(cfg, profiles)
+    return cfg
+
+
+async def _context_cfg_for_conversation(
+    session: AsyncSession, conv: Conversation, user: CurrentUser
+):
+    selected = await resolve_llm_profile_config(
+        session, user=user, profile_id=conv.llm_profile_id
+    )
+    if selected is not None:
+        return selected[1]
+    return await _context_cfg_for_user(session, user)
 
 
 def _derive_title(content: str) -> str:
@@ -410,9 +438,13 @@ async def get_conversation(
 ) -> dict:
     conv = await _load_owned_conversation(session, conv_id, user.id)
     payload = conv.to_dict_with_messages()
-    llm_cfg = resolve_user_llm(user) or resolve_system_llm()
+    llm_cfg = await _context_cfg_for_conversation(session, conv, user)
     payload["context_status"] = await _build_context_status(
-        session, conv, context_window=llm_cfg.context_window if llm_cfg else None
+        session,
+        conv,
+        context_window=configured_context_window_for_model(
+            llm_cfg, conv.llm_model or (llm_cfg.default_model if llm_cfg else None)
+        ),
     )
     return payload
 
@@ -424,9 +456,13 @@ async def get_conversation_context_status(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     conv = await _load_owned_conversation(session, conv_id, user.id)
-    llm_cfg = resolve_user_llm(user) or resolve_system_llm()
+    llm_cfg = await _context_cfg_for_conversation(session, conv, user)
     return await _build_context_status(
-        session, conv, context_window=llm_cfg.context_window if llm_cfg else None
+        session,
+        conv,
+        context_window=configured_context_window_for_model(
+            llm_cfg, conv.llm_model or (llm_cfg.default_model if llm_cfg else None)
+        ),
     )
 
 
@@ -502,8 +538,24 @@ async def patch_conversation(
             conv.title = title
     if "kb_id" in fields_set:
         conv.kb_id = req.kb_id
-    if "llm_model" in fields_set:
+    if "llm_profile_id" in fields_set:
+        if req.llm_profile_id is None:
+            conv.llm_profile_id = None
+            conv.llm_model = None
+        else:
+            selected = await resolve_llm_profile_config(
+                session, user=user, profile_id=req.llm_profile_id
+            )
+            if selected is None:
+                raise HTTPException(status_code=422, detail="所选模型档案不可用，请重新选择。")
+            profile, _ = selected
+            conv.llm_profile_id = profile.id
+            conv.llm_model = profile.model_id
+    elif "llm_model" in fields_set:
         conv.llm_model = normalize_model_name(req.llm_model)
+        # Legacy clients posting only a raw model continue to work, but an
+        # explicit profile takes precedence as soon as the new UI selects one.
+        conv.llm_profile_id = None
 
     await session.commit()
     await session.refresh(conv)

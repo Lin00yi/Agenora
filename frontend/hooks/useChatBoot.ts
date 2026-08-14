@@ -12,6 +12,7 @@ import {
 } from "@/lib/conversations-api";
 import { listKbs, type KB } from "@/lib/kb-api";
 import type { LlmSource } from "@/components/chat";
+import type { LLMModelProfile } from "@/lib/settings-api";
 import {
   CHAT_PANE_FADE_MS,
   CONVERSATION_PAGE_SIZE,
@@ -51,6 +52,8 @@ export function useChatBoot({
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [bootPhase, setBootPhase] = useState<BootPhase>("loading");
   const [modelOptions, setModelOptions] = useState<string[]>([]);
+  const [modelLabels, setModelLabels] = useState<Record<string, string>>({});
+  const [modelProfiles, setModelProfiles] = useState<LLMModelProfile[]>([]);
   const [llmReady, setLlmReady] = useState(false);
   const [llmSource, setLlmSource] = useState<LlmSource>("missing");
   const [kbs, setKbs] = useState<KB[]>([]);
@@ -103,12 +106,41 @@ export function useChatBoot({
           ) {
             setLlmReady(true);
             setLlmSource("user");
-            const { models } = await probeLLM({
-              provider: settings.llm.provider,
-              base_url: settings.llm.base_url,
-              api_key: "",
-            });
-            if (!cancelled) setModelOptions(models);
+            const profileModels = (settings.llm.model_profiles ?? [])
+              .filter((profile) => profile.enabled)
+              .map((profile) => profile.model_id);
+            let models: string[] = [];
+            try {
+              ({ models } = await probeLLM({
+                provider: settings.llm.provider,
+                base_url: settings.llm.base_url,
+                api_key: "",
+              }));
+            } catch (error) {
+              console.warn("LLM model probe failed; using saved model profiles", error);
+            }
+            if (!cancelled) {
+              setModelLabels(
+                Object.fromEntries(
+                  (settings.llm.model_profiles ?? []).flatMap((profile) => {
+                    const connection = (settings.llm.connections ?? []).find(
+                      (item) => item.id === profile.connection_id
+                    );
+                    return [
+                      [profile.model_id, profile.display_name],
+                      [profile.id, `${connection?.display_name ?? "默认连接"} / ${profile.display_name}`],
+                    ];
+                  })
+                )
+              );
+              setModelProfiles((settings.llm.model_profiles ?? []).filter((profile) => profile.enabled));
+              setModelOptions(
+                uniqueStrings([
+                  ...models,
+                  ...profileModels,
+                ])
+              );
+            }
           } else if (!cancelled && effectiveReady && effectiveSource === "system") {
             setLlmReady(true);
             setLlmSource("system");
@@ -118,10 +150,14 @@ export function useChatBoot({
                 settings.llm.effective_complex_model,
               ])
             );
+            setModelLabels({});
+            setModelProfiles([]);
           } else if (!cancelled) {
             setLlmReady(false);
             setLlmSource("missing");
             setModelOptions([]);
+            setModelLabels({});
+            setModelProfiles([]);
           }
         } catch (e) {
           console.warn("LLM model probe failed", e);
@@ -129,6 +165,8 @@ export function useChatBoot({
             setLlmReady(false);
             setLlmSource("missing");
             setModelOptions([]);
+            setModelLabels({});
+            setModelProfiles([]);
           }
         }
       }
@@ -210,6 +248,8 @@ export function useChatBoot({
     initialLoadDone,
     bootPhase,
     modelOptions,
+    modelLabels,
+    modelProfiles,
     setModelOptions,
     llmReady,
     llmSource,

@@ -12,6 +12,7 @@ import {
   appendUserMessage,
   createConversation,
   getConversationContextStatus,
+  patchConversation,
   type ConversationContextStatus,
   type ConversationSummary,
 } from "@/lib/conversations-api";
@@ -52,6 +53,7 @@ type Args = {
   currentKbId: string | null;
   currentMessages: Message[];
   currentModel: string | null;
+  currentProfileId: string | null;
   summaries: ConversationSummary[];
   composerValue: string;
   currentIdRef: MutableRefObject<string | null>;
@@ -63,6 +65,7 @@ type Args = {
   setCurrentId: Dispatch<SetStateAction<string | null>>;
   setCurrentKbId: Dispatch<SetStateAction<string | null>>;
   setCurrentModel: Dispatch<SetStateAction<string | null>>;
+  setCurrentProfileId: Dispatch<SetStateAction<string | null>>;
   setCurrentContextStatus: Dispatch<SetStateAction<ConversationContextStatus | null>>;
   setSummaries: Dispatch<SetStateAction<ConversationSummary[]>>;
   setConversationTotal: Dispatch<SetStateAction<number>>;
@@ -84,6 +87,7 @@ export function useChatSend({
   currentKbId,
   currentMessages,
   currentModel,
+  currentProfileId,
   summaries,
   composerValue,
   currentIdRef,
@@ -95,6 +99,7 @@ export function useChatSend({
   setCurrentId,
   setCurrentKbId,
   setCurrentModel,
+  setCurrentProfileId,
   setCurrentContextStatus,
   setSummaries,
   setConversationTotal,
@@ -138,6 +143,7 @@ export function useChatSend({
             title: created.title,
             kb_id: created.kb_id,
             llm_model: created.llm_model,
+            llm_profile_id: created.llm_profile_id,
             message_count: 0,
             created_at: created.created_at,
             updated_at: created.updated_at,
@@ -150,8 +156,15 @@ export function useChatSend({
           setCurrentId(created.id);
           setCurrentKbId(created.kb_id);
           setCurrentModel(created.llm_model ?? null);
+          setCurrentProfileId(created.llm_profile_id ?? null);
           setCurrentContextStatus(created.context_status ?? null);
           window.history.replaceState(null, "", conversationHref(created.id));
+          if (currentProfileId) {
+            const updated = await patchConversation(created.id, { llm_profile_id: currentProfileId });
+            setCurrentModel(updated.llm_model);
+            setCurrentProfileId(updated.llm_profile_id);
+            setSummaries((prev) => prev.map((item) => item.id === created.id ? { ...item, llm_model: updated.llm_model, llm_profile_id: updated.llm_profile_id } : item));
+          }
         } catch (e) {
           toast.error((e as Error)?.message ?? "\u521b\u5efa\u4f1a\u8bdd\u5931\u8d25");
           releaseSendLock();
@@ -551,7 +564,7 @@ export function useChatSend({
               break;
           }
         },
-        { conversationId: convId!, kbId: currentKbId, model: currentModel }
+        { conversationId: convId!, kbId: currentKbId, model: currentModel, modelProfileId: currentProfileId }
       );
 
       cleanupRef.current = cleanup;
@@ -561,6 +574,7 @@ export function useChatSend({
       currentKbId,
       currentMessages,
       currentModel,
+      currentProfileId,
       summaries,
       setMessagesForCurrent,
       updateLastAssistant,
@@ -569,6 +583,8 @@ export function useChatSend({
       bumpSummary,
       releaseSendLock,
       router,
+      setCurrentModel,
+      setCurrentProfileId,
     ]
   );
 

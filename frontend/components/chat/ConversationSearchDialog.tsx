@@ -107,6 +107,7 @@ export function ConversationSearchDialog({
           title: conversation.title,
           kb_id: null,
           llm_model: null,
+          llm_profile_id: null,
           message_count: conversation.message_count ?? conversation.messages?.length ?? 0,
           created_at: null,
           updated_at: new Date(conversation.updated_at).toISOString(),

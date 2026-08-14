@@ -76,6 +76,7 @@ export function ChatPage({
   const [missingConversationId, setMissingConversationId] = useState<string | null>(null);
   const [currentKbId, setCurrentKbId] = useState<string | null>(null);
   const [currentModel, setCurrentModel] = useState<string | null>(null);
+  const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
   const [currentContextStatus, setCurrentContextStatus] =
     useState<ConversationContextStatus | null>(null);
   const [contextStatusLoading, setContextStatusLoading] = useState(false);
@@ -122,6 +123,7 @@ export function ChatPage({
           cachedKbId = found.kb_id;
           setCurrentKbId(found.kb_id);
           setCurrentModel(found.llm_model ?? null);
+          setCurrentProfileId(found.llm_profile_id ?? null);
           setCurrentContextStatus(found.context_status ?? null);
         }
         return cur;
@@ -152,6 +154,7 @@ export function ChatPage({
       setCurrentMessages(msgs);
       setCurrentKbId(detail.kb_id);
       setCurrentModel(detail.llm_model ?? null);
+      setCurrentProfileId(detail.llm_profile_id ?? null);
       setCurrentContextStatus(detail.context_status ?? null);
       setSummaries((prev) => {
         const summary: ConversationSummary = {
@@ -159,6 +162,7 @@ export function ChatPage({
           title: detail.title,
           kb_id: detail.kb_id,
           llm_model: detail.llm_model,
+          llm_profile_id: detail.llm_profile_id,
           message_count: detail.message_count,
           created_at: detail.created_at,
           updated_at: detail.updated_at,
@@ -195,6 +199,7 @@ export function ChatPage({
       setCurrentMessages([]);
       setCurrentKbId(null);
       setCurrentModel(null);
+      setCurrentProfileId(null);
       setCurrentContextStatus(null);
       setMissingConversationId(id);
       setContextStatusLoading(false);
@@ -208,6 +213,7 @@ export function ChatPage({
     setCurrentMessages([]);
     setCurrentKbId(null);
     setCurrentModel(null);
+    setCurrentProfileId(null);
     setCurrentContextStatus(null);
   }, []);
 
@@ -218,6 +224,8 @@ export function ChatPage({
     initialLoadDone,
     bootPhase,
     modelOptions,
+    modelLabels,
+    modelProfiles,
     llmReady,
     llmSource,
     kbs,
@@ -318,6 +326,7 @@ export function ChatPage({
     currentKbId,
     currentMessages,
     currentModel,
+    currentProfileId,
     summaries,
     composerValue,
     currentIdRef,
@@ -329,6 +338,7 @@ export function ChatPage({
     setCurrentId,
     setCurrentKbId,
     setCurrentModel,
+    setCurrentProfileId,
     setCurrentContextStatus,
     setSummaries,
     setConversationTotal,
@@ -514,21 +524,28 @@ export function ChatPage({
   );
 
   const handleModelChange = useCallback(
-    async (model: string | null) => {
+    async (profileId: string | null) => {
       const prevModel = currentModel;
-      setCurrentModel(model);
+      const prevProfileId = currentProfileId;
+      const profile = profileId ? modelProfiles.find((item) => item.id === profileId) : null;
+      const isProfileSelection = Boolean(profile);
+      setCurrentProfileId(isProfileSelection ? profileId : null);
+      setCurrentModel(profile?.model_id ?? (isProfileSelection ? null : profileId));
       if (!currentId) return;
       try {
-        await patchConversation(currentId, { llm_model: model });
+        const updated = isProfileSelection
+          ? await patchConversation(currentId, { llm_profile_id: profileId })
+          : await patchConversation(currentId, { llm_model: profileId });
         setSummaries((prev) =>
-          prev.map((c) => (c.id === currentId ? { ...c, llm_model: model } : c))
+          prev.map((c) => (c.id === currentId ? { ...c, llm_model: updated.llm_model, llm_profile_id: updated.llm_profile_id } : c))
         );
       } catch (e) {
         setCurrentModel(prevModel);
+        setCurrentProfileId(prevProfileId);
         toast.error((e as Error)?.message ?? "\u4fdd\u5b58\u6a21\u578b\u9009\u62e9\u5931\u8d25");
       }
     },
-    [currentId, currentModel]
+    [currentId, currentModel, currentProfileId, modelProfiles]
   );
 
   const handleDelete = useCallback(
@@ -670,7 +687,10 @@ export function ChatPage({
                       currentKbId={currentKbId}
                       kbs={kbs}
                       currentModel={currentModel}
+                      currentProfileId={currentProfileId}
                       modelOptions={modelOptions}
+                      modelLabels={modelLabels}
+                      modelProfiles={modelProfiles}
                       llmReady={llmReady}
                       llmSource={llmSource}
                       contextStatus={currentContextStatus}
@@ -725,7 +745,10 @@ export function ChatPage({
                         currentKbId={currentKbId}
                         kbs={kbs}
                         currentModel={currentModel}
+                        currentProfileId={currentProfileId}
                         modelOptions={modelOptions}
+                        modelLabels={modelLabels}
+                        modelProfiles={modelProfiles}
                         llmReady={llmReady}
                         llmSource={llmSource}
                         contextStatus={currentContextStatus}

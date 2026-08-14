@@ -41,12 +41,17 @@ from src.safety.prompt_injection import assess_prompt_injection
 from src.observability import get_current_trace_id, start_trace
 from src.settings import get_settings
 from src.settings_user import (
+    configured_context_window_for_model,
+    list_llm_model_profiles,
+    resolve_llm_profile_config,
+    resolve_user_llm_routing_configs,
     require_user_embedding,
     require_user_llm,
     resolve_user_embedding,
     resolve_user_llm,
     resolve_user_reranker,
     resolve_system_llm,
+    with_model_profile_context,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -116,6 +121,10 @@ class ChatRequest(BaseModel):
     # currentConv.llm_model (saved per-conversation in DB) and passes it here.
     # Server applies via dataclasses.replace() — no schema-level dependency.
     model: str | None = Field(default=None, max_length=128)
+    # v5: stable user-owned model profile.  Unlike ``model`` this also
+    # resolves the provider credentials, so two connections may safely expose
+    # the same remote model identifier.
+    model_profile_id: str | None = Field(default=None, max_length=36)
 
 
 # ---------------------------------------------------------------------------
@@ -132,6 +141,10 @@ def _run_chat_session(
     memory_trace: dict[str, Any] | None = None,
     conversation_lock_id: str | None = None,
     conversation_id: str | None = None,
+    llm_cfg_override=None,
+    complex_llm_cfg_override=None,
+    triage_llm_cfg_override=None,
+    fallback_llm_cfg_override=None,
 ) -> EventSourceResponse:
     settings = get_settings()
     allowed, remaining = rate_check(rate_key, settings.rate_limit_per_hour)
@@ -166,7 +179,7 @@ def _run_chat_session(
         await queue.put(evt)
 
     # Per-user LLM wins; otherwise use the env-backed platform config.
-    llm_cfg = (resolve_user_llm(user) if user is not None else None) or resolve_system_llm()
+    llm_cfg = llm_cfg_override or ((resolve_user_llm(user) if user is not None else None) or resolve_system_llm())
     # A per-conversation model override means "force this exact model".
     # Automatic default/complex routing is used only when no override is set.
     if model_override and llm_cfg is not None:
@@ -191,10 +204,21 @@ def _run_chat_session(
         reranker_cfg = resolve_user_reranker(user) if user is not None else None
     # v2-M6: per-user KB-mode web_search opt-in flag.
     kb_web_search_enabled = bool(getattr(user, "kb_web_search_enabled", False))
+    triage_llm_cfg = triage_llm_cfg_override
+    if triage_llm_cfg is None and llm_cfg is not None and llm_cfg.triage_model:
+        triage_llm_cfg = dc_replace(
+            llm_cfg,
+            default_model=llm_cfg.triage_model,
+            complex_model=llm_cfg.triage_model,
+            complex_enabled=False,
+        )
     graph, cost = build_graph(
         emit=emit,
         kb=kb,
         llm_cfg=llm_cfg,
+        complex_llm_cfg=complex_llm_cfg_override,
+        fallback_llm_cfg=fallback_llm_cfg_override,
+        triage_llm_cfg=triage_llm_cfg,
         embedding_cfg=embedding_cfg,
         reranker_cfg=reranker_cfg,
         kb_web_search_enabled=kb_web_search_enabled,
@@ -376,7 +400,25 @@ async def chat_post(
 
     try:
         effective_kb_id = req.kb_id if req.kb_id is not None else (conv.kb_id if conv else None)
+        selected_profile_id = req.model_profile_id or (conv.llm_profile_id if conv else None)
         selected_model = normalize_model_name(req.model or (conv.llm_model if conv else None))
+        base_llm_cfg = (resolve_user_llm(user) if user is not None else None) or resolve_system_llm()
+        routing_cfgs = await resolve_user_llm_routing_configs(session, user)
+        selected_profile_cfg = await resolve_llm_profile_config(
+            session, user=user, profile_id=selected_profile_id
+        )
+        if selected_profile_id and selected_profile_cfg is None:
+            raise HTTPException(status_code=422, detail="所选模型档案不可用，请重新选择。")
+        if selected_profile_cfg is not None:
+            selected_profile, context_llm_cfg = selected_profile_cfg
+            selected_model = selected_profile.model_id
+        elif routing_cfgs is not None:
+            context_llm_cfg = routing_cfgs.primary
+        elif user is not None and resolve_user_llm(user) is not None:
+            profiles = await list_llm_model_profiles(session, user_id=user.id)
+            context_llm_cfg = with_model_profile_context(base_llm_cfg, profiles)
+        else:
+            context_llm_cfg = base_llm_cfg
 
         kb: KB | None = None
         if effective_kb_id:
@@ -413,7 +455,6 @@ async def chat_post(
 
         if conv is not None:
             memory_trace: dict[str, Any] | None = None
-            context_llm_cfg = (resolve_user_llm(user) if user is not None else None) or resolve_system_llm()
             user_memory_embedding_cfg = resolve_user_embedding(user)
             async with aspan("build_context", metadata={"conversation_id": conv.id}):
                 built = await build_context_for_conversation(
@@ -422,7 +463,10 @@ async def chat_post(
                     user_id=user.id,
                     model=selected_model,
                     kb_id=effective_kb_id,
-                    context_window=context_llm_cfg.context_window if context_llm_cfg is not None else None,
+                    context_window=configured_context_window_for_model(
+                        context_llm_cfg,
+                        selected_model or (context_llm_cfg.default_model if context_llm_cfg else None),
+                    ),
                     llm_cfg=context_llm_cfg,
                     embedding_cfg=user_memory_embedding_cfg,
                 )
@@ -447,6 +491,10 @@ async def chat_post(
             memory_trace=memory_trace,
             conversation_lock_id=conversation_lock_id,
             conversation_id=conv.id if conv else None,
+            llm_cfg_override=context_llm_cfg,
+            complex_llm_cfg_override=None if selected_model else (routing_cfgs.complex if routing_cfgs else None),
+            triage_llm_cfg_override=None if selected_model else (routing_cfgs.triage if routing_cfgs else None),
+            fallback_llm_cfg_override=None if selected_model else (routing_cfgs.fallback if routing_cfgs else None),
         )
     except Exception:
         if conversation_lock_id:

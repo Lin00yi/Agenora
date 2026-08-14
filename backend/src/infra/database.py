@@ -77,6 +77,7 @@ async def init_db() -> None:
     from src.conversations import models as _conv_models  # noqa: F401
     from src.kb import models as _kb_models  # noqa: F401
     from src.observability import models as _obs_models  # noqa: F401
+    from src.settings_user import models as _settings_user_models  # noqa: F401
 
     engine = get_engine()
     async with engine.begin() as conn:
@@ -221,6 +222,8 @@ def _migrate_additive_columns(sync_conn) -> None:
             ("llm_default_model", "VARCHAR(128)"),
             ("llm_complex_model", "VARCHAR(128)"),
             ("llm_context_window", "INTEGER"),
+            ("llm_triage_model", "VARCHAR(128)"),
+            ("llm_fallback_model", "VARCHAR(128)"),
             ("embedding_provider", "VARCHAR(32)"),
             ("embedding_base_url", "VARCHAR(255)"),
             ("embedding_api_key_enc", "VARCHAR(1024)"),
@@ -257,6 +260,22 @@ def _migrate_additive_columns(sync_conn) -> None:
                 )
             )
 
+        if "llm_complex_enabled" not in cols:
+            sync_conn.execute(
+                text(
+                    "ALTER TABLE users ADD COLUMN llm_complex_enabled "
+                    "BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+            )
+        for column in (
+            "llm_default_profile_id",
+            "llm_complex_profile_id",
+            "llm_triage_profile_id",
+            "llm_fallback_profile_id",
+        ):
+            if column not in cols:
+                sync_conn.execute(text(f"ALTER TABLE users ADD COLUMN {column} VARCHAR(36)"))
+
         # 06-01 admin-dashboard: users.is_admin + users.is_active.
         # IMPORTANT — use DEFAULT FALSE / TRUE, NOT 0 / 1. Production runs
         # PostgreSQL (docker-compose: postgresql+asyncpg), whose BOOLEAN columns
@@ -288,6 +307,35 @@ def _migrate_additive_columns(sync_conn) -> None:
             sync_conn.execute(
                 text("ALTER TABLE conversations ADD COLUMN finalized_at TIMESTAMP")
             )
+        # v5: stable reference to a user-owned model profile.  ``llm_model``
+        # is kept as a denormalised compatibility/display value for old API
+        # consumers and existing conversation records.
+        if "llm_profile_id" not in conv_cols:
+            sync_conn.execute(
+                text("ALTER TABLE conversations ADD COLUMN llm_profile_id VARCHAR(36)")
+            )
+
+    # v5: profiles can now point at independently configured provider
+    # connections.  Both ALTERs are additive for existing SQLite/Postgres DBs;
+    # fresh installs receive them through Base.metadata.create_all above.
+    if "llm_model_profiles" in tables:
+        profile_cols = {c["name"] for c in insp.get_columns("llm_model_profiles")}
+        if "connection_id" not in profile_cols:
+            sync_conn.execute(
+                text("ALTER TABLE llm_model_profiles ADD COLUMN connection_id VARCHAR(36)")
+            )
+    if "llm_connections" in tables:
+        connection_cols = {c["name"] for c in insp.get_columns("llm_connections")}
+        connection_new_cols = [
+            ("consecutive_failures", "INTEGER NOT NULL DEFAULT 0"),
+            ("circuit_open_until", "TIMESTAMP"),
+            ("last_failure_at", "TIMESTAMP"),
+            ("last_success_at", "TIMESTAMP"),
+            ("last_error_category", "VARCHAR(32)"),
+        ]
+        for column, definition in connection_new_cols:
+            if column not in connection_cols:
+                sync_conn.execute(text(f"ALTER TABLE llm_connections ADD COLUMN {column} {definition}"))
 
     # Stop generation is a client-side cancellation state, not a model error
     # worth preserving on completed/partial assistant messages.

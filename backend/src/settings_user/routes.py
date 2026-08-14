@@ -19,6 +19,7 @@ The user must delete those KBs (or accept the loss) before the change can land.
 """
 from __future__ import annotations
 
+import uuid
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -39,6 +40,15 @@ from src.settings_user.probe import (
     probe_embedding,
     probe_llm_models,
 )
+from src.settings_user.models import (
+    LLMConnection,
+    LLMModelProfile,
+    ensure_legacy_llm_connection,
+    ensure_legacy_llm_model_profiles,
+    list_llm_connections,
+    list_llm_model_profiles,
+    resolve_user_llm,
+)
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -55,11 +65,42 @@ class LLMBody(BaseModel):
     provider: LLM_PROVIDERS
     base_url: str = Field(min_length=1, max_length=255)
     api_key: str = Field(default="", max_length=512)  # "" = keep existing
-    default_model: str = Field(min_length=1, max_length=128)
-    complex_model: str = Field(default="", max_length=128)
+    # Required only for the first configuration. Once a model catalog exists,
+    # the routing policy owns the active profile and a connection edit should
+    # not silently replace it.
+    default_model: str | None = Field(default=None, max_length=128)
+    # Omitted means "leave automatic routing unchanged".  This lets the
+    # default connection be edited independently from the routing policy.
+    complex_model: str | None = Field(default=None, max_length=128)
     # None is the default for new configurations: resolve well-known model IDs
     # in the server registry. A number is an explicit BYOK override.
     context_window: int | None = Field(default=None, ge=4_096, le=2_000_000)
+
+
+class LLMModelProfileBody(BaseModel):
+    connection_id: str | None = Field(default=None, max_length=36)
+    display_name: str = Field(min_length=1, max_length=96)
+    model_id: str = Field(min_length=1, max_length=128)
+    context_window: int | None = Field(default=None, ge=4_096, le=2_000_000)
+    enabled: bool = True
+    supports_tools: bool = True
+
+
+class LLMConnectionBody(BaseModel):
+    display_name: str = Field(min_length=1, max_length=96)
+    provider: LLM_PROVIDERS
+    base_url: str = Field(min_length=1, max_length=255)
+    # Empty key keeps the existing encrypted secret on PATCH only.
+    api_key: str = Field(default="", max_length=512)
+    enabled: bool = True
+
+
+class LLMModelPolicyBody(BaseModel):
+    default_profile_id: str = Field(min_length=1, max_length=36)
+    complex_enabled: bool = False
+    complex_profile_id: str | None = Field(default=None, max_length=36)
+    triage_profile_id: str | None = Field(default=None, max_length=36)
+    fallback_profile_id: str | None = Field(default=None, max_length=36)
 
 
 class EmbeddingBody(BaseModel):
@@ -112,7 +153,11 @@ class KbOptionsBody(BaseModel):
 # ---------------------------------------------------------------------------
 # GET /me — current saved + effective view
 # ---------------------------------------------------------------------------
-def _to_public(user: User) -> dict:
+def _to_public(
+    user: User,
+    profiles: list[LLMModelProfile] | None = None,
+    connections: list[LLMConnection] | None = None,
+) -> dict:
     """Saved-side projection (user's persisted choices). Never reveal api_key."""
     from src.settings import get_settings
 
@@ -183,6 +228,15 @@ def _to_public(user: User) -> dict:
             ),
             "effective_context_window": effective_context.value if effective_context else None,
             "effective_context_window_source": effective_context.source if effective_context else None,
+            "complex_enabled": bool(getattr(user, "llm_complex_enabled", False)),
+            "default_profile_id": getattr(user, "llm_default_profile_id", None),
+            "complex_profile_id": getattr(user, "llm_complex_profile_id", None),
+            "triage_profile_id": getattr(user, "llm_triage_profile_id", None),
+            "fallback_profile_id": getattr(user, "llm_fallback_profile_id", None),
+            "triage_model": normalize_model_name(getattr(user, "llm_triage_model", None)),
+            "fallback_model": normalize_model_name(getattr(user, "llm_fallback_model", None)),
+            "model_profiles": [profile.to_public_dict() for profile in profiles or []],
+            "connections": [connection.to_public_dict() for connection in connections or []],
         },
         "embedding": {
             "provider": user.embedding_provider,
@@ -220,8 +274,14 @@ def _to_public(user: User) -> dict:
 
 
 @router.get("/me")
-async def get_my_settings(user: CurrentUser) -> dict:
-    return _to_public(user)
+async def get_my_settings(
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    profiles = await ensure_legacy_llm_model_profiles(session, user)
+    connections = await list_llm_connections(session, user_id=user.id)
+    await session.commit()
+    return _to_public(user, profiles, connections)
 
 
 # ---------------------------------------------------------------------------
@@ -245,12 +305,42 @@ async def save_llm(
         raise HTTPException(
             status_code=400, detail="api_key required for first-time configuration"
         )
-    user_row.llm_default_model = normalize_model_name(body.default_model)
-    user_row.llm_complex_model = normalize_model_name(body.complex_model or body.default_model)
+    requested_default_model = normalize_model_name(body.default_model or "")
+    if requested_default_model:
+        user_row.llm_default_model = requested_default_model
+    elif not user_row.llm_default_model:
+        raise HTTPException(
+            status_code=400, detail="default_model required for first-time configuration"
+        )
+    if body.complex_model is not None:
+        user_row.llm_complex_model = normalize_model_name(
+            body.complex_model or user_row.llm_default_model
+        )
+        user_row.llm_complex_enabled = bool(
+            body.complex_model.strip()
+            and body.complex_model.strip() != user_row.llm_default_model
+        )
+    elif not user_row.llm_complex_model:
+        user_row.llm_complex_model = user_row.llm_default_model
+        user_row.llm_complex_enabled = False
     user_row.llm_context_window = body.context_window
+    profiles = await ensure_legacy_llm_model_profiles(session, user_row)
+    connections = await list_llm_connections(session, user_id=user.id)
+    for profile in profiles:
+        if (
+            profile.model_id == user_row.llm_default_model
+            and not user_row.llm_default_profile_id
+        ):
+            profile.context_window = body.context_window
+            user_row.llm_default_profile_id = profile.id
+        if (
+            profile.model_id == user_row.llm_complex_model
+            and not user_row.llm_complex_profile_id
+        ):
+            user_row.llm_complex_profile_id = profile.id
     await session.commit()
     await session.refresh(user_row)
-    return _to_public(user_row)
+    return _to_public(user_row, profiles, connections)
 
 
 @router.delete("/llm", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
@@ -267,7 +357,235 @@ async def clear_llm(
     user_row.llm_default_model = None
     user_row.llm_complex_model = None
     user_row.llm_context_window = None
+    user_row.llm_complex_enabled = False
+    user_row.llm_triage_model = None
+    user_row.llm_fallback_model = None
+    user_row.llm_default_profile_id = None
+    user_row.llm_complex_profile_id = None
+    user_row.llm_triage_profile_id = None
+    user_row.llm_fallback_profile_id = None
     await session.commit()
+
+
+async def _owned_llm_profiles(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    include_disabled: bool = True,
+) -> list[LLMModelProfile]:
+    return await list_llm_model_profiles(
+        session, user_id=user_id, include_disabled=include_disabled
+    )
+
+
+async def _owned_llm_connections(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    include_disabled: bool = True,
+) -> list[LLMConnection]:
+    return await list_llm_connections(
+        session, user_id=user_id, include_disabled=include_disabled
+    )
+
+
+@router.post("/llm/connections", status_code=status.HTTP_201_CREATED)
+async def create_llm_connection(
+    body: LLMConnectionBody,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    if not body.api_key.strip():
+        raise HTTPException(status_code=400, detail="新增连接需要 API Key。")
+    connection = LLMConnection(
+        id=str(uuid.uuid4()),
+        user_id=user.id,
+        display_name=body.display_name.strip(),
+        provider=body.provider,
+        base_url=body.base_url.rstrip("/"),
+        api_key_enc=encrypt(body.api_key.strip()),
+        enabled=body.enabled,
+    )
+    session.add(connection)
+    await session.commit()
+    await session.refresh(connection)
+    return connection.to_public_dict()
+
+
+@router.patch("/llm/connections/{connection_id}")
+async def update_llm_connection(
+    connection_id: str,
+    body: LLMConnectionBody,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    connection = await session.get(LLMConnection, connection_id)
+    if connection is None or connection.user_id != user.id:
+        raise HTTPException(status_code=404, detail="llm connection not found")
+    if connection.is_legacy_default:
+        raise HTTPException(status_code=409, detail="默认连接请在基础连接配置中编辑。")
+    connection.display_name = body.display_name.strip()
+    connection.provider = body.provider
+    connection.base_url = body.base_url.rstrip("/")
+    connection.enabled = body.enabled
+    if body.api_key.strip():
+        connection.api_key_enc = encrypt(body.api_key.strip())
+    await session.commit()
+    await session.refresh(connection)
+    return connection.to_public_dict()
+
+
+@router.delete("/llm/connections/{connection_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+async def delete_llm_connection(
+    connection_id: str,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> None:
+    connection = await session.get(LLMConnection, connection_id)
+    if connection is None or connection.user_id != user.id:
+        raise HTTPException(status_code=404, detail="llm connection not found")
+    if connection.is_legacy_default:
+        raise HTTPException(status_code=409, detail="默认连接不能删除，请清空基础连接配置。")
+    linked = await session.scalar(
+        select(LLMModelProfile.id).where(LLMModelProfile.connection_id == connection.id).limit(1)
+    )
+    if linked:
+        raise HTTPException(status_code=409, detail="该连接仍有关联模型，请先移除或迁移模型。")
+    await session.delete(connection)
+    await session.commit()
+
+
+@router.post("/llm/models", status_code=status.HTTP_201_CREATED)
+async def create_llm_model_profile(
+    body: LLMModelProfileBody,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Register an arbitrary chat model under the user's validated connection."""
+    await ensure_legacy_llm_connection(session, user)
+    connections = await _owned_llm_connections(session, user_id=user.id)
+    connection_id = body.connection_id
+    if connection_id is None:
+        connection_id = next((item.id for item in connections if item.is_legacy_default), None)
+    connection = next((item for item in connections if item.id == connection_id and item.enabled), None)
+    if connection is None:
+        raise HTTPException(status_code=422, detail="请选择一个已启用的模型连接。")
+    model_id = normalize_model_name(body.model_id) or ""
+    profiles = await _owned_llm_profiles(session, user_id=user.id)
+    if any(profile.model_id == model_id and profile.connection_id == connection.id for profile in profiles):
+        raise HTTPException(status_code=409, detail="该模型已经在可用模型列表中。")
+    profile = LLMModelProfile(
+        id=str(uuid.uuid4()),
+        user_id=user.id,
+        connection_id=connection.id,
+        display_name=body.display_name.strip(),
+        model_id=model_id,
+        context_window=body.context_window,
+        enabled=body.enabled,
+        supports_tools=body.supports_tools,
+    )
+    session.add(profile)
+    await session.commit()
+    await session.refresh(profile)
+    return profile.to_public_dict()
+
+
+@router.patch("/llm/models/{profile_id}")
+async def update_llm_model_profile(
+    profile_id: str,
+    body: LLMModelProfileBody,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    profile = await session.get(LLMModelProfile, profile_id)
+    if profile is None or profile.user_id != user.id:
+        raise HTTPException(status_code=404, detail="model profile not found")
+    next_model_id = normalize_model_name(body.model_id) or ""
+    connections = await _owned_llm_connections(session, user_id=user.id)
+    connection_id = body.connection_id or profile.connection_id
+    connection = next((item for item in connections if item.id == connection_id and item.enabled), None)
+    if connection is None:
+        raise HTTPException(status_code=422, detail="请选择一个已启用的模型连接。")
+    profiles = await _owned_llm_profiles(session, user_id=user.id)
+    if any(
+        item.id != profile.id
+        and item.model_id == next_model_id
+        and item.connection_id == connection.id
+        for item in profiles
+    ):
+        raise HTTPException(status_code=409, detail="该模型已经在可用模型列表中。")
+    profile.display_name = body.display_name.strip()
+    profile.connection_id = connection.id
+    profile.model_id = next_model_id
+    profile.context_window = body.context_window
+    profile.enabled = body.enabled
+    profile.supports_tools = body.supports_tools
+    await session.commit()
+    await session.refresh(profile)
+    return profile.to_public_dict()
+
+
+@router.delete("/llm/models/{profile_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+async def delete_llm_model_profile(
+    profile_id: str,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> None:
+    profile = await session.get(LLMModelProfile, profile_id)
+    if profile is None or profile.user_id != user.id:
+        raise HTTPException(status_code=404, detail="model profile not found")
+    protected = {
+        getattr(user, "llm_default_profile_id", None),
+        getattr(user, "llm_complex_profile_id", None) if getattr(user, "llm_complex_enabled", False) else None,
+        getattr(user, "llm_triage_profile_id", None),
+        getattr(user, "llm_fallback_profile_id", None),
+    }
+    if profile.id in protected:
+        raise HTTPException(status_code=409, detail="该模型正在被路由策略使用，请先调整策略。")
+    await session.delete(profile)
+    await session.commit()
+
+
+@router.put("/llm/policy")
+async def save_llm_model_policy(
+    body: LLMModelPolicyBody,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    user_row = await session.get(User, user.id)
+    if user_row is None:
+        raise HTTPException(status_code=404, detail="user not found")
+    profiles = await _owned_llm_profiles(session, user_id=user.id, include_disabled=False)
+    allowed = {profile.id: profile for profile in profiles}
+    requested = [
+        body.default_profile_id,
+        body.complex_profile_id if body.complex_enabled else None,
+        body.triage_profile_id,
+        body.fallback_profile_id,
+    ]
+    if any(profile_id and profile_id not in allowed for profile_id in requested):
+        raise HTTPException(status_code=422, detail="路由策略只能使用已启用的模型档案。")
+
+    primary = allowed[body.default_profile_id]
+    complex_profile = allowed.get(body.complex_profile_id or "")
+    triage_profile = allowed.get(body.triage_profile_id or "")
+    fallback_profile = allowed.get(body.fallback_profile_id or "")
+    user_row.llm_default_profile_id = primary.id
+    user_row.llm_default_model = primary.model_id
+    user_row.llm_complex_enabled = body.complex_enabled
+    user_row.llm_complex_profile_id = complex_profile.id if body.complex_enabled and complex_profile else primary.id
+    user_row.llm_complex_model = (complex_profile or primary).model_id
+    user_row.llm_triage_profile_id = triage_profile.id if triage_profile else None
+    user_row.llm_triage_model = triage_profile.model_id if triage_profile else None
+    user_row.llm_fallback_profile_id = fallback_profile.id if fallback_profile else None
+    user_row.llm_fallback_model = fallback_profile.model_id if fallback_profile else None
+    # Keep old callers and the effective-config header accurate while the
+    # runtime itself reads the profile-level mapping.
+    user_row.llm_context_window = primary.context_window
+    await session.commit()
+    await session.refresh(user_row)
+    connections = await _owned_llm_connections(session, user_id=user.id)
+    return _to_public(user_row, profiles, connections)
 
 
 # ---------------------------------------------------------------------------

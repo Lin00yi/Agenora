@@ -99,7 +99,7 @@ import { getToken, handleSessionExpired } from "@/lib/auth";
 export function connectChat(
   messages: ChatMessage[],
   onEvent: (e: ChatEvent) => void,
-  opts?: { conversationId?: string | null; kbId?: string | null; model?: string | null }
+  opts?: { conversationId?: string | null; kbId?: string | null; model?: string | null; modelProfileId?: string | null }
 ): () => void {
   const controller = new AbortController();
 
@@ -116,6 +116,7 @@ export function connectChat(
       : { messages };
     if (opts?.kbId) body.kb_id = opts.kbId;
     if (opts?.model) body.model = opts.model;
+    if (opts?.modelProfileId) body.model_profile_id = opts.modelProfileId;
 
     let resp: Response;
     try {
