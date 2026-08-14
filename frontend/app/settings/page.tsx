@@ -64,8 +64,8 @@ type ProviderPreset = {
 };
 
 const PROVIDER_PRESETS: ProviderPreset[] = [
-  { label: "DeepSeek", caption: "OpenAI Compatible", provider: "openai-compat", baseUrl: "https://api.deepseek.com" },
-  { label: "OpenAI", caption: "官方 /v1 接口", provider: "openai-compat", baseUrl: "https://api.openai.com/v1" },
+  { label: "DeepSeek", caption: "兼容接口", provider: "openai-compat", baseUrl: "https://api.deepseek.com" },
+  { label: "OpenAI", caption: "官方接口", provider: "openai-compat", baseUrl: "https://api.openai.com/v1" },
   { label: "Anthropic", caption: "Messages API", provider: "anthropic", baseUrl: "https://api.anthropic.com" },
 ];
 
@@ -163,6 +163,7 @@ function LLMSettingsPanel({
   const [apiKey, setApiKey] = useState("");
   const [models, setModels] = useState<string[]>([]);
   const [defaultModel, setDefaultModel] = useState(initial?.default_model || "");
+  const [customConnectionSelected, setCustomConnectionSelected] = useState(false);
   const [contextWindow, setContextWindow] = useState<number | null>(initial?.context_window ?? null);
   const [probeState, setProbeState] = useState<ProbeState>({ kind: "idle" });
   const [saving, setSaving] = useState(false);
@@ -203,6 +204,7 @@ function LLMSettingsPanel({
     setDefaultModel(initial?.default_model || "");
     setContextWindow(initial?.context_window ?? null);
     setModels([]);
+    setCustomConnectionSelected(false);
     setProbeState({ kind: "idle" });
   }, [
     initial?.base_url,
@@ -273,6 +275,15 @@ function LLMSettingsPanel({
   const applyPreset = (preset: ProviderPreset) => {
     setProvider(preset.provider);
     setBaseUrl(preset.baseUrl);
+    setCustomConnectionSelected(false);
+    setModels([]);
+    setProbeState({ kind: "idle" });
+  };
+
+  const applyCustomConnection = () => {
+    setProvider("openai-compat");
+    setBaseUrl("");
+    setCustomConnectionSelected(true);
     setModels([]);
     setProbeState({ kind: "idle" });
   };
@@ -280,68 +291,74 @@ function LLMSettingsPanel({
   return (
     <section className="admin-panel overflow-hidden" aria-labelledby="llm-settings-heading">
       <div className="border-b border-surface-border/70 px-5 py-5 sm:px-6">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex min-w-0 items-start gap-3">
-            <span className="admin-icon-tile admin-icon-tile-brand" aria-hidden>
-              <Bot className="h-4 w-4" />
-            </span>
-            <div className="min-w-0">
-              <p className="text-xs font-semibold tracking-[0.14em] text-muted">当前运行配置</p>
-              <h2 id="llm-settings-heading" className="mt-1 text-lg font-semibold tracking-tight">
-                你的对话正在使用什么模型
-              </h2>
-              <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
-                {effectiveSource === "user"
-                  ? "个人配置会作为未指定模型会话的默认值。"
-                  : effectiveSource === "system"
-                    ? "当前使用平台默认配置。保存个人配置后会优先使用你的服务。"
-                    : "当前没有可用的模型配置。完成下方设置后即可开始对话。"}
-              </p>
+        {initial?.configured ? (
+          <>
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="admin-icon-tile admin-icon-tile-brand" aria-hidden>
+                  <Bot className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-muted">当前运行配置</p>
+                  <h2 id="llm-settings-heading" className="mt-1 text-balance text-lg font-semibold">你的对话正在使用什么模型</h2>
+                  <p className="mt-1 max-w-2xl text-pretty text-sm leading-6 text-muted">
+                    {effectiveSource === "user"
+                      ? "个人配置会作为未指定模型会话的默认值。"
+                      : "当前使用平台默认配置。保存个人配置后会优先使用你的服务。"}
+                  </p>
+                </div>
+              </div>
+              <EffectiveStatus source={effectiveSource} />
             </div>
-          </div>
-          <EffectiveStatus source={effectiveSource} />
-        </div>
 
-        <dl className="mt-6 grid divide-y divide-surface-border/70 border-y border-surface-border/70 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-          <SummaryItem label="来源" value={sourceLabel(effectiveSource)} />
-          <SummaryItem label="默认模型" value={effectiveModel || "尚未设置"} mono />
-          <SummaryItem label="上下文窗口" value={contextWindowLabel} />
-        </dl>
-        <nav className="mt-5 flex gap-1 overflow-x-auto border-b border-surface-border/70 pb-2 text-sm" aria-label="模型设置步骤">
-          <a className="shrink-0 rounded-md px-3 py-1.5 text-muted transition hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30" href="#model-connections">1. 连接</a>
-          <a className="shrink-0 rounded-md px-3 py-1.5 text-muted transition hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30" href="#model-catalog">2. 模型目录</a>
-          <a className="shrink-0 rounded-md px-3 py-1.5 text-muted transition hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30" href="#model-routing">3. 自动路由</a>
-        </nav>
+            <dl className="mt-6 grid divide-y divide-surface-border/70 border-y border-surface-border/70 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+              <SummaryItem label="来源" value={sourceLabel(effectiveSource)} />
+              <SummaryItem label="默认模型" value={effectiveModel || "尚未设置"} mono />
+              <SummaryItem label="上下文窗口" value={contextWindowLabel} />
+            </dl>
+          </>
+        ) : (
+          <>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="admin-icon-tile admin-icon-tile-brand" aria-hidden>
+                  <Bot className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-brand">模型设置</p>
+                  <h2 id="llm-settings-heading" className="mt-1 text-balance text-xl font-semibold">接入你的第一个模型</h2>
+                  <p className="mt-1 max-w-2xl text-pretty text-sm leading-6 text-muted">完成这一步后，即可开始对话。模型目录和自动路由会在保存连接后按需解锁。</p>
+                </div>
+              </div>
+              <EffectiveStatus source="missing" />
+            </div>
+            <ol className="mt-6 flex items-center gap-3 border-t border-surface-border/70 pt-4 text-sm" aria-label="模型设置步骤">
+              <li className="flex items-center gap-2 font-semibold text-ink" aria-current="step"><span className="flex size-6 items-center justify-center rounded-full bg-brand text-xs text-on-brand">1</span>连接服务</li>
+              <li className="hidden h-px w-8 bg-surface-border sm:block" aria-hidden />
+              <li className="flex items-center gap-2 text-muted"><span className="flex size-6 items-center justify-center rounded-full bg-surface-2 text-xs">2</span>添加模型</li>
+              <li className="hidden h-px w-8 bg-surface-border sm:block" aria-hidden />
+              <li className="flex items-center gap-2 text-muted"><span className="flex size-6 items-center justify-center rounded-full bg-surface-2 text-xs">3</span>自动路由</li>
+            </ol>
+          </>
+        )}
       </div>
 
       <div id="model-connections" className="scroll-mt-5 px-5 py-6 sm:px-6">
         <div className="max-w-2xl">
-          <p className="text-xs font-semibold tracking-[0.14em] text-brand">默认连接</p>
-          <h3 className="mt-1 text-base font-semibold">接入并验证第一个模型服务</h3>
-          <p className="mt-1 text-sm leading-6 text-muted">
-            这是自动路由的初始连接。其他服务商可在模型目录中按需添加，不会覆盖这里已保存的凭据。
+          <p className="text-xs font-semibold text-brand">{initial?.configured ? "默认连接" : "第一步"}</p>
+          <h3 className="mt-1 text-balance text-lg font-semibold">{initial?.configured ? "维护默认连接" : "选择服务商并填写连接信息"}</h3>
+          <p className="mt-1 text-pretty text-sm leading-6 text-muted">
+            {initial?.configured ? "其他服务商可在模型目录中按需添加，不会覆盖这里已保存的凭据。" : "先连接一个可用模型。保存后，系统会自动创建首个模型档案。"}
           </p>
         </div>
 
-        <div className="mt-5 grid gap-5 lg:grid-cols-2">
-          <Field label="提供商" htmlFor="llm-provider" description={providerHelp}>
-            <Select
-              id="llm-provider"
-              value={provider}
-              onChange={(event) => {
-                setProvider(event.target.value as LLMProvider);
-                setModels([]);
-                setProbeState({ kind: "idle" });
-              }}
-              options={[
-                { value: "anthropic", label: "Anthropic" },
-                { value: "openai-compat", label: "OpenAI Compatible" },
-              ]}
-            />
-          </Field>
-
-          <Field label="快速填充" description="选择官方预设后，仍可改为你的代理或自托管地址。">
-            <div className="grid gap-2 sm:grid-cols-3" role="group" aria-label="选择服务商预设">
+        {!initial?.configured && (
+          <section className="mt-6 rounded-lg border border-surface-border/70 bg-surface-2/35 p-4" aria-labelledby="provider-presets-heading">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+              <h4 id="provider-presets-heading" className="text-sm font-semibold text-ink">选择服务商</h4>
+              <p className="text-xs leading-5 text-muted">官方预设会填入接口地址，之后仍可修改。</p>
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-4" role="group" aria-label="选择服务商预设">
               {PROVIDER_PRESETS.map((preset) => {
                 const selected = provider === preset.provider && baseUrl === preset.baseUrl;
                 return (
@@ -351,7 +368,7 @@ function LLMSettingsPanel({
                     onClick={() => applyPreset(preset)}
                     aria-pressed={selected}
                     className={cn(
-                      "group flex min-h-[68px] items-center gap-2.5 rounded-lg border px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30",
+                      "group flex min-h-[52px] items-center gap-2.5 rounded-lg border px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30",
                       selected
                         ? "border-brand/45 bg-brand/10 text-ink shadow-sm"
                         : "border-surface-border/80 bg-surface hover:border-brand/35 hover:bg-surface-2"
@@ -369,14 +386,47 @@ function LLMSettingsPanel({
                       {selected ? <Check className="size-3.5" /> : preset.label.slice(0, 1)}
                     </span>
                     <span className="min-w-0">
-                      <span className="block text-sm font-medium leading-5">{preset.label}</span>
-                      <span className="block truncate text-[11px] leading-4 text-muted">{preset.caption}</span>
+                      <span className="block text-sm font-medium leading-4">{preset.label}</span>
+                      <span className="mt-0.5 block text-[11px] leading-4 text-muted">{preset.caption}</span>
                     </span>
                   </button>
                 );
               })}
+              <button
+                type="button"
+                onClick={applyCustomConnection}
+                aria-pressed={customConnectionSelected}
+                className={cn(
+                  "flex min-h-[52px] items-center rounded-lg border px-3 text-left text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30",
+                  customConnectionSelected
+                    ? "border-brand/45 bg-brand/10 text-ink"
+                    : "border-surface-border/80 bg-surface text-ink hover:border-brand/35 hover:bg-surface-2"
+                )}
+              >
+                自定义兼容接口
+              </button>
             </div>
-          </Field>
+          </section>
+        )}
+
+        <div className="mt-6 grid gap-5 lg:grid-cols-2">
+          {initial?.configured && (
+            <Field label="服务协议" htmlFor="llm-provider" description={providerHelp}>
+              <Select
+                id="llm-provider"
+                value={provider}
+                onChange={(event) => {
+                  setProvider(event.target.value as LLMProvider);
+                  setModels([]);
+                  setProbeState({ kind: "idle" });
+                }}
+                options={[
+                  { value: "anthropic", label: "Anthropic" },
+                  { value: "openai-compat", label: "OpenAI Compatible" },
+                ]}
+              />
+            </Field>
+          )}
 
           <Field
             label="Base URL"
@@ -431,24 +481,49 @@ function LLMSettingsPanel({
           </Field>
 
           {!initial?.configured && (
-            <Field
-              label="初始模型 ID"
-              htmlFor="llm-default-model"
-              description={modelOptions.length ? "从测试结果选择，保存后会建立第一个模型档案。" : "可直接填写服务商要求的精确模型 ID。"}
-            >
-              <input
-                id="llm-default-model"
-                name="llm-default-model"
-                value={defaultModel}
-                onChange={(event) => setDefaultModel(event.target.value)}
-                list={modelListId}
-                placeholder="例如 deepseek-v4-flash"
-                className="admin-input font-mono"
-                autoComplete="off"
-              />
-            </Field>
+            <div className="lg:col-span-2">
+              <Field
+                label="初始模型 ID"
+                htmlFor="llm-default-model"
+                description={modelOptions.length ? "从测试结果选择，保存后会建立第一个模型档案。" : "例如 deepseek-v4-flash，也可填写服务商要求的精确模型 ID。"}
+              >
+                <input
+                  id="llm-default-model"
+                  name="llm-default-model"
+                  value={defaultModel}
+                  onChange={(event) => setDefaultModel(event.target.value)}
+                  list={modelListId}
+                  placeholder="例如 deepseek-v4-flash"
+                  className="admin-input font-mono"
+                  autoComplete="off"
+                />
+              </Field>
+            </div>
           )}
         </div>
+
+        {!initial?.configured && (
+          <details className="mt-4 max-w-2xl text-sm">
+            <summary className="cursor-pointer text-muted underline-offset-4 hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30">使用代理、自托管或 Anthropic 兼容地址？</summary>
+            <div className="mt-3 max-w-md">
+              <Field label="服务协议" htmlFor="llm-provider" description={providerHelp}>
+                <Select
+                  id="llm-provider"
+                  value={provider}
+                  onChange={(event) => {
+                    setProvider(event.target.value as LLMProvider);
+                    setModels([]);
+                    setProbeState({ kind: "idle" });
+                  }}
+                  options={[
+                    { value: "openai-compat", label: "OpenAI Compatible" },
+                    { value: "anthropic", label: "Anthropic Messages" },
+                  ]}
+                />
+              </Field>
+            </div>
+          </details>
+        )}
 
         <datalist id={modelListId}>
           {modelOptions.map((model) => <option key={model} value={model} />)}
@@ -457,28 +532,39 @@ function LLMSettingsPanel({
       </div>
 
       <div id="model-catalog" className="scroll-mt-5 border-t border-surface-border/70 px-5 py-6 sm:px-6">
-        <div className="max-w-2xl">
-          <p className="text-xs font-semibold tracking-[0.14em] text-brand">模型目录</p>
-          <h3 className="mt-1 text-base font-semibold">添加可用模型，再编排自动路由</h3>
-          <p className="mt-1 text-sm leading-6 text-muted">
-            每个档案绑定一个连接和上下文窗口。会话可固定选择档案，未固定时才会进入下方自动路由。
-          </p>
-        </div>
+        {initial?.configured ? (
+          <div className="max-w-2xl">
+            <p className="text-xs font-semibold text-brand">模型目录</p>
+            <h3 className="mt-1 text-balance text-lg font-semibold">添加可用模型，再编排自动路由</h3>
+            <p className="mt-1 text-pretty text-sm leading-6 text-muted">每个档案绑定一个连接和上下文窗口。会话可固定选择档案，未固定时才会进入下方自动路由。</p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3 rounded-lg border border-dashed border-surface-border/90 bg-surface-2/35 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="admin-icon-tile admin-icon-tile-sm mt-0.5 text-muted" aria-hidden><Plus className="h-3.5 w-3.5" /></span>
+              <div>
+                <p className="text-sm font-semibold text-ink">下一步：模型目录与自动路由</p>
+                <p className="mt-1 text-pretty text-xs leading-5 text-muted">保存第一个连接后解锁。届时可添加 Flash、复杂任务或备用模型。</p>
+              </div>
+            </div>
+            <span className="shrink-0 text-xs font-medium text-muted">保存后解锁</span>
+          </div>
+        )}
 
-        <details className="group mt-6 border-y border-surface-border/70 py-5">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-medium text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30">
-            <span className="flex items-center gap-2">
-              <SlidersHorizontal className="h-4 w-4 text-muted" aria-hidden />
-              默认连接兼容选项
-            </span>
-            <ChevronDown className="h-4 w-4 text-muted transition-transform duration-200 group-open:rotate-180" aria-hidden />
-          </summary>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-            主流模型会自动识别上下文窗口。仅当默认连接使用别名或自托管模型时，才需要填写兼容覆盖；新建档案请优先单独指定窗口。
-          </p>
+        {initial?.configured && (
+          <details className="group mt-6 border-y border-surface-border/70 py-5">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-medium text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30">
+              <span className="flex items-center gap-2">
+                <SlidersHorizontal className="h-4 w-4 text-muted" aria-hidden />
+                默认连接兼容选项
+              </span>
+              <ChevronDown className="h-4 w-4 text-muted transition-transform duration-200 group-open:rotate-180" aria-hidden />
+            </summary>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+              主流模型会自动识别上下文窗口。仅当默认连接使用别名或自托管模型时，才需要填写兼容覆盖；新建档案请优先单独指定窗口。
+            </p>
 
-          <div className="mt-5 max-w-2xl">
-            <div>
+            <div className="mt-5 max-w-2xl">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
@@ -532,17 +618,19 @@ function LLMSettingsPanel({
                 </div>
               )}
             </div>
-          </div>
-        </details>
+          </details>
+        )}
 
-        <ModelProfilesManager initial={initial} onChanged={onChanged} />
+        {initial?.configured && <ModelProfilesManager initial={initial} onChanged={onChanged} />}
       </div>
 
       <footer className="flex flex-col gap-4 border-t border-surface-border/70 bg-surface-2/35 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div className="min-w-0 text-sm text-muted" aria-live="polite">
           {canSave
-            ? "保存默认连接不会改动自动路由或会话中的固定模型选择。"
-            : "请补全 Base URL、API Key、初始模型；手动覆盖时还需填写有效窗口。"}
+            ? initial?.configured
+              ? "保存默认连接不会改动自动路由或会话中的固定模型选择。"
+              : "保存后会自动建立第一个模型档案，随后可添加模型并配置自动路由。"
+            : "请补全 Base URL、API Key 和模型 ID。"}
         </div>
         <div className="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row">
           {initial?.configured && (
@@ -553,7 +641,7 @@ function LLMSettingsPanel({
           )}
           <Button type="button" onClick={handleSave} disabled={!canSave}>
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-            {saving ? "正在保存" : "保存并应用"}
+            {saving ? "正在保存" : initial?.configured ? "保存并应用" : "保存并继续"}
           </Button>
         </div>
       </footer>
@@ -735,6 +823,26 @@ function ModelProfilesManager({
     value: profile.id,
     label: `${connections.find((connection) => connection.id === profile.connection_id)?.display_name ?? "默认连接"} / ${profile.display_name} · ${profile.model_id}`,
   }));
+
+  if (!initial?.configured) {
+    return (
+      <section className="mt-7 border-t border-surface-border/70 pt-5" aria-labelledby="model-catalog-next-heading">
+        <div className="flex flex-col gap-3 rounded-lg border border-dashed border-surface-border/90 bg-surface-2/35 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="admin-icon-tile admin-icon-tile-sm mt-0.5 text-muted" aria-hidden>
+              <Plus className="h-3.5 w-3.5" />
+            </span>
+            <div>
+              <p className="text-xs font-semibold tracking-[0.12em] text-muted">下一步</p>
+              <h3 id="model-catalog-next-heading" className="mt-0.5 text-sm font-semibold text-ink">保存连接后，继续添加模型与自动路由</h3>
+              <p className="mt-1 text-xs leading-5 text-muted">系统会先创建第一个模型档案。需要 Flash、复杂任务或备用模型时，再按需添加专用连接。</p>
+            </div>
+          </div>
+          <span className="shrink-0 text-xs font-medium text-muted">第 2 步将在保存后解锁</span>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="mt-8 border-t border-surface-border/70 pt-6" aria-labelledby="model-profiles-heading">
