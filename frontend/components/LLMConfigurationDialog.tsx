@@ -21,7 +21,11 @@ export function LLMConfigurationDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md" showCloseButton={false}>
+      <DialogContent
+        className="sm:max-w-md"
+        showCloseButton={false}
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle className="text-balance">先配置 LLM，才能开始对话</DialogTitle>
           <DialogDescription className="text-pretty">
