@@ -159,6 +159,11 @@ export type ProbeLLMBody = {
   api_key: string;
 };
 
+export type ProbeLLMResult = {
+  models: string[];
+  context_windows?: Record<string, { value: number; source: "registry" }>;
+};
+
 export type ProbeEmbeddingBody = {
   provider: EmbeddingProvider;
   base_url: string;
@@ -256,6 +261,14 @@ export async function createLLMModelProfile(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+    })
+  );
+}
+
+export async function probeLLMConnection(connectionId: string): Promise<ProbeLLMResult> {
+  return unwrap(
+    await authFetch(`/api/settings/llm/connections/${connectionId}/probe`, {
+      method: "POST",
     })
   );
 }

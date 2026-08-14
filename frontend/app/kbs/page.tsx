@@ -30,6 +30,7 @@ import {
   saveEmbeddingSettings,
   saveRerankerSettings,
   type MySettings,
+  type MyKbOptions,
   type EmbeddingProvider,
   type RerankerProvider,
 } from "@/lib/settings-api";
@@ -40,11 +41,13 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import AppModal from "@/components/AppModal";
 import Select from "@/components/Select";
 import ThemeToggle from "@/components/ThemeToggle";
+import { KbRetrievalPreferences } from "@/components/KbRetrievalPreferences";
 import { LoadingState, StateView } from "@/components/ui/state-view";
 
 export default function KbsPage() {
   const router = useRouter();
   const [kbs, setKbs] = useState<KB[]>([]);
+  const [kbOptions, setKbOptions] = useState<MyKbOptions | undefined>();
   const [loading, setLoading] = useState(true);
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -60,6 +63,9 @@ export default function KbsPage() {
       .then(setKbs)
       .catch((e) => toast.error((e as Error).message))
       .finally(() => setLoading(false));
+    getMySettings()
+      .then((settings) => setKbOptions(settings.kb_options))
+      .catch((e) => toast.error((e as Error).message));
   }, [router]);
 
   const onCreated = (kb: KB) => {
@@ -120,6 +126,10 @@ export default function KbsPage() {
             <Plus className="h-4 w-4" />
             新建知识库
           </Button>
+        </div>
+
+        <div className="mb-6">
+          <KbRetrievalPreferences initial={kbOptions} onChanged={setKbOptions} />
         </div>
 
         {loading ? (

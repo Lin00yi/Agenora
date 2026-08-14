@@ -482,6 +482,41 @@ async def delete_llm_connection(
     await session.commit()
 
 
+@router.post("/llm/connections/{connection_id}/probe")
+async def probe_saved_llm_connection(
+    connection_id: str,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Discover models through a saved connection without exposing its secret."""
+    connection = await session.get(LLMConnection, connection_id)
+    if connection is None or connection.user_id != user.id:
+        raise HTTPException(status_code=404, detail="llm connection not found")
+    if not connection.enabled:
+        raise HTTPException(status_code=422, detail="该服务连接已停用。")
+    if not connection.api_key_enc:
+        raise HTTPException(status_code=422, detail="该服务连接没有可用的 API Key。")
+    try:
+        models = await probe_llm_models(
+            connection.provider,
+            connection.base_url,
+            decrypt(connection.api_key_enc),
+        )
+    except ProbeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return {
+        "models": models,
+        "context_windows": {
+            model: {
+                "value": resolution.value,
+                "source": resolution.source,
+            }
+            for model in models
+            if (resolution := resolve_context_window(model)).source == "registry"
+        },
+    }
+
+
 @router.post("/llm/models", status_code=status.HTTP_201_CREATED)
 async def create_llm_model_profile(
     body: LLMModelProfileBody,
