@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { LoadingState } from "@/components/ui/state-view";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getToken } from "@/lib/auth";
 import {
   clearLLMSettings,
@@ -350,7 +350,8 @@ function LLMSettingsPanel({
 
   return (
     <section className="admin-panel overflow-hidden" aria-labelledby="llm-settings-heading">
-      <div className="border-b border-surface-border/70 px-5 py-5 sm:px-6">
+      <Tabs value={activeSection} onValueChange={(value) => setActiveSection(value as "connections" | "models" | "routing")} className="gap-0">
+      <div className="px-5 py-5 sm:px-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-start gap-3">
             <span className="admin-icon-tile admin-icon-tile-brand" aria-hidden><Bot className="h-4 w-4" /></span>
@@ -365,16 +366,15 @@ function LLMSettingsPanel({
             hasDefaultProfile={Boolean(initial?.default_profile_id)}
           />
         </div>
-        <Tabs value={activeSection} onValueChange={(value) => setActiveSection(value as "connections" | "models" | "routing")} className="mt-4">
-          <TabsList variant="line" aria-label="模型设置区域" className="w-full justify-start gap-0 rounded-none border-b border-surface-border/70 p-0">
-            <TabsTrigger value="connections" className="flex-none rounded-none px-3.5">服务连接{connectionCount ? ` (${connectionCount})` : ""}</TabsTrigger>
-            <TabsTrigger value="models" className="flex-none rounded-none px-3.5">模型配置{hasProfiles ? ` (${initial?.model_profiles?.length ?? 0})` : ""}</TabsTrigger>
-            <TabsTrigger value="routing" disabled={!hasProfiles} className="flex-none rounded-none px-3.5">{!hasProfiles && <span aria-hidden>🔒</span>}路由策略</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <TabsList aria-label="模型设置区域" className="mt-4">
+          <TabsTrigger value="connections">服务连接{connectionCount ? ` (${connectionCount})` : ""}</TabsTrigger>
+          <TabsTrigger value="models">模型配置{hasProfiles ? ` (${initial?.model_profiles?.length ?? 0})` : ""}</TabsTrigger>
+          <TabsTrigger value="routing" disabled={!hasProfiles}>{!hasProfiles && <span aria-hidden>🔒</span>}路由策略</TabsTrigger>
+        </TabsList>
       </div>
 
-      {activeSection === "models" && connectionEditor && (
+      <TabsContent value="models" className="m-0 flex-1 outline-none">
+      {connectionEditor && (
       <div id="model-connections" className="scroll-mt-5 px-5 py-5 sm:px-6">
         <div className="max-w-2xl">
           <p className="text-xs font-semibold text-brand">{isCreatingFirstProfile ? "创建模型配置" : "默认连接"}</p>
@@ -526,21 +526,9 @@ function LLMSettingsPanel({
       </div>
       )}
 
-      {activeSection === "connections" && !connectionEditor && (
-      <div id="model-connections" className="scroll-mt-5 px-5 py-5 sm:px-6">
-        <ModelProfilesManager initial={initial} onChanged={onChanged} view="connections" onManageConnections={() => setActiveSection("connections")} />
-      </div>
-      )}
-
-      {activeSection === "models" && !connectionEditor && (
+      {!connectionEditor && (
       <div id="model-catalog" className="scroll-mt-5 px-5 py-5 sm:px-6">
         <ModelProfilesManager initial={initial} onChanged={onChanged} view="models" onManageConnections={() => setActiveSection("connections")} />
-      </div>
-      )}
-
-      {activeSection === "routing" && hasProfiles && (
-      <div id="model-routing" className="scroll-mt-5 px-5 py-5 sm:px-6">
-        <ModelProfilesManager initial={initial} onChanged={onChanged} view="routing" />
       </div>
       )}
 
@@ -563,6 +551,22 @@ function LLMSettingsPanel({
         </div>
       </footer>
       )}
+      </TabsContent>
+
+      <TabsContent value="connections" className="m-0 flex-1 outline-none">
+        <div id="model-connections" className="scroll-mt-5 px-5 py-5 sm:px-6">
+          <ModelProfilesManager initial={initial} onChanged={onChanged} view="connections" onManageConnections={() => setActiveSection("connections")} />
+        </div>
+      </TabsContent>
+
+      <TabsContent value="routing" className="m-0 flex-1 outline-none">
+        {hasProfiles && (
+          <div id="model-routing" className="scroll-mt-5 px-5 py-5 sm:px-6">
+            <ModelProfilesManager initial={initial} onChanged={onChanged} view="routing" />
+          </div>
+        )}
+      </TabsContent>
+      </Tabs>
 
       <ConfirmDialog
         open={clearOpen}
