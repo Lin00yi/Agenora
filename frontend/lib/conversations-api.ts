@@ -2,6 +2,7 @@
 
 import { authFetch } from "./auth";
 import type { ToolEvent } from "@/components/ThinkingChain";
+import type { AssistantPart } from "@/lib/conversationStore";
 import type { MemoryTrace } from "@/lib/sseClient";
 
 /**
@@ -74,6 +75,8 @@ export type MessagePayload = {
   role: "user" | "assistant";
   content: string;
   tools: ToolEvent[] | null;
+  /** Persisted text/tool order for streamed assistant replies. */
+  parts?: AssistantPart[] | null;
   memory_trace?: MemoryTrace | null;
   citations?: CitationPayload[] | null;
   cost_usd: number | null;
@@ -332,6 +335,7 @@ export async function appendAssistantMessage(
   payload: {
     content: string;
     tools?: ToolEvent[];
+    parts?: AssistantPart[];
     memory_trace?: MemoryTrace | null;
     citations?: CitationPayload[] | null;
     cost_usd?: number;
@@ -346,6 +350,7 @@ export async function appendAssistantMessage(
         role: "assistant",
         content: payload.content,
         tools: payload.tools && payload.tools.length > 0 ? payload.tools : undefined,
+        parts: payload.parts && payload.parts.length > 0 ? payload.parts : undefined,
         memory_trace: payload.memory_trace ?? undefined,
         citations:
           payload.citations && payload.citations.length > 0

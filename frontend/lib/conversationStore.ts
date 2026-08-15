@@ -87,3 +87,38 @@ export function flattenAssistantTools(
   }
   return fromParts.length > 0 ? fromParts : legacyTools;
 }
+
+/**
+ * Close the currently streaming text segment before persisting a turn.
+ * Returns undefined for ordinary text-only replies, which keeps their compact
+ * legacy representation. Tool-interleaved replies retain their exact order.
+ */
+export function finalizeAssistantParts(
+  parts: AssistantPart[],
+  liveContent: string
+): AssistantPart[] | undefined {
+  if (parts.length === 0) return undefined;
+  const finalParts = parts.map((part) =>
+    part.type === "text" ? { ...part } : { type: "tools" as const, tools: [...part.tools] }
+  );
+  if (liveContent.trim()) {
+    finalParts.push({ type: "text", text: liveContent });
+  }
+  return finalParts;
+}
+
+/** Parse persisted timeline data defensively so old/corrupt rows stay readable. */
+export function parseAssistantParts(value: unknown): AssistantPart[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const parts: AssistantPart[] = [];
+  for (const part of value) {
+    if (!part || typeof part !== "object") continue;
+    const candidate = part as { type?: unknown; text?: unknown; tools?: unknown };
+    if (candidate.type === "text" && typeof candidate.text === "string") {
+      parts.push({ type: "text", text: candidate.text });
+    } else if (candidate.type === "tools" && Array.isArray(candidate.tools)) {
+      parts.push({ type: "tools", tools: candidate.tools as ToolEvent[] });
+    }
+  }
+  return parts.length > 0 ? parts : undefined;
+}

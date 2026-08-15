@@ -398,9 +398,19 @@ async def create_kb(
     await session.commit()
     await session.refresh(kb)
 
-    # Create Qdrant collection. If this fails we roll back the KB so the user
-    # doesn't get a half-broken record.
-    store = get_store()
+    # Create the vector collection. Any initialization or collection failure
+    # must remove the already-committed row so users never see a half-created
+    # KB (for example, when the optional Milvus dependency is missing).
+    try:
+        store = get_store()
+    except Exception as exc:  # noqa: BLE001
+        await session.delete(kb)
+        await session.commit()
+        raise HTTPException(
+            status_code=503,
+            detail=f"向量库初始化失败：{exc}",
+        ) from exc
+
     if not hasattr(store, "create_collection"):
         await session.delete(kb)
         await session.commit()

@@ -4,8 +4,10 @@ import {
   conversationIdFromPath,
   getContextWindowForModel,
   parseServerTimestamp,
+  serverMsgToLocal,
   uniqueStrings,
 } from "@/lib/chatPageHelpers";
+import { joinAssistantText } from "@/lib/conversationStore";
 
 describe("chatPageHelpers", () => {
   it("resolves known model context windows and falls back safely", () => {
@@ -28,5 +30,26 @@ describe("chatPageHelpers", () => {
     const expected = Date.UTC(2026, 7, 14, 7, 22, 0);
     expect(parseServerTimestamp("2026-08-14T07:22:00")).toBe(expected);
     expect(parseServerTimestamp("2026-08-14T07:22:00+00:00")).toBe(expected);
+  });
+
+  it("rehydrates a persisted tool timeline without duplicating its text", () => {
+    const message = serverMsgToLocal({
+      id: "assistant-1",
+      role: "assistant",
+      content: "先检索。\n\n再回答。",
+      tools: [{ id: "tool-1", name: "search_kb", status: "ok" }],
+      parts: [
+        { type: "text", text: "先检索。" },
+        { type: "tools", tools: [{ id: "tool-1", name: "search_kb", status: "ok" }] },
+        { type: "text", text: "再回答。" },
+      ],
+      cost_usd: null,
+      error: null,
+      created_at: "2026-08-14T07:22:00+00:00",
+    });
+
+    if (message.role !== "assistant") throw new Error("expected assistant message");
+    expect(message.content).toBe("");
+    expect(joinAssistantText(message.parts, message.content)).toBe("先检索。\n\n再回答。");
   });
 });

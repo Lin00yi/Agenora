@@ -2,14 +2,13 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Ban,
   ChevronDown,
   ChevronRight,
-  CircleAlert,
-  CircleCheck,
   LoaderCircle,
   Search,
+  Wrench,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export type ToolEvent = {
   id?: string;
@@ -22,50 +21,39 @@ export type ToolEvent = {
   reason?: string;
 };
 
-type DetailRow = {
-  text: string;
-  duration: string;
-  status: ToolEvent["status"];
-};
-
-type ToolGroup = {
-  name: string;
+type Props = {
   events: ToolEvent[];
-  status: ToolEvent["status"];
-  detailRows: DetailRow[];
-  latencyMs: number | null;
-};
-
-type ChainSummary = {
-  text: string;
-  duration: string | null;
+  /** Brief public-facing lead-in emitted before this tool wave. */
+  intro?: string;
 };
 
 const NAME_LABEL: Record<string, string> = {
-  search_kb: "\u68c0\u7d22 KB",
-  search_kg: "\u68c0\u7d22\u77e5\u8bc6\u56fe\u8c31",
-  web_search: "\u641c\u7d22\u7f51\u7edc",
-  generate_kb_report: "\u751f\u6210 KB \u62a5\u544a",
-  get_current_time: "\u83b7\u53d6\u5f53\u524d\u65f6\u95f4",
-  get_weather: "\u67e5\u5929\u6c14",
-  search_restaurant_kb: "\u627e\u672c\u5730\u9910\u5385",
-  amap_search: "\u5730\u56fe\u641c\u7d22",
-  generate_travel_report: "\u751f\u6210\u65c5\u884c\u62a5\u544a",
+  search_kb: "检索知识库",
+  search_kg: "检索知识图谱",
+  web_search: "搜索网络",
+  generate_kb_report: "生成知识库报告",
+  get_current_time: "获取当前时间",
+  get_weather: "查询天气",
+  search_restaurant_kb: "查找本地餐厅",
+  amap_search: "搜索地图",
+  generate_travel_report: "生成旅行报告",
 };
 
-const STATUS_ICON: Record<ToolEvent["status"], React.ReactNode> = {
-  running: <LoaderCircle className="h-3.5 w-3.5 animate-spin text-brand" />,
-  ok: <CircleCheck className="h-3.5 w-3.5 text-brand" />,
-  error: <CircleAlert className="h-3.5 w-3.5 text-red-500" />,
-  blocked: <Ban className="h-3.5 w-3.5 text-amber-500" />,
-};
-
-export default function ThinkingChain({ events }: { events: ToolEvent[] }) {
+/**
+ * A compact, GPT-style processing record. It intentionally avoids the old
+ * nested-card treatment: the answer remains the visual focus, while users can
+ * expand a truthful, chronological account of the visible tool actions.
+ */
+export default function ThinkingChain({ events, intro }: Props) {
   const hasRunning = events.some((event) => event.status === "running");
   const [open, setOpen] = useState(hasRunning);
   const wasRunningRef = useRef(hasRunning);
-  const [, force] = useState(0);
-  const groups = useMemo(() => groupToolEvents(events), [events]);
+  const [now, setNow] = useState(() => Date.now());
+  const elapsedMs = useTraceElapsed(events, now);
+  const summary = useMemo(
+    () => getTraceSummary(events, hasRunning, elapsedMs),
+    [events, hasRunning, elapsedMs]
+  );
 
   useEffect(() => {
     if (hasRunning) {
@@ -73,7 +61,6 @@ export default function ThinkingChain({ events }: { events: ToolEvent[] }) {
       wasRunningRef.current = true;
       return;
     }
-    // Collapse once tools finish so the answer stays the visual focus.
     if (wasRunningRef.current) {
       setOpen(false);
       wasRunningRef.current = false;
@@ -82,288 +69,142 @@ export default function ThinkingChain({ events }: { events: ToolEvent[] }) {
 
   useEffect(() => {
     if (!hasRunning) return;
-    const id = setInterval(() => force((value) => value + 1), 200);
-    return () => clearInterval(id);
+    setNow(Date.now());
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
   }, [hasRunning]);
 
-  const summary = formatChainSummary(groups, hasRunning);
-
   return (
-    <div className="overflow-hidden rounded-lg border border-surface-border/70 bg-surface/80">
+    <section aria-label="处理过程" className="py-1 text-sm">
       <button
         aria-expanded={open}
+        className="flex min-h-8 items-center gap-2 text-left text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
         onClick={() => setOpen((value) => !value)}
-        className="flex min-h-9 w-full cursor-pointer items-center justify-between gap-3 px-3 py-1.5 text-sm transition-colors hover:bg-surface-2/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
         type="button"
       >
-        <span className="flex min-w-0 items-center gap-2 text-muted">
-          {open ? (
-            <ChevronDown className="h-3.5 w-3.5 shrink-0" />
-          ) : (
-            <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-          )}
-          {hasRunning ? (
-            <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-brand" />
-          ) : (
-            <Search className="h-3.5 w-3.5 shrink-0 text-brand/80" />
-          )}
-          <span className="truncate text-xs sm:text-sm">{summary.text}</span>
-        </span>
-        {summary.duration && (
-          <span className="shrink-0 rounded-md border border-surface-border/60 bg-surface px-1.5 py-0.5 text-[11px] tabular-nums text-muted">
-            {summary.duration}
-          </span>
+        {hasRunning ? (
+          <LoaderCircle
+            aria-hidden="true"
+            className="size-4 shrink-0 animate-spin motion-reduce:animate-none"
+          />
+        ) : open ? (
+          <ChevronDown aria-hidden="true" className="size-4 shrink-0" />
+        ) : (
+          <ChevronRight aria-hidden="true" className="size-4 shrink-0" />
         )}
+        <span aria-live="polite" className="text-sm">
+          {summary}
+        </span>
       </button>
 
-      {open && (
-        <ul className="space-y-2 border-t border-surface-border/60 px-3 py-2.5 text-sm">
-          {groups.map((group) => (
-            <li
-              className="rounded-md border border-surface-border/60 bg-surface-2/35 px-2.5 py-2"
-              key={group.name}
-            >
-              <div className="flex items-start gap-2">
-                <span className="mt-0.5">{STATUS_ICON[group.status]}</span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="truncate text-sm font-medium text-ink/85">
-                      {formatGroupTitle(group)}
-                    </span>
-                    {group.latencyMs != null && (
-                      <span className="shrink-0 text-[11px] tabular-nums text-muted">
-                        {formatDuration(group.latencyMs)}
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-0.5 text-xs text-muted">{formatGroupMeta(group)}</div>
-                </div>
-              </div>
-
-              {group.detailRows.length > 0 && (
-                <ul className="mt-2 space-y-1.5 border-l border-surface-border/70 pl-3 text-xs text-muted">
-                  {group.detailRows.map((row, index) => (
-                    <li className="flex items-start gap-3" key={`${row.text}-${index}`}>
-                      <span className="mt-[0.45rem] h-1 w-1 shrink-0 rounded-full bg-brand/70" />
-                      <span className="min-w-0 flex-1 break-words leading-5">{row.text}</span>
-                      <span className={detailDurationClass(row.status)}>{row.duration}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {group.events.some((event) => event.error || event.reason) && (
-                <div className="mt-2 space-y-1 text-xs">
-                  {group.events.map((event) => {
-                    const message = event.error || event.reason;
-                    if (!message) return null;
-                    return (
-                      <p
-                        className={event.error ? "text-red-500" : "text-amber-600"}
-                        key={event.id ?? message}
-                      >
-                        {message}
-                      </p>
-                    );
-                  })}
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+      <div className={cn("mt-2 border-t border-surface-border/60", open && "pt-3")}>
+        {open ? (
+          <>
+            {intro ? (
+              <p className="mb-4 whitespace-pre-wrap text-pretty leading-7 text-ink/85">{intro}</p>
+            ) : null}
+            <ol className="space-y-2.5" aria-label="处理步骤">
+              {events.map((event, index) => (
+                <ProcessEvent event={event} key={event.id ?? `${event.name}-${index}`} now={now} />
+              ))}
+            </ol>
+          </>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
-function groupToolEvents(events: ToolEvent[]): ToolGroup[] {
-  const groups = new Map<string, ToolEvent[]>();
-  for (const event of events) {
-    groups.set(event.name, [...(groups.get(event.name) ?? []), event]);
+function ProcessEvent({ event, now }: { event: ToolEvent; now: number }) {
+  const Icon = isSearchTool(event.name) ? Search : Wrench;
+  const detail = formatToolDetail(event);
+  const duration = formatEventDuration(event, now);
+  const issue = event.error || event.reason;
+
+  return (
+    <li className="flex items-start gap-2.5 text-sm">
+      <span className="mt-0.5 shrink-0 text-muted" aria-hidden="true">
+        <Icon className="size-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className={event.status === "error" ? "text-red-500" : "text-muted"}>
+            {formatToolAction(event)}
+          </span>
+          {detail ? <span className="truncate text-muted/80">{detail}</span> : null}
+          {duration ? <span className="text-xs tabular-nums text-muted/70">{duration}</span> : null}
+        </div>
+        {issue ? (
+          <p className={event.status === "blocked" ? "mt-1 text-xs text-amber-600" : "mt-1 text-xs text-red-500"}>
+            {normalizeIssue(issue)}
+          </p>
+        ) : null}
+      </div>
+    </li>
+  );
+}
+
+function getTraceSummary(events: ToolEvent[], hasRunning: boolean, elapsedMs: number | null): string {
+  if (hasRunning) {
+    const active = events.filter((event) => event.status === "running");
+    const labels = new Set(active.map((event) => NAME_LABEL[event.name] ?? "处理信息"));
+    if (labels.size === 1) return `正在${Array.from(labels)[0]}`;
+    return `正在处理 · ${active.length} 项`;
   }
-  return Array.from(groups.entries()).map(([name, groupedEvents]) => ({
-    name,
-    events: groupedEvents,
-    status: aggregateStatus(groupedEvents),
-    detailRows: groupedEvents.map(formatToolDetailRow).filter((row) => row.text),
-    latencyMs: maxLatency(groupedEvents),
-  }));
-}
-
-function aggregateStatus(events: ToolEvent[]): ToolEvent["status"] {
-  if (events.some((event) => event.status === "running")) return "running";
-  if (events.some((event) => event.status === "error")) return "error";
-  if (events.some((event) => event.status === "blocked")) return "blocked";
-  return "ok";
-}
-
-function maxLatency(events: ToolEvent[]): number | null {
-  return events.reduce<number | null>((max, event) => {
-    if (event.latency_ms == null) return max;
-    return max == null ? event.latency_ms : Math.max(max, event.latency_ms);
-  }, null);
-}
-
-function formatChainSummary(groups: ToolGroup[], hasRunning: boolean): ChainSummary {
-  const calls = groups.reduce((total, group) => total + group.events.length, 0);
-  const duration = formatOptionalDuration(maxGroupLatency(groups));
-  if (groups.length === 1) {
-    const group = groups[0];
-    return {
-      text: `${formatGroupTitle(group)} · ${formatGroupMeta(group)}`,
-      duration,
-    };
+  if (events.some((event) => event.status === "error" || event.status === "blocked")) {
+    return elapsedMs == null ? "部分步骤未完成" : `部分步骤未完成 · ${formatElapsed(elapsedMs)}`;
   }
-  return {
-    text: `${hasRunning ? "正在使用工具" : "已使用工具"} · ${groups.length} 组 · ${calls} 次调用`,
-    duration,
-  };
+  return elapsedMs == null ? "已处理" : `已处理 ${formatElapsed(elapsedMs)}`;
 }
 
-function maxGroupLatency(groups: ToolGroup[]): number | null {
-  return groups.reduce<number | null>((max, group) => {
-    if (group.latencyMs == null) return max;
-    return max == null ? group.latencyMs : Math.max(max, group.latencyMs);
-  }, null);
+function useTraceElapsed(events: ToolEvent[], now: number): number | null {
+  const startedAt = Math.min(...events.map((event) => event.t0 ?? Number.POSITIVE_INFINITY));
+  if (!Number.isFinite(startedAt)) return null;
+  const hasRunning = events.some((event) => event.status === "running");
+  const completedAt = Math.max(
+    ...events.map((event) =>
+      event.t0 != null && event.latency_ms != null ? event.t0 + event.latency_ms : event.t0 ?? startedAt
+    )
+  );
+  return Math.max(0, (hasRunning ? now : completedAt) - startedAt);
 }
 
-function formatGroupTitle(group: ToolGroup): string {
-  const base = NAME_LABEL[group.name] ?? group.name;
-  if (group.status === "running") {
-    return group.events.length > 1 && isSearchTool(group.name)
-      ? `正在并行${base}`
-      : `正在${base}`;
+function formatToolAction(event: ToolEvent): string {
+  const base = NAME_LABEL[event.name] ?? "处理信息";
+  if (event.status === "running") return `正在${base}`;
+  if (event.status === "ok") return `已${base}`;
+  if (event.status === "blocked") return `${base}已阻止`;
+  return `${base}失败`;
+}
+
+function formatToolDetail(event: ToolEvent): string {
+  const input = event.input;
+  if (!input) return "";
+  for (const key of ["query", "city", "date", "timezone"] as const) {
+    const value = input[key];
+    if (typeof value === "string" && value.trim()) return truncate(value.trim(), 72);
   }
-  if (group.status === "ok") {
-    return group.events.length > 1 && isSearchTool(group.name)
-      ? `已并行${base}`
-      : `已${base}`;
-  }
-  if (group.status === "blocked") return `${base} 已阻止`;
-  return `${base} 失败`;
+  return "";
 }
 
-function formatGroupMeta(group: ToolGroup): string {
-  const unit = isSearchTool(group.name) ? "条查询" : "次调用";
-  const status =
-    group.status === "ok"
-      ? "全部完成"
-      : group.status === "running"
-        ? "进行中"
-        : group.status === "blocked"
-          ? "部分阻止"
-          : "部分失败";
-  return `${group.events.length} ${unit} · ${status}`;
+function formatEventDuration(event: ToolEvent, now: number): string | null {
+  if (event.status === "running" && event.t0 != null) return formatElapsed(now - event.t0);
+  if (event.latency_ms != null) return formatElapsed(event.latency_ms);
+  return null;
+}
+
+function formatElapsed(ms: number): string {
+  return `${Math.max(1, Math.round(Math.max(0, ms) / 1000))} 秒`;
 }
 
 function isSearchTool(name: string): boolean {
-  return name === "search_kb" || name === "web_search" || name === "search_restaurant_kb";
+  return name === "search_kb" || name === "search_kg" || name === "web_search" || name === "search_restaurant_kb" || name === "amap_search";
 }
 
-function formatToolInputSummary(event: ToolEvent): string {
-  const input = event.input;
-  if (!input) return "";
-  const query = input.query;
-  if (typeof query === "string" && query.trim()) return query.trim();
-  const city = input.city;
-  if (typeof city === "string" && city.trim()) return city.trim();
-  const timezone = input.timezone;
-  if (typeof timezone === "string" && timezone.trim()) return timezone.trim();
-  return formatToolInput(input)
-    .map((row) => `${row.label}: ${row.value}`)
-    .join(" · ");
+function normalizeIssue(issue: string): string {
+  return issue.length > 96 ? `${issue.slice(0, 96)}…` : issue;
 }
 
-function formatToolDetailRow(event: ToolEvent): DetailRow {
-  const text = formatToolInputSummary(event) || NAME_LABEL[event.name] || event.name;
-  return {
-    text,
-    duration:
-      event.status === "running"
-        ? formatRunningDuration(event)
-        : event.latency_ms != null
-          ? formatDuration(event.latency_ms)
-          : getStatusText(event.status),
-    status: event.status,
-  };
-}
-
-function formatRunningDuration(event: ToolEvent): string {
-  if (!event.t0) return "进行中";
-  return `${formatDuration(Math.max(0, Date.now() - event.t0))} 进行中`;
-}
-
-function getStatusText(status: ToolEvent["status"]): string {
-  if (status === "ok") return "已完成";
-  if (status === "running") return "进行中";
-  if (status === "blocked") return "已阻止";
-  return "失败";
-}
-
-function detailDurationClass(status: ToolEvent["status"]): string {
-  const base = "chip shrink-0 py-0 text-[11px] tabular-nums leading-4";
-  if (status === "ok") return `${base} chip-brand`;
-  if (status === "running") return `${base} chip-brand`;
-  if (status === "blocked") return `${base} chip-warning`;
-  return `${base} chip-danger`;
-}
-
-function formatToolInput(input?: Record<string, unknown>): { label: string; value: string }[] {
-  if (!input || Object.keys(input).length === 0) return [];
-  const rows: { label: string; value: string }[] = [];
-  const consumed = new Set<string>();
-
-  addStringRow(rows, consumed, input, "query", "查询");
-  addStringRow(rows, consumed, input, "city", "城市");
-  addStringRow(rows, consumed, input, "date", "日期");
-  addStringRow(rows, consumed, input, "timezone", "时区");
-  addScalarRow(rows, consumed, input, "limit", "TopK");
-  addScalarRow(rows, consumed, input, "max_results", "数量");
-
-  for (const [key, value] of Object.entries(input)) {
-    if (consumed.has(key) || value == null) continue;
-    rows.push({ label: key, value: formatInputValue(value) });
-  }
-  return rows;
-}
-
-function addStringRow(
-  rows: { label: string; value: string }[],
-  consumed: Set<string>,
-  input: Record<string, unknown>,
-  key: string,
-  label: string
-) {
-  const value = input[key];
-  if (typeof value !== "string" || !value.trim()) return;
-  rows.push({ label, value: value.trim() });
-  consumed.add(key);
-}
-
-function addScalarRow(
-  rows: { label: string; value: string }[],
-  consumed: Set<string>,
-  input: Record<string, unknown>,
-  key: string,
-  label: string
-) {
-  const value = input[key];
-  if (typeof value !== "string" && typeof value !== "number") return;
-  rows.push({ label, value: String(value) });
-  consumed.add(key);
-}
-
-function formatInputValue(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  return JSON.stringify(value);
-}
-
-function formatOptionalDuration(ms: number | null): string | null {
-  return ms == null ? null : formatDuration(ms);
-}
-
-function formatDuration(ms: number): string {
-  if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${ms}ms`;
+function truncate(text: string, limit: number): string {
+  return text.length > limit ? `${text.slice(0, limit)}…` : text;
 }

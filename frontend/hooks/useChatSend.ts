@@ -19,6 +19,7 @@ import {
 import {
   deriveTitle,
   flattenAssistantTools,
+  finalizeAssistantParts,
   genMessageId,
   joinAssistantText,
   type AssistantPart,
@@ -246,9 +247,12 @@ export function useChatSend({
       const priorHistory: SseChatMessage[] = currentMessages
         .filter((m) => {
           if (m.role === "user") return true;
-          return !!m.content && !m.error && !m.streaming;
+          return !!joinAssistantText(m.parts, m.content) && !m.error && !m.streaming;
         })
-        .map((m) => ({ role: m.role, content: m.content }));
+        .map((m) => ({
+          role: m.role,
+          content: m.role === "assistant" ? joinAssistantText(m.parts, m.content) : m.content,
+        }));
       const messagesForBackend: SseChatMessage[] = [
         ...priorHistory,
         { role: "user", content: trimmed },
@@ -258,7 +262,8 @@ export function useChatSend({
         const snap = streamingRef.current;
         streamingRef.current = null;
         if (!snap || snap.convId !== convId) return;
-        const joined = joinAssistantText(snap.parts, snap.content);
+        const parts = finalizeAssistantParts(snap.parts, snap.content);
+        const joined = joinAssistantText(parts, parts ? "" : snap.content);
         const flatTools = flattenAssistantTools(snap.parts, snap.tools);
         const hasContent = joined.trim().length > 0;
         const hasTools = flatTools.length > 0;
@@ -270,6 +275,7 @@ export function useChatSend({
           const result = await appendAssistantMessage(snap.convId, {
             content: joined,
             tools: flatTools,
+            parts,
             memory_trace: snap.memory_trace,
             citations: snap.citations.length > 0 ? snap.citations : undefined,
             cost_usd: opts.costUsd,
@@ -281,9 +287,9 @@ export function useChatSend({
                 ? {
                     ...m,
                     id: result.id,
-                    content: joined,
+                    content: result.parts ? "" : joined,
                     tools: flatTools,
-                    parts: undefined,
+                    parts: result.parts ?? parts,
                     streaming: false,
                     memory_trace: result.memory_trace ?? snap.memory_trace,
                     citations: result.citations ?? snap.citations,
@@ -604,7 +610,9 @@ export function useChatSend({
     const snap = streamingRef.current;
     if (snap) {
       streamingRef.current = null;
-      const hasContent = snap.content.trim().length > 0;
+      const parts = finalizeAssistantParts(snap.parts, snap.content);
+      const content = joinAssistantText(parts, parts ? "" : snap.content);
+      const hasContent = content.trim().length > 0;
       if (!hasContent) {
         setMessagesForCurrent((prev) => prev.filter((m) => m.id !== snap.msgId));
         return;
@@ -613,8 +621,9 @@ export function useChatSend({
         m.role === "assistant" && m.id === snap.msgId ? { ...m, streaming: false } : m
       );
       void appendAssistantMessage(snap.convId, {
-        content: snap.content,
-        tools: snap.tools,
+        content,
+        tools: flattenAssistantTools(snap.parts, snap.tools),
+        parts,
         citations: snap.citations.length > 0 ? snap.citations : undefined,
       })
         .then((result) => {
@@ -624,6 +633,9 @@ export function useChatSend({
                 ? {
                     ...m,
                     id: result.id,
+                    content: result.parts ? "" : content,
+                    parts: result.parts ?? parts,
+                    tools: flattenAssistantTools(snap.parts, snap.tools),
                     citations: result.citations ?? snap.citations,
                   }
                 : m

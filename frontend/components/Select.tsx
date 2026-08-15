@@ -126,6 +126,10 @@ const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(
   );
   return (
     <DropdownMenu
+      // Selects can be opened inside AppModal. Keep this menu modal so its
+      // own scroll lock becomes the active one instead of the dialog's lock
+      // swallowing wheel events from the portalled option list.
+      modal
       open={disabled ? false : open}
       onOpenChange={(nextOpen) => {
         setOpen(disabled ? false : nextOpen);

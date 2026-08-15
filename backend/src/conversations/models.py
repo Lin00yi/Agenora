@@ -107,6 +107,7 @@ class Message(Base):
 
     def to_public_dict(self) -> dict:
         tools: list | None = None
+        parts: list | None = None
         memory_trace: dict | None = None
         citations: list | None = None
         if self.tool_call_log:
@@ -115,10 +116,15 @@ class Message(Base):
             except (ValueError, TypeError):
                 parsed = None
             if isinstance(parsed, dict) and (
-                "tools" in parsed or "memory_trace" in parsed or "citations" in parsed
+                "tools" in parsed
+                or "parts" in parsed
+                or "memory_trace" in parsed
+                or "citations" in parsed
             ):
                 raw_tools = parsed.get("tools")
                 tools = raw_tools if isinstance(raw_tools, list) else []
+                raw_parts = parsed.get("parts")
+                parts = raw_parts if isinstance(raw_parts, list) else None
                 raw_trace = parsed.get("memory_trace")
                 memory_trace = raw_trace if isinstance(raw_trace, dict) else None
                 raw_citations = parsed.get("citations")
@@ -131,6 +137,7 @@ class Message(Base):
             "role": self.role,
             "content": self.content or "",
             "tools": tools if tools is not None else ([] if self.role == "assistant" else None),
+            "parts": parts,
             "memory_trace": memory_trace,
             "citations": citations,
             "cost_usd": self.cost_usd,
@@ -141,19 +148,24 @@ class Message(Base):
     @staticmethod
     def encode_tool_call_log(
         tools: list | None,
+        parts: list | None = None,
         memory_trace: dict | None = None,
         citations: list | None = None,
     ) -> str | None:
-        """Serialize tools (+ optional memory_trace / citations) into tool_call_log JSON.
+        """Serialize assistant timeline metadata into tool_call_log JSON.
 
         Legacy rows store a bare tools list. Newer rows that carry extras use
-        ``{"tools": [...], "memory_trace": {...}, "citations": [...]}`` so we
-        avoid a schema migration while remaining backward-compatible on read.
+        a wrapped object so we avoid a schema migration while remaining
+        backward-compatible on read. ``parts`` preserves the visible
+        text/tool ordering for a streamed assistant turn.
         """
         tool_list = list(tools or [])
+        part_list = list(parts or [])
         citation_list = list(citations or [])
-        if memory_trace or citation_list:
+        if part_list or memory_trace or citation_list:
             payload: dict = {"tools": tool_list}
+            if part_list:
+                payload["parts"] = part_list
             if memory_trace:
                 payload["memory_trace"] = memory_trace
             if citation_list:

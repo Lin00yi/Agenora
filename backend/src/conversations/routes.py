@@ -57,6 +57,9 @@ class AppendMessageRequest(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(default="")
     tools: list[dict[str, Any]] | None = Field(default=None)
+    # Ordered text/tool timeline for streamed assistant turns. This shares the
+    # existing tool_call_log JSON column, so no DB migration is necessary.
+    parts: list[dict[str, Any]] | None = Field(default=None)
     memory_trace: dict[str, Any] | None = Field(default=None)
     citations: list[dict[str, Any]] | None = Field(default=None)
     cost_usd: float | None = Field(default=None)
@@ -602,7 +605,13 @@ async def append_message(
     conv = await _load_owned_conversation(session, conv_id, user.id)
     content = req.content or ""
     tools = req.tools or []
+    parts = req.parts or []
     error = req.error or None
+    if req.role != "assistant" and parts:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="parts are assistant-only",
+        )
     if req.role == "assistant" and not content.strip() and not tools and not error:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -615,7 +624,7 @@ async def append_message(
         role=req.role,
         content=content,
         tool_call_log=Message.encode_tool_call_log(
-            tools, req.memory_trace, req.citations
+            tools, parts, req.memory_trace, req.citations
         ),
         cost_usd=req.cost_usd,
         error=error,

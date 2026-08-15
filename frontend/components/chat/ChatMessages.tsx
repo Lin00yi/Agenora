@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, memo } from "react";
+import React, { useEffect, useState, memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -112,11 +112,8 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
               )}
               {!hasAnyText && streaming && (
                 <div className="kf-streaming-status flex flex-wrap items-center gap-2 text-sm">
-                  <LoaderCircle className="h-4 w-4 animate-spin text-[color:var(--chat-accent)]" />
+                  <LoaderCircle className="h-4 w-4 animate-spin text-[color:var(--chat-accent)] motion-reduce:animate-none" />
                   <span>{status.label}</span>
-                  <span className="kf-live-badge rounded-md border px-2 py-0.5 text-xs tabular-nums">
-                    {status.elapsed}
-                  </span>
                 </div>
               )}
               {hasAnyText && (
@@ -124,7 +121,7 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
               )}
               {hasAnyText && streaming && (
                 <div className="kf-live-badge mt-3 inline-flex items-center gap-2 rounded-md border px-2.5 py-1 text-xs tabular-nums">
-                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
                   <span>{status.label}</span>
                   <span>{status.elapsed}</span>
                 </div>
@@ -138,15 +135,24 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
                 {message.error}
               </div>
             )}
-            {parts.map((part, index) =>
-              part.type === "text" ? (
-                <div className="kf-answer px-1 py-1 sm:px-2" key={`text-${index}`}>
-                  <AnswerMarkdown markdown={part.text} streaming={false} />
-                </div>
-              ) : (
-                <ThinkingChain events={part.tools} key={`tools-${index}`} />
-              )
-            )}
+            {parts.map((part, index) => {
+              if (part.type === "text" && parts[index + 1]?.type === "tools") return null;
+              if (part.type === "text") {
+                return (
+                  <div className="kf-answer px-1 py-1 sm:px-2" key={`text-${index}`}>
+                    <AnswerMarkdown markdown={part.text} streaming={false} />
+                  </div>
+                );
+              }
+              const previous = parts[index - 1];
+              return (
+                <ThinkingChain
+                  events={part.tools}
+                  intro={previous?.type === "text" ? previous.text : undefined}
+                  key={`tools-${index}`}
+                />
+              );
+            })}
             {!streaming && hasMemoryContext ? (
               <MemoryContextTrace trace={message.memory_trace!} />
             ) : null}
@@ -155,7 +161,7 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
                 <AnswerMarkdown markdown={liveContent} streaming={streaming} />
                 {streaming && (
                   <div className="kf-live-badge mt-3 inline-flex items-center gap-2 rounded-md border px-2.5 py-1 text-xs tabular-nums">
-                    <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                    <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
                     <span>{status.label}</span>
                     <span>{status.elapsed}</span>
                   </div>
@@ -164,11 +170,8 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
             )}
             {!hasLiveContent && streaming && (
               <div className="kf-streaming-status flex flex-wrap items-center gap-2 px-1 text-sm">
-                <LoaderCircle className="h-4 w-4 animate-spin text-[color:var(--chat-accent)]" />
+                <LoaderCircle className="h-4 w-4 animate-spin text-[color:var(--chat-accent)] motion-reduce:animate-none" />
                 <span>{status.label}</span>
-                <span className="kf-live-badge rounded-md border px-2 py-0.5 text-xs tabular-nums">
-                  {status.elapsed}
-                </span>
               </div>
             )}
           </div>

@@ -1,5 +1,5 @@
 import type { ConversationContextStatus, ConversationSummary, MessagePayload } from "@/lib/conversations-api";
-import type { Conversation, Message } from "@/lib/conversationStore";
+import { joinAssistantText, parseAssistantParts, type Conversation, type Message } from "@/lib/conversationStore";
 
 export const EMPTY_ASSISTANT_RESPONSE =
   "\u672c\u8f6e\u6ca1\u6709\u751f\u6210\u53ef\u5c55\u793a\u5185\u5bb9\uff0c\u8bf7\u91cd\u8bd5\u3002";
@@ -52,7 +52,10 @@ export function estimateContextStatus(
       CONTEXT_SAFETY_RESERVE
   );
   const current = messages.reduce((total, message) => {
-    const content = message.content ?? "";
+    const content =
+      message.role === "assistant"
+        ? joinAssistantText(message.parts, message.content)
+        : message.content ?? "";
     const cjk = [...content].filter((char) => char >= "\u4e00" && char <= "\u9fff").length;
     return total + Math.max(1, Math.floor(cjk * 1.2 + Math.max(content.length - cjk, 0) / 3.2)) + 6;
   }, 0);
@@ -124,11 +127,16 @@ export function serverMsgToLocal(m: MessagePayload): Message {
   if (m.role === "user") {
     return { id: m.id, role: "user", content: m.content, created_at: ts };
   }
+  const parts = parseAssistantParts(m.parts);
   return {
     id: m.id,
     role: "assistant",
-    content: m.content,
+    // `content` is the canonical full text stored for prompt context. Once a
+    // persisted timeline is present, render from its text segments instead to
+    // avoid duplicating that canonical text below the timeline.
+    content: parts ? "" : m.content,
     tools: m.tools ?? [],
+    parts,
     memory_trace: m.memory_trace ?? null,
     citations: m.citations ?? null,
     cost_usd: m.cost_usd ?? undefined,

@@ -35,3 +35,24 @@ def test_message_timestamp_is_serialized_as_explicit_utc() -> None:
     )
 
     assert message.to_public_dict()["created_at"] == "2026-08-14T07:22:00+00:00"
+
+
+def test_message_round_trips_interleaved_tool_timeline() -> None:
+    parts = [
+        {"type": "text", "text": "先检索。"},
+        {"type": "tools", "tools": [{"id": "tool-1", "name": "search_kb", "status": "ok"}]},
+        {"type": "text", "text": "再回答。"},
+    ]
+    message = Message(
+        id="message-2",
+        conversation_id="conversation-1",
+        role="assistant",
+        content="先检索。\n\n再回答。",
+        tool_call_log=Message.encode_tool_call_log(
+            [{"id": "tool-1", "name": "search_kb", "status": "ok"}], parts
+        ),
+    )
+
+    public = message.to_public_dict()
+    assert public["parts"] == parts
+    assert public["tools"] == [{"id": "tool-1", "name": "search_kb", "status": "ok"}]

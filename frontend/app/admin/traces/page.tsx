@@ -22,6 +22,7 @@ import {
 import { cn } from "@/lib/cn";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { LoadingState, PageSkeleton, StateView } from "@/components/ui/state-view";
+import Select from "@/components/Select";
 
 const PAGE_SIZE = 30;
 
@@ -183,20 +184,21 @@ function TracesPanel() {
             onKeyDown={(e) => e.key === "Enter" && applyFilters()}
           />
         </label>
-        <label className="min-w-0 flex-1 space-y-1.5 text-xs sm:max-w-[12rem]">
-          <span className="font-medium text-muted">注入风险</span>
-          <select
-            className="admin-input"
+        <div className="min-w-0 flex-1 space-y-1.5 text-xs sm:max-w-[12rem]">
+          <span className="block font-medium text-muted">注入风险</span>
+          <Select
+            aria-label="注入风险"
             value={minRisk}
             onChange={(e) =>
               setMinRisk(e.target.value as "low" | "medium" | "high")
             }
-          >
-            <option value="low">全部</option>
-            <option value="medium">中 / 高</option>
-            <option value="high">仅高</option>
-          </select>
-        </label>
+            options={[
+              { value: "low", label: "全部" },
+              { value: "medium", label: "中 / 高" },
+              { value: "high", label: "仅高" },
+            ]}
+          />
+        </div>
         <div className="flex shrink-0 gap-2">
           <Button type="button" onClick={applyFilters}>
             <Search className="h-4 w-4" />

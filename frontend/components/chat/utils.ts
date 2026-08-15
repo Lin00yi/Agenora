@@ -119,9 +119,9 @@ export function getAssistantStreamingStatus(
     };
   }
   if (hasTools) {
-    return { label: "正在检索知识库", elapsed: `耗时 ${formatDuration(elapsedMs)}` };
+    return { label: "正在处理", elapsed: `耗时 ${formatDuration(elapsedMs)}` };
   }
-  return { label: "正在检索并生成回答", elapsed: `耗时 ${formatDuration(elapsedMs)}` };
+  return { label: "正在思考", elapsed: `耗时 ${formatDuration(elapsedMs)}` };
 }
 
 export function getLatestToolDoneAt(tools: ToolEvent[]) {
