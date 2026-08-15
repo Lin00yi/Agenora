@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "@/lib/toast";
 
-import { getToken, getUser, type User } from "@/lib/auth";
+import { getToken, getUser, refreshMe, type User } from "@/lib/auth";
 import {
   listConversations,
   migrateFromLocalStorage,
@@ -85,6 +85,15 @@ export function useChatBoot({
       setAuthChecked(true);
 
       if (u) {
+        // Roles can change after login (for example an operator grants admin).
+        // Keep the cached user for an immediate shell, then replace it with the
+        // server-authoritative profile so the sidebar and navigation update.
+        void refreshMe().then((freshUser) => {
+          if (!cancelled && freshUser) setUser(freshUser);
+        }).catch((error) => {
+          if (!cancelled) console.warn("current user refresh failed", error);
+        });
+
         try {
           const imported = await migrateFromLocalStorage(u.id);
           if (!cancelled && imported > 0) {

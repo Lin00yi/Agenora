@@ -41,7 +41,8 @@ function TracesPanel() {
   const [traces, setTraces] = useState<AdminTraceSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [conversationId, setConversationId] = useState("");
   const [userId, setUserId] = useState("");
   const [minRisk, setMinRisk] = useState<"low" | "medium" | "high">("low");
@@ -69,8 +70,8 @@ function TracesPanel() {
   }, []);
 
   const load = useCallback(
-    async (nextOffset = 0) => {
-      setLoading(true);
+    async (nextOffset = 0, refreshDetail = true) => {
+      setRefreshing(true);
       try {
         const r = await listTraces({
           limit: PAGE_SIZE,
@@ -93,11 +94,14 @@ function TracesPanel() {
           current && r.traces.some((t) => t.id === current)
             ? current
             : r.traces[0].id;
-        await openDetail(keep);
+        if (refreshDetail || keep !== current) {
+          await openDetail(keep);
+        }
       } catch (e) {
         toast.error((e as Error).message);
       } finally {
-        setLoading(false);
+        setInitialLoading(false);
+        setRefreshing(false);
       }
     },
     [appliedConversationId, appliedUserId, appliedMinRisk, openDetail]
@@ -150,10 +154,10 @@ function TracesPanel() {
         <Button
           type="button"
           variant="outline"
-          disabled={loading}
-          onClick={() => void load(offset)}
+          disabled={refreshing}
+          onClick={() => void load(offset, false)}
         >
-          <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+          <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
           刷新
         </Button>
       </div>
@@ -207,7 +211,7 @@ function TracesPanel() {
         </div>
       </div>
 
-      {loading && traces.length === 0 ? (
+      {initialLoading ? (
         <PageSkeleton />
       ) : traces.length === 0 ? (
         <StateView
@@ -216,7 +220,7 @@ function TracesPanel() {
         />
       ) : (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
-          <div className="admin-panel flex max-h-[min(70dvh,52rem)] flex-col overflow-hidden">
+          <div className="admin-panel flex max-h-[min(70dvh,52rem)] flex-col overflow-hidden" aria-busy={refreshing}>
             <div className="border-b border-surface-border/70 px-4 py-3 text-xs font-semibold text-muted">
               请求列表
             </div>
@@ -281,7 +285,7 @@ function TracesPanel() {
                 <button
                   type="button"
                   className={paginationButtonClass}
-                  disabled={offset <= 0 || loading}
+                  disabled={offset <= 0 || refreshing}
                   onClick={() => void load(Math.max(0, offset - PAGE_SIZE))}
                 >
                   上一页
@@ -292,7 +296,7 @@ function TracesPanel() {
                 <button
                   type="button"
                   className={paginationButtonClass}
-                  disabled={offset + PAGE_SIZE >= total || loading}
+                  disabled={offset + PAGE_SIZE >= total || refreshing}
                   onClick={() => void load(offset + PAGE_SIZE)}
                 >
                   下一页

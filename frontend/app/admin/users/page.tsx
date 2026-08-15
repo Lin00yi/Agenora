@@ -49,7 +49,8 @@ function UsersTable() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   // Dialog state
@@ -62,7 +63,7 @@ function UsersTable() {
   const me = getCachedUser();
 
   const load = (nextOffset = offset) => {
-    setLoading(true);
+    setRefreshing(true);
     listUsers(PAGE_SIZE, nextOffset)
       .then((r) => {
         setUsers(r.users);
@@ -70,7 +71,10 @@ function UsersTable() {
         setOffset(r.offset);
       })
       .catch((e) => toast.error((e as Error).message))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        setInitialLoading(false);
+        setRefreshing(false);
+      });
   };
 
   useEffect(() => {
@@ -126,7 +130,7 @@ function UsersTable() {
     }
   };
 
-  if (loading) {
+  if (initialLoading) {
     return <PageSkeleton />;
   }
 
@@ -147,8 +151,8 @@ function UsersTable() {
           </h2>
           <p className="mt-2 text-sm text-muted">共 {total} 个用户，可管理状态、角色和密码。</p>
         </div>
-        <Button type="button" variant="outline" onClick={() => load(offset)}>
-          <RefreshCw className="h-4 w-4" />
+        <Button type="button" variant="outline" disabled={refreshing} onClick={() => load(offset)}>
+          <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
           刷新
         </Button>
       </div>
@@ -278,7 +282,7 @@ function UsersTable() {
           <Button
             type="button"
             className={paginationButtonClass}
-            disabled={offset === 0}
+            disabled={offset === 0 || refreshing}
             onClick={() => load(Math.max(0, offset - PAGE_SIZE))}
           >
             上一页
@@ -289,7 +293,7 @@ function UsersTable() {
           <Button
             type="button"
             className={paginationButtonClass}
-            disabled={offset + PAGE_SIZE >= total}
+            disabled={offset + PAGE_SIZE >= total || refreshing}
             onClick={() => load(offset + PAGE_SIZE)}
           >
             下一页

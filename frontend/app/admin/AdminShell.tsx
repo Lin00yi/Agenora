@@ -12,9 +12,9 @@ import {
 } from "lucide-react";
 
 import { getToken, getUser, refreshMe } from "@/lib/auth";
-import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { LoadingState, StateView } from "@/components/ui/state-view";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ThemeToggle from "@/components/ThemeToggle";
 
 const TABS = [
@@ -37,10 +37,6 @@ export default function AdminShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!getToken()) {
       router.replace("/login");
-      return;
-    }
-    if (getUser()?.is_admin === false) {
-      setForbidden(true);
       return;
     }
     let active = true;
@@ -128,34 +124,20 @@ export default function AdminShell({ children }: { children: ReactNode }) {
           <div className="flex-1" />
           <ThemeToggle compact />
         </div>
-        <nav
-          className="mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto px-4 pb-3 sm:px-6"
-          aria-label="管理分区"
-        >
-          {TABS.map((t) => {
-            const active =
-              t.href === "/admin"
-                ? pathname === "/admin"
-                : pathname === t.href || pathname.startsWith(`${t.href}/`);
-            const Icon = t.icon;
-            return (
-              <Link
-                key={t.href}
-                href={t.href}
-                prefetch
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "inline-flex min-h-[var(--control-h)] shrink-0 items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30",
-                  active
-                    ? "border-brand/30 bg-brand/10 text-ink shadow-sm"
-                    : "border-transparent text-muted hover:border-surface-border/80 hover:bg-surface hover:text-ink"
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {t.label}
-              </Link>
-            );
-          })}
+        <nav className="mx-auto max-w-7xl overflow-x-auto px-4 pb-3 sm:px-6" aria-label="管理分区">
+          <Tabs value={activeTab.href} onValueChange={(href) => router.push(href)} className="w-max">
+            <TabsList aria-label="管理分区">
+              {TABS.map((t) => {
+                const Icon = t.icon;
+                return (
+                  <TabsTrigger key={t.href} value={t.href}>
+                    <Icon />
+                    {t.label}
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+          </Tabs>
         </nav>
       </header>
 
