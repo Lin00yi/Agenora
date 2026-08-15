@@ -51,9 +51,11 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  closeDisabled = false,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
+  closeDisabled?: boolean
 }) {
   return (
     <DialogPortal>
@@ -73,6 +75,7 @@ function DialogContent({
               variant="ghost"
               className="absolute top-3 right-3 text-muted hover:text-ink"
               size="icon-sm"
+              disabled={closeDisabled}
             >
               <XIcon />
               <span className="sr-only">关闭</span>

@@ -22,6 +22,7 @@ import Select from "@/components/Select";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { LoadingState } from "@/components/ui/state-view";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -891,7 +892,7 @@ function ModelProfilesManager({
             <h3 id="service-connections-heading" className="mt-1 text-balance text-lg font-semibold">管理模型服务与凭据</h3>
             <p className="mt-1 text-pretty text-sm leading-6 text-muted">服务连接保存协议、地址和加密密钥。验证成功后，再到模型配置中选择该服务返回的模型。</p>
           </div>
-          <Button type="button" size="sm" onClick={() => setAddingService((open) => !open)}><Plus className="h-4 w-4" />添加服务</Button>
+          <Button type="button" size="sm" onClick={() => setAddingService(true)}><Plus className="h-4 w-4" />添加服务</Button>
         </div>
 
         {managedConnections.length === 0 ? (
@@ -924,13 +925,16 @@ function ModelProfilesManager({
         )}
 
         {addingService && (
-          <section className="mt-5 border-y border-surface-border/70 bg-surface-2/20 py-5" aria-labelledby="add-service-connection-heading">
-            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h4 id="add-service-connection-heading" className="text-base font-semibold text-ink">添加服务连接</h4>
-                <p className="mt-1 text-xs leading-5 text-muted">填写服务协议、地址和密钥。模型会在下一步单独加入可用列表。</p>
-              </div>
-              <Button type="button" variant="outline" size="sm" onClick={() => setAddingService(false)} disabled={savingConnection}>取消</Button>
+          <Dialog open={addingService} onOpenChange={(open) => {
+            if (!open && !savingConnection) setAddingService(false);
+          }}>
+            <DialogContent closeDisabled={savingConnection} className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl">
+          <section aria-labelledby="add-service-connection-heading">
+            <div className="mb-4">
+              <DialogHeader>
+                <DialogTitle id="add-service-connection-heading" className="text-base">添加服务连接</DialogTitle>
+                <DialogDescription className="text-xs leading-5">填写服务协议、地址和密钥。模型会在下一步单独加入可用列表。</DialogDescription>
+              </DialogHeader>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="服务协议" htmlFor="service-provider" description={connectionProvider === "anthropic" ? "使用 Anthropic 的 Messages API。" : "兼容 OpenAI API 的服务，如 DeepSeek、OpenAI、vLLM 或 LM Studio。"}>
@@ -957,6 +961,8 @@ function ModelProfilesManager({
               <Button type="button" onClick={createServiceConnection} disabled={savingConnection || !connectionUrl.trim() || !connectionKey.trim()}>{savingConnection && <Loader2 className="h-4 w-4 animate-spin" />}{savingConnection ? "正在保存" : "保存服务"}</Button>
             </div>
           </section>
+            </DialogContent>
+          </Dialog>
         )}
 
         <ConfirmDialog
@@ -1053,7 +1059,7 @@ function ModelProfilesManager({
             每个配置绑定一个连接、模型 ID 和上下文窗口。会话固定选择与路由策略都使用这份列表。
           </p>
         </div>
-        <Button type="button" size="sm" onClick={() => setAdding((open) => !open)}><Plus className="h-4 w-4" />添加模型</Button>
+        <Button type="button" size="sm" onClick={() => setAdding(true)}><Plus className="h-4 w-4" />添加模型</Button>
       </div>
 
       <div className="mt-5 divide-y divide-surface-border/70 border-y border-surface-border/70">
@@ -1084,13 +1090,16 @@ function ModelProfilesManager({
       </div>
 
       {adding && (
-        <section className="mt-5 border-y border-surface-border/70 bg-surface-2/20 py-5" aria-labelledby="add-model-profile-heading">
-          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <h4 id="add-model-profile-heading" className="text-base font-semibold text-ink">添加模型配置</h4>
-              <p className="mt-1 text-xs leading-5 text-muted">先指定模型 ID 和调用服务，其他信息会自动采用安全默认值。</p>
-            </div>
-            <Button type="button" variant="outline" size="sm" onClick={() => setAdding(false)} disabled={savingProfile}>取消</Button>
+        <Dialog open={adding} onOpenChange={(open) => {
+          if (!open && !savingProfile) setAdding(false);
+        }}>
+          <DialogContent closeDisabled={savingProfile} className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-3xl">
+        <section aria-labelledby="add-model-profile-heading">
+          <div className="mb-4">
+            <DialogHeader>
+              <DialogTitle id="add-model-profile-heading" className="text-base">添加模型配置</DialogTitle>
+              <DialogDescription className="text-xs leading-5">先指定模型 ID 和调用服务，其他信息会自动采用安全默认值。</DialogDescription>
+            </DialogHeader>
           </div>
           <div className="mb-4 flex flex-col gap-3 border-b border-surface-border/70 pb-4 sm:flex-row sm:items-end sm:justify-between">
             <div className="w-full sm:max-w-sm">
@@ -1176,6 +1185,8 @@ function ModelProfilesManager({
             </Button>
           </div>
         </section>
+          </DialogContent>
+        </Dialog>
       )}
 
       <ConfirmDialog
