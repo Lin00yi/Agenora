@@ -125,7 +125,10 @@ async def _build_context_status(
 
     with token_model_scope(conv.llm_model):
         effective = estimate_effective_context_tokens(
-            messages, summary, model=conv.llm_model
+            messages,
+            summary,
+            model=conv.llm_model,
+            available_history_tokens=budget.available_history_tokens,
         )
     return context_status_payload(
         budget=budget,
@@ -134,7 +137,7 @@ async def _build_context_status(
     )
 
 
-async def _context_cfg_for_user(session: AsyncSession, user: User):
+async def _context_cfg_for_user(session: AsyncSession, user: CurrentUser):
     cfg = resolve_user_llm(user) or resolve_system_llm()
     if resolve_user_llm(user) is not None:
         profiles = await list_llm_model_profiles(session, user_id=user.id)
@@ -557,9 +560,20 @@ async def patch_conversation(
         # explicit profile takes precedence as soon as the new UI selects one.
         conv.llm_profile_id = None
 
+    selection_changed = bool({"llm_profile_id", "llm_model"} & fields_set)
     await session.commit()
     await session.refresh(conv)
-    return conv.to_summary_dict()
+    payload = conv.to_summary_dict()
+    if selection_changed:
+        llm_cfg = await _context_cfg_for_conversation(session, conv, user)
+        payload["context_status"] = await _build_context_status(
+            session,
+            conv,
+            context_window=configured_context_window_for_model(
+                llm_cfg, conv.llm_model or (llm_cfg.default_model if llm_cfg else None)
+            ),
+        )
+    return payload
 
 
 @router.delete(

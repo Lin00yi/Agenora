@@ -24,6 +24,58 @@ from .constants import (
     ContextBudget,
 )
 
+
+@dataclass(frozen=True)
+class ContextBlockAllocation:
+    """Measured token ceilings for the blocks assembled into one prompt.
+
+    The history budget is shared by durable user preferences, retrieved memory,
+    the rolling summary and raw conversation turns.  Keeping that split in one
+    place prevents a small selected model from receiving several individually
+    "safe" blocks that are unsafe together.
+    """
+
+    profile: int
+    memory: int
+    summary: int
+    recent: int
+
+
+def allocate_context_blocks(
+    available_history_tokens: int,
+    *,
+    profile_tokens: int,
+    memory_tokens: int,
+    summary_tokens: int,
+) -> ContextBlockAllocation:
+    """Allocate an exact history budget, keeping the newest turn usable.
+
+    Profile and summary are preferred over query-retrieved memory: the former
+    preserve stable user intent and the compressed conversation state, whereas
+    retrieved memory is supplementary and can be omitted for a small window.
+    """
+    total = max(0, int(available_history_tokens))
+    if total == 0:
+        return ContextBlockAllocation(0, 0, 0, 0)
+
+    # A current user turn must still have room even for the smallest supported
+    # 4K context model with a KB reserve enabled.
+    recent_floor = min(total, max(256, min(1_000, total // 2)))
+    remaining = total - recent_floor
+
+    profile = min(max(0, profile_tokens), remaining)
+    remaining -= profile
+    summary = min(max(0, summary_tokens), remaining)
+    remaining -= summary
+    memory = min(max(0, memory_tokens), remaining)
+    recent = total - profile - summary - memory
+    return ContextBlockAllocation(
+        profile=profile,
+        memory=memory,
+        summary=summary,
+        recent=recent,
+    )
+
 def estimate_tokens(text: str, *, model: str | None = None) -> int:
     """Count tokens for context budgeting.
 
@@ -217,9 +269,17 @@ def compute_budget(
 
     window = context_window_for_model(model, configured_window)
     reserved_rag = RAG_RESERVE if rag_reserve is None else max(0, int(rag_reserve))
+    # The former 4K floor could exceed a user-selected 4K model after output,
+    # system/tool, RAG and safety reserves were applied.  Scale each reserve to
+    # the target model instead, so the assembled history is always physically
+    # representable by that model's declared context window.
+    output_reserve = min(MAX_OUTPUT_TOKENS, max(MIN_OUTPUT_TOKENS, window // 4))
+    system_reserve = min(SYSTEM_AND_TOOL_RESERVE, max(512, window // 4))
+    rag_reserve_scaled = min(reserved_rag, max(0, window // 4))
+    safety_reserve = min(SAFETY_RESERVE, max(128, window // 16))
     available = max(
-        4_000,
-        window - MAX_OUTPUT_TOKENS - SYSTEM_AND_TOOL_RESERVE - reserved_rag - SAFETY_RESERVE,
+        1,
+        window - output_reserve - system_reserve - rag_reserve_scaled - safety_reserve,
     )
     with token_model_scope(model):
         current = estimate_messages_tokens(messages, model=model)
@@ -241,6 +301,7 @@ def estimate_effective_context_tokens(
     summary: ConversationSummary | None,
     *,
     model: str | None = None,
+    available_history_tokens: int | None = None,
 ) -> int:
     """Estimate tokens that would enter the prompt after summary compression.
 
@@ -252,10 +313,16 @@ def estimate_effective_context_tokens(
     with token_model_scope(model):
         if not summary:
             return estimate_messages_tokens(messages, model=model)
-        keep_count = RECENT_TURNS * 2
-        recent = messages[-keep_count:] if messages else []
+        # A rolling summary only covers rows up to its checkpoint.  Everything
+        # after that remains raw and may be used when a larger model is chosen;
+        # reporting only a fixed last ten turns hid that fact from the UI.
+        start = min(max(0, summary.covered_message_count), len(messages))
+        recent = messages[start:]
         summary_tokens = summary.token_count or estimate_tokens(summary.summary or "", model=model)
-        return summary_tokens + estimate_messages_tokens(recent, model=model)
+        estimated = summary_tokens + estimate_messages_tokens(recent, model=model)
+        if available_history_tokens is not None:
+            return min(max(0, int(available_history_tokens)), estimated)
+        return estimated
 
 
 def context_status_payload(

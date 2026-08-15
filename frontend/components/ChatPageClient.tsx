@@ -551,8 +551,24 @@ export function ChatPage({
         const updated = isProfileSelection
           ? await patchConversation(currentId, { llm_profile_id: profileId })
           : await patchConversation(currentId, { llm_model: profileId });
+        // A model-selection PATCH includes a server-calculated status for the
+        // target profile/window. Do not roll back a saved selection merely
+        // because the optional status refresh happens to fail.
+        const contextStatus = updated.context_status ?? null;
+        if (contextStatus) {
+          setCurrentContextStatus(contextStatus);
+        } else {
+          void getConversationContextStatus(currentId)
+            .then((status) => setCurrentContextStatus(status))
+            .catch(() => undefined);
+        }
         setSummaries((prev) =>
-          prev.map((c) => (c.id === currentId ? { ...c, llm_model: updated.llm_model, llm_profile_id: updated.llm_profile_id } : c))
+          prev.map((c) => (c.id === currentId ? {
+            ...c,
+            llm_model: updated.llm_model,
+            llm_profile_id: updated.llm_profile_id,
+            context_status: contextStatus ?? c.context_status,
+          } : c))
         );
       } catch (e) {
         setCurrentModel(prevModel);

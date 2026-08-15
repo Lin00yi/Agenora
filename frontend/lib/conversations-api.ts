@@ -52,6 +52,8 @@ export type ConversationContextStatus = {
     id: string;
     covered_message_count: number;
     token_count: number;
+    source_model?: string | null;
+    source_context_window?: number | null;
     updated_at: string | null;
   } | null;
 };

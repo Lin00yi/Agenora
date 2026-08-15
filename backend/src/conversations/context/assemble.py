@@ -9,13 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.conversations.models import Message
 
 from .budget import (
+    allocate_context_blocks,
     compute_budget,
     estimate_tokens,
     rag_reserve_for_kb,
     trim_messages_to_token_budget,
     truncate_text_to_token_budget,
 )
-from .constants import MAX_SUMMARY_CONTEXT_TOKENS, RECENT_TURNS, BuiltContext
+from .constants import MAX_SUMMARY_CONTEXT_TOKENS, BuiltContext
 from .memory_retrieve import memory_block, retrieve_user_memories
 from .memory_store import _memory_trace_item
 from .profile import build_user_memory_profile, user_profile_block
@@ -70,27 +71,70 @@ async def build_context_for_conversation(
             exclude_ids=profile_ids,
         )
 
-        keep_count = RECENT_TURNS * 2
         out: list[dict[str, str]] = []
         profile_text = user_profile_block(profile)
         mem_text = memory_block(memories)
-        summary_text = (
-            truncate_text_to_token_budget(summary.summary, MAX_SUMMARY_CONTEXT_TOKENS)
-            if summary
+        summary_source = summary.summary if summary else ""
+        allocation = allocate_context_blocks(
+            budget.available_history_tokens,
+            # ``estimate_messages_tokens`` charges the provider message-frame
+            # overhead as well. Reserve it here too so the assembled list is a
+            # true hard cap rather than three text-only approximations.
+            profile_tokens=estimate_tokens(profile_text) + (6 if profile_text else 0),
+            memory_tokens=estimate_tokens(mem_text) + (6 if mem_text else 0),
+            summary_tokens=min(
+                estimate_tokens(summary_source), MAX_SUMMARY_CONTEXT_TOKENS
+            ) + (
+                6 if summary_source else 0
+            ),
+        )
+        profile_text = (
+            truncate_text_to_token_budget(profile_text, allocation.profile - 6)
+            if profile_text and allocation.profile > 6
             else ""
         )
-        # The history budget already leaves room for the system prompt, tool
-        # schemas, RAG results and safety margin. Memory and summary now consume
-        # a measured portion of that history budget instead of being unbounded.
-        recent_budget = max(
-            1_000,
-            budget.available_history_tokens
-            - estimate_tokens(profile_text)
-            - estimate_tokens(mem_text)
-            - estimate_tokens(summary_text),
+        mem_text = (
+            truncate_text_to_token_budget(mem_text, allocation.memory - 6)
+            if mem_text and allocation.memory > 6
+            else ""
         )
-        recent_source = messages[-keep_count:] if summary else messages
-        recent = trim_messages_to_token_budget(recent_source, recent_budget)
+        summary_text = (
+            truncate_text_to_token_budget(summary_source, allocation.summary - 6)
+            if summary_source and allocation.summary > 6
+            else ""
+        )
+
+        covered_count = min(
+            max(0, summary.covered_message_count if summary else 0), len(messages)
+        )
+        # Keep every turn that has not entered the rolling summary, subject to
+        # the selected model's measured budget. This avoids silently losing
+        # messages that arrived after an older summary when switching models.
+        live_source = messages[covered_count:] if summary else messages
+        rehydrated: list[Message] = []
+        if summary and allocation.recent:
+            live_tokens = 0 if not live_source else sum(
+                estimate_tokens(item.content or "") + 6 for item in live_source
+            )
+            live_budget = min(allocation.recent, live_tokens)
+            recent = trim_messages_to_token_budget(live_source, live_budget)
+            source_window = summary.source_context_window or 0
+            rehydrate_budget = allocation.recent - live_budget
+            # When the target window grows, use spare capacity to restore the
+            # newest original detail covered by a smaller-window summary. It is
+            # deliberately append-only and bounded; the summary remains the
+            # stable source for older history.
+            if (
+                rehydrate_budget > 0
+                and source_window > 0
+                and budget.context_window > source_window
+                and covered_count > 0
+            ):
+                rehydrated = trim_messages_to_token_budget(
+                    messages[:covered_count], rehydrate_budget
+                )
+        else:
+            recent = trim_messages_to_token_budget(live_source, allocation.recent)
         if profile_text:
             out.append(
                 {"role": "system", "content": profile_text, "_context_source": "profile"}
@@ -103,6 +147,7 @@ async def build_context_for_conversation(
             out.append(
                 {"role": "system", "content": summary_text, "_context_source": "summary"}
             )
+        out.extend({"role": m.role, "content": m.content or ""} for m in rehydrated)
         out.extend({"role": m.role, "content": m.content or ""} for m in recent)
 
         return BuiltContext(
@@ -125,12 +170,14 @@ async def build_context_for_conversation(
                         "id": summary.id,
                         "covered_message_count": summary.covered_message_count,
                         "token_count": summary.token_count,
+                        "source_model": summary.source_model,
+                        "source_context_window": summary.source_context_window,
                         "updated_at": summary.updated_at.isoformat() if summary.updated_at else None,
                     }
                     if summary
                     else None
                 ),
+                "rehydrated_message_count": len(rehydrated),
                 "recent_message_count": len(recent),
             },
         )
-

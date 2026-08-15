@@ -8,9 +8,11 @@ from __future__ import annotations
 
 from .assemble import build_context_for_conversation
 from .budget import (
+    ContextBlockAllocation,
     ContextWindowResolution,
     ContextWindowSource,
     OutputTask,
+    allocate_context_blocks,
     compute_budget,
     context_status_payload,
     context_window_for_model,
@@ -124,10 +126,12 @@ __all__ = [
     "SYSTEM_AND_TOOL_RESERVE",
     "BuiltContext",
     "ContextBudget",
+    "ContextBlockAllocation",
     "ContextWindowResolution",
     "ContextWindowSource",
     "MemoryCandidate",
     "OutputTask",
+    "allocate_context_blocks",
     "backfill_user_memory_embeddings",
     "build_context_for_conversation",
     "build_extractive_summary",

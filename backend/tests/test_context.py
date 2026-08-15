@@ -10,6 +10,7 @@ import pytest
 from src.agent.nodes import allocate_provider_context, build_effective_system_prompt, plan_node
 from src.conversations.context import (
     MAX_MEMORY_CONTEXT_TOKENS,
+    allocate_context_blocks,
     build_context_for_conversation,
     build_extractive_summary,
     compute_budget,
@@ -616,6 +617,151 @@ def test_compute_budget_skips_rag_reserve_without_kb() -> None:
     assert general.available_history_tokens - kb.available_history_tokens == 8_000
 
 
+def test_small_selected_context_window_uses_a_physical_history_budget() -> None:
+    """A 4K BYOK model must never inherit the old artificial 4K history floor."""
+    messages = [Message(id="1", conversation_id="c", role="user", content="短消息")]
+
+    budget = compute_budget(messages, "local-small", 4_096, rag_reserve=8_000)
+    allocation = allocate_context_blocks(
+        budget.available_history_tokens,
+        profile_tokens=700,
+        memory_tokens=1_200,
+        summary_tokens=2_600,
+    )
+
+    assert 0 < budget.available_history_tokens < 4_096
+    assert sum((allocation.profile, allocation.memory, allocation.summary, allocation.recent)) == (
+        budget.available_history_tokens
+    )
+
+
+@pytest.mark.asyncio
+async def test_context_assembly_hard_caps_all_blocks_for_a_small_selected_model(
+    db, create_user, monkeypatch
+):
+    """Summary/profile/raw turns share one target-window budget, not separate caps."""
+    import src.conversations.context.assemble as assemble_module
+    from src.infra.database import get_session_factory
+
+    user = await create_user("small-window-context@example.com")
+    conv = Conversation(id=str(uuid.uuid4()), user_id=user.id, title="small window")
+    rows = [
+        Message(
+            id=str(uuid.uuid4()),
+            conversation_id=conv.id,
+            role="user" if index % 2 == 0 else "assistant",
+            content=f"raw-{index}-" + "测" * 1_000,
+        )
+        for index in range(8)
+    ]
+    summary = ConversationSummary(
+        id=str(uuid.uuid4()),
+        conversation_id=conv.id,
+        summary="摘要-" + "测" * 4_000,
+        covered_message_id=rows[3].id,
+        covered_message_count=4,
+        token_count=4_000,
+        source_model="local-small",
+        source_context_window=4_096,
+    )
+
+    async def fake_summary(*_args, **_kwargs):
+        return summary
+
+    async def fake_profile(*_args, **_kwargs):
+        return {
+            "memory_ids": set(),
+            "counts": {"preferences": 1},
+            "items": [],
+        }
+
+    async def fake_memories(*_args, **_kwargs):
+        return []
+
+    monkeypatch.setattr(assemble_module, "ensure_summary_if_needed", fake_summary)
+    monkeypatch.setattr(assemble_module, "build_user_memory_profile", fake_profile)
+    monkeypatch.setattr(assemble_module, "retrieve_user_memories", fake_memories)
+    monkeypatch.setattr(assemble_module, "user_profile_block", lambda _profile: "偏好-" + "测" * 1_000)
+
+    factory = get_session_factory()
+    async with factory() as session:
+        session.add(conv)
+        session.add_all(rows)
+        await session.commit()
+        built = await build_context_for_conversation(
+            session,
+            conversation_id=conv.id,
+            user_id=user.id,
+            model="local-small",
+            kb_id="kb-with-reserve",
+            context_window=4_096,
+        )
+
+    assert estimate_messages_tokens(built.messages) <= built.budget.available_history_tokens
+
+
+@pytest.mark.asyncio
+async def test_larger_model_rehydrates_bounded_detail_after_a_small_window_summary(
+    db, create_user, monkeypatch
+):
+    """A larger selected model recovers covered raw detail only from spare capacity."""
+    import src.conversations.context.assemble as assemble_module
+    from src.infra.database import get_session_factory
+
+    user = await create_user("expanded-window-context@example.com")
+    conv = Conversation(id=str(uuid.uuid4()), user_id=user.id, title="expand window")
+    rows = [
+        Message(
+            id=str(uuid.uuid4()),
+            conversation_id=conv.id,
+            role="user" if index % 2 == 0 else "assistant",
+            content=f"raw-{index}",
+        )
+        for index in range(8)
+    ]
+    summary = ConversationSummary(
+        id=str(uuid.uuid4()),
+        conversation_id=conv.id,
+        summary="已压缩早期上下文",
+        covered_message_id=rows[3].id,
+        covered_message_count=4,
+        token_count=10,
+        source_model="local-small",
+        source_context_window=4_096,
+    )
+
+    async def fake_summary(*_args, **_kwargs):
+        return summary
+
+    async def fake_profile(*_args, **_kwargs):
+        return {"memory_ids": set(), "counts": {}, "items": []}
+
+    async def fake_memories(*_args, **_kwargs):
+        return []
+
+    monkeypatch.setattr(assemble_module, "ensure_summary_if_needed", fake_summary)
+    monkeypatch.setattr(assemble_module, "build_user_memory_profile", fake_profile)
+    monkeypatch.setattr(assemble_module, "retrieve_user_memories", fake_memories)
+
+    factory = get_session_factory()
+    async with factory() as session:
+        session.add(conv)
+        session.add_all(rows)
+        await session.commit()
+        built = await build_context_for_conversation(
+            session,
+            conversation_id=conv.id,
+            user_id=user.id,
+            model="large-window",
+            context_window=128_000,
+        )
+
+    contents = [message["content"] for message in built.messages]
+    assert built.memory_trace["rehydrated_message_count"] == 4
+    assert "raw-0" in contents
+    assert "raw-7" in contents
+
+
 def test_context_status_uses_effective_tokens_after_summary() -> None:
     from src.conversations.context import context_status_payload, estimate_effective_context_tokens
 
@@ -967,6 +1113,8 @@ async def test_long_conversation_is_summarized_and_recent_turns_are_retained(db,
     assert summary is not None
     assert summary.covered_message_count == 4
     assert summary.covered_message_id == rows[3].id
+    assert summary.source_model == "deepseek-chat"
+    assert summary.source_context_window == budget.context_window
 
 
 @pytest.mark.asyncio

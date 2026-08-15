@@ -480,9 +480,13 @@ def with_model_profile_context(
 def configured_context_window_for_model(cfg: UserLLMConfig | None, model: str | None) -> int | None:
     if cfg is None:
         return None
-    if model and model in cfg.model_context_windows:
-        return cfg.model_context_windows[model]
-    return cfg.context_window
+    # A few internal integrations intentionally pass a light config-shaped
+    # object instead of the full dataclass. Treat missing profile windows as an
+    # empty mapping so the legacy connection-wide window remains usable.
+    model_windows = getattr(cfg, "model_context_windows", {}) or {}
+    if model and model in model_windows:
+        return model_windows[model]
+    return getattr(cfg, "context_window", None)
 
 
 def resolve_user_embedding(user: "User") -> Optional[UserEmbeddingConfig]:

@@ -12,12 +12,18 @@ import {
 } from "lucide-react";
 import ModelSelect from "@/components/Select";
 import { ProviderLogo } from "@/components/ProviderLogo";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { ConversationContextStatus } from "@/lib/conversations-api";
 import type { KB } from "@/lib/kb-api";
 import type { LLMConnection, LLMModelProfile } from "@/lib/settings-api";
 import { cn } from "@/lib/cn";
 import type { LlmSource } from "./types";
-import { formatContextUsagePercent, formatTokenCount, resolveContextUsagePercent } from "./utils";
+import { formatContextUsagePercent, resolveContextUsagePercent } from "./utils";
 
 const MANAGE_MODELS_VALUE = "__manage_models__";
 
@@ -247,6 +253,7 @@ export function ContextUsageIndicator({
   };
   const precisePercent = resolveContextUsagePercent(status);
   const percentLabel = formatContextUsagePercent(precisePercent);
+  const remainingPercentLabel = formatContextUsagePercent(Math.max(0, 100 - precisePercent));
   // Keep a faint ring when usage is non-zero but still under 0.5%, so the
   // meter does not look empty next to a "1.9k / 979.9k" readout.
   const ringPercent =
@@ -266,56 +273,59 @@ export function ContextUsageIndicator({
     status.state === "compressed"
       ? `已自动压缩长期上下文，保留最近 ${status.retained_recent_turns} 轮对话。`
       : status.description;
+  const displayTokenCount = (value: number) => {
+    if (!Number.isFinite(value) || value <= 0) return "-";
+    return value >= 1_000 ? `${Math.round(value / 1_000)}k` : String(Math.round(value));
+  };
 
   return (
-    <div className="group relative shrink-0">
-      <span
-        aria-describedby="context-usage-detail"
-        aria-label={loading ? "正在读取上下文使用量" : `上下文使用量 ${percentLabel}%，${status.label}`}
-        className="kf-context-usage inline-flex size-[var(--control-h)] items-center justify-center rounded-lg border outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
-        tabIndex={0}
-      >
-        <svg
-          aria-hidden="true"
-          className={cn("size-4 -rotate-90", loading && "animate-spin motion-reduce:animate-none")}
-          viewBox="0 0 20 20"
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            aria-label={loading ? "正在读取背景信息窗口" : `背景信息窗口已用 ${percentLabel}%`}
+            className="kf-context-usage inline-flex size-8 cursor-default items-center justify-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
+            type="button"
+          >
+            <svg
+              aria-hidden="true"
+              className={cn("size-5 -rotate-90", loading && "animate-spin motion-reduce:animate-none")}
+              viewBox="0 0 20 20"
+            >
+              <circle className="kf-context-track stroke-current" cx="10" cy="10" fill="none" r="8" strokeWidth="2.25" />
+              <circle
+                className={cn("kf-context-ring stroke-current", ringTone)}
+                cx="10"
+                cy="10"
+                fill="none"
+                r="8"
+                strokeDasharray={loading ? `16 ${circumference}` : circumference}
+                strokeDashoffset={dashOffset}
+                strokeLinecap="round"
+                strokeWidth="2.25"
+              />
+            </svg>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent
+          align="center"
+          className="kf-context-tooltip w-64 px-3 py-3 text-center"
+          side="top"
         >
-          <circle className="kf-context-track stroke-current" cx="10" cy="10" fill="none" r="8" strokeWidth="2.25" />
-          <circle
-            className={cn("kf-context-ring stroke-current", ringTone)}
-            cx="10"
-            cy="10"
-            fill="none"
-            r="8"
-            strokeDasharray={loading ? `16 ${circumference}` : circumference}
-            strokeDashoffset={dashOffset}
-            strokeLinecap="round"
-            strokeWidth="2.25"
-          />
-        </svg>
-      </span>
-      <div
-        className="kf-context-tooltip pointer-events-none absolute bottom-full right-0 z-20 mb-2 w-72 translate-y-1 rounded-lg border p-3 text-left opacity-0 transition-[opacity,transform] duration-150 ease-out group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100"
-        id="context-usage-detail"
-        role="tooltip"
-      >
-        <div className="flex items-center justify-between gap-3">
-          <span className="kf-context-tooltip-title text-sm font-medium">上下文使用</span>
-          <span className={cn("text-xs font-medium tabular-nums", ringTone)}>{status.label}</span>
-        </div>
-        <div className="mt-2 flex items-baseline justify-between gap-3 tabular-nums">
-          <span className="kf-context-tooltip-title text-lg font-semibold">{percentLabel}%</span>
-          <span className="kf-context-tooltip-muted text-xs">
-            {formatTokenCount(status.current_tokens)} / {formatTokenCount(status.available_tokens)}
-          </span>
-        </div>
-        <p className="kf-context-tooltip-muted mt-2 text-xs leading-5">{detail}</p>
-        {status.summary && (
-          <p className="kf-context-tooltip-summary kf-context-tooltip-muted mt-2 border-t pt-2 text-xs leading-5">
-            已覆盖 {status.summary.covered_message_count} 条历史消息 / 摘要约 {formatTokenCount(status.summary.token_count)}
+          <p className="kf-context-tooltip-muted text-sm font-medium leading-5">背景信息窗口：</p>
+          <p className="kf-context-tooltip-title text-base font-semibold leading-6 tabular-nums">
+            {loading ? "正在读取" : `${percentLabel}% 已用（剩余 ${remainingPercentLabel}%）`}
           </p>
-        )}
-      </div>
-    </div>
+          <p className="kf-context-tooltip-title text-sm font-medium leading-6 tabular-nums">
+            已用 {displayTokenCount(status.current_tokens)} 标记，共 {displayTokenCount(status.available_tokens)}
+          </p>
+          {status.state === "compressed" && (
+            <p className="kf-context-tooltip-summary kf-context-tooltip-muted mt-2 border-t pt-2 text-xs leading-5">
+              {detail}
+            </p>
+          )}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

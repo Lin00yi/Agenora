@@ -180,6 +180,11 @@ class ConversationSummary(Base):
     covered_message_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     covered_message_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     token_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Records the window that produced this compact view.  A later switch to a
+    # larger model can safely rehydrate bounded raw detail without discarding
+    # the durable rolling summary.
+    source_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    source_context_window: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -195,6 +200,8 @@ class ConversationSummary(Base):
             "covered_message_id": self.covered_message_id,
             "covered_message_count": self.covered_message_count,
             "token_count": self.token_count,
+            "source_model": self.source_model,
+            "source_context_window": self.source_context_window,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

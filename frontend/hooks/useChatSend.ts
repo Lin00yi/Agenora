@@ -163,7 +163,15 @@ export function useChatSend({
             const updated = await patchConversation(created.id, { llm_profile_id: currentProfileId });
             setCurrentModel(updated.llm_model);
             setCurrentProfileId(updated.llm_profile_id);
-            setSummaries((prev) => prev.map((item) => item.id === created.id ? { ...item, llm_model: updated.llm_model, llm_profile_id: updated.llm_profile_id } : item));
+            if (updated.context_status) {
+              setCurrentContextStatus(updated.context_status);
+            }
+            setSummaries((prev) => prev.map((item) => item.id === created.id ? {
+              ...item,
+              llm_model: updated.llm_model,
+              llm_profile_id: updated.llm_profile_id,
+              context_status: updated.context_status ?? item.context_status,
+            } : item));
           }
         } catch (e) {
           toast.error((e as Error)?.message ?? "\u521b\u5efa\u4f1a\u8bdd\u5931\u8d25");

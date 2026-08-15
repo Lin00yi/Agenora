@@ -315,6 +315,19 @@ def _migrate_additive_columns(sync_conn) -> None:
                 text("ALTER TABLE conversations ADD COLUMN llm_profile_id VARCHAR(36)")
             )
 
+    # v6: rolling summaries retain the context capacity that created them so a
+    # later model switch can make a bounded, explicit rehydration decision.
+    if "conversation_summaries" in tables:
+        summary_cols = {c["name"] for c in insp.get_columns("conversation_summaries")}
+        if "source_model" not in summary_cols:
+            sync_conn.execute(
+                text("ALTER TABLE conversation_summaries ADD COLUMN source_model VARCHAR(128)")
+            )
+        if "source_context_window" not in summary_cols:
+            sync_conn.execute(
+                text("ALTER TABLE conversation_summaries ADD COLUMN source_context_window INTEGER")
+            )
+
     # v5: profiles can now point at independently configured provider
     # connections.  Both ALTERs are additive for existing SQLite/Postgres DBs;
     # fresh installs receive them through Base.metadata.create_all above.

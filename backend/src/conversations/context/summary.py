@@ -206,6 +206,8 @@ async def _cas_update_summary(
     text: str,
     covered: Message,
     covered_message_count: int,
+    source_model: str | None,
+    source_context_window: int,
     expected_updated_at: datetime,
 ) -> ConversationSummary | None:
     now = datetime.now(timezone.utc)
@@ -220,6 +222,8 @@ async def _cas_update_summary(
             covered_message_id=covered.id,
             covered_message_count=covered_message_count,
             token_count=estimate_tokens(text),
+            source_model=source_model,
+            source_context_window=source_context_window,
             updated_at=now,
         )
     )
@@ -281,6 +285,8 @@ async def ensure_summary_if_needed(
                 text=text,
                 covered=covered,
                 covered_message_count=len(older),
+                source_model=budget.model,
+                source_context_window=budget.context_window,
                 expected_updated_at=summary.updated_at,
             )
             return updated or await get_latest_summary(session, conversation_id)
@@ -293,6 +299,8 @@ async def ensure_summary_if_needed(
             covered_message_id=covered.id,
             covered_message_count=len(older),
             token_count=estimate_tokens(text),
+            source_model=budget.model,
+            source_context_window=budget.context_window,
             created_at=now,
             updated_at=now,
         )
@@ -306,9 +314,10 @@ async def ensure_summary_if_needed(
             text=text,
             covered=covered,
             covered_message_count=len(older),
+            source_model=budget.model,
+            source_context_window=budget.context_window,
             expected_updated_at=summary.updated_at,
         )
         return updated or await get_latest_summary(session, conversation_id)
     await session.commit()
     return row
-
