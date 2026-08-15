@@ -2,7 +2,10 @@
 
 import {
   forwardRef,
+  useEffect,
+  useState,
   type ChangeEvent,
+  type ReactNode,
 } from "react";
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
 import {
@@ -31,6 +34,7 @@ export type SelectOption = {
   value: string;
   label: string;
   prefix?: string;
+  icon?: ReactNode;
 };
 
 export type SelectSubmenu = {
@@ -43,6 +47,7 @@ type SelectProps = {
   submenus?: SelectSubmenu[];
   size?: "sm" | "md";
   tone?: "default" | "plain";
+  placeholder?: string;
   placeholderOption?: SelectOption;
   value?: string;
   defaultValue?: string;
@@ -65,6 +70,7 @@ const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(
     submenus = [],
     size = "md",
     tone = "default",
+    placeholder,
     placeholderOption,
     className,
   contentClassName,
@@ -80,6 +86,10 @@ const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(
   },
   ref
 ) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
   const allOptions = [
     ...(placeholderOption ? [placeholderOption] : []),
     ...options,
@@ -101,14 +111,26 @@ const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(
 
   const selected = fromRadixValue(currentValue);
   const selectedOption = allOptions.find((option) => option.value === selected);
-  const currentLabel = selectedOption?.label ?? placeholderOption?.label ?? "请选择";
+  const currentLabel = selectedOption?.label ?? placeholder ?? placeholderOption?.label ?? "请选择";
   const itemLeading = (option: SelectOption) => (
     <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
       {selected === option.value && <CheckIcon className="size-3.5 text-brand" />}
     </span>
   );
+  const optionContent = (option: SelectOption) => (
+    <>
+      {itemLeading(option)}
+      {option.icon && <span className="inline-flex shrink-0" aria-hidden>{option.icon}</span>}
+      <span className="min-w-0 truncate">{option.prefix ? `${option.prefix} ${option.label}` : option.label}</span>
+    </>
+  );
   return (
-    <DropdownMenu>
+    <DropdownMenu
+      open={disabled ? false : open}
+      onOpenChange={(nextOpen) => {
+        setOpen(disabled ? false : nextOpen);
+      }}
+    >
       <DropdownMenuTrigger asChild>
         <button
           ref={ref}
@@ -118,14 +140,18 @@ const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(
           name={name}
           title={title}
           aria-label={ariaLabel}
+          data-placeholder={selectedOption ? "false" : "true"}
           className={cn(
-            "grid w-full min-w-[8rem] cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-2 overflow-hidden rounded-lg border border-surface-border/80 bg-surface/95 py-0 pr-2.5 pl-3 text-sm text-ink shadow-sm outline-none transition-[background-color,border-color,box-shadow,color] select-none hover:border-brand/35 hover:bg-surface-2 focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-surface dark:hover:bg-surface-2",
+            "grid w-full min-w-[8rem] cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-2 overflow-hidden rounded-lg border border-surface-border/80 bg-surface/95 py-0 pr-2.5 pl-3 text-sm text-ink shadow-sm outline-none transition-[background-color,border-color,box-shadow,color] select-none hover:border-brand/35 hover:bg-surface-2 focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand/20 data-[placeholder=true]:text-muted/75 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-surface dark:hover:bg-surface-2",
             tone === "plain" && "border-transparent bg-transparent text-current shadow-none hover:border-transparent hover:bg-transparent focus-visible:ring-2 focus-visible:ring-brand/20",
             size === "sm" ? "h-[var(--control-h-sm)] rounded-md text-xs" : "h-[var(--control-h)]",
             className
           )}
         >
-          <span className="truncate">{currentLabel}</span>
+          <span className="flex min-w-0 items-center gap-1.5 truncate">
+            {selectedOption?.icon && <span className="inline-flex shrink-0" aria-hidden>{selectedOption.icon}</span>}
+            <span className="truncate">{currentLabel}</span>
+          </span>
           <ChevronDownIcon className="pointer-events-none size-4 shrink-0 text-muted" aria-hidden />
         </button>
       </DropdownMenuTrigger>
@@ -135,14 +161,12 @@ const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(
       >
         {placeholderOption && (
           <DropdownMenuItem onSelect={() => emitChange(placeholderOption.value)}>
-            {itemLeading(placeholderOption)}
-            {placeholderOption.prefix ? `${placeholderOption.prefix} ${placeholderOption.label}` : placeholderOption.label}
+            {optionContent(placeholderOption)}
           </DropdownMenuItem>
         )}
         {options.map((option) => (
           <DropdownMenuItem key={option.value} onSelect={() => emitChange(option.value)}>
-            {itemLeading(option)}
-            {option.prefix ? `${option.prefix} ${option.label}` : option.label}
+            {optionContent(option)}
           </DropdownMenuItem>
         ))}
         {options.length > 0 && submenus.length > 0 && <DropdownMenuSeparator />}
@@ -157,8 +181,7 @@ const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(
             <DropdownMenuSubContent>
               {submenu.options.map((option) => (
                 <DropdownMenuItem key={option.value} onSelect={() => emitChange(option.value)}>
-                  {itemLeading(option)}
-                  {option.prefix ? `${option.prefix} ${option.label}` : option.label}
+                  {optionContent(option)}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuSubContent>

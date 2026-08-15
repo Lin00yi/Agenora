@@ -226,7 +226,8 @@ export function ChatPage({
     modelOptions,
     modelLabels,
     modelProfiles,
-    llmReady,
+    modelConnections,
+    defaultProfileId,
     llmSource,
     kbs,
     systemSettingsOpen,
@@ -245,6 +246,16 @@ export function ChatPage({
   useEffect(() => {
     modelOptionsRef.current = modelOptions;
   }, [modelOptions]);
+
+  // A profile is fixed on first send. Only blank conversations inherit the
+  // configured default; historical conversations keep their stored selection.
+  useEffect(() => {
+    if (currentId || currentProfileId || currentModel || !defaultProfileId) return;
+    const defaultProfile = modelProfiles.find((profile) => profile.id === defaultProfileId);
+    if (!defaultProfile) return;
+    setCurrentProfileId(defaultProfile.id);
+    setCurrentModel(defaultProfile.model_id);
+  }, [currentId, currentModel, currentProfileId, defaultProfileId, modelProfiles]);
 
   const currentConversation = sidebarConversations.find((c) => c.id === currentId) ?? null;
   const currentKb = kbs.find((kb) => kb.id === currentKbId) ?? null;
@@ -355,7 +366,7 @@ export function ChatPage({
 
   const handleSendWithLlmGuard = useCallback(
     (message: string) => {
-      if (!llmReady && !currentProfileId && !currentModel) {
+      if (!currentProfileId && !currentModel) {
         if (modelProfiles.length > 0) {
           toast.info("请先在发送按钮左侧选择一个模型。");
           return;
@@ -365,7 +376,7 @@ export function ChatPage({
       }
       void handleSend(message);
     },
-    [currentModel, currentProfileId, handleSend, llmReady, modelProfiles.length]
+    [currentModel, currentProfileId, handleSend, modelProfiles.length]
   );
 
   const submitComposerWithLlmGuard = useCallback(() => {
@@ -695,7 +706,7 @@ export function ChatPage({
                       modelOptions={modelOptions}
                       modelLabels={modelLabels}
                       modelProfiles={modelProfiles}
-                      llmReady={llmReady}
+                      modelConnections={modelConnections}
                       llmSource={llmSource}
                       contextStatus={currentContextStatus}
                       contextStatusLoading={contextStatusLoading}
@@ -754,7 +765,7 @@ export function ChatPage({
                         modelOptions={modelOptions}
                         modelLabels={modelLabels}
                         modelProfiles={modelProfiles}
-                        llmReady={llmReady}
+                        modelConnections={modelConnections}
                         llmSource={llmSource}
                         contextStatus={currentContextStatus}
                         contextStatusLoading={contextStatusLoading}

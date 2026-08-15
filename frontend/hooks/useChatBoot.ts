@@ -12,7 +12,7 @@ import {
 } from "@/lib/conversations-api";
 import { listKbs, type KB } from "@/lib/kb-api";
 import type { LlmSource } from "@/components/chat";
-import type { LLMModelProfile } from "@/lib/settings-api";
+import type { LLMConnection, LLMModelProfile } from "@/lib/settings-api";
 import {
   CHAT_PANE_FADE_MS,
   CONVERSATION_PAGE_SIZE,
@@ -54,6 +54,8 @@ export function useChatBoot({
   const [modelOptions, setModelOptions] = useState<string[]>([]);
   const [modelLabels, setModelLabels] = useState<Record<string, string>>({});
   const [modelProfiles, setModelProfiles] = useState<LLMModelProfile[]>([]);
+  const [modelConnections, setModelConnections] = useState<LLMConnection[]>([]);
+  const [defaultProfileId, setDefaultProfileId] = useState<string | null>(null);
   const [llmReady, setLlmReady] = useState(false);
   const [llmSource, setLlmSource] = useState<LlmSource>("missing");
   const [kbs, setKbs] = useState<KB[]>([]);
@@ -105,15 +107,16 @@ export function useChatBoot({
             );
             return Boolean(connection?.enabled && connection.has_key);
           });
+          const defaultProfile =
+            enabledProfiles.find((profile) => profile.id === settings.llm.default_profile_id) ??
+            enabledProfiles.find((profile) => profile.model_id === settings.llm.default_model) ??
+            null;
           const profileModels = enabledProfiles.map((profile) => profile.model_id);
           const labels = Object.fromEntries(
             enabledProfiles.flatMap((profile) => {
-              const connection = (settings.llm.connections ?? []).find(
-                (item) => item.id === profile.connection_id
-              );
               return [
                 [profile.model_id, profile.display_name],
-                [profile.id, `${connection?.display_name ?? "默认连接"} / ${profile.display_name}`],
+                [profile.id, profile.model_id],
               ];
             })
           );
@@ -134,6 +137,8 @@ export function useChatBoot({
           if (!cancelled) {
             setModelLabels(labels);
             setModelProfiles(enabledProfiles);
+            setModelConnections(settings.llm.connections ?? []);
+            setDefaultProfileId(defaultProfile?.id ?? null);
             setModelOptions(
               uniqueStrings([
                 ...discoveredModels,
@@ -154,6 +159,8 @@ export function useChatBoot({
             setModelOptions([]);
             setModelLabels({});
             setModelProfiles([]);
+            setModelConnections([]);
+            setDefaultProfileId(null);
           }
         }
       }
@@ -237,6 +244,8 @@ export function useChatBoot({
     modelOptions,
     modelLabels,
     modelProfiles,
+    modelConnections,
+    defaultProfileId,
     setModelOptions,
     llmReady,
     llmSource,

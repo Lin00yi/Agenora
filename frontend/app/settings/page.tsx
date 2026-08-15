@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ProviderLogo } from "@/components/ProviderLogo";
 import Select from "@/components/Select";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Badge } from "@/components/ui/badge";
@@ -79,6 +80,17 @@ function connectionLabel(connection?: LLMConnection) {
     : connection.display_name;
 }
 
+function formatProfileContextWindow(profile: LLMModelProfile) {
+  const window = profile.context_window ?? (
+    profile.context_window_source === "registry"
+      ? profile.context_window_resolved ?? null
+      : null
+  );
+  if (!window) return "上下文自动识别";
+  if (window % 1_000_000 === 0) return `${window / 1_000_000}M`;
+  return `${window / 1_000}K`;
+}
+
 /** User-level LLM configuration. KB retrieval options remain a separate region below. */
 export default function SettingsPage() {
   const router = useRouter();
@@ -129,14 +141,11 @@ export default function SettingsPage() {
         </div>
       </header>
 
-      <main className="app-page-content mx-auto max-w-6xl px-4 py-7 sm:px-6 sm:py-10">
+      <main className="app-page-content mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
         <header className="max-w-3xl">
           <p className="text-xs font-semibold tracking-[0.16em] text-brand">模型与运行策略</p>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-ink">模型设置</h1>
-          <p className="mt-2 text-sm leading-6 text-muted">
-            创建可复用的模型配置，再在路由策略中选择默认模型和自动执行方式。
-            知识库的 Embedding 与 Reranker 仍在创建知识库时按库配置。
-          </p>
+          <p className="mt-2 text-sm leading-6 text-muted">先连接服务，再添加模型，最后配置默认模型与自动路由。Embedding 与 Reranker 在知识库中按库设置。</p>
         </header>
 
         <div className="mt-8">
@@ -341,13 +350,12 @@ function LLMSettingsPanel({
   return (
     <section className="admin-panel overflow-hidden" aria-labelledby="llm-settings-heading">
       <div className="border-b border-surface-border/70 px-5 py-5 sm:px-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-start gap-3">
             <span className="admin-icon-tile admin-icon-tile-brand" aria-hidden><Bot className="h-4 w-4" /></span>
             <div className="min-w-0">
-              <p className="text-xs font-semibold text-brand">模型设置</p>
-              <h2 id="llm-settings-heading" className="mt-1 text-balance text-xl font-semibold">管理模型配置与路由策略</h2>
-              <p className="mt-1 max-w-2xl text-pretty text-sm leading-6 text-muted">模型配置是可复用资产。默认模型和自动路由在单独的策略中维护。</p>
+              <h2 id="llm-settings-heading" className="text-balance text-lg font-semibold">模型配置与路由</h2>
+              <p className="mt-1 max-w-2xl text-pretty text-sm leading-5 text-muted">服务凭据、可选模型与会话路由分开维护。</p>
             </div>
           </div>
           <EffectiveStatus
@@ -356,7 +364,7 @@ function LLMSettingsPanel({
             hasDefaultProfile={Boolean(initial?.default_profile_id)}
           />
         </div>
-        <Tabs value={activeSection} onValueChange={(value) => setActiveSection(value as "connections" | "models" | "routing")} className="mt-6">
+        <Tabs value={activeSection} onValueChange={(value) => setActiveSection(value as "connections" | "models" | "routing")} className="mt-4">
           <TabsList variant="line" aria-label="模型设置区域" className="w-full justify-start gap-0 rounded-none border-b border-surface-border/70 p-0">
             <TabsTrigger value="connections" className="flex-none rounded-none px-3.5">服务连接{connectionCount ? ` (${connectionCount})` : ""}</TabsTrigger>
             <TabsTrigger value="models" className="flex-none rounded-none px-3.5">模型配置{hasProfiles ? ` (${initial?.model_profiles?.length ?? 0})` : ""}</TabsTrigger>
@@ -518,19 +526,19 @@ function LLMSettingsPanel({
       )}
 
       {activeSection === "connections" && !connectionEditor && (
-      <div id="model-connections" className="scroll-mt-5 px-5 py-6 sm:px-6">
+      <div id="model-connections" className="scroll-mt-5 px-5 py-5 sm:px-6">
         <ModelProfilesManager initial={initial} onChanged={onChanged} view="connections" onManageConnections={() => setActiveSection("connections")} />
       </div>
       )}
 
       {activeSection === "models" && !connectionEditor && (
-      <div id="model-catalog" className="scroll-mt-5 px-5 py-6 sm:px-6">
+      <div id="model-catalog" className="scroll-mt-5 px-5 py-5 sm:px-6">
         <ModelProfilesManager initial={initial} onChanged={onChanged} view="models" onManageConnections={() => setActiveSection("connections")} />
       </div>
       )}
 
       {activeSection === "routing" && hasProfiles && (
-      <div id="model-routing" className="scroll-mt-5 px-5 py-6 sm:px-6">
+      <div id="model-routing" className="scroll-mt-5 px-5 py-5 sm:px-6">
         <ModelProfilesManager initial={initial} onChanged={onChanged} view="routing" />
       </div>
       )}
@@ -862,10 +870,17 @@ function ModelProfilesManager({
     }
   };
 
-  const selectOptions = enabledProfiles.map((profile) => ({
-    value: profile.id,
-    label: `${connectionLabel(connections.find((connection) => connection.id === profile.connection_id))} / ${profile.display_name} · ${profile.model_id}`,
-  }));
+  const selectOptions = enabledProfiles.map((profile) => {
+    const connection = connections.find((item) => item.id === profile.connection_id);
+    const profileLabel = profile.display_name === profile.model_id
+      ? profile.model_id
+      : `${profile.display_name} · ${profile.model_id}`;
+
+    return {
+      value: profile.id,
+      label: `${connectionLabel(connection)} · ${profileLabel}`,
+    };
+  });
 
   if (view === "connections") {
     return (
@@ -891,9 +906,10 @@ function ModelProfilesManager({
             {managedConnections.map((connection) => {
               const usageCount = profiles.filter((profile) => profile.connection_id === connection.id).length;
               return (
-                <div key={connection.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div key={connection.id} className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
+                      <ProviderLogo connection={connection} />
                       <p className="text-sm font-medium text-ink">{connectionLabel(connection)}</p>
                       <Badge variant="outline" className="border-brand/25 bg-brand/10 text-brand">{connection.provider === "anthropic" ? "Anthropic Messages" : "OpenAI Compatible"}</Badge>
                       <span className="text-xs text-muted">{usageCount ? `供 ${usageCount} 个模型使用` : "尚未绑定模型"}</span>
@@ -1049,11 +1065,14 @@ function ModelProfilesManager({
                 <Badge variant="outline" className={profile.enabled ? "border-brand/25 bg-brand/10 text-brand" : "border-surface-border bg-surface-2 text-muted"}>
                   {profile.enabled ? "可选" : "已停用"}
                 </Badge>
-                <span className="text-xs text-muted">{profile.context_window ? `${profile.context_window / 1000}K` : "上下文自动识别"}</span>
+                <span className="text-xs text-muted">{formatProfileContextWindow(profile)}</span>
               </div>
-              <p className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted">
+              <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted">
                 {profile.display_name !== profile.model_id && <span className="font-mono" title={profile.model_id}>{profile.model_id}</span>}
-                <span>服务：{connectionLabel(connections.find((connection) => connection.id === profile.connection_id))}</span>
+                {(() => {
+                  const connection = connections.find((item) => item.id === profile.connection_id);
+                  return <span className="inline-flex items-center gap-1.5"><ProviderLogo connection={connection} />服务：{connectionLabel(connection)}</span>;
+                })()}
               </p>
             </div>
             <Button type="button" variant="destructive" size="sm" onClick={() => setProfilePendingRemoval(profile)} disabled={deletingId === profile.id}>

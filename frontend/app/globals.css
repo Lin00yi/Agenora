@@ -868,6 +868,16 @@
     background: var(--chat-surface);
   }
 
+  /* The KB selector sits inside a shared control shell. Keep its trigger
+     transparent so an enabled selector does not render a second dark pill. */
+  .kf-chat .kf-workspace .kf-composer .kf-kb-trigger,
+  .kf-chat .kf-workspace .kf-composer .kf-kb-trigger:hover,
+  .kf-chat .kf-workspace .kf-composer .kf-kb-trigger[aria-expanded="true"] {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+
   .kf-chat .kf-workspace .kf-composer .kf-stop-button {
     min-height: var(--control-h);
     min-width: var(--control-h);

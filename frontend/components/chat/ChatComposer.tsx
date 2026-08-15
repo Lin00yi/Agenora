@@ -11,9 +11,10 @@ import {
   Square,
 } from "lucide-react";
 import ModelSelect from "@/components/Select";
+import { ProviderLogo } from "@/components/ProviderLogo";
 import type { ConversationContextStatus } from "@/lib/conversations-api";
 import type { KB } from "@/lib/kb-api";
-import type { LLMModelProfile } from "@/lib/settings-api";
+import type { LLMConnection, LLMModelProfile } from "@/lib/settings-api";
 import { cn } from "@/lib/cn";
 import type { LlmSource } from "./types";
 import { formatContextUsagePercent, formatTokenCount, resolveContextUsagePercent } from "./utils";
@@ -59,8 +60,8 @@ export function Composer({
   currentProfileId,
   modelOptions,
   modelProfiles = [],
+  modelConnections = [],
   modelLabels = {},
-  llmReady,
   llmSource,
   contextStatus,
   contextStatusLoading,
@@ -82,8 +83,8 @@ export function Composer({
   currentProfileId?: string | null;
   modelOptions: string[];
   modelProfiles?: LLMModelProfile[];
+  modelConnections?: LLMConnection[];
   modelLabels?: Record<string, string>;
-  llmReady: boolean;
   llmSource: LlmSource;
   contextStatus: ConversationContextStatus | null;
   contextStatusLoading: boolean;
@@ -98,16 +99,14 @@ export function Composer({
 }) {
   const profileOptions = modelProfiles.map((profile) => ({
     value: profile.id,
-    label: modelLabels[profile.id] ?? `${profile.display_name} · ${profile.model_id}`,
+    label: modelLabels[profile.id] ?? profile.model_id,
+    icon: <ProviderLogo connection={modelConnections.find((connection) => connection.id === profile.connection_id)} />,
   }));
   const visibleModelOptions =
     profileOptions.length > 0
       ? profileOptions
       : (currentModel && !modelOptions.includes(currentModel) ? [currentModel, ...modelOptions] : modelOptions)
-          .map((model) => ({ value: model, label: modelLabels[model] ? `${modelLabels[model]} · ${model}` : model }));
-  const defaultModelLabel = llmReady
-    ? "自动路由"
-    : "选择模型";
+          .map((model) => ({ value: model, label: modelLabels[model] ? `${modelLabels[model]} · ${model}` : model, icon: <ProviderLogo /> }));
   const selectableModelOptions = [
     ...visibleModelOptions,
     { value: MANAGE_MODELS_VALUE, label: "管理模型配置" },
@@ -146,7 +145,7 @@ export function Composer({
             <ModelSelect
               aria-label="选择知识库"
               tone="plain"
-              className="h-[var(--control-h)] min-w-[108px] flex-1 border-0 bg-transparent px-0 py-0 text-sm text-current shadow-none hover:bg-transparent focus-visible:ring-0 disabled:cursor-not-allowed disabled:text-muted"
+              className="kf-kb-trigger h-[var(--control-h)] min-w-[108px] flex-1 border-0 bg-transparent px-0 py-0 text-sm text-current shadow-none hover:bg-transparent focus-visible:ring-0 disabled:cursor-not-allowed disabled:text-muted"
               contentAlign="start"
               contentClassName="kf-model-content"
               contentPosition="popper"
@@ -190,7 +189,7 @@ export function Composer({
                 onModelChange(event.target.value || null);
               }}
               options={selectableModelOptions}
-              placeholderOption={{ value: "", label: defaultModelLabel }}
+              placeholder="选择模型"
               title="选择模型或管理模型配置"
               value={modelProfiles.length > 0 ? currentProfileId ?? "" : currentModel ?? ""}
             />

@@ -1,7 +1,6 @@
 "use client";
 
 import { Monitor, Moon, Sun } from "lucide-react";
-import Select from "@/components/Select";
 import {
   Select as ShadcnSelect,
   SelectContent,
@@ -24,54 +23,44 @@ function ThemeIcon({ theme, className }: { theme: Theme; className?: string }) {
 
 export default function ThemeToggle({
   className,
-  compact = false,
 }: {
   className?: string;
+  /** Kept for existing callers; every entry now uses the compact shared control. */
   compact?: boolean;
 }) {
   const { theme, setTheme } = useTheme();
 
-  if (compact) {
-    return (
-      <ShadcnSelect value={theme} onValueChange={(next) => setTheme(next as Theme)}>
-        <SelectTrigger
-          aria-label="外观主题"
-          title="外观主题"
-          tone="plain"
-          layout="icon"
-          className={cn(
-            "kf-theme-toggle-compact size-[var(--control-h)] shrink-0",
-            className
-          )}
-        >
-          <ThemeIcon theme={theme} />
-        </SelectTrigger>
-        <SelectContent align="end" position="popper" className="min-w-[9.5rem]">
-          {OPTIONS.map((opt) => {
-            const Icon = opt.icon;
-            return (
-              <SelectItem key={opt.value} value={opt.value}>
-                <span className="flex items-center gap-2">
-                  <Icon className="h-4 w-4 shrink-0 opacity-70" />
-                  {opt.label}
-                </span>
-              </SelectItem>
-            );
-          })}
-        </SelectContent>
-      </ShadcnSelect>
-    );
-  }
-
   return (
-    <Select
-      value={theme}
-      onChange={(e) => setTheme(e.target.value as Theme)}
-      options={OPTIONS.map(({ value, label }) => ({ value, label }))}
-      aria-label="外观主题"
-      contentAlign="start"
-      contentPosition="popper"
-      className={cn("h-[var(--control-h)] min-h-[var(--control-h)] w-[8.5rem] min-w-[8.5rem]", className)}
-    />
+    <ShadcnSelect value={theme} onValueChange={(next) => setTheme(next as Theme)}>
+      <SelectTrigger
+        aria-label="外观主题"
+        title="外观主题"
+        tone="plain"
+        layout="icon"
+        className={cn(
+          "kf-theme-toggle-compact size-[var(--control-h)] shrink-0",
+          className
+        )}
+      >
+        <ThemeIcon theme={theme} className="size-5" />
+      </SelectTrigger>
+      <SelectContent align="end" position="popper" className="min-w-[10rem]">
+        {OPTIONS.map((opt) => {
+          const Icon = opt.icon;
+          return (
+            <SelectItem
+              key={opt.value}
+              value={opt.value}
+              className="theme-select-item data-[state=checked]:bg-surface-2 data-[state=checked]:text-ink dark:data-[state=checked]:bg-surface-2"
+            >
+              <span className="flex items-center gap-3">
+                <Icon className="size-5 shrink-0 text-muted" />
+                {opt.label}
+              </span>
+            </SelectItem>
+          );
+        })}
+      </SelectContent>
+    </ShadcnSelect>
   );
 }

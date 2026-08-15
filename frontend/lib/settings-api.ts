@@ -63,7 +63,10 @@ export type LLMModelProfile = {
   connection_id: string | null;
   display_name: string;
   model_id: string;
+  /** Explicit user override. Null means the server uses the model capability registry. */
   context_window: number | null;
+  context_window_resolved?: number | null;
+  context_window_source?: "manual" | "registry" | "fallback" | null;
   enabled: boolean;
   supports_tools: boolean;
 };

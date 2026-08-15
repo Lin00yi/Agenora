@@ -153,6 +153,16 @@ class KbOptionsBody(BaseModel):
 # ---------------------------------------------------------------------------
 # GET /me — current saved + effective view
 # ---------------------------------------------------------------------------
+def _profile_to_public(profile: LLMModelProfile) -> dict:
+    """Expose the resolved automatic window without turning it into an override."""
+    context = resolve_context_window(profile.model_id, profile.context_window)
+    return {
+        **profile.to_public_dict(),
+        "context_window_resolved": context.value,
+        "context_window_source": context.source,
+    }
+
+
 def _to_public(
     user: User,
     profiles: list[LLMModelProfile] | None = None,
@@ -262,7 +272,7 @@ def _to_public(
             "fallback_profile_id": getattr(user, "llm_fallback_profile_id", None),
             "triage_model": normalize_model_name(getattr(user, "llm_triage_model", None)),
             "fallback_model": normalize_model_name(getattr(user, "llm_fallback_model", None)),
-            "model_profiles": [profile.to_public_dict() for profile in profiles or []],
+            "model_profiles": [_profile_to_public(profile) for profile in profiles or []],
             "connections": [connection.to_public_dict() for connection in connections or []],
         },
         "embedding": {
@@ -549,7 +559,7 @@ async def create_llm_model_profile(
     session.add(profile)
     await session.commit()
     await session.refresh(profile)
-    return profile.to_public_dict()
+    return _profile_to_public(profile)
 
 
 @router.patch("/llm/models/{profile_id}")
@@ -584,7 +594,7 @@ async def update_llm_model_profile(
     profile.supports_tools = body.supports_tools
     await session.commit()
     await session.refresh(profile)
-    return profile.to_public_dict()
+    return _profile_to_public(profile)
 
 
 @router.delete("/llm/models/{profile_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
