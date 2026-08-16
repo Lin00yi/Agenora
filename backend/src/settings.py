@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     # Skip cross-encoder rerank when first-stage top score is already strong.
     # Set to 0 to always rerank when configured.
     kb_rerank_skip_if_score_ge: float = 0.7
+    # Retrieval produced by the internal prefetch node is untrusted evidence,
+    # not a system instruction. ``legacy_system`` exists only for an immediate
+    # rollout rollback; new deployments should keep ``user_evidence``.
+    rag_injection_mode: str = "user_evidence"  # user_evidence | legacy_system
 
     # ===== Tools =====
     qweather_api_key: str = ""

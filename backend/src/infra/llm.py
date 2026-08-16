@@ -155,3 +155,28 @@ def with_cache_control(blocks: list[dict], cfg: "UserLLMConfig | None" = None) -
     out = [dict(b) for b in blocks]
     out[-1]["cache_control"] = {"type": "ephemeral"}
     return out
+
+
+_CONVERSATION_CONTEXT_MARKER = "\n\n# 会话上下文（仅供参考的数据）\n"
+
+
+def system_blocks_with_prefix_cache_control(
+    system_prompt: str, cfg: "UserLLMConfig | None" = None
+) -> list[dict]:
+    """Create Anthropic system blocks with a cache point before mutable context.
+
+    Server-generated memories and summaries can change, but stable policy and
+    tool guidance usually do not. A single cached system block made any change
+    at its tail (historically every RAG result too) recreate the whole cache.
+    Keep the cache checkpoint immediately after the stable prefix whenever the
+    prompt composer has appended the conversation-context marker.
+    """
+    marker_index = system_prompt.find(_CONVERSATION_CONTEXT_MARKER)
+    if marker_index <= 0:
+        return with_cache_control([{"type": "text", "text": system_prompt}], cfg)
+
+    stable_prefix = system_prompt[:marker_index]
+    mutable_suffix = system_prompt[marker_index:]
+    blocks = with_cache_control([{"type": "text", "text": stable_prefix}], cfg)
+    blocks.append({"type": "text", "text": mutable_suffix})
+    return blocks

@@ -123,6 +123,7 @@ def _apply_query_policy_decision(
         **state,
         "kb_queries": decision["queries"],
         "kb_context": "",
+        "retrieved_evidence": [],
         "kb_search_done": not should_search,
         "query_policy_action": decision["action"],
         "query_policy_reason": decision["reason"],

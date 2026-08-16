@@ -6,7 +6,7 @@ import logging
 import time
 from typing import Any
 
-from src.agent.state import AgentState
+from src.agent.state import AgentState, RetrievedEvidence
 from src.conversations.context import RAG_RESERVE, estimate_tokens, truncate_text_to_token_budget
 from src.observability import traced
 from src.safety.prompt_injection import (
@@ -58,6 +58,71 @@ def _bound_aggregated_rag_context(
         kept.append(text)
         remaining -= separator_tokens + estimate_tokens(text)
     return "\n\n".join(kept)
+
+
+def _bound_retrieved_evidence(
+    items: list[RetrievedEvidence], *, token_budget: int = RAG_RESERVE
+) -> list[RetrievedEvidence]:
+    """Bound evidence without losing source metadata for the final prompt.
+
+    The old flattened context was capped after source headers had been added.
+    Apply the same per-turn cap to the structured representation, clipping only
+    an item's text and never silently dropping its provenance fields.
+    """
+    remaining = max(0, int(token_budget))
+    kept: list[RetrievedEvidence] = []
+    for item in items:
+        text = str(item.get("text") or "").strip()
+        if not text or remaining <= 0:
+            break
+        cost = estimate_tokens(text)
+        if cost > remaining:
+            clipped = truncate_text_to_token_budget(
+                text,
+                remaining,
+                suffix="\n[其余检索内容因本轮 RAG 预算省略]",
+            )
+            if clipped:
+                kept.append({**item, "text": clipped})
+            break
+        kept.append({**item, "text": text})
+        remaining -= cost
+    return kept
+
+
+def _kb_evidence_items(
+    *, query: str, text: str, tool_raw: Any
+) -> list[RetrievedEvidence]:
+    """Map formatted KB chunks back to their structured search metadata."""
+    blocks = [block.strip() for block in (text or "").split("\n\n---\n\n") if block.strip()]
+    raw_results = tool_raw.get("results") if isinstance(tool_raw, dict) else []
+    raw_results = raw_results if isinstance(raw_results, list) else []
+    kb_id = tool_raw.get("kb_id") if isinstance(tool_raw, dict) else None
+    evidence: list[RetrievedEvidence] = []
+    for index, block in enumerate(blocks, start=1):
+        meta = raw_results[index - 1] if index <= len(raw_results) else {}
+        meta = meta if isinstance(meta, dict) else {}
+        score_raw = meta.get("score")
+        try:
+            score = float(score_raw) if score_raw is not None else None
+        except (TypeError, ValueError):
+            score = None
+        doc_id = str(meta.get("doc_id") or "").strip() or None
+        title = str(meta.get("filename") or "").strip() or None
+        evidence.append(
+            {
+                "id": f"kb:{doc_id or query}:{index}",
+                "source_type": "kb",
+                "query": query,
+                "text": block,
+                "document_id": doc_id,
+                "chunk_id": str(index),
+                "title": title,
+                "score": score,
+                "kb_id": str(kb_id) if kb_id else None,
+            }
+        )
+    return evidence
 
 
 def _query_needs_kg(text: str) -> bool:
@@ -124,7 +189,12 @@ async def kb_search_node(
 
     queries = state.get("kb_queries") or []
     if not queries:
-        return {**state, "kb_context": "", "kb_search_done": True}
+        return {
+            **state,
+            "kb_context": "",
+            "retrieved_evidence": [],
+            "kb_search_done": True,
+        }
 
     bounded_queries = queries[:MAX_KB_REWRITE_QUERIES]
 
@@ -170,8 +240,8 @@ async def kb_search_node(
         filtered_chunks: list[dict[str, Any]] = []
         if result.error is None:
             # KB text is user-controlled document data. Suspicious blocks are
-            # removed before they become ``kb_context`` so indirect prompt
-            # injection cannot ride along as trusted retrieval evidence.
+            # removed before they become ``retrieved_evidence`` so indirect
+            # prompt injection cannot ride along as model-visible evidence.
             filtered_text, suspicious_count, suspicious_reasons, details = (
                 filter_untrusted_rag_text(tool_result["result"] or "")
             )
@@ -192,6 +262,7 @@ async def kb_search_node(
             "suspicious_count": suspicious_count,
             "suspicious_reasons": suspicious_reasons,
             "filtered_chunks": filtered_chunks,
+            "tool_raw": result.raw,
         }
         return tool_result, context_item
 
@@ -317,6 +388,7 @@ async def kb_search_node(
 
     tool_log = list(state.get("tool_call_log") or [])
     context_blocks: list[str] = []
+    evidence_items: list[RetrievedEvidence] = []
     turn_citations = list(state.get("citations") or [])
     rag_suspicious_chunks = int(state.get("rag_suspicious_chunks") or 0)
     prompt_reasons = list(state.get("prompt_injection_reasons") or [])
@@ -336,6 +408,13 @@ async def kb_search_node(
             context_blocks.append(f"{header}\nERROR: {context_item['error']}")
         else:
             context_blocks.append(f"{header}\n{context_item['text']}")
+            evidence_items.extend(
+                _kb_evidence_items(
+                    query=str(context_item["query"]),
+                    text=str(context_item["text"]),
+                    tool_raw=context_item.get("tool_raw"),
+                )
+            )
 
     if kg_tool_result is not None:
         tool_log.append(kg_tool_result)
@@ -344,6 +423,19 @@ async def kb_search_node(
         rag_filtered_chunks.extend(kg_filtered_chunks)
         if kg_block:
             context_blocks.append(kg_block)
+            evidence_items.append(
+                {
+                    "id": f"kg:{primary_q}",
+                    "source_type": "kg",
+                    "query": primary_q,
+                    "text": kg_block,
+                    "document_id": None,
+                    "chunk_id": None,
+                    "title": "LightRAG",
+                    "score": None,
+                    "kb_id": None,
+                }
+            )
 
     if rag_filtered_chunks:
         _log_filtered_chunks(rag_filtered_chunks)
@@ -352,10 +444,17 @@ async def kb_search_node(
     if rag_suspicious_chunks and next_prompt_risk == "low":
         next_prompt_risk = "medium"
 
+    injection_mode = str(getattr(settings, "rag_injection_mode", "user_evidence") or "").strip().lower()
+    legacy_kb_context = (
+        _bound_aggregated_rag_context(context_blocks)
+        if injection_mode == "legacy_system"
+        else ""
+    )
     return {
         **state,
         "kb_queries": bounded_queries,
-        "kb_context": _bound_aggregated_rag_context(context_blocks),
+        "kb_context": legacy_kb_context,
+        "retrieved_evidence": _bound_retrieved_evidence(evidence_items),
         "kb_search_done": True,
         "tool_call_log": tool_log,
         "citations": turn_citations,

@@ -45,12 +45,12 @@ flowchart TD
     CP --> AG["Agent 图执行"]
     AG --> KG{"绑定 KB 且需要检索"}
     KG -->|"是"| KS["并行 KB / KG 检索"]
-    KS --> RB["合并 RAG，并先限制到 8,000 token"]
+    KS --> RB["结构化 KB/KG 证据，并先限制到 8,000 token"]
     KG -->|"否"| RN["reason_node"]
-    RB --> RN
+    RB --> RN["reason：固定当前问题 + 普通 evidence 消息"]
     RN --> BP["合并可信系统上下文与安全规则"]
     BP --> FP["实测 System / Tools / 输出 / 安全余量"]
-    FP --> RC["优先裁剪 RAG，再裁剪历史"]
+    FP --> RC["优先裁剪 evidence，再裁剪历史"]
     RC --> PR["最终 Provider 请求"]
     PR --> PT["prompt_trace"]
     PT --> CE2["更新 SSE Trace、持久化消息、写入观测 Trace"]
@@ -137,20 +137,26 @@ Profile 每轮注入稳定的个人偏好，不占用检索名额。其他长期
 
 当会话绑定 KB，Agent 可以执行多条改写查询和 KG 查询。每次检索的结果在 `kb_search_node` 合并后首先受 `8,000` token 上限约束，避免「单次查询有上限、合并后超窗」。
 
-在 `reason_node` 中，RAG 被包装为 `<kb_context>` 参考数据，明确不能覆盖系统规则。最终请求准备会：
+`kb_search_node` 不再只输出扁平的 `kb_context`：它会为每个 KB chunk 或 KG 结果创建 `retrieved_evidence`，保留 `id`、`source_type`、`query`、`document_id`、`chunk_id`、`title`、`score` 与原文。`kb_context` 只保留给 `RAG_INJECTION_MODE=legacy_system` 的紧急回滚路径。
 
-1. 合并业务 System Prompt、受信任的会话块和按风险级别追加的 prompt-injection guard；
+默认的 `RAG_INJECTION_MODE=user_evidence` 下，`reason_node` 将最新用户问题与 `<retrieved_evidence untrusted="true">` 包装为同一个普通 `user` 消息，并把该消息固定为上下文预算锚点；RAG 不再进入 system prompt。模型主动调用工具时仍走标准 `assistant tool_use -> user tool_result` 链路，绝不把内部预取检索伪装成工具调用。
+
+最终请求准备会：
+
+1. 合并业务 System Prompt、受信任的会话块和稳定的 prompt-injection guard；
 2. 实测系统提示词和工具 schema token，解析该模型的输出预算及安全余量；
 3. 若固定输入已经超过窗口，直接在本地报错，不发送必然失败的 Provider 请求；
 4. 为当前用户轮和工具循环历史保留空间；RAG 只使用剩余空间，优先被裁剪；
-5. 再以最终系统提示词、工具 schema、输出和安全余量为准裁剪历史；
-6. 若 tokenizer 在字符串拼接处产生意外偏差，丢弃可选 RAG，而不是让请求超窗。
+5. 固定包含“当前问题 + 证据”的用户消息，随后按预算裁剪更早历史和工具循环消息；
+6. 若 tokenizer 在字符串拼接处产生意外偏差，宁可缩短证据或历史，也不发送超窗请求。
 
-因此，最终请求的优先级是：系统与安全规则 > 当前/最近对话 > Profile 与摘要 > 相关长期记忆 > RAG 证据。RAG 与历史都可降级；固定规则若无法容纳则显式失败。
+因此，最终请求的优先级是：系统与安全规则 > 当前用户问题 > 检索证据 > 当前工具循环/最近对话 > Profile 与摘要 > 相关长期记忆 > 更早历史。RAG 与历史都可降级；固定规则若无法容纳则显式失败。
 
 ### 5.2 Provider 形态
 
-Provider 侧只保留一个安全系统入口：OpenAI-compatible 使用唯一 `system` message，Anthropic 使用顶层 `system` 参数。其余对话和工具结果作为普通 Provider messages 传入。
+Provider 侧只保留一个安全系统入口：OpenAI-compatible 使用唯一 `system` message，Anthropic 使用顶层 `system` 参数。其余对话、预取证据和工具结果作为普通 Provider messages 传入。
+
+Anthropic 适配层会在稳定业务规则之后设置 `cache_control`，再追加可能变化的 Profile/Memory/Summary 系统块。这样本轮 RAG 的变化不会使 system 缓存失效；OpenAI-compatible 路径同样保持稳定 system 位于请求最前。缓存是否命中仍取决于具体供应商、模型和 TTL，不能仅凭应用侧 Trace 推断。
 
 ## 6. 观测与前端可解释性
 
@@ -163,6 +169,8 @@ model / context_window
 tokens.system / tools / rag / history / output / safety / total_input
 tokens.profile / memory / summary
 truncation.rag / history / profile / memory / summary
+retrieval.mode / evidence_count / source_counts / in_system / pinned_current_question
+cache.system_retrieval_free / cache_read_tokens / cache_creation_tokens
 ```
 
 前端在消息内的「上下文已准备」面板显示输入与窗口占用，并标记 Profile、Memory、Summary、RAG 或历史是否因预算被裁剪。
@@ -172,11 +180,12 @@ truncation.rag / history / profile / memory / summary
 | 不变量 | 实现方式 | 降级或失败方式 |
 |---|---|---|
 | 最终请求不超模型窗口 | Provider 调用前实测固定输入并再次裁剪 | 先丢 RAG、再裁剪历史；固定输入仍不够则本地拒绝 |
-| 当前用户问题可用 | 历史分配预留最近消息空间 | 极小预算下裁剪为最新内容，而非保留最旧历史 |
+| 当前用户问题可用 | 将“当前问题 + 检索证据”作为固定 user 锚点 | 极小预算下先裁剪证据，问题保留在该锚点开头 |
 | 记忆不会重复注入 | Profile 与检索记忆互斥；检索近重复折叠 | Embedding 不可用时使用关键词检索 |
 | 同键只有一个当前记忆 | PostgreSQL 锁 + active 部分唯一索引 | 非 PostgreSQL 仍由唯一索引阻止双 active 值 |
 | 摘要不阻塞首 token | 60% 后台预热 | 72% 未预热完成时用确定性摘要；85% LLM 摘要失败同样回退 |
 | 未可信内容不能取得系统权限 | 仅合并服务端 `_context_source` | 客户端 `system` 消息被当作普通/无效上下文处理 |
+| RAG 不破坏 system 缓存边界 | 默认 user_evidence，Anthropic 缓存点置于稳定 system 前缀 | `legacy_system` 仅作为环境变量回滚开关 |
 
 Token 计量优先使用当前模型范围内的 tokenizer；不可用时回退 CJK 启发式估计。因此 Trace 是应用侧的精确预算测量，不保证与每个 Provider 的最终计费 token 完全相同。
 
@@ -195,4 +204,3 @@ Token 计量优先使用当前模型范围内的 tokenizer；不可用时回退 
 | 写后后台任务调度 | `backend/src/conversations/routes.py` |
 | 历史数据修复与 active 唯一索引 | `backend/src/infra/database.py` |
 | 前端 Trace 类型与渲染 | `frontend/lib/sseClient.ts`、`frontend/components/chat/ChatMessages.tsx` |
-

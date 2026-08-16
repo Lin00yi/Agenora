@@ -184,8 +184,8 @@ def filter_untrusted_rag_text(
 
     KB search results are formatted as chunk blocks separated by ``---``. Each
     block is untrusted user-controlled document data, so medium/high-risk blocks
-    are replaced with a neutral marker instead of being injected into
-    ``<kb_context>``.
+    are replaced with a neutral marker instead of being injected as
+    ``retrieved_evidence``.
 
     Returns ``(filtered_text, suspicious_count, reasons, filtered_details)``.
     ``filtered_details`` is audit-only metadata (never intended for the model).

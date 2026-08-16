@@ -147,6 +147,53 @@ def _trim_provider_messages(messages: list[dict[str, Any]], token_budget: int) -
     return kept
 
 
+def _trim_provider_messages_with_pinned_user(
+    messages: list[dict[str, Any]], token_budget: int, pinned_user_index: int
+) -> list[dict[str, Any]]:
+    """Trim history while retaining the current user turn at all costs.
+
+    Retrieval prefetch replaces the current user turn with one envelope that
+    contains both the original question and untrusted evidence. In a tool loop
+    there can be newer assistant/tool-result messages, so the generic
+    newest-first trimmer is not enough to guarantee that anchor survives.
+    """
+    if token_budget <= 0 or not (0 <= pinned_user_index < len(messages)):
+        return _trim_provider_messages(messages, token_budget)
+
+    pinned = messages[pinned_user_index]
+    if pinned.get("role") != "user" or not isinstance(pinned.get("content"), str):
+        return _trim_provider_messages(messages, token_budget)
+
+    pinned_cost = _estimate_message_tokens(pinned)
+    if pinned_cost > token_budget:
+        clipped = dict(pinned)
+        clipped["content"] = truncate_text_to_token_budget(
+            pinned["content"], max(1, token_budget - 6)
+        )
+        return [clipped]
+
+    remaining = token_budget - pinned_cost
+    before_reversed: list[dict[str, Any]] = []
+    for message in reversed(messages[:pinned_user_index]):
+        cost = _estimate_message_tokens(message)
+        if cost > remaining:
+            break
+        before_reversed.append(message)
+        remaining -= cost
+
+    after = messages[pinned_user_index + 1 :]
+    after_cost = sum(_estimate_message_tokens(message) for message in after)
+    # Tool results are only valid after their matching assistant tool call.
+    # Keep this suffix as one atomic chain; a partial newest-first suffix could
+    # otherwise send an orphaned ``tool_result`` to a provider.
+    kept_after = after if after_cost <= remaining else []
+
+    # The anchor is a genuine user turn, so trimming older history cannot leave
+    # the final provider request without a question to answer. Newer tool-loop
+    # blocks stay after it in their original order when the full tool chain fits.
+    return list(reversed(before_reversed)) + [pinned] + kept_after
+
+
 def allocate_provider_context(
     *,
     model: str,
@@ -155,6 +202,7 @@ def allocate_provider_context(
     conversation_messages: list[dict[str, Any]],
     configured_context_window: int | None = None,
     output_token_budget: int | None = None,
+    pinned_user_index: int | None = None,
 ) -> list[dict[str, Any]]:
     """Fit actual prompt components into the selected model's context window.
 
@@ -179,6 +227,10 @@ def allocate_provider_context(
         # its window.  Callers must instead shrink optional prompt blocks (or
         # reject an impossible model configuration) before reaching this step.
         conversation_budget = max(0, conversation_budget)
+        if pinned_user_index is not None:
+            return _trim_provider_messages_with_pinned_user(
+                conversation_messages, conversation_budget, pinned_user_index
+            )
         return _trim_provider_messages(conversation_messages, conversation_budget)
 
 
@@ -206,7 +258,7 @@ def _prompt_reserve_tokens(system_prompt: str, tools_schema: list[dict[str, Any]
     )
 
 
-def _infer_output_task(messages: list[dict[str, Any]], kb_context: str) -> str:
+def _infer_output_task(messages: list[dict[str, Any]], has_retrieval: bool) -> str:
     latest = _latest_user_text(messages).lower()
     report_keywords = (
         "报告",
@@ -226,6 +278,6 @@ def _infer_output_task(messages: list[dict[str, Any]], kb_context: str) -> str:
     long_keywords = ("区别", "列出", "全部", "所有", "分析", "方案", "步骤", "为什么")
     if any(keyword in latest for keyword in report_keywords):
         return "report"
-    if kb_context and any(keyword in latest for keyword in long_keywords):
+    if has_retrieval and any(keyword in latest for keyword in long_keywords):
         return "long_answer"
     return "answer"

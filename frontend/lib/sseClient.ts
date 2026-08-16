@@ -61,6 +61,19 @@ export type MemoryTrace = {
       memory?: boolean;
       summary?: boolean;
     };
+    retrieval?: {
+      mode: "user_evidence" | "legacy_system";
+      evidence_count: number;
+      source_counts: Record<string, number>;
+      in_system: boolean;
+      pinned_current_question: boolean;
+    };
+    cache?: {
+      system_retrieval_free: boolean;
+      system_prefix_tokens: number;
+      cache_read_tokens: number;
+      cache_creation_tokens: number;
+    };
   };
 };
 

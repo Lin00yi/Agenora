@@ -326,8 +326,10 @@ async def test_kb_search_node_runs_rewritten_queries_in_parallel() -> None:
 
     assert elapsed < 0.12
     assert [call["query"] for call in tool.calls] == ["q1", "q2", "q3"]
-    assert "KB search query: q1" in next_state["kb_context"]
-    assert "hit for q3" in next_state["kb_context"]
+    assert next_state["kb_context"] == ""
+    assert len(next_state["retrieved_evidence"]) == 3
+    assert next_state["retrieved_evidence"][0]["source_type"] == "kb"
+    assert next_state["retrieved_evidence"][0]["query"] == "q1"
     assert next_state["kb_search_done"] is True
     assert [evt["event"] for evt in events].count("tool_start") == 3
     assert [evt["event"] for evt in events].count("tool_end") == 3
@@ -393,7 +395,7 @@ async def test_kb_search_node_skips_kg_for_listing_when_kb_strong(
 
     assert elapsed < 0.2
     assert next_state["kb_search_done"] is True
-    assert "KG search query" not in next_state["kb_context"]
+    assert next_state["kb_context"] == ""
     assert kg.calls == 0
     assert not any(e.get("name") == "search_kg" for e in events)
 

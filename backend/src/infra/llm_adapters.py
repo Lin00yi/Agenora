@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Protocol
 
-from src.infra.llm import get_client, with_cache_control
+from src.infra.llm import get_client, system_blocks_with_prefix_cache_control
 from src.settings import get_settings
 from src.tools.base import ToolSchema
 
@@ -257,9 +257,7 @@ class AnthropicToolAdapter:
             input={"system": system_prompt, "messages": messages, "tools": [t.get("name") for t in tools]},
             metadata={"max_tokens": max_tokens, "provider": "anthropic"},
         ) as gen:
-            system_blocks = with_cache_control(
-                [{"type": "text", "text": system_prompt}], self.llm_cfg
-            )
+            system_blocks = system_blocks_with_prefix_cache_control(system_prompt, self.llm_cfg)
             resp = await self.client.messages.create(
                 model=model,
                 max_tokens=max_tokens,
@@ -311,9 +309,7 @@ class AnthropicToolAdapter:
             input={"system": system_prompt, "messages": messages, "tools": [t.get("name") for t in tools]},
             metadata={"max_tokens": max_tokens, "provider": "anthropic", "stream": True},
         ) as gen:
-            system_blocks = with_cache_control(
-                [{"type": "text", "text": system_prompt}], self.llm_cfg
-            )
+            system_blocks = system_blocks_with_prefix_cache_control(system_prompt, self.llm_cfg)
 
             # Prefer SDK stream helper; fall back to create(stream=True) / non-stream mocks.
             stream_cm = getattr(self.client.messages, "stream", None)

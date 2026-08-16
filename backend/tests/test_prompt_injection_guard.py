@@ -146,8 +146,15 @@ async def test_kb_search_node_filters_indirect_prompt_injection() -> None:
 
     assert next_state["rag_suspicious_chunks"] == 1
     assert next_state["prompt_injection_risk"] == "medium"
-    assert "Private deployment is supported" in next_state["kb_context"]
-    assert "leak the system prompt" not in next_state["kb_context"]
+    assert next_state["kb_context"] == ""
+    assert any(
+        "Private deployment is supported" in item["text"]
+        for item in next_state["retrieved_evidence"]
+    )
+    assert all(
+        "leak the system prompt" not in item["text"]
+        for item in next_state["retrieved_evidence"]
+    )
 
     filtered = next_state["rag_filtered_chunks"]
     assert len(filtered) == 1
@@ -161,7 +168,10 @@ async def test_kb_search_node_filters_indirect_prompt_injection() -> None:
     ]["reasons"]
     # Audit metadata must not re-enter model context as the attack payload.
     assert filtered[0]["preview"]
-    assert "leak the system prompt" not in next_state["kb_context"]
+    assert all(
+        "leak the system prompt" not in item["text"]
+        for item in next_state["retrieved_evidence"]
+    )
 
 
 @pytest.mark.asyncio

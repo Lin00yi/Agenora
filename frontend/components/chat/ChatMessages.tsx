@@ -324,13 +324,26 @@ function MemoryContextTrace({ trace }: { trace: MemoryTrace }) {
             ) : null}
 
             {trace.prompt ? (
-              <p className="text-xs leading-5 text-muted">
+              <div className="space-y-1 text-xs leading-5 text-muted">
+                <p className="text-pretty">
                 本轮请求 · 输入 {formatTokenCount(trace.prompt.tokens.total_input)} / 窗口{" "}
                 {formatTokenCount(trace.prompt.context_window)}；系统 {formatTokenCount(trace.prompt.tokens.system)}、
                 工具 {formatTokenCount(trace.prompt.tokens.tools)}、RAG {formatTokenCount(trace.prompt.tokens.rag)}、
                 历史 {formatTokenCount(trace.prompt.tokens.history)}。
                 {truncatedBlocks.length > 0 ? ` 已按预算裁剪${truncatedBlocks.join("、")}。` : ""}
-              </p>
+                </p>
+                {trace.prompt.retrieval ? (
+                  <p className="text-pretty">
+                    预取检索证据 {trace.prompt.retrieval.evidence_count} 条，
+                    {trace.prompt.retrieval.in_system ? "当前使用兼容 system 注入。" : "作为普通参考消息注入，当前问题已固定保留。"}
+                  </p>
+                ) : null}
+                {trace.prompt.cache && (trace.prompt.cache.cache_read_tokens > 0 || trace.prompt.cache.cache_creation_tokens > 0) ? (
+                  <p className="text-pretty tabular-nums">
+                    提示缓存 · 命中 {formatTokenCount(trace.prompt.cache.cache_read_tokens)} / 创建 {formatTokenCount(trace.prompt.cache.cache_creation_tokens)}。
+                  </p>
+                ) : null}
+              </div>
             ) : null}
 
             {items.length === 0 && !trace.summary ? (

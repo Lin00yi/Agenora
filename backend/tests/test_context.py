@@ -180,8 +180,12 @@ async def test_anthropic_request_keeps_system_content_out_of_messages(monkeypatc
         llm_cfg=cfg,
     )
 
-    assert "基础规则" in captured["system"][0]["text"]
-    assert "用户偏好中文" in captured["system"][0]["text"]
+    system_text = "".join(block["text"] for block in captured["system"])
+    assert "基础规则" in system_text
+    assert "用户偏好中文" in system_text
+    # Stable policy is the cache checkpoint; mutable saved context follows it.
+    assert captured["system"][0]["cache_control"] == {"type": "ephemeral"}
+    assert "用户偏好中文" not in captured["system"][0]["text"]
     assert [message["role"] for message in captured["messages"]] == ["user"]
 
 
@@ -1067,10 +1071,87 @@ def test_final_provider_preparation_caps_rag_before_history() -> None:
     total = provider_fixed_prompt_tokens(prompt, tools, model="custom-small-model")
     total += sum(estimate_tokens(item["content"]) + 6 for item in kept)
     assert total + output + SAFETY_RESERVE <= 4_096
-    assert "其余检索内容因上下文预算省略" in prompt
+    assert "检索证据" not in prompt
     assert kept and kept[-1]["role"] == "user"
+    assert "<retrieved_evidence" in kept[-1]["content"]
+    assert "其余检索内容因上下文预算省略" in kept[-1]["content"]
+    assert trace["retrieval"]["mode"] == "user_evidence"
+    assert trace["retrieval"]["in_system"] is False
+    assert trace["retrieval"]["pinned_current_question"] is True
     assert trace["truncation"]["rag"] is True
     assert trace["tokens"]["total_input"] + output + SAFETY_RESERVE <= 4_096
+
+
+def test_retrieval_evidence_does_not_change_system_prompt_or_drop_question() -> None:
+    from src.agent.nodes.reason import _prepare_provider_request
+
+    base = "稳定系统规则"
+    kwargs = {
+        "model": "custom-small-model",
+        "configured_context_window": 8_192,
+        "base_system_prompt": base,
+        "tools_schema": [],
+        "conversation_messages": [
+            {"role": "user", "content": "旧问题"},
+            {"role": "assistant", "content": "旧回答"},
+            {"role": "user", "content": "当前问题"},
+        ],
+        "output_task": "answer",
+    }
+    prompt_a, messages_a, _, trace_a = _prepare_provider_request(
+        **kwargs,
+        retrieved_evidence=[{"id": "a", "source_type": "kb", "query": "q", "text": "证据 A"}],
+    )
+    prompt_b, messages_b, _, trace_b = _prepare_provider_request(
+        **kwargs,
+        retrieved_evidence=[{"id": "b", "source_type": "kg", "query": "q", "text": "证据 B"}],
+    )
+
+    assert prompt_a == prompt_b == base
+    assert all("证据 A" not in m.get("content", "") for m in messages_b)
+    assert "当前问题" in messages_a[-1]["content"]
+    assert "证据 A" in messages_a[-1]["content"]
+    assert trace_a["cache"]["system_retrieval_free"] is True
+    assert trace_b["retrieval"]["source_counts"] == {"kg": 1}
+
+
+def test_legacy_rag_mode_remains_a_reversible_system_injection_escape_hatch() -> None:
+    from src.agent.nodes.reason import _prepare_provider_request
+
+    prompt, messages, _, trace = _prepare_provider_request(
+        model="custom-small-model",
+        configured_context_window=8_192,
+        base_system_prompt="基础规则",
+        tools_schema=[],
+        conversation_messages=[{"role": "user", "content": "当前问题"}],
+        output_task="answer",
+        kb_context="兼容检索证据",
+        rag_injection_mode="legacy_system",
+    )
+
+    assert "<kb_context>" in prompt
+    assert "兼容检索证据" in prompt
+    assert messages == [{"role": "user", "content": "当前问题"}]
+    assert trace["retrieval"]["mode"] == "legacy_system"
+    assert trace["retrieval"]["in_system"] is True
+
+
+def test_pinned_user_turn_drops_an_incomplete_tool_suffix() -> None:
+    kept = allocate_provider_context(
+        model="custom-tiny-model",
+        system_prompt="基础规则",
+        tools_schema=[],
+        conversation_messages=[
+            {"role": "user", "content": "当前问题与检索资料"},
+            {"role": "assistant", "content": "tool call" * 5_000},
+            {"role": "user", "content": [{"type": "tool_result", "content": "tool result"}]},
+        ],
+        configured_context_window=4_096,
+        output_token_budget=512,
+        pinned_user_index=0,
+    )
+
+    assert kept == [{"role": "user", "content": "当前问题与检索资料"}]
 
 
 def test_final_provider_preparation_rejects_impossible_small_window() -> None:

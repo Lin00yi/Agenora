@@ -29,7 +29,13 @@ async def query_rewrite_node(
     """
     user_query = _latest_user_text(state.get("messages", []))
     if not user_query:
-        return {**state, "kb_queries": [], "kb_context": "", "kb_search_done": True}
+        return {
+            **state,
+            "kb_queries": [],
+            "kb_context": "",
+            "retrieved_evidence": [],
+            "kb_search_done": True,
+        }
 
     model = pick_model(state.get("messages", []), [], llm_cfg)
     # Resolve via package so ``monkeypatch.setattr("src.agent.nodes.get_client", ...)`` works.
@@ -94,6 +100,7 @@ async def query_rewrite_node(
         **state,
         "kb_queries": queries,
         "kb_context": "",
+        "retrieved_evidence": [],
         "kb_search_done": False,
         "cost_usd": cost.usd,
     }
