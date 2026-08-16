@@ -1051,16 +1051,6 @@
     background: none;
     color: var(--chat-ink);
   }
-  .kf-chat .kf-workspace .kf-context-notice {
-    border-color: var(--chat-line);
-    background: color-mix(in srgb, var(--chat-accent) 8%, var(--chat-surface));
-    color: color-mix(in srgb, var(--chat-muted) 78%, var(--chat-ink));
-    box-shadow: 0 8px 24px color-mix(in srgb, var(--chat-accent) 10%, transparent);
-  }
-  .dark .kf-chat .kf-workspace .kf-context-notice {
-    background: color-mix(in srgb, var(--chat-accent) 4%, var(--chat-surface));
-    box-shadow: none;
-  }
   .kf-chat .kf-workspace .kf-send-button {
     min-height: var(--control-h);
     min-width: var(--control-h);

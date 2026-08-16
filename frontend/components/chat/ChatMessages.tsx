@@ -14,7 +14,6 @@ import {
 import ExportActions from "@/components/ExportActions";
 import ThinkingChain from "@/components/ThinkingChain";
 import { toast } from "@/lib/toast";
-import type { ConversationContextStatus } from "@/lib/conversations-api";
 import { joinAssistantText, type Message } from "@/lib/conversationStore";
 import type { MemoryTrace } from "@/lib/sseClient";
 import { cn } from "@/lib/cn";
@@ -248,30 +247,6 @@ const AnswerMarkdown = memo(function AnswerMarkdown({
     </div>
   );
 });
-
-export function ContextCompressionNotice({
-  contextStatus,
-}: {
-  contextStatus: ConversationContextStatus | null;
-}) {
-  if (!contextStatus || contextStatus.state === "normal") return null;
-  const isCompressed = contextStatus.state === "compressed";
-  return (
-    <div className="kf-context-notice mx-auto flex w-fit max-w-full items-center gap-2 rounded-lg border px-3 py-2 text-xs">
-      <ShieldCheck
-        className={cn(
-          "h-3.5 w-3.5",
-          isCompressed ? "text-brand" : "text-amber-300"
-        )}
-      />
-      <span className="truncate">
-        {isCompressed
-          ? `已自动压缩长期上下文，保留最近 ${contextStatus.retained_recent_turns} 轮对话`
-          : contextStatus.description}
-      </span>
-    </div>
-  );
-}
 
 function MemoryContextTrace({ trace }: { trace: MemoryTrace }) {
   const [open, setOpen] = useState(false);

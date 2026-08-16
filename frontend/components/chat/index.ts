@@ -6,6 +6,6 @@ export { ChatSidebar } from "./ChatSidebar";
 export { ConversationSearchDialog } from "./ConversationSearchDialog";
 export { ChatTopBar, DEFAULT_TITLE } from "./ChatTopBar";
 export { EmptyWorkbench, EmptyStat } from "./ChatEmpty";
-export { ChatMessage, ContextCompressionNotice } from "./ChatMessages";
+export { ChatMessage } from "./ChatMessages";
 export { SourceCards } from "./SourceCards";
 export { Composer, ContextUsageIndicator, SmallAction } from "./ChatComposer";

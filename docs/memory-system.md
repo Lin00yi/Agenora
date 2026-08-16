@@ -25,13 +25,13 @@ Memory 的目标不是保存全部聊天记录，而是在不让上下文无限�
 
 ### 2.1 短期记忆
 
-短期记忆是当前会话最近的原始 `user` / `assistant` 消息。系统默认保留最近 10 轮，即最多 20 条消息；当实际 token 预算不够时，优先保留最新消息并从最早消息开始裁剪。
+短期记忆是当前会话的原始 `user` / `assistant` 消息。摘要尚未激活时，候选范围是当前会话的完整原文，随后按实际 token 预算从最早处裁剪；不会无条件固定为最近 10 轮。摘要激活后，摘要覆盖点之后的消息继续以原文参与组装，并同样受实际预算限制。
 
 短期记忆用于处理“继续刚才的方案”“按上一步改”等强依赖当前对话上下文的请求。
 
 ### 2.2 中期记忆：滚动摘要
 
-当完整会话历史达到历史预算的 72% 时，系统会激活 `ConversationSummary`，将早于最近 10 轮的消息整理为摘要：
+当完整会话历史达到历史预算的 72% 时，系统会激活 `ConversationSummary`。生成摘要时会优先保护最近 10 轮（最多 20 条消息），将更早内容压缩为摘要；实际注入仍会按模型窗口裁剪：
 
 ```text
 早期完整消息
@@ -80,14 +80,17 @@ extract_memory_candidates(content)
   ↓
 同键记忆去重 / 覆盖
   ↓
-生成向量（尽力而为）+ 记忆整合
-  ↓
 保存 UserMemory
+关系库保存 UserMemory
+  ↓
+提交当前请求
+  ↓
+BackgroundTasks：向量刷新 + 记忆整合 + 摘要预热
 ```
 
 写入对用户无感：不会在聊天窗口弹出“是否保存”确认框。
 
-实时聊天路径（`POST .../messages`）只**同步**完成规则抽取与关系库落库；embedding 刷新与记忆整合通过 `BackgroundTasks` **异步**执行，避免拖慢发消息。检索时若向量尚未写完，仍可用关键词命中，并在取回时按需回填向量。
+实时聊天路径（`POST .../messages`）只**同步**完成规则抽取与关系库落库；embedding 刷新、记忆整合和摘要预热通过 `BackgroundTasks` **异步**执行，避免拖慢发消息。检索时若向量尚未写完，仍可用关键词命中，并在取回时按需回填向量。
 
 ### 3.1 显式写入
 
@@ -248,6 +251,8 @@ python -m src.infra.memory_maintenance
 聊天完成后 SSE `done` 事件会带回 `memory_trace`，前端可按消息展示注入 Trace。除 Profile / 检索记忆 / 摘要元数据外，Trace 还带有最终 Provider 请求的模型、context window、System/Tools/RAG/History/输出/安全余量 token 分配，以及 Profile/Memory/Summary/RAG/History 的截断标记；该数据来自调用前的最终实测，而非固定预算推测。
 
 ## 7. 上下文预算
+
+本节只保留 Memory 相关的预算规则。完整的 Provider 最终请求、RAG 二次裁剪、工具 Schema 测量和 `prompt_trace` 流程见 [上下文工程说明](context-engineering.md)。
 
 系统会预留输出、System Prompt/Tool Schema 和安全余量，再为历史消息分配预算。**仅当会话绑定 KB 时**才额外预留 RAG（8,000 token）；普通聊天不再扣减该预留。
 

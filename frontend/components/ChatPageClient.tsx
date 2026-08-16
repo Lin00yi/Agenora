@@ -36,7 +36,6 @@ import {
   ChatTopBar,
   ChatMessage,
   Composer,
-  ContextCompressionNotice,
   EmptyWorkbench,
   DEFAULT_TITLE,
   formatMessageStats,
@@ -748,7 +747,6 @@ export function ChatPage({
                     aria-relevant="additions"
                   >
                     <div className="kf-thread-inner mx-auto flex w-full max-w-[860px] flex-col gap-7 px-5 pt-5" data-kf-region="thread-inner">
-                      <ContextCompressionNotice contextStatus={currentContextStatus} />
                       {visibleMessages.length === 0 ? (
                         <EmptyWorkbench currentKbName={currentKb?.name ?? "\u901a\u7528\u5bf9\u8bdd"} onPick={handleSendWithLlmGuard} />
                       ) : (
