@@ -75,6 +75,12 @@ async def build_context_for_conversation(
         profile_text = user_profile_block(profile)
         mem_text = memory_block(memories)
         summary_source = summary.summary if summary else ""
+        source_block_tokens = {
+            "profile": estimate_tokens(profile_text) + (6 if profile_text else 0),
+            "memory": estimate_tokens(mem_text) + (6 if mem_text else 0),
+            "summary": min(estimate_tokens(summary_source), MAX_SUMMARY_CONTEXT_TOKENS)
+            + (6 if summary_source else 0),
+        }
         allocation = allocate_context_blocks(
             budget.available_history_tokens,
             # ``estimate_messages_tokens`` charges the provider message-frame
@@ -179,5 +185,20 @@ async def build_context_for_conversation(
                 ),
                 "rehydrated_message_count": len(rehydrated),
                 "recent_message_count": len(recent),
+                "context_blocks": {
+                    name: {
+                        "source_tokens": source_block_tokens[name],
+                        "injected_tokens": estimate_tokens(text) + (6 if text else 0),
+                        "truncated": (
+                            estimate_tokens(text) + (6 if text else 0)
+                            < source_block_tokens[name]
+                        ),
+                    }
+                    for name, text in (
+                        ("profile", profile_text),
+                        ("memory", mem_text),
+                        ("summary", summary_text),
+                    )
+                },
             },
         )

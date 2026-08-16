@@ -246,6 +246,7 @@ def _run_chat_session(
         }
 
     async def run_agent() -> None:
+        nonlocal memory_trace
         from src.observability import get_current_trace
 
         trace = get_current_trace()
@@ -290,6 +291,22 @@ def _run_chat_session(
                 "rag_filtered_chunks": [],
             }
             final_state = await graph.ainvoke(initial_state)
+            prompt_trace = final_state.get("prompt_trace")
+            if memory_trace is not None and isinstance(prompt_trace, dict):
+                block_trace = memory_trace.get("context_blocks") or {}
+                tokens = prompt_trace.get("tokens")
+                truncation = prompt_trace.get("truncation")
+                if isinstance(tokens, dict) and isinstance(truncation, dict):
+                    for name in ("profile", "memory", "summary"):
+                        block = block_trace.get(name)
+                        if not isinstance(block, dict):
+                            continue
+                        tokens[name] = int(block.get("injected_tokens") or 0)
+                        truncation[name] = bool(block.get("truncated"))
+                memory_trace = {**memory_trace, "prompt": prompt_trace}
+                # Replace the early context snapshot before the answer is
+                # persisted so the in-chat trace and durable message agree.
+                await queue.put({"event": "context_ready", "memory_trace": memory_trace})
             report = redact_sensitive_output(final_state.get("final_report") or "")
             cost_usd = round(final_state.get("cost_usd", 0.0), 6)
             report_streamed = bool(final_state.get("report_streamed"))
@@ -322,6 +339,7 @@ def _run_chat_session(
                             "rag_filtered_chunks": list(
                                 final_state.get("rag_filtered_chunks") or []
                             ),
+                            "prompt_trace": prompt_trace if isinstance(prompt_trace, dict) else None,
                         },
                     )
                 )

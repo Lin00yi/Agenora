@@ -327,6 +327,13 @@ def _migrate_additive_columns(sync_conn) -> None:
             sync_conn.execute(
                 text("ALTER TABLE conversation_summaries ADD COLUMN source_context_window INTEGER")
             )
+        if "is_prepared" not in summary_cols:
+            sync_conn.execute(
+                text(
+                    "ALTER TABLE conversation_summaries ADD COLUMN "
+                    "is_prepared BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+            )
 
     # v5: profiles can now point at independently configured provider
     # connections.  Both ALTERs are additive for existing SQLite/Postgres DBs;
@@ -425,5 +432,29 @@ def _migrate_additive_columns(sync_conn) -> None:
             text(
                 "CREATE INDEX IF NOT EXISTS ix_user_memories_scope_lookup "
                 "ON user_memories (scope, scope_id, memory_key)"
+            )
+        )
+        # One current value exists for each structured memory key.  Repair
+        # legacy duplicates before adding the partial unique index; both
+        # PostgreSQL and supported SQLite versions implement window functions
+        # and expression/partial indexes.
+        sync_conn.execute(
+            text(
+                "UPDATE user_memories SET status = 'superseded' WHERE id IN ("
+                "SELECT id FROM ("
+                "SELECT id, ROW_NUMBER() OVER ("
+                "PARTITION BY user_id, scope, COALESCE(scope_id, ''), type, memory_key "
+                "ORDER BY updated_at DESC, created_at DESC, id DESC"
+                ") AS row_number FROM user_memories "
+                "WHERE status = 'active' AND memory_key IS NOT NULL"
+                ") ranked WHERE row_number > 1"
+                ")"
+            )
+        )
+        sync_conn.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ux_user_memories_active_key "
+                "ON user_memories (user_id, scope, COALESCE(scope_id, ''), type, memory_key) "
+                "WHERE status = 'active' AND memory_key IS NOT NULL"
             )
         )

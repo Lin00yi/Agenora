@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infra.database import Base
@@ -197,6 +197,11 @@ class ConversationSummary(Base):
     # the durable rolling summary.
     source_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
     source_context_window: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # A background worker may precompute the first summary before the active
+    # chat request reaches the compression threshold.  Prepared rows are not
+    # injected until the threshold is crossed, so prewarming never shortens a
+    # still-healthy conversation window.
+    is_prepared: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -214,6 +219,7 @@ class ConversationSummary(Base):
             "token_count": self.token_count,
             "source_model": self.source_model,
             "source_context_window": self.source_context_window,
+            "is_prepared": self.is_prepared,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

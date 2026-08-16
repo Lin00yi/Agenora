@@ -23,6 +23,7 @@ from src.conversations.context import (
     rag_reserve_for_kb,
     refresh_memory_embedding,
     run_memory_heavy_background,
+    run_summary_prepare_background,
     store_user_memories,
 )
 from src.conversations.models import Conversation, Message, UserMemory
@@ -124,6 +125,10 @@ async def _build_context_status(
         rag_reserve=rag_reserve_for_kb(conv.kb_id),
     )
     summary = await get_latest_summary(session, conv.id)
+    # Background prewarming must not make the UI report a conversation as
+    # compressed before the normal 72% activation threshold is reached.
+    if summary is not None and summary.is_prepared:
+        summary = None
     from src.infra.tokenizer import token_model_scope
 
     with token_model_scope(conv.llm_model):
@@ -661,6 +666,17 @@ async def append_message(
             pending_memory_ids,
             embedding_cfg,
         )
+    summary_llm_cfg = await _context_cfg_for_conversation(session, conv, user)
+    summary_model = conv.llm_model or (
+        summary_llm_cfg.default_model if summary_llm_cfg is not None else None
+    )
+    background.add_task(
+        run_summary_prepare_background,
+        conv.id,
+        summary_model,
+        configured_context_window_for_model(summary_llm_cfg, summary_model),
+        summary_llm_cfg,
+    )
     return msg.to_public_dict()
 
 

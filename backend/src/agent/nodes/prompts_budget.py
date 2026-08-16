@@ -173,11 +173,29 @@ def allocate_provider_context(
         output_budget = output_token_budget or MAX_OUTPUT_TOKENS
         conversation_budget = context_window - output_budget - SAFETY_RESERVE
         conversation_budget -= system_tokens + tool_tokens
-        # All configured models have a large context window. Keep a small minimum
-        # so the latest user instruction can still be represented if configuration
-        # text unexpectedly grows.
-        conversation_budget = max(1_000, conversation_budget)
+        # This is a hard physical remainder, not a target.  Keeping a 1K
+        # minimum here used to make a small BYOK model overflow whenever the
+        # system prompt, tool schemas, or retrieved context already consumed
+        # its window.  Callers must instead shrink optional prompt blocks (or
+        # reject an impossible model configuration) before reaching this step.
+        conversation_budget = max(0, conversation_budget)
         return _trim_provider_messages(conversation_messages, conversation_budget)
+
+
+def provider_fixed_prompt_tokens(
+    system_prompt: str,
+    tools_schema: list[dict[str, Any]],
+    *,
+    model: str | None = None,
+) -> int:
+    """Measure the non-history portion of one provider request.
+
+    Kept alongside the final allocator so optional context producers (notably
+    RAG) can reserve only what the selected model can actually accept.
+    """
+    return estimate_tokens(system_prompt, model=model) + estimate_tokens(
+        json.dumps(tools_schema, ensure_ascii=False, default=str), model=model
+    )
 
 
 def _prompt_reserve_tokens(system_prompt: str, tools_schema: list[dict[str, Any]]) -> int:

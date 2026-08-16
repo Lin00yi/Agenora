@@ -34,3 +34,5 @@ class AgentState(TypedDict, total=False):
     report_streamed: bool                     # True when final answer tokens were SSE-streamed live
     iterations: int                          # plan loop guard
     cost_usd: float
+    # Safe per-call token allocation; excludes raw prompts, schemas and content.
+    prompt_trace: dict[str, Any]

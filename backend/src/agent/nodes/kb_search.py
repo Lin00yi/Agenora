@@ -7,6 +7,7 @@ import time
 from typing import Any
 
 from src.agent.state import AgentState
+from src.conversations.context import RAG_RESERVE, estimate_tokens, truncate_text_to_token_budget
 from src.observability import traced
 from src.safety.prompt_injection import (
     enrich_filtered_rag_chunks,
@@ -24,6 +25,39 @@ from .constants import (
 )
 
 log = logging.getLogger(__name__)
+
+
+def _bound_aggregated_rag_context(
+    blocks: list[str], *, token_budget: int = RAG_RESERVE
+) -> str:
+    """Keep all parallel KB/KG evidence inside one per-turn token budget.
+
+    ``KBSearchTool`` caps an individual call, but query expansion can make up
+    to three calls and KG adds another source.  The agent consumes their merged
+    text, so enforcing the cap only at the tool boundary is insufficient.
+    """
+    remaining = max(0, int(token_budget))
+    kept: list[str] = []
+    for block in blocks:
+        text = (block or "").strip()
+        if not text or remaining <= 0:
+            break
+        separator_tokens = estimate_tokens("\n\n") if kept else 0
+        budget_for_block = remaining - separator_tokens
+        if budget_for_block <= 0:
+            break
+        if estimate_tokens(text) > budget_for_block:
+            clipped = truncate_text_to_token_budget(
+                text,
+                budget_for_block,
+                suffix="\n[其余检索内容因本轮 RAG 预算省略]",
+            )
+            if clipped:
+                kept.append(clipped)
+            break
+        kept.append(text)
+        remaining -= separator_tokens + estimate_tokens(text)
+    return "\n\n".join(kept)
 
 
 def _query_needs_kg(text: str) -> bool:
@@ -321,7 +355,7 @@ async def kb_search_node(
     return {
         **state,
         "kb_queries": bounded_queries,
-        "kb_context": "\n\n".join(context_blocks),
+        "kb_context": _bound_aggregated_rag_context(context_blocks),
         "kb_search_done": True,
         "tool_call_log": tool_log,
         "citations": turn_citations,

@@ -38,6 +38,30 @@ export type MemoryTrace = {
     updated_at: string | null;
   } | null;
   recent_message_count?: number;
+  /** Measured final provider request budget; never contains prompt text or schemas. */
+  prompt?: {
+    model: string;
+    context_window: number;
+    tokens: {
+      system: number;
+      tools: number;
+      rag: number;
+      history: number;
+      output: number;
+      safety: number;
+      total_input: number;
+      profile?: number;
+      memory?: number;
+      summary?: number;
+    };
+    truncation: {
+      rag: boolean;
+      history: boolean;
+      profile?: boolean;
+      memory?: boolean;
+      summary?: boolean;
+    };
+  };
 };
 
 /** Structured evidence card from search_kb / web_search (not LLM prose). */

@@ -90,6 +90,8 @@ from .summary import (
     build_extractive_summary,
     ensure_summary_if_needed,
     get_latest_summary,
+    prepare_summary_if_needed,
+    run_summary_prepare_background,
     summarize_messages_with_llm,
 )
 
@@ -160,6 +162,8 @@ __all__ = [
     "refresh_memory_embedding",
     "resolve_output_token_budget",
     "retrieve_user_memories",
+    "prepare_summary_if_needed",
+    "run_summary_prepare_background",
     "resolve_context_window",
     "run_memory_heavy_background",
     "store_explicit_user_memory",

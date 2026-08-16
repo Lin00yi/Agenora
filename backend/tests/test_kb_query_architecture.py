@@ -15,6 +15,8 @@ from src.agent.nodes import (
     should_search_kb,
 )
 from src.agent.graph import build_graph
+from src.agent.nodes.kb_search import _bound_aggregated_rag_context
+from src.conversations.context import RAG_RESERVE, estimate_tokens
 from src.infra.llm import CostTracker
 from src.settings_user.models import UserLLMConfig
 from src.tools.base import Tool, ToolRegistry, ToolResult
@@ -44,6 +46,16 @@ class DummyWebTool(Tool):
 
     async def execute(self, **kwargs: Any) -> ToolResult:  # noqa: ARG002
         return ToolResult(text="web hit", latency_ms=1)
+
+
+def test_aggregated_kb_and_kg_context_has_one_turn_cap() -> None:
+    merged = _bound_aggregated_rag_context(
+        ["KB-1\n" + "证据" * 5_000, "KB-2\n" + "证据" * 5_000, "KG\n" + "关系" * 5_000]
+    )
+
+    assert estimate_tokens(merged) <= RAG_RESERVE
+    assert "KB-1" in merged
+    assert "其余检索内容因本轮 RAG 预算省略" in merged
 
 
 def _llm_cfg() -> UserLLMConfig:

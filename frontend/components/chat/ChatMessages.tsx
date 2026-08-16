@@ -120,13 +120,6 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
               {hasAnyText && (
                 <AnswerMarkdown markdown={exportMarkdown} streaming={streaming} />
               )}
-              {hasAnyText && streaming && (
-                <div className="kf-live-badge mt-3 inline-flex items-center gap-2 rounded-md border px-2.5 py-1 text-xs tabular-nums">
-                  <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
-                  <span>{status.label}</span>
-                  <span>{status.elapsed}</span>
-                </div>
-              )}
             </div>
           </>
         ) : (
@@ -163,13 +156,6 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
             {hasLiveContent && (
               <div className="kf-answer px-1 py-1 sm:px-2">
                 <AnswerMarkdown markdown={liveContent} streaming={streaming} />
-                {streaming && (
-                  <div className="kf-live-badge mt-3 inline-flex items-center gap-2 rounded-md border px-2.5 py-1 text-xs tabular-nums">
-                    <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
-                    <span>{status.label}</span>
-                    <span>{status.elapsed}</span>
-                  </div>
-                )}
               </div>
             )}
             {!hasLiveContent && streaming && (
@@ -291,6 +277,15 @@ function MemoryContextTrace({ trace }: { trace: MemoryTrace }) {
   const [open, setOpen] = useState(false);
   const items = buildInjectedMemoryItems(trace);
   const summaryText = formatMemoryTraceSummary(trace);
+  const truncatedBlocks = trace.prompt
+    ? [
+        trace.prompt.truncation.profile ? "偏好" : "",
+        trace.prompt.truncation.memory ? "长期记忆" : "",
+        trace.prompt.truncation.summary ? "会话摘要" : "",
+        trace.prompt.truncation.rag ? "检索资料" : "",
+        trace.prompt.truncation.history ? "历史消息" : "",
+      ].filter(Boolean)
+    : [];
 
   return (
     <section aria-label="上下文准备" className="py-1 text-sm">
@@ -350,6 +345,16 @@ function MemoryContextTrace({ trace }: { trace: MemoryTrace }) {
               <p className="text-xs leading-5 text-muted">
                 会话摘要已注入 · 覆盖 {trace.summary.covered_message_count} 条历史 / 约{" "}
                 {formatTokenCount(trace.summary.token_count)}
+              </p>
+            ) : null}
+
+            {trace.prompt ? (
+              <p className="text-xs leading-5 text-muted">
+                本轮请求 · 输入 {formatTokenCount(trace.prompt.tokens.total_input)} / 窗口{" "}
+                {formatTokenCount(trace.prompt.context_window)}；系统 {formatTokenCount(trace.prompt.tokens.system)}、
+                工具 {formatTokenCount(trace.prompt.tokens.tools)}、RAG {formatTokenCount(trace.prompt.tokens.rag)}、
+                历史 {formatTokenCount(trace.prompt.tokens.history)}。
+                {truncatedBlocks.length > 0 ? ` 已按预算裁剪${truncatedBlocks.join("、")}。` : ""}
               </p>
             ) : null}
 

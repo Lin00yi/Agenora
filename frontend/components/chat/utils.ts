@@ -272,6 +272,7 @@ export function hasVisibleMemoryTrace(trace?: MemoryTrace | null) {
       trace.profile?.injected ||
       (trace.memories?.injected_count ?? 0) > 0 ||
       trace.summary ||
+      trace.prompt ||
       (trace.profile?.items?.length ?? 0) > 0 ||
       (trace.memories?.items?.length ?? 0) > 0
   );
@@ -327,6 +328,9 @@ export function formatMemoryTraceSummary(trace: MemoryTrace): string {
   }
   if (trace.summary) {
     parts.push("含会话摘要");
+  }
+  if (trace.prompt) {
+    parts.push(`${formatTokenCount(trace.prompt.tokens.total_input)} 输入`);
   }
   return parts.join(" · ") || "本轮上下文";
 }

@@ -32,6 +32,24 @@ describe("ChatMessage process trace placement", () => {
     );
   });
 
+  it("removes the duplicate generation status after streamed text begins", () => {
+    render(
+      <ChatMessage
+        message={{
+          id: "assistant-streaming-text",
+          role: "assistant",
+          content: "正在流式输出的正文",
+          created_at: Date.now(),
+          tools: [],
+          streaming: true,
+        }}
+      />
+    );
+
+    expect(screen.getByText("正在流式输出的正文")).toBeTruthy();
+    expect(screen.queryByText("正在生成回答")).toBeNull();
+  });
+
   it("keeps the final answer visible while the pre-tool note lives inside the expanded trace", () => {
     render(
       <ChatMessage
@@ -87,6 +105,20 @@ describe("ChatMessage process trace placement", () => {
               trace: {
                 runtime: { mode: "general", safety: "standard" },
                 recent_message_count: 1,
+                prompt: {
+                  model: "test-model",
+                  context_window: 16_000,
+                  tokens: {
+                    system: 800,
+                    tools: 300,
+                    rag: 1_200,
+                    history: 400,
+                    output: 2_048,
+                    safety: 2_000,
+                    total_input: 2_700,
+                  },
+                  truncation: { rag: true, history: false },
+                },
               },
             },
           ],
@@ -100,5 +132,13 @@ describe("ChatMessage process trace placement", () => {
 
     fireEvent.click(contextButton);
     expect(screen.getByText("运行规则与安全边界已加载。", { exact: true })).toBeTruthy();
+    expect(
+      screen.getByText(
+        (_, element) =>
+          element?.tagName === "P" &&
+          element.textContent?.includes("本轮请求 · 输入 2.7k / 窗口 16.0k") === true
+      )
+    ).toBeTruthy();
+    expect(screen.getByText(/已按预算裁剪检索资料/)).toBeTruthy();
   });
 });

@@ -938,7 +938,7 @@ async def _async_value(value):
 
 
 @pytest.mark.asyncio
-async def test_memory_consolidation_expires_conflicts_and_semantic_duplicates(db, create_user):
+async def test_memory_consolidation_expires_and_merges_semantic_duplicates(db, create_user):
     from sqlalchemy import select
 
     from src.infra.database import get_session_factory
@@ -947,16 +947,6 @@ async def test_memory_consolidation_expires_conflicts_and_semantic_duplicates(db
     now = datetime.now(timezone.utc)
     factory = get_session_factory()
     async with factory() as session:
-        old_preference = UserMemory(
-            id=str(uuid.uuid4()), user_id=user.id, type="preference", scope="personal",
-            memory_key="response_language", memory_value="zh-CN", content="用户偏好中文回复。",
-            status="active", updated_at=now - timedelta(days=1),
-        )
-        new_preference = UserMemory(
-            id=str(uuid.uuid4()), user_id=user.id, type="preference", scope="personal",
-            memory_key="response_language", memory_value="en", content="用户偏好英文回复。",
-            status="active", updated_at=now,
-        )
         duplicate_a = UserMemory(
             id=str(uuid.uuid4()), user_id=user.id, type="explicit", scope="personal",
             memory_key="one", content="团队使用 TypeScript。", status="active",
@@ -971,15 +961,13 @@ async def test_memory_consolidation_expires_conflicts_and_semantic_duplicates(db
             id=str(uuid.uuid4()), user_id=user.id, type="explicit", scope="personal",
             content="已经过期", status="active", expires_at=now - timedelta(seconds=1),
         )
-        session.add_all([old_preference, new_preference, duplicate_a, duplicate_b, expired])
+        session.add_all([duplicate_a, duplicate_b, expired])
         await session.commit()
         stats = await consolidate_user_memories(session, user_id=user.id)
         await session.commit()
         rows = list((await session.execute(select(UserMemory).where(UserMemory.user_id == user.id))).scalars())
 
-    assert stats == {"expired": 1, "superseded": 1, "deduplicated": 1}
-    assert next(row for row in rows if row.id == old_preference.id).status == "superseded"
-    assert next(row for row in rows if row.id == new_preference.id).status == "active"
+    assert stats == {"expired": 1, "superseded": 0, "deduplicated": 1}
     assert sum(row.status == "active" for row in rows if row.type == "explicit") == 1
     assert next(row for row in rows if row.id == expired.id).status == "expired"
 
@@ -1044,6 +1032,60 @@ def test_provider_allocator_honours_byok_context_window() -> None:
     )
 
     assert estimate_tokens(kept[-1]["content"]) + 6 <= 8_192 - 2_048 - 2_000
+
+
+def test_provider_allocator_never_invents_history_space_for_small_window() -> None:
+    """A physical remainder of zero must not become the old 1K floor."""
+    kept = allocate_provider_context(
+        model="custom-tiny-model",
+        system_prompt="系统规则" * 1_100,
+        tools_schema=[{"name": "large", "description": "工具说明" * 1_100}],
+        conversation_messages=[{"role": "user", "content": "不能被发送的历史"}],
+        configured_context_window=4_096,
+        output_token_budget=512,
+    )
+
+    assert kept == []
+
+
+def test_final_provider_preparation_caps_rag_before_history() -> None:
+    from src.agent.nodes.reason import _prepare_provider_request
+    from src.agent.nodes.prompts_budget import provider_fixed_prompt_tokens
+    from src.conversations.context import SAFETY_RESERVE
+
+    tools = [{"name": "search", "input_schema": {"type": "object"}}]
+    prompt, kept, output, trace = _prepare_provider_request(
+        model="custom-small-model",
+        configured_context_window=4_096,
+        base_system_prompt="基础规则。",
+        kb_context="检索证据" * 10_000,
+        tools_schema=tools,
+        conversation_messages=[{"role": "user", "content": "请回答这个问题"}],
+        output_task="answer",
+    )
+
+    total = provider_fixed_prompt_tokens(prompt, tools, model="custom-small-model")
+    total += sum(estimate_tokens(item["content"]) + 6 for item in kept)
+    assert total + output + SAFETY_RESERVE <= 4_096
+    assert "其余检索内容因上下文预算省略" in prompt
+    assert kept and kept[-1]["role"] == "user"
+    assert trace["truncation"]["rag"] is True
+    assert trace["tokens"]["total_input"] + output + SAFETY_RESERVE <= 4_096
+
+
+def test_final_provider_preparation_rejects_impossible_small_window() -> None:
+    from src.agent.nodes.reason import _prepare_provider_request
+
+    with pytest.raises(RuntimeError, match="上下文窗口不足"):
+        _prepare_provider_request(
+            model="custom-tiny-model",
+            configured_context_window=4_096,
+            base_system_prompt="系统规则" * 2_000,
+            kb_context="",
+            tools_schema=[{"name": "large", "description": "工具说明" * 2_000}],
+            conversation_messages=[{"role": "user", "content": "问题"}],
+            output_task="answer",
+        )
 
 
 def test_output_budget_resolver_uses_task_and_context_window() -> None:
@@ -1115,6 +1157,133 @@ async def test_long_conversation_is_summarized_and_recent_turns_are_retained(db,
     assert summary.covered_message_id == rows[3].id
     assert summary.source_model == "deepseek-chat"
     assert summary.source_context_window == budget.context_window
+
+
+@pytest.mark.asyncio
+async def test_prepared_summary_waits_for_activation_threshold(db, create_user, monkeypatch):
+    from src.conversations import context as context_module
+    from src.conversations.context import prepare_summary_if_needed
+    from src.conversations.context.constants import ContextBudget
+    from src.infra.database import get_session_factory
+
+    calls = 0
+
+    async def fake_summarizer(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return (
+            "## 当前任务与用户目标\n- 预热\n\n"
+            "## 已确认事实与关键偏好\n- 偏好\n\n"
+            "## 已做决策及理由\n- 决策\n\n"
+            "## 项目或知识库约束\n- 约束\n\n"
+            "## 未完成事项与下一步\n- 下一步\n\n"
+            "## 最近对话状态\n- 最近"
+        )
+
+    monkeypatch.setattr(context_module, "summarize_messages_with_llm", fake_summarizer)
+    user = await create_user("prepared-summary@example.com")
+    conv = Conversation(id=str(uuid.uuid4()), user_id=user.id, title="摘要预热")
+    rows = [
+        Message(
+            id=str(uuid.uuid4()),
+            conversation_id=conv.id,
+            role="user" if index % 2 == 0 else "assistant",
+            content=f"消息 {index}",
+        )
+        for index in range(24)
+    ]
+    prepare_budget = ContextBudget(
+        model="test", context_window=16_000, available_history_tokens=10_000,
+        current_history_tokens=6_500, ratio=0.65, should_prepare_summary=True,
+        should_summarize=False, force_summarize=False,
+    )
+    activate_budget = ContextBudget(
+        model="test", context_window=16_000, available_history_tokens=10_000,
+        current_history_tokens=7_300, ratio=0.73, should_prepare_summary=True,
+        should_summarize=True, force_summarize=False,
+    )
+    factory = get_session_factory()
+    async with factory() as session:
+        session.add(conv)
+        session.add_all(rows)
+        await session.commit()
+        prepared = await prepare_summary_if_needed(
+            session, conversation_id=conv.id, messages=rows, budget=prepare_budget
+        )
+        assert prepared is not None and prepared.is_prepared
+        assert await ensure_summary_if_needed(
+            session, conversation_id=conv.id, messages=rows, budget=prepare_budget
+        ) is None
+        active = await ensure_summary_if_needed(
+            session, conversation_id=conv.id, messages=rows, budget=activate_budget
+        )
+
+    assert active is not None and not active.is_prepared
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_active_structured_memory_key_is_unique_in_database(db, create_user):
+    from sqlalchemy.exc import IntegrityError
+    from src.infra.database import get_session_factory
+
+    user = await create_user("unique-memory@example.com")
+    now = datetime.now(timezone.utc)
+    first = UserMemory(
+        id=str(uuid.uuid4()),
+        user_id=user.id,
+        scope="personal",
+        type="preference",
+        memory_key="response_language",
+        memory_value="zh-CN",
+        content="默认中文回答",
+        status="active",
+        created_at=now,
+        updated_at=now,
+    )
+    duplicate = UserMemory(
+        id=str(uuid.uuid4()),
+        user_id=user.id,
+        scope="personal",
+        type="preference",
+        memory_key="response_language",
+        memory_value="en",
+        content="默认英文回答",
+        status="active",
+        created_at=now,
+        updated_at=now,
+    )
+    factory = get_session_factory()
+    async with factory() as session:
+        session.add(first)
+        await session.commit()
+        session.add(duplicate)
+        with pytest.raises(IntegrityError):
+            await session.flush()
+        await session.rollback()
+
+
+def test_summary_request_respects_small_byok_context_window() -> None:
+    from src.conversations.context.constants import SAFETY_RESERVE
+    from src.conversations.context.summary import _bounded_summary_request
+
+    system_prompt = "摘要规则" * 80
+    messages = [
+        Message(id=str(index), conversation_id="c", role="user", content="新消息" * 5_000)
+        for index in range(4)
+    ]
+    request = _bounded_summary_request(
+        previous_summary="旧摘要" * 3_000,
+        new_messages=messages,
+        model="custom-small-model",
+        context_window=4_096,
+        system_prompt=system_prompt,
+    )
+
+    assert request is not None
+    prompt, output = request
+    assert estimate_tokens(system_prompt) + estimate_tokens(prompt) + output + SAFETY_RESERVE <= 4_096
+    assert "中间内容因摘要预算省略" in prompt
 
 
 @pytest.mark.asyncio

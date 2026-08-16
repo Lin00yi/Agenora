@@ -68,6 +68,33 @@ def _memory_trace_item(row: UserMemory) -> dict[str, Any]:
     }
 
 
+async def _lock_structured_memory_key(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    scope: str,
+    scope_id: str | None,
+    memory_type: str,
+    memory_key: str,
+) -> None:
+    """Serialize competing structured writes on PostgreSQL.
+
+    The unique partial index remains the final cross-process invariant.  This
+    advisory transaction lock turns the usual concurrent preference update
+    into deterministic last-writer-wins supersession instead of a retryable
+    unique violation. SQLite's single-writer model relies on that same index.
+    """
+    bind = session.get_bind()
+    if bind.dialect.name != "postgresql":
+        return
+    from sqlalchemy import text
+
+    lock_key = "|".join((user_id, scope, scope_id or "", memory_type, memory_key))
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"), {"lock_key": lock_key}
+    )
+
+
 async def consolidate_user_memories(
     session: AsyncSession,
     *,
@@ -275,6 +302,19 @@ async def store_memory_candidates(
     for candidate in unique_candidates:
         scope = candidate.scope if candidate.scope != "kb" or kb_id else "personal"
         scope_id = kb_id if scope == "kb" else None
+        lock_key = candidate.key
+        if candidate.type == "constraint":
+            topic = _constraint_topic_for_candidate(candidate)
+            if topic:
+                lock_key = f"constraint.{topic}"
+        await _lock_structured_memory_key(
+            session,
+            user_id=user_id,
+            scope=scope,
+            scope_id=scope_id,
+            memory_type=candidate.type,
+            memory_key=lock_key,
+        )
         result = await session.execute(
             select(UserMemory).where(
                 UserMemory.user_id == user_id,
@@ -477,4 +517,3 @@ async def store_explicit_user_memory(
         session, user_id=user_id, message_id=message_id, content=content
     )
     return rows[0] if rows else None
-

@@ -31,7 +31,7 @@ Memory 的目标不是保存全部聊天记录，而是在不让上下文无限�
 
 ### 2.2 中期记忆：滚动摘要
 
-当完整会话历史达到历史预算的 72% 时，系统将早于最近 10 轮的消息整理为 `ConversationSummary`：
+当完整会话历史达到历史预算的 72% 时，系统会激活 `ConversationSummary`，将早于最近 10 轮的消息整理为摘要：
 
 ```text
 早期完整消息
@@ -39,9 +39,11 @@ Memory 的目标不是保存全部聊天记录，而是在不让上下文无限�
   + 最近 10 轮完整消息
 ```
 
-当前摘要优先使用独立、无工具的 LLM 调用增量维护六段式结构化摘要；未配置可用模型或调用失败时，才回退到确定性抽取摘要。两种路径都会受摘要 token 预算限制，且摘要内容仅作为数据，不能覆盖系统规则。
+达到 60% 时，后端会在消息写入后的后台任务中预生成首个摘要（`is_prepared=true`），但该行不会进入模型上下文，也不会让 UI 提前显示「已压缩」。72% 时优先激活这份预生成摘要；如果预热尚未完成，则同步写入确定性抽取摘要，避免把一次远程 LLM 调用放到用户首 token 路径上。
 
-达到 85%（`force_summarize`）时，即使较早消息较少（≥2 条）也会尝试写入摘要，避免 UI「即将压缩」状态只改标签不落库。
+达到 85%（`force_summarize`）时，系统会同步尝试独立、无工具的 LLM 增量摘要；未配置可用模型或调用失败时，仍回退到确定性抽取摘要。摘要请求按实际摘要模型的 context window、输出额度和安全余量使用 tokenizer 裁剪输入，而不是只按字符数裁剪。摘要内容仅作为数据，不能覆盖系统规则。
+
+在 85% 时，即使较早消息较少（≥2 条）也会尝试写入摘要，避免 UI「即将压缩」状态只改标签不落库。
 
 随着会话继续，原本的“最近消息”会逐步变旧，并在后续压缩时纳入新的摘要覆盖范围，因此称为滚动摘要。
 
@@ -180,6 +182,8 @@ user_id + scope + scope_id + type + memory_key
 
 如果键和值都相同，则不重复创建记录，只更新来源消息、置信度、重要性和更新时间。
 
+该规则同时由数据库保证：启动迁移会先把历史上同键的旧 `active` 行标为 `superseded`，再创建仅覆盖 `active + memory_key` 的唯一索引。PostgreSQL 写入前还会按该结构化键取得事务 advisory lock，因此并发更新会按提交顺序完成覆盖，而不是留下两个当前值；其他数据库仍以唯一索引作为最终不变量。
+
 ## 6. 混合检索、整合与上下文注入
 
 一次聊天请求构建上下文时，系统会：
@@ -241,7 +245,7 @@ python -m src.infra.memory_maintenance
 - Anthropic Provider 使用顶层 `system` 参数；
 - 记忆和摘要不会以 `system` 角色残留在普通对话消息序列中。
 
-聊天完成后 SSE `done` 事件会带回 `memory_trace`（Profile / 检索记忆 / 摘要元数据），前端可按消息展示注入 Trace。
+聊天完成后 SSE `done` 事件会带回 `memory_trace`，前端可按消息展示注入 Trace。除 Profile / 检索记忆 / 摘要元数据外，Trace 还带有最终 Provider 请求的模型、context window、System/Tools/RAG/History/输出/安全余量 token 分配，以及 Profile/Memory/Summary/RAG/History 的截断标记；该数据来自调用前的最终实测，而非固定预算推测。
 
 ## 7. 上下文预算
 
@@ -255,7 +259,7 @@ python -m src.infra.memory_maintenance
 - RAG 检索结果：最多 8,000 token（仅 KB 模式）；
 - 最近消息：使用剩余实际 token 预算，优先保留最新内容。
 
-模型调用前还会重新测量最终 System Prompt、Tool Schema 和消息内容，避免固定预留与真实内容大小不一致。
+模型调用前会重新测量最终 System Prompt、Tool Schema、RAG 聚合内容和消息内容；RAG 合并块会先被限制在 8,000 token，再按最终可用空间自适应裁剪。若固定输入和最小输出已经超过模型窗口，请求会在本地失败而不会发送一个必然超窗的 Provider 调用。
 
 Token 计量使用 **tiktoken**（按模型族选择 `o200k_base` / `cl100k_base`；DeepSeek/Claude/BYOK 以 `cl100k_base` 为预算代理），并加约 3% 余量吸收跨 tokenizer 偏差。tiktoken 不可用时回退到 CJK 启发式估计。构建上下文与 `allocate_provider_context` 会通过 `token_model_scope` 绑定当前模型。
 
@@ -304,13 +308,13 @@ Token 计量使用 **tiktoken**（按模型族选择 `o200k_base` / `cl100k_base
 
 | 模块 | 文件 |
 |---|---|
-| 记忆候选、检索、会话摘要、上下文预算 | `backend/src/conversations/context.py` |
+| 记忆候选、检索、会话摘要、上下文预算 | `backend/src/conversations/context/` |
 | Memory 数据模型 | `backend/src/conversations/models.py` |
 | 消息写入与 Memory 管理接口 | `backend/src/conversations/routes.py` |
 | 定时维护（闲置 finalize / 整合 / 向量回填） | `backend/src/infra/memory_maintenance.py` |
 | 既有数据库的增量迁移 | `backend/src/infra/database.py` |
 | 对话请求中构建上下文 | `backend/src/app.py` |
-| Provider 安全系统提示词组装 | `backend/src/agent/nodes.py` |
-| 前端 API 类型与调用封装 | `frontend/lib/conversations-api.ts` |
+| Provider 安全系统提示词和最终 token 分配 | `backend/src/agent/nodes/reason.py`、`prompts_budget.py` |
+| 前端 SSE Trace 类型与渲染 | `frontend/lib/sseClient.ts`、`frontend/components/chat/ChatMessages.tsx` |
 | 记忆管理页 | `frontend/app/memories/page.tsx` |
 | 设计评审（已落地） | Memory Profile/Memory 去重、mode-based RAG reserve 等见本文件 §10 与代码实现 |
