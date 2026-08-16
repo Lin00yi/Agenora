@@ -142,16 +142,16 @@ export function Composer({
           disabled={busy}
           className={cn("kf-composer-input block max-h-[160px] w-full resize-none bg-transparent px-5 py-4 text-[15px] leading-6 outline-none disabled:cursor-not-allowed disabled:opacity-70", centered ? "min-h-[112px] text-base" : "min-h-[44px] px-4 py-3")}
         />
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3 pb-3 pt-1 sm:flex sm:flex-wrap">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 px-3 pb-2.5 pt-1 sm:flex sm:flex-wrap">
           <div
-            className="kf-control inline-flex h-[var(--control-h)] min-w-0 w-full items-center gap-1.5 rounded-lg border px-2.5 text-sm sm:w-auto sm:max-w-[240px]"
+            className="kf-control inline-flex h-[var(--control-h-sm)] min-w-0 w-full items-center gap-1.5 rounded-lg border px-2 text-xs sm:w-auto sm:max-w-[216px]"
             title={kbLocked ? "当前会话由首条消息的知识库锁定" : "选择通用对话或知识库"}
           >
-            <Database className="h-4 w-4 shrink-0 text-brand" />
+            <Database className="h-3.5 w-3.5 shrink-0 text-brand" />
             <ModelSelect
               aria-label="选择知识库"
               tone="plain"
-              className="kf-kb-trigger h-[var(--control-h)] min-w-[108px] flex-1 border-0 bg-transparent px-0 py-0 text-sm text-current shadow-none hover:bg-transparent focus-visible:ring-0 disabled:cursor-not-allowed disabled:text-muted"
+              className="kf-kb-trigger h-[var(--control-h-sm)] min-w-[96px] flex-1 border-0 bg-transparent px-0 py-0 text-xs text-current shadow-none hover:bg-transparent focus-visible:ring-0 disabled:cursor-not-allowed disabled:text-muted"
               contentAlign="start"
               contentClassName="kf-model-content"
               contentPosition="popper"
@@ -167,12 +167,12 @@ export function Composer({
             {kbLocked && <LockKeyhole className="h-3.5 w-3.5 shrink-0 text-muted" />}
           </div>
           <Link
-            className="kf-control kf-press inline-flex size-[var(--control-h)] items-center justify-center rounded-lg border"
+            className="kf-control kf-press inline-flex size-[var(--control-h-sm)] items-center justify-center rounded-lg border"
             href={currentKbId ? `/kbs/${currentKbId}` : "/kbs"}
             aria-label={currentKbId ? "\u6253\u5f00\u77e5\u8bc6\u5e93\u4e0a\u4f20\u8d44\u6599" : "\u9009\u62e9\u77e5\u8bc6\u5e93\u540e\u4e0a\u4f20\u8d44\u6599"}
             title={currentKbId ? "\u6253\u5f00\u77e5\u8bc6\u5e93\u4e0a\u4f20\u8d44\u6599" : "\u9009\u62e9\u77e5\u8bc6\u5e93\u540e\u4e0a\u4f20\u8d44\u6599"}
           >
-            <Paperclip className="h-4 w-4" />
+            <Paperclip className="h-3.5 w-3.5" />
           </Link>
           <div className="col-span-2 flex min-w-0 items-center gap-2 sm:col-auto sm:ml-auto">
             <ContextUsageIndicator
@@ -181,7 +181,7 @@ export function Composer({
             />
             <ModelSelect
               aria-label="模型选择"
-              className="kf-model-trigger h-[var(--control-h)] min-w-0 flex-1 text-sm sm:min-w-[132px] sm:max-w-[200px]"
+              className="kf-model-trigger h-[var(--control-h-sm)] min-w-0 flex-1 text-xs sm:min-w-[120px] sm:max-w-[176px]"
               tone="plain"
               contentAlign="end"
               contentClassName="kf-model-content"
@@ -201,7 +201,7 @@ export function Composer({
             />
             {busy ? (
               <button
-                className="kf-stop-button kf-press inline-flex h-[var(--control-h)] min-w-[var(--control-h)] cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-3 text-sm font-medium"
+                className="kf-stop-button kf-press inline-flex h-[var(--control-h-sm)] min-w-[var(--control-h-sm)] cursor-pointer items-center justify-center gap-1 rounded-lg border px-2.5 text-xs font-medium"
                 aria-label="停止生成"
                 data-testid="composer-stop"
                 onClick={onStop}
@@ -212,7 +212,7 @@ export function Composer({
               </button>
             ) : (
               <button
-                className="kf-send-button kf-press inline-flex size-[var(--control-h)] shrink-0 items-center justify-center rounded-full transition disabled:cursor-not-allowed"
+                className="kf-send-button kf-press inline-flex size-[var(--control-h-sm)] shrink-0 items-center justify-center rounded-full transition disabled:cursor-not-allowed"
                 aria-label="发送消息"
                 data-testid="composer-send"
                 disabled={!value.trim()}
@@ -220,7 +220,7 @@ export function Composer({
                 title="发送消息"
                 type="button"
               >
-                <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
+                <ArrowUp className="h-3.5 w-3.5" strokeWidth={2.5} />
               </button>
             )}
           </div>
@@ -284,12 +284,12 @@ export function ContextUsageIndicator({
         <TooltipTrigger asChild>
           <button
             aria-label={loading ? "正在读取背景信息窗口" : `背景信息窗口已用 ${percentLabel}%`}
-            className="kf-context-usage inline-flex size-8 cursor-default items-center justify-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
+            className="kf-context-usage inline-flex size-7 cursor-default items-center justify-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
             type="button"
           >
             <svg
               aria-hidden="true"
-              className={cn("size-5 -rotate-90", loading && "animate-spin motion-reduce:animate-none")}
+              className={cn("size-4 -rotate-90", loading && "animate-spin motion-reduce:animate-none")}
               viewBox="0 0 20 20"
             >
               <circle className="kf-context-track stroke-current" cx="10" cy="10" fill="none" r="8" strokeWidth="2.25" />

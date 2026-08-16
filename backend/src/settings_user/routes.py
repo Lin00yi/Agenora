@@ -47,7 +47,6 @@ from src.settings_user.models import (
     ensure_legacy_llm_model_profiles,
     list_llm_connections,
     list_llm_model_profiles,
-    resolve_user_llm,
 )
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])

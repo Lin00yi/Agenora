@@ -879,8 +879,8 @@
   }
 
   .kf-chat .kf-workspace .kf-composer .kf-stop-button {
-    min-height: var(--control-h);
-    min-width: var(--control-h);
+    min-height: var(--control-h-sm);
+    min-width: var(--control-h-sm);
     border-color: var(--chat-line);
     background: var(--chat-soft);
     color: var(--chat-ink);
@@ -1052,8 +1052,8 @@
     color: var(--chat-ink);
   }
   .kf-chat .kf-workspace .kf-send-button {
-    min-height: var(--control-h);
-    min-width: var(--control-h);
+    min-height: var(--control-h-sm);
+    min-width: var(--control-h-sm);
     border: 1px solid transparent;
     border-radius: 999px;
     background: var(--chat-accent);
@@ -1249,8 +1249,10 @@
   }
 
   .app-share-card-brandbar {
-    background: rgb(var(--brand));
-    color: white;
+    /* Share images are self-contained, so keep their brand bar stable instead
+       of using --brand, which intentionally inverts to white in dark mode. */
+    background: rgb(23 23 23);
+    color: rgb(255 255 255);
   }
 
   .app-share-card-brandmark {

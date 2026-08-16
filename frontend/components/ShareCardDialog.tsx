@@ -122,6 +122,7 @@ export default function ShareCardDialog({
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
             <Button
               type="button"
+              variant="secondary"
               onClick={onCopy}
               disabled={rendering}
               className={secondaryActionClass}
@@ -197,7 +198,4 @@ const primaryActionClass = cn(
   "w-full shrink-0 px-4 text-sm sm:w-auto"
 );
 
-const secondaryActionClass = cn(
-  buttonVariants({ variant: "outline" }),
-  "w-full shrink-0 px-3 text-sm sm:w-auto"
-);
+const secondaryActionClass = "w-full shrink-0 px-3 text-sm sm:w-auto";
