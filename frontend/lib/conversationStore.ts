@@ -14,6 +14,7 @@ import type { Citation, MemoryTrace } from "@/lib/sseClient";
 
 /** Sealed timeline segments for one assistant turn (Phase 3 interleaved stream). */
 export type AssistantPart =
+  | { type: "context"; trace: MemoryTrace }
   | { type: "text"; text: string }
   | { type: "tools"; tools: ToolEvent[] };
 
@@ -98,9 +99,11 @@ export function finalizeAssistantParts(
   liveContent: string
 ): AssistantPart[] | undefined {
   if (parts.length === 0) return undefined;
-  const finalParts = parts.map((part) =>
-    part.type === "text" ? { ...part } : { type: "tools" as const, tools: [...part.tools] }
-  );
+  const finalParts = parts.map((part) => {
+    if (part.type === "context") return { type: "context" as const, trace: { ...part.trace } };
+    if (part.type === "text") return { ...part };
+    return { type: "tools" as const, tools: [...part.tools] };
+  });
   if (liveContent.trim()) {
     finalParts.push({ type: "text", text: liveContent });
   }
@@ -113,8 +116,10 @@ export function parseAssistantParts(value: unknown): AssistantPart[] | undefined
   const parts: AssistantPart[] = [];
   for (const part of value) {
     if (!part || typeof part !== "object") continue;
-    const candidate = part as { type?: unknown; text?: unknown; tools?: unknown };
-    if (candidate.type === "text" && typeof candidate.text === "string") {
+    const candidate = part as { type?: unknown; text?: unknown; tools?: unknown; trace?: unknown };
+    if (candidate.type === "context" && candidate.trace && typeof candidate.trace === "object") {
+      parts.push({ type: "context", trace: candidate.trace as MemoryTrace });
+    } else if (candidate.type === "text" && typeof candidate.text === "string") {
       parts.push({ type: "text", text: candidate.text });
     } else if (candidate.type === "tools" && Array.isArray(candidate.tools)) {
       parts.push({ type: "tools", tools: candidate.tools as ToolEvent[] });

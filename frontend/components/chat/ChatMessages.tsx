@@ -80,6 +80,7 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
   const joined = joinAssistantText(parts, liveContent);
   const hasAnyText = joined.trim().length > 0;
   const hasMemoryContext = hasVisibleMemoryTrace(message.memory_trace);
+  const hasContextPart = parts.some((part) => part.type === "context");
   const hasCitations = hasVisibleCitations(message.citations);
   const elapsedMs = useLiveElapsed(streaming, message.created_at);
   const status = getAssistantStreamingStatus(message, elapsedMs);
@@ -136,6 +137,9 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
               </div>
             )}
             {parts.map((part, index) => {
+              if (part.type === "context") {
+                return <MemoryContextTrace trace={part.trace} key={`context-${index}`} />;
+              }
               if (part.type === "text" && parts[index + 1]?.type === "tools") return null;
               if (part.type === "text") {
                 return (
@@ -153,7 +157,7 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
                 />
               );
             })}
-            {!streaming && hasMemoryContext ? (
+            {!streaming && hasMemoryContext && !hasContextPart ? (
               <MemoryContextTrace trace={message.memory_trace!} />
             ) : null}
             {hasLiveContent && (
@@ -289,59 +293,72 @@ function MemoryContextTrace({ trace }: { trace: MemoryTrace }) {
   const summaryText = formatMemoryTraceSummary(trace);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-surface-border/70 bg-surface/80">
+    <section aria-label="上下文准备" className="py-1 text-sm">
       <button
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="flex min-h-9 w-full cursor-pointer items-center justify-between gap-3 px-3 py-1.5 text-sm transition-colors hover:bg-surface-2/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+        className="flex min-h-8 items-center gap-2 text-left text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
         type="button"
       >
-        <span className="flex min-w-0 items-center gap-2 text-muted">
+        <span className="flex min-w-0 items-center gap-2">
           {open ? (
             <ChevronDown className="h-3.5 w-3.5 shrink-0" />
           ) : (
             <ChevronRight className="h-3.5 w-3.5 shrink-0" />
           )}
           <BrainCircuit className="h-3.5 w-3.5 shrink-0 text-brand/80" />
-          <span className="truncate text-xs sm:text-sm">{summaryText}</span>
+          <span className="truncate text-xs sm:text-sm">上下文已准备 · {summaryText}</span>
         </span>
       </button>
 
-      {open ? (
-        <div className="space-y-2 border-t border-surface-border/60 px-3 py-2.5 text-sm">
-          {items.length > 0 ? (
-            <ul className="space-y-1.5">
-              {items.slice(0, 6).map((item) => (
-                <li
-                  key={item.id}
-                  className="rounded-md border border-surface-border/60 bg-surface-2/35 px-2.5 py-2"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-xs font-medium text-ink/85">
-                      {memoryTraceTypeLabel(item.type)}
-                    </span>
-                    <span className="shrink-0 text-[11px] tabular-nums text-muted">
-                      重要度 {Math.round((item.importance ?? 0) * 100)}%
-                    </span>
-                  </div>
-                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted">{item.content}</p>
-                </li>
-              ))}
-            </ul>
-          ) : null}
+      <div className={cn("mt-2 border-t border-surface-border/60", open && "pt-2.5")}>
+        {open ? (
+          <div className="space-y-2 text-sm">
+            {trace.runtime ? (
+              <div className="flex items-start gap-2 text-xs leading-5 text-muted">
+                <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-brand/80" aria-hidden="true" />
+                <span>
+                  运行规则与安全边界已加载
+                  {trace.runtime.safety === "heightened" ? "，已加强防护。" : "。"}
+                </span>
+              </div>
+            ) : null}
+            {trace.recent_message_count ? (
+              <p className="text-xs leading-5 text-muted">
+                保留最近 {trace.recent_message_count} 条对话作为本轮参考。
+              </p>
+            ) : null}
+            {items.length > 0 ? (
+              <ul className="space-y-1.5">
+                {items.slice(0, 6).map((item) => (
+                  <li key={item.id} className="border-l border-surface-border/70 pl-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-xs font-medium text-ink/85">
+                        {memoryTraceTypeLabel(item.type)}
+                      </span>
+                      <span className="shrink-0 text-[11px] tabular-nums text-muted">
+                        重要度 {Math.round((item.importance ?? 0) * 100)}%
+                      </span>
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted">{item.content}</p>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
 
-          {trace.summary ? (
-            <p className="rounded-md border border-surface-border/60 bg-surface-2/35 px-2.5 py-2 text-xs leading-5 text-muted">
-              会话摘要已注入 · 覆盖 {trace.summary.covered_message_count} 条历史 / 约{" "}
-              {formatTokenCount(trace.summary.token_count)}
-            </p>
-          ) : null}
+            {trace.summary ? (
+              <p className="text-xs leading-5 text-muted">
+                会话摘要已注入 · 覆盖 {trace.summary.covered_message_count} 条历史 / 约{" "}
+                {formatTokenCount(trace.summary.token_count)}
+              </p>
+            ) : null}
 
-          {items.length === 0 && !trace.summary ? (
-            <p className="text-xs leading-5 text-muted">本轮未注入可展示的记忆内容。</p>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
+            {items.length === 0 && !trace.summary ? (
+              <p className="text-xs leading-5 text-muted">本轮没有相关记忆或会话摘要。</p>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </section>
   );
 }

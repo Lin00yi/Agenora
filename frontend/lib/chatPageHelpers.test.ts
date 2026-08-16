@@ -3,6 +3,7 @@ import {
   conversationHref,
   conversationIdFromPath,
   getContextWindowForModel,
+  normalizeMessages,
   parseServerTimestamp,
   serverMsgToLocal,
   uniqueStrings,
@@ -51,5 +52,26 @@ describe("chatPageHelpers", () => {
     if (message.role !== "assistant") throw new Error("expected assistant message");
     expect(message.content).toBe("");
     expect(joinAssistantText(message.parts, message.content)).toBe("先检索。\n\n再回答。");
+  });
+
+  it("keeps persisted context and text timelines after a conversation refresh", () => {
+    const message = serverMsgToLocal({
+      id: "assistant-with-context",
+      role: "assistant",
+      content: "这是持久化的完整回答。",
+      tools: [],
+      parts: [
+        {
+          type: "context",
+          trace: { runtime: { mode: "general", safety: "standard" } },
+        },
+        { type: "text", text: "这是持久化的完整回答。" },
+      ],
+      cost_usd: null,
+      error: null,
+      created_at: "2026-08-16T06:23:01+00:00",
+    });
+
+    expect(normalizeMessages([message])).toEqual([message]);
   });
 });

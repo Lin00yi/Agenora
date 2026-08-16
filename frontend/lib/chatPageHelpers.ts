@@ -110,10 +110,16 @@ export function parseServerTimestamp(value: string | null | undefined): number {
 
 function isRenderableMessage(message: Message) {
   if (message.role === "user") return true;
+  const hasRenderableTimelinePart = message.parts?.some(
+    (part) =>
+      (part.type === "text" && part.text.trim().length > 0) ||
+      (part.type === "tools" && part.tools.length > 0)
+  );
   return Boolean(
     message.streaming ||
       message.error ||
       message.content.trim().length > 0 ||
+      hasRenderableTimelinePart ||
       message.tools.length > 0
   );
 }

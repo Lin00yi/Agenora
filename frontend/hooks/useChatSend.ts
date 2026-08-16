@@ -328,6 +328,35 @@ export function useChatSend({
         messagesForBackend,
         (evt: ChatEvent) => {
           switch (evt.event) {
+            case "context_ready": {
+              const trace = evt.memory_trace;
+              if (!trace) break;
+              if (streamingRef.current) {
+                const snap = streamingRef.current;
+                snap.memory_trace = trace;
+                const contextPart = { type: "context" as const, trace };
+                const prior = snap.parts.findIndex((part) => part.type === "context");
+                snap.parts =
+                  prior >= 0
+                    ? snap.parts.map((part, index) => (index === prior ? contextPart : part))
+                    : [contextPart, ...snap.parts];
+              }
+              updateLastAssistant((m) => {
+                if (m.role !== "assistant") return m;
+                const contextPart = { type: "context" as const, trace };
+                const parts = [...(m.parts ?? [])];
+                const prior = parts.findIndex((part) => part.type === "context");
+                return {
+                  ...m,
+                  memory_trace: trace,
+                  parts:
+                    prior >= 0
+                      ? parts.map((part, index) => (index === prior ? contextPart : part))
+                      : [contextPart, ...parts],
+                };
+              });
+              break;
+            }
             case "tool_start": {
               flushTokenPaint();
               const newTool: ToolEvent = {
@@ -624,6 +653,7 @@ export function useChatSend({
         content,
         tools: flattenAssistantTools(snap.parts, snap.tools),
         parts,
+        memory_trace: snap.memory_trace,
         citations: snap.citations.length > 0 ? snap.citations : undefined,
       })
         .then((result) => {
@@ -636,6 +666,7 @@ export function useChatSend({
                     content: result.parts ? "" : content,
                     parts: result.parts ?? parts,
                     tools: flattenAssistantTools(snap.parts, snap.tools),
+                    memory_trace: result.memory_trace ?? snap.memory_trace,
                     citations: result.citations ?? snap.citations,
                   }
                 : m

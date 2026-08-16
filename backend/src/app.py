@@ -224,6 +224,27 @@ def _run_chat_session(
         kb_web_search_enabled=kb_web_search_enabled,
     )
 
+    # The browser gets this safe, user-owned snapshot before the agent begins.
+    # Never place raw system prompts, tool schemas, credentials, or prompt-guard
+    # reasons here: those remain server-only / admin-trace data.
+    if memory_trace is not None:
+        from src.kb.models import SYSTEM_TRAVEL_KB_ID
+
+        mode = (
+            "general"
+            if kb is None
+            else "travel"
+            if kb.id == SYSTEM_TRAVEL_KB_ID
+            else "knowledge_base"
+        )
+        memory_trace = {
+            **memory_trace,
+            "runtime": {
+                "mode": mode,
+                "safety": "heightened" if prompt_guard.level != "low" else "standard",
+            },
+        }
+
     async def run_agent() -> None:
         from src.observability import get_current_trace
 
@@ -251,6 +272,13 @@ def _run_chat_session(
                 )
         final_state: dict[str, Any] | None = None
         try:
+            if memory_trace is not None:
+                await queue.put(
+                    {
+                        "event": "context_ready",
+                        "memory_trace": memory_trace,
+                    }
+                )
             initial_state: dict[str, Any] = {
                 "messages": full_messages,
                 "iterations": 0,

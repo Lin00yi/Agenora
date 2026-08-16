@@ -33,7 +33,7 @@ export function ChatTopBar({
 }) {
   return (
     <header
-      className="kf-topbar kf-chat-header grid h-[64px] shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 xl:px-7"
+      className="kf-topbar kf-chat-header grid h-14 shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-3 sm:h-[64px] sm:gap-3 sm:px-4 xl:px-7"
       data-kf-region="topbar"
     >
       <button

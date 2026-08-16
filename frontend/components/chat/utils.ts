@@ -268,7 +268,8 @@ export function formatDuration(ms: number) {
 export function hasVisibleMemoryTrace(trace?: MemoryTrace | null) {
   if (!trace) return false;
   return Boolean(
-    trace.profile?.injected ||
+    trace.runtime ||
+      trace.profile?.injected ||
       (trace.memories?.injected_count ?? 0) > 0 ||
       trace.summary ||
       (trace.profile?.items?.length ?? 0) > 0 ||
@@ -303,6 +304,19 @@ export function buildInjectedMemoryItems(trace: MemoryTrace): MemoryTraceItem[] 
 export function formatMemoryTraceSummary(trace: MemoryTrace): string {
   const items = buildInjectedMemoryItems(trace);
   const parts: string[] = [];
+
+  if (trace.runtime?.mode) {
+    const label =
+      trace.runtime.mode === "knowledge_base"
+        ? "知识库模式"
+        : trace.runtime.mode === "travel"
+          ? "旅行模式"
+          : "通用模式";
+    parts.push(label);
+  }
+  if (trace.recent_message_count) {
+    parts.push(`${trace.recent_message_count} 条近期对话`);
+  }
 
   if (items.length > 0) {
     parts.push(items.length === 1 ? "用了 1 条记忆" : `用了 ${items.length} 条记忆`);

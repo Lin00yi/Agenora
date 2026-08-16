@@ -70,4 +70,35 @@ describe("ChatMessage process trace placement", () => {
     expect(screen.getByText("我会先检索已有资料。")).toBeTruthy();
     expect(screen.getByText("部署说明")).toBeTruthy();
   });
+
+  it("shows the safe prepared-context trace before a response starts streaming", () => {
+    render(
+      <ChatMessage
+        message={{
+          id: "assistant-context",
+          role: "assistant",
+          content: "",
+          created_at: Date.now(),
+          tools: [],
+          streaming: true,
+          parts: [
+            {
+              type: "context",
+              trace: {
+                runtime: { mode: "general", safety: "standard" },
+                recent_message_count: 1,
+              },
+            },
+          ],
+        }}
+      />
+    );
+
+    const contextButton = screen.getByRole("button", { name: /上下文已准备/ });
+    expect(contextButton.textContent).toContain("通用模式");
+    expect(screen.getByText("正在思考")).toBeTruthy();
+
+    fireEvent.click(contextButton);
+    expect(screen.getByText("运行规则与安全边界已加载。", { exact: true })).toBeTruthy();
+  });
 });

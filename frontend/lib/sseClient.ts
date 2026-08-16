@@ -12,6 +12,11 @@ export type MemoryTraceItem = {
 };
 
 export type MemoryTrace = {
+  /** Safe runtime metadata; raw prompts, schemas, and guard reasons stay server-only. */
+  runtime?: {
+    mode?: "general" | "knowledge_base" | "travel";
+    safety?: "standard" | "heightened";
+  };
   profile?: {
     injected: boolean;
     counts?: {
@@ -49,6 +54,7 @@ export type Citation = {
 
 export type ChatEvent = {
   event:
+    | "context_ready"
     | "tool_start"
     | "tool_end"
     | "tool_blocked"
