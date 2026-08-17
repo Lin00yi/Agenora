@@ -66,6 +66,14 @@ class Settings(BaseSettings):
     # Cap expand width — each extra query is another embed + Milvus (+ optional rerank).
     kb_query_policy_max_queries: int = 2
     kb_query_policy_llm_model: str = ""
+    # Retrieval has three separate stages: candidates per retrieval route,
+    # evidence returned to the agent, and evidence admitted by relevance.
+    # Keep the defaults intentionally conservative for small support KBs.
+    kb_retrieval_candidate_limit: int = 6
+    kb_retrieval_final_limit: int = 3
+    kb_retrieval_min_dense_score: float = 0.4
+    # A dense hit at or above this score makes the optional KG fallback unnecessary.
+    kb_kg_skip_if_dense_score_ge: float = 0.7
     # Skip cross-encoder rerank when first-stage top score is already strong.
     # Set to 0 to always rerank when configured.
     kb_rerank_skip_if_score_ge: float = 0.7

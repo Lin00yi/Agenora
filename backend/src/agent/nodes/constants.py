@@ -6,9 +6,6 @@ from typing import Any, Literal, TypedDict
 MAX_ITERATIONS = 10
 MAX_SEARCH_KB_CALLS_PER_STEP = 3
 MAX_KB_REWRITE_QUERIES = 3
-DEFAULT_KB_SEARCH_LIMIT = 5
-# Cosine / hybrid dense score threshold used by prompts as "strong" evidence.
-_KB_STRONG_HIT_SCORE = 0.7
 MAX_AUTO_CONTINUATIONS = 2
 EMPTY_ANSWER_FALLBACK = (
     "本轮模型未返回有效内容。请直接点重试，或换一种问法后再试一次。"
@@ -33,6 +30,27 @@ _RULE_SKIP_KEYWORDS = (
     "翻译成",
     "润色",
     "改写这段",
+)
+_RULE_ABUSE_HINTS = (
+    "去死",
+    "滚开",
+    "滚蛋",
+    "傻逼",
+    "垃圾",
+)
+_RULE_INFORMATION_SEEKING_HINTS = (
+    "?",
+    "？",
+    "吗",
+    "么",
+    "如何",
+    "怎么",
+    "为什么",
+    "多少",
+    "哪些",
+    "是否",
+    "能否",
+    "能不能",
 )
 _RULE_MULTI_INTENT_KEYWORDS = (
     "以及",

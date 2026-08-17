@@ -23,6 +23,7 @@ from typing import Any, TYPE_CHECKING
 import httpx
 
 from src.infra.embedding import embed
+from src.infra.retrieval_policy import resolve_kb_retrieval_policy
 from src.infra.reranker import rerank
 from src.conversations.context import RAG_RESERVE, estimate_tokens, truncate_text_to_token_budget
 from src.infra.vector_store import get_store
@@ -38,8 +39,6 @@ log = logging.getLogger(__name__)
 # v3-M4: when reranker is enabled we over-fetch candidates to give the
 # cross-encoder more material to choose from. 4x is the industry default;
 # capped at 30 so a misbehaving caller can't blow up the upstream quota.
-_RERANK_OVERFETCH_MULTIPLIER = 4
-_RERANK_OVERFETCH_CAP = 30
 # The chat allocator reserves this capacity for retrieved knowledge. Enforcing
 # it at the tool boundary prevents one large document from consuming the whole
 # prompt before the next planning step can apply its final context budget.
@@ -54,6 +53,13 @@ def _chunk_enabled(hit: dict) -> bool:
         return False
     doc_on = payload.get("doc_enabled", True)
     return doc_on is not False and doc_on != "false" and doc_on != 0
+
+
+def _normalized_score(value: Any) -> float:
+    try:
+        return max(0.0, min(float(value), 1.0))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _describe_error(exc: BaseException) -> str:
@@ -81,8 +87,8 @@ class KBSearchTool(Tool):
             },
             "limit": {
                 "type": "integer",
-                "description": "返回 top-k 数，默认 5。",
-                "default": 5,
+            "description": "返回经相关性准入后的 top-k 证据，默认 3。",
+            "default": 3,
             },
         },
         "required": ["query"],
@@ -117,7 +123,7 @@ class KBSearchTool(Tool):
             f"基于 chunks 内容作答，不要编造。"
         )
 
-    async def execute(self, query: str, limit: int = 5) -> ToolResult:
+    async def execute(self, query: str, limit: int = 3) -> ToolResult:
         if not query or not query.strip():
             return ToolResult(text="", latency_ms=0, error="query is empty")
 
@@ -137,19 +143,21 @@ class KBSearchTool(Tool):
                 return ToolResult(
                     text="", latency_ms=0, error="KB search requires a multi-collection backend (qdrant or milvus)"
                 )
+            policy = resolve_kb_retrieval_policy()
+            # The caller's limit is an evidence budget, not a permission to
+            # inject arbitrary amounts of KB text. Each route over-fetches a
+            # small, configurable candidate set before fusion; only the final
+            # configured amount can survive relevance admission.
+            original_limit = min(
+                max(1, min(int(limit) if limit else policy.final_limit, 20)),
+                policy.final_limit,
+            )
+            fetch_limit = max(original_limit, policy.candidate_limit)
             # v3-M3: prefer hybrid (dense + BM25) if the collection was built
             # with the hybrid schema. Falls back to dense-only for legacy
             # collections and Qdrant. RRF picks the top-N members; per-chunk
             # `score` is still cosine similarity so the v2-M6 prompt's 3-tier
             # threshold logic continues to work unchanged.
-            original_limit = max(1, min(int(limit) if limit else 5, 20))
-            # v3-M4: when reranker is enabled, over-fetch so the cross-encoder
-            # has more candidates to discriminate over.
-            fetch_limit = (
-                min(original_limit * _RERANK_OVERFETCH_MULTIPLIER, _RERANK_OVERFETCH_CAP)
-                if self.reranker_cfg
-                else original_limit
-            )
             supports_hybrid = (
                 hasattr(store, "hybrid_search")
                 and hasattr(store, "collection_supports_hybrid")
@@ -229,16 +237,38 @@ class KBSearchTool(Tool):
                 top_score,
             )
 
-        # Trim to caller's requested limit (defensive: the rerank path already
-        # returns at most top_n, but over-fetched hits without rerank need it).
+        # Admit evidence in the tool, not merely in a prompt instruction. RRF
+        # may surface a keyword match with weak dense similarity; until a
+        # calibrated cross-encoder exception is configured, low-score hits are
+        # deliberately treated as a KB miss rather than sent to the model.
+        min_dense_score = policy.min_dense_score
         hits = [h for h in hits if _chunk_enabled(h)]
+        candidate_count = len(hits)
+        max_score = max(
+            (_normalized_score(hit.get("score")) for hit in hits), default=0.0
+        )
+        hits = [
+            hit
+            for hit in hits
+            if _normalized_score(hit.get("score")) >= min_dense_score
+        ]
         hits = hits[:original_limit]
 
         if not hits:
             return ToolResult(
-                text=f"知识库「{self.kb_name}」中没有找到与「{query}」相关的内容。",
+                text=(
+                    f"知识库「{self.kb_name}」中没有找到与「{query}」相关的内容。"
+                    f"（候选最高相关度 {max_score:.3f}，准入阈值 {min_dense_score:.3f}）"
+                ),
                 latency_ms=0,
-                raw={"hits": 0, "kb_id": self.kb_id, "results": []},
+                raw={
+                    "hits": 0,
+                    "kb_id": self.kb_id,
+                    "results": [],
+                    "candidate_hits": candidate_count,
+                    "max_score": max_score,
+                    "min_dense_score": min_dense_score,
+                },
             )
 
         # Format: per-chunk block with source filename + score for citation.

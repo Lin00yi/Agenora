@@ -127,7 +127,7 @@ async def test_query_policy_direct_rule_does_not_call_llm(
 
     assert next_state["query_policy_action"] == "direct"
     assert next_state["query_policy_source"] == "rule"
-    assert next_state["kb_queries"] == [{"query": "Agenora 支持私有化吗？", "limit": 5}]
+    assert next_state["kb_queries"] == [{"query": "Agenora 支持私有化吗？", "limit": 3}]
     assert next_state["kb_search_done"] is False
 
 
@@ -297,7 +297,7 @@ async def test_query_rewrite_node_falls_back_to_user_query(
     next_state = await query_rewrite_node(state, cost=CostTracker(), llm_cfg=_llm_cfg())
 
     assert next_state["kb_queries"] == [
-        {"query": "Agenora 支持私有化吗？", "limit": 5}
+        {"query": "Agenora 支持私有化吗？", "limit": 3}
     ]
 
 
@@ -405,6 +405,66 @@ def test_rule_query_policy_defers_multi_intent_to_llm() -> None:
 
     # Multi-intent / multi-clause should return None so query_policy LLM can decide.
     assert _rule_query_policy("目前有哪些卡片，以及卡组涉及哪些？", max_queries=2) is None
+
+
+def test_rule_query_policy_defers_ambiguous_abuse_to_semantic_classifier() -> None:
+    from src.agent.nodes import _rule_query_policy
+
+    decision = _rule_query_policy("去死吧 Roogoo", max_queries=2)
+
+    assert decision is None
+
+
+@pytest.mark.asyncio
+async def test_query_policy_semantically_skips_non_informational_abuse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_policy_env(monkeypatch, KB_QUERY_POLICY_MODE="llm_fallback")
+
+    class FakeCompletions:
+        async def create(self, **kwargs: Any) -> Any:
+            assert "情绪表达、抱怨或攻击性话语" in kwargs["messages"][0]["content"]
+            return SimpleNamespace(
+                usage=None,
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(
+                            content='{"action":"skip_kb","queries":[],"reason":"non_informational"}'
+                        )
+                    )
+                ],
+            )
+
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
+    monkeypatch.setattr("src.agent.nodes.get_client", lambda cfg=None: fake_client)
+
+    state = {"messages": [{"role": "user", "content": "去死吧 Roogoo"}]}
+    next_state = await query_policy_node(state, cost=CostTracker(), llm_cfg=_llm_cfg())
+
+    assert next_state["query_policy_action"] == "skip_kb"
+    assert next_state["query_policy_source"] == "llm"
+    assert next_state["kb_queries"] == []
+
+
+@pytest.mark.asyncio
+async def test_query_policy_fails_closed_for_ambiguous_abuse_when_classifier_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_policy_env(monkeypatch, KB_QUERY_POLICY_MODE="llm_fallback")
+
+    class FailingCompletions:
+        async def create(self, **kwargs: Any) -> Any:  # noqa: ARG002
+            raise RuntimeError("classifier unavailable")
+
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FailingCompletions()))
+    monkeypatch.setattr("src.agent.nodes.get_client", lambda cfg=None: fake_client)
+
+    state = {"messages": [{"role": "user", "content": "去死吧 Roogoo"}]}
+    next_state = await query_policy_node(state, cost=CostTracker(), llm_cfg=_llm_cfg())
+
+    assert next_state["query_policy_action"] == "skip_kb"
+    assert next_state["query_policy_source"] == "fallback"
+    assert next_state["query_policy_reason"] == "semantic_non_kb_classification_failed"
 
 
 @pytest.mark.asyncio

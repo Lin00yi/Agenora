@@ -8,6 +8,7 @@ from typing import Any
 
 from src.agent.state import AgentState, RetrievedEvidence
 from src.conversations.context import RAG_RESERVE, estimate_tokens, truncate_text_to_token_budget
+from src.infra.retrieval_policy import resolve_kb_retrieval_policy
 from src.observability import traced
 from src.safety.prompt_injection import (
     enrich_filtered_rag_chunks,
@@ -18,9 +19,7 @@ from src.tools.base import ToolRegistry, ToolResult
 from src.tools.citations import citations_from_tool_raw, merge_citations
 
 from .constants import (
-    DEFAULT_KB_SEARCH_LIMIT,
     MAX_KB_REWRITE_QUERIES,
-    _KB_STRONG_HIT_SCORE,
     _KG_NEED_HINTS,
 )
 
@@ -147,13 +146,15 @@ def _max_score_from_tool_raw(raw: Any) -> float:
     return best
 
 
-def _kb_context_has_strong_hit(context_items: list[dict[str, Any]]) -> bool:
+def _kb_context_has_strong_hit(
+    context_items: list[dict[str, Any]], *, threshold: float
+) -> bool:
     """True when any parallel KB search returned a strong dense similarity hit."""
     for item in context_items:
         if item.get("error"):
             continue
         try:
-            if float(item.get("max_score") or 0.0) >= _KB_STRONG_HIT_SCORE:
+            if float(item.get("max_score") or 0.0) >= threshold:
                 return True
         except (TypeError, ValueError):
             continue
@@ -197,14 +198,15 @@ async def kb_search_node(
         }
 
     bounded_queries = queries[:MAX_KB_REWRITE_QUERIES]
+    retrieval_policy = resolve_kb_retrieval_policy()
 
     async def _run_search(idx: int, item: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
         query = str(item.get("query") or "").strip()
         try:
-            limit = int(item.get("limit") or DEFAULT_KB_SEARCH_LIMIT)
+            limit = int(item.get("limit") or retrieval_policy.final_limit)
         except (TypeError, ValueError):
-            limit = DEFAULT_KB_SEARCH_LIMIT
-        args = {"query": query, "limit": max(1, min(limit, 10))}
+            limit = retrieval_policy.final_limit
+        args = {"query": query, "limit": max(1, min(limit, retrieval_policy.final_limit))}
         tool_id = f"kb_search_{idx}_{int(time.time() * 1000)}"
 
         await emit({"event": "tool_start", "id": tool_id, "name": "search_kb", "input": args})
@@ -296,7 +298,9 @@ async def kb_search_node(
     )
 
     context_only = [ctx for _, ctx in pairs]
-    kb_strong = _kb_context_has_strong_hit(context_only)
+    kb_strong = _kb_context_has_strong_hit(
+        context_only, threshold=retrieval_policy.kg_skip_if_dense_score_ge
+    )
 
     # Opportunistic KG: non-relational query + weak KB → run KG once after vector search.
     if kg_task is None and kg_registered and not kb_strong:

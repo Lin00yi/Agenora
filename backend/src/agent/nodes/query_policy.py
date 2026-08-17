@@ -7,18 +7,20 @@ from typing import Any, TYPE_CHECKING
 
 from src.agent.state import AgentState
 from src.infra.llm import CostTracker, pick_model, with_cache_control
+from src.infra.retrieval_policy import resolve_kb_retrieval_policy
 from src.observability import ageneration, traced
 from src.safety.prompt_injection import assess_prompt_injection
 
 from .constants import (
-    DEFAULT_KB_SEARCH_LIMIT,
     MAX_KB_REWRITE_QUERIES,
     QueryPolicyAction,
     QueryPolicyDecision,
     QueryPolicySource,
     _QUERY_POLICY_ACTIONS,
     _QUERY_POLICY_MODES,
+    _RULE_ABUSE_HINTS,
     _RULE_FOLLOWUP_KEYWORDS,
+    _RULE_INFORMATION_SEEKING_HINTS,
     _RULE_MULTI_INTENT_KEYWORDS,
     _RULE_SKIP_KEYWORDS,
     _latest_user_text,
@@ -38,6 +40,10 @@ def _configured_max_kb_queries() -> int:
         return MAX_KB_REWRITE_QUERIES
 
 
+def _configured_kb_final_limit() -> int:
+    return resolve_kb_retrieval_policy().final_limit
+
+
 def _coerce_kb_queries(
     payload: Any,
     fallback_query: str,
@@ -54,10 +60,11 @@ def _coerce_kb_queries(
 
     queries: list[dict[str, Any]] = []
     seen: set[str] = set()
+    final_limit = _configured_kb_final_limit()
     if isinstance(raw_queries, list):
         for item in raw_queries:
             query = ""
-            limit = DEFAULT_KB_SEARCH_LIMIT
+            limit = final_limit
             if isinstance(item, str):
                 query = item
             elif isinstance(item, dict):
@@ -67,17 +74,17 @@ def _coerce_kb_queries(
                     try:
                         limit = int(raw_limit)
                     except (TypeError, ValueError):
-                        limit = DEFAULT_KB_SEARCH_LIMIT
+                        limit = final_limit
             query = " ".join(query.split())
             if not query or query in seen:
                 continue
             seen.add(query)
-            queries.append({"query": query, "limit": max(1, min(limit, 10))})
+            queries.append({"query": query, "limit": max(1, min(limit, final_limit))})
             if len(queries) >= max_queries:
                 break
 
     if not queries and fallback_query.strip():
-        queries.append({"query": fallback_query.strip(), "limit": DEFAULT_KB_SEARCH_LIMIT})
+        queries.append({"query": fallback_query.strip(), "limit": final_limit})
     return queries
 
 
@@ -145,6 +152,14 @@ def _rule_query_policy(query: str, *, max_queries: int) -> QueryPolicyDecision |
     if any(keyword in text for keyword in _RULE_SKIP_KEYWORDS):
         return _skip_policy_decision(reason="obvious_non_kb_intent", source="rule", latency_ms=0)
 
+    # Do not make a retrieval decision solely from a sensitive-word match.
+    # Route ambiguous emotional/abusive wording to the policy classifier below;
+    # it can distinguish "去死吧 Roogoo" from a genuine question that quotes
+    # the same phrase. The rule layer remains responsible only for obvious,
+    # semantically stable intents.
+    if _needs_semantic_non_kb_classification(text):
+        return None
+
     punctuation_multi = text.count("？") + text.count("?") + text.count("；") + text.count(";")
     intent_hits = sum(1 for keyword in _RULE_MULTI_INTENT_KEYWORDS if keyword in text)
     has_connector = any(connector in text for connector in ("和", "及", "与", "、", ",", "，"))
@@ -170,6 +185,20 @@ def _rule_query_policy(query: str, *, max_queries: int) -> QueryPolicyDecision |
             latency_ms=0,
         )
     return _skip_policy_decision(reason="max_queries_disabled", source="rule", latency_ms=0)
+
+
+def _needs_semantic_non_kb_classification(text: str) -> bool:
+    """True for emotional/abusive utterances that need intent classification.
+
+    This is deliberately a *routing* heuristic, never the final decision.
+    Presence of an information-seeking marker keeps the request on the normal
+    policy path so quoted terms in a real question are not rejected by a word
+    list alone.
+    """
+    return (
+        any(keyword in text for keyword in _RULE_ABUSE_HINTS)
+        and not any(marker in text for marker in _RULE_INFORMATION_SEEKING_HINTS)
+    )
 
 
 def _normalize_query_policy_mode(value: str | None) -> str:
@@ -293,6 +322,13 @@ async def query_policy_node(
             rule_decision["latency_ms"] = int((time.perf_counter() - start) * 1000)
             return _apply_query_policy_decision(state, rule_decision, cost=cost)
         if mode == "rule_only":
+            if _needs_semantic_non_kb_classification(user_query):
+                decision = _skip_policy_decision(
+                    reason="semantic_non_kb_classification_unavailable",
+                    source="fallback",
+                    latency_ms=int((time.perf_counter() - start) * 1000),
+                )
+                return _apply_query_policy_decision(state, decision, cost=cost)
             decision = _direct_policy_decision(
                 user_query,
                 reason="rule_only_uncertain_fallback_direct",
@@ -322,10 +358,13 @@ async def query_policy_node(
         "- normalize: 追问、代词或上下文依赖，补全成 1 条明确 query。\n"
         f"- expand: 仅当问题明确包含多个独立意图时才使用，拆成最多 {max_queries} 条 query；"
         "能用 1 条就不要 expand。\n"
-        "- skip_kb: 闲聊、翻译、润色、总结刚才回答、系统操作等不需要 KB 的请求，queries 为空。\n"
+        "- skip_kb: 闲聊、翻译、润色、总结刚才回答、系统操作，以及没有明确事实/流程/政策问题的情绪表达、抱怨或攻击性话语；queries 为空。\n"
+        "- 不要因为文本包含产品名就检索。只有用户明确询问产品事实、费用、规则、操作流程、故障或政策时才检索。\n"
         "优先 direct / normalize；不要为了“更全面”而随意 expand。\n"
         "query 必须保留用户原问题里的产品名、实体、限制条件，不要制造新主题。\n"
-        'JSON 格式：{"action":"direct","queries":[{"query":"...","limit":5}],"reason":"short_reason"}\n'
+        'JSON 格式：{"action":"direct","queries":[{"query":"...","limit":'
+        f'{_configured_kb_final_limit()}'
+        '}],"reason":"short_reason"}\n'
     )
     if kb_name or kb_description:
         system_prompt += (
@@ -381,11 +420,18 @@ async def query_policy_node(
             latency_ms=int((time.perf_counter() - start) * 1000),
         )
     except Exception:  # noqa: BLE001
-        decision = _direct_policy_decision(
-            user_query,
-            reason="llm_policy_failed_fallback_direct",
-            source="fallback",
-            latency_ms=int((time.perf_counter() - start) * 1000),
-        )
+        if _needs_semantic_non_kb_classification(user_query):
+            decision = _skip_policy_decision(
+                reason="semantic_non_kb_classification_failed",
+                source="fallback",
+                latency_ms=int((time.perf_counter() - start) * 1000),
+            )
+        else:
+            decision = _direct_policy_decision(
+                user_query,
+                reason="llm_policy_failed_fallback_direct",
+                source="fallback",
+                latency_ms=int((time.perf_counter() - start) * 1000),
+            )
 
     return _apply_query_policy_decision(state, decision, cost=cost)

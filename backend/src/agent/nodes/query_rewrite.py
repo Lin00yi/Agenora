@@ -7,7 +7,7 @@ from src.agent.state import AgentState
 from src.infra.llm import CostTracker, pick_model, with_cache_control
 
 from .constants import MAX_KB_REWRITE_QUERIES, _latest_user_text
-from .query_policy import _coerce_kb_queries, _extract_json_object
+from .query_policy import _coerce_kb_queries, _configured_kb_final_limit, _extract_json_object
 
 if TYPE_CHECKING:
     from src.settings_user import UserLLMConfig
@@ -51,7 +51,7 @@ async def query_rewrite_node(
         "- 查询之间要覆盖不同检索角度，但不要制造用户没有问到的新主题。\n"
         "- 每条 query 适合直接传给 KB 向量检索。\n"
         "- 只输出 JSON，不要输出解释文字。\n"
-        'JSON 格式：{"queries":[{"query":"...","limit":5}]}\n'
+        f'JSON 格式：{{"queries":[{{"query":"...","limit":{_configured_kb_final_limit()}}}]}}\n'
     )
     if kb_name or kb_description:
         system_prompt += (
