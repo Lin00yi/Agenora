@@ -42,7 +42,7 @@ export default function ExportActions({
         </button>
         {cost != null && (
           <span className="kf-export-cost basis-full text-xs tabular-nums sm:ml-auto sm:basis-auto">
-            本次成本约 ${cost.toFixed(4)}
+            本次已跟踪成本约 ${cost.toFixed(4)}
           </span>
         )}
       </div>

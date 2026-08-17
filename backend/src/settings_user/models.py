@@ -22,7 +22,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Boolean, DateTime, Integer, String, select
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -51,6 +51,9 @@ class UserLLMConfig:
     # override. This keeps a 16K local model from inheriting a 200K cloud-model
     # setting when both live under one BYOK connection.
     model_context_windows: dict[str, int | None] = field(default_factory=dict)
+    # User-entered reseller/proxy prices, in USD per 1M tokens. Entries are
+    # keyed by model ID and deliberately travel with the selected profile.
+    model_pricing_overrides: dict[str, dict[str, float | None]] = field(default_factory=dict)
     # None denotes an environment/legacy config that has no independently
     # managed connection record.  Profile-backed calls set this so health and
     # circuit state can be tracked without ever retaining a plaintext secret.
@@ -88,6 +91,10 @@ class LLMModelProfile(Base):
     display_name: Mapped[str] = mapped_column(String(96), nullable=False)
     model_id: Mapped[str] = mapped_column(String(128), nullable=False)
     context_window: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    input_price_per_million: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    output_price_per_million: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    cache_read_price_per_million: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    cache_write_price_per_million: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
     supports_tools: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
@@ -102,8 +109,19 @@ class LLMModelProfile(Base):
             "display_name": self.display_name,
             "model_id": self.model_id,
             "context_window": self.context_window,
+            "pricing_override": self.pricing_override(),
             "enabled": self.enabled,
             "supports_tools": self.supports_tools,
+        }
+
+    def pricing_override(self) -> dict[str, float | None] | None:
+        if self.input_price_per_million is None or self.output_price_per_million is None:
+            return None
+        return {
+            "input": self.input_price_per_million,
+            "output": self.output_price_per_million,
+            "cache_read": self.cache_read_price_per_million,
+            "cache_write": self.cache_write_price_per_million,
         }
 
 
@@ -365,6 +383,11 @@ async def resolve_llm_profile_config(
         context_window=profile.context_window,
         complex_enabled=False,
         model_context_windows={profile.model_id: profile.context_window},
+        model_pricing_overrides={
+            profile.model_id: override
+            for override in [profile.pricing_override()]
+            if override is not None
+        },
         connection_id=connection.id,
     )
     return profile, cfg

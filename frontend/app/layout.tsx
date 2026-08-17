@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   title: APP_NAME,
   description: "把任意知识库变成可对话的资料助手：上传文档、抓取网页，然后一句话问出答案。",
   icons: {
-    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    icon: [{ url: "/logo.svg", type: "image/svg+xml" }],
   },
 };
 

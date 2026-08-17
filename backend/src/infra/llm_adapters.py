@@ -197,13 +197,14 @@ def _finalize_generation(
     text_parts: list[str],
     tool_calls: list[LLMToolCall],
     usage: Any,
+    llm_cfg: "UserLLMConfig | None" = None,
 ) -> None:
     from src.infra.llm import CostTracker
 
     cost_usd = None
     try:
         tracker = CostTracker()
-        tracker.add(model, usage)
+        tracker.add(model, usage, cfg=llm_cfg)
         cost_usd = tracker.usd
     except Exception:  # noqa: BLE001
         pass
@@ -277,7 +278,8 @@ class AnthropicToolAdapter:
                     )
 
             _finalize_generation(
-                gen, model=model, text_parts=text_parts, tool_calls=tool_calls, usage=resp.usage
+                gen, model=model, text_parts=text_parts, tool_calls=tool_calls, usage=resp.usage,
+                llm_cfg=self.llm_cfg,
             )
             return LLMToolChatResponse(
                 text_parts=text_parts,
@@ -365,6 +367,7 @@ class AnthropicToolAdapter:
                 text_parts=parsed.text_parts,
                 tool_calls=parsed.tool_calls,
                 usage=parsed.usage,
+                llm_cfg=self.llm_cfg,
             )
             return await _fanout_complete_response(parsed, hooks, gen)
 
@@ -403,6 +406,7 @@ class AnthropicToolAdapter:
             text_parts=parsed.text_parts,
             tool_calls=parsed.tool_calls,
             usage=parsed.usage,
+            llm_cfg=self.llm_cfg,
         )
         return parsed
 
@@ -447,6 +451,7 @@ class AnthropicToolAdapter:
 
 class OpenAICompatToolAdapter:
     def __init__(self, *, llm_cfg: "UserLLMConfig | None" = None) -> None:
+        self.llm_cfg = llm_cfg
         self.client = get_client(llm_cfg)
 
     async def chat_with_tools(
@@ -480,6 +485,7 @@ class OpenAICompatToolAdapter:
                 text_parts=parsed.text_parts,
                 tool_calls=parsed.tool_calls,
                 usage=parsed.usage,
+                llm_cfg=self.llm_cfg,
             )
             return parsed
 
@@ -528,6 +534,7 @@ class OpenAICompatToolAdapter:
                     text_parts=parsed.text_parts,
                     tool_calls=parsed.tool_calls,
                     usage=parsed.usage,
+                    llm_cfg=self.llm_cfg,
                 )
                 return await _fanout_complete_response(parsed, hooks, gen)
 
@@ -677,6 +684,7 @@ class OpenAICompatToolAdapter:
             text_parts=parsed.text_parts,
             tool_calls=parsed.tool_calls,
             usage=parsed.usage,
+            llm_cfg=self.llm_cfg,
         )
         return parsed
 

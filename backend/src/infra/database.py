@@ -344,6 +344,19 @@ def _migrate_additive_columns(sync_conn) -> None:
             sync_conn.execute(
                 text("ALTER TABLE llm_model_profiles ADD COLUMN connection_id VARCHAR(36)")
             )
+        # Per-profile price overrides are intentionally nullable. NULL means
+        # resolve from the checked-in models.dev catalog; a pair of input/output
+        # prices means the user is billing through a reseller or private proxy.
+        for column in (
+            "input_price_per_million",
+            "output_price_per_million",
+            "cache_read_price_per_million",
+            "cache_write_price_per_million",
+        ):
+            if column not in profile_cols:
+                sync_conn.execute(
+                    text(f"ALTER TABLE llm_model_profiles ADD COLUMN {column} FLOAT")
+                )
     if "llm_connections" in tables:
         connection_cols = {c["name"] for c in insp.get_columns("llm_connections")}
         connection_new_cols = [

@@ -55,6 +55,7 @@ class AgentState(TypedDict, total=False):
     final_report: str | None
     report_streamed: bool                     # True when final answer tokens were SSE-streamed live
     iterations: int                          # plan loop guard
-    cost_usd: float
+    # None means one or more provider calls had no trustworthy configured price.
+    cost_usd: float | None
     # Safe per-call token allocation; excludes raw prompts, schemas and content.
     prompt_trace: dict[str, Any]

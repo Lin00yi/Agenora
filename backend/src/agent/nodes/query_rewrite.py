@@ -77,7 +77,7 @@ async def query_rewrite_node(
                 ],
                 max_tokens=512,
             )
-            cost.add(model, getattr(resp, "usage", None))
+            cost.add(model, getattr(resp, "usage", None), cfg=llm_cfg)
             text = resp.choices[0].message.content or ""
         else:
             resp = await client.messages.create(
@@ -86,7 +86,7 @@ async def query_rewrite_node(
                 system=with_cache_control([{"type": "text", "text": system_prompt}], llm_cfg),
                 messages=[{"role": "user", "content": user_query}],
             )
-            cost.add(model, resp.usage)
+            cost.add(model, resp.usage, cfg=llm_cfg)
             text = "\n".join(
                 block.text for block in resp.content if getattr(block, "type", "") == "text"
             )
@@ -102,5 +102,5 @@ async def query_rewrite_node(
         "kb_context": "",
         "retrieved_evidence": [],
         "kb_search_done": False,
-        "cost_usd": cost.usd,
+        "cost_usd": cost.total_usd,
     }

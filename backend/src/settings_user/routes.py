@@ -74,6 +74,13 @@ class LLMModelProfileBody(BaseModel):
     display_name: str = Field(min_length=1, max_length=96)
     model_id: str = Field(min_length=1, max_length=128)
     context_window: int | None = Field(default=None, ge=4_096, le=2_000_000)
+    # Optional complete override for the actual connection price, in USD per
+    # million tokens. This is needed for resellers and private proxies whose
+    # billing differs from a model's vendor price in models.dev.
+    input_price_per_million: float | None = Field(default=None, ge=0, le=100_000)
+    output_price_per_million: float | None = Field(default=None, ge=0, le=100_000)
+    cache_read_price_per_million: float | None = Field(default=None, ge=0, le=100_000)
+    cache_write_price_per_million: float | None = Field(default=None, ge=0, le=100_000)
     enabled: bool = True
     supports_tools: bool = True
 
@@ -158,6 +165,22 @@ def _profile_to_public(profile: LLMModelProfile) -> dict:
             else None
         ),
     }
+
+
+def _validate_profile_pricing(body: LLMModelProfileBody) -> None:
+    if (body.input_price_per_million is None) != (body.output_price_per_million is None):
+        raise HTTPException(
+            status_code=422,
+            detail="自定义价格必须同时填写输入和输出单价。",
+        )
+    if (
+        body.input_price_per_million is None
+        and (body.cache_read_price_per_million is not None or body.cache_write_price_per_million is not None)
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="缓存价格只能与输入、输出自定义价格一起填写。",
+        )
 
 
 def _to_public(
@@ -531,6 +554,7 @@ async def create_llm_model_profile(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     """Register an arbitrary chat model under the user's validated connection."""
+    _validate_profile_pricing(body)
     await ensure_legacy_llm_connection(session, user)
     connections = await _owned_llm_connections(session, user_id=user.id)
     connection_id = body.connection_id
@@ -550,6 +574,10 @@ async def create_llm_model_profile(
         display_name=body.display_name.strip(),
         model_id=model_id,
         context_window=body.context_window,
+        input_price_per_million=body.input_price_per_million,
+        output_price_per_million=body.output_price_per_million,
+        cache_read_price_per_million=body.cache_read_price_per_million,
+        cache_write_price_per_million=body.cache_write_price_per_million,
         enabled=body.enabled,
         supports_tools=body.supports_tools,
     )
@@ -569,6 +597,7 @@ async def update_llm_model_profile(
     profile = await session.get(LLMModelProfile, profile_id)
     if profile is None or profile.user_id != user.id:
         raise HTTPException(status_code=404, detail="model profile not found")
+    _validate_profile_pricing(body)
     next_model_id = normalize_model_name(body.model_id) or ""
     connections = await _owned_llm_connections(session, user_id=user.id)
     connection_id = body.connection_id or profile.connection_id
@@ -587,6 +616,10 @@ async def update_llm_model_profile(
     profile.connection_id = connection.id
     profile.model_id = next_model_id
     profile.context_window = body.context_window
+    profile.input_price_per_million = body.input_price_per_million
+    profile.output_price_per_million = body.output_price_per_million
+    profile.cache_read_price_per_million = body.cache_read_price_per_million
+    profile.cache_write_price_per_million = body.cache_write_price_per_million
     profile.enabled = body.enabled
     profile.supports_tools = body.supports_tools
     await session.commit()

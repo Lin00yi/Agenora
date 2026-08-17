@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="gradA1" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#7B2CFF"/>
+      <stop offset="45%" stop-color="#1557FF"/>
+      <stop offset="100%" stop-color="#18C7F4"/>
+    </linearGradient>
+    <linearGradient id="gradA2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1F39FF"/>
+      <stop offset="55%" stop-color="#176CFF"/>
+      <stop offset="100%" stop-color="#1BD4F4"/>
+    </linearGradient>
+    <linearGradient id="gradSwoosh" x1="0%" y1="60%" x2="100%" y2="30%">
+      <stop offset="0%" stop-color="#401BFF"/>
+      <stop offset="45%" stop-color="#175DFF"/>
+      <stop offset="100%" stop-color="#25D5F5"/>
+    </linearGradient>
+    <linearGradient id="gradStar" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#2455FF"/>
+      <stop offset="100%" stop-color="#16C8F4"/>
+    </linearGradient>
+  </defs>
+
+  <path d="M218 777
+           C214 733 235 682 262 630
+           L420 328
+           C454 262 493 219 544 219
+           C587 219 618 247 645 299
+           L690 385
+           C669 396 649 405 628 414
+           L587 338
+           C571 308 555 291 537 291
+           C518 291 502 309 485 342
+           L340 624
+           C319 665 300 705 292 737
+           C279 786 251 807 218 777Z"
+        fill="url(#gradA1)"/>
+  <path d="M547 220
+           C592 220 625 249 650 298
+           L803 598
+           C829 649 848 699 847 741
+           C846 786 823 813 788 813
+           C751 813 727 784 710 742
+           L566 392
+           C554 362 540 336 524 316
+           C503 291 506 247 547 220Z"
+        fill="url(#gradA2)"/>
+  <path d="M429 331
+           C456 277 490 243 530 244
+           C558 245 581 263 603 299
+           C571 288 544 299 521 332
+           L401 564
+           C374 608 341 643 303 661
+           L429 331Z"
+        fill="#1738D7" opacity="0.82"/>
+  <path d="M257 731
+           C355 617 470 563 592 538
+           C684 519 743 488 799 447
+           C822 430 843 418 858 421
+           C870 423 872 438 865 454
+           C844 501 788 541 723 571
+           C633 613 526 638 430 671
+           C355 697 302 721 257 731Z"
+        fill="url(#gradSwoosh)"/>
+  <path d="M274 711
+           C390 600 506 566 608 542
+           C693 522 749 496 808 453"
+        fill="none" stroke="#F4FBFF" stroke-width="8" stroke-linecap="round"/>
+  <path d="M803 286
+           C810 319 825 335 858 342
+           C825 349 810 365 803 398
+           C796 365 781 349 748 342
+           C781 335 796 319 803 286Z"
+        fill="url(#gradStar)"/>
+</svg>

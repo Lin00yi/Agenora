@@ -9,14 +9,6 @@ from src.settings import get_settings
 if TYPE_CHECKING:
     from src.settings_user import UserLLMConfig
 
-# Cost per 1M tokens (USD). Update with vendor pricing.
-PRICING = {
-    "claude-haiku-4-5-20251001": {"in": 1.0, "out": 5.0},
-    "claude-sonnet-4-6": {"in": 3.0, "out": 15.0},
-    "claude-opus-4-7": {"in": 15.0, "out": 75.0},
-    "deepseek-v4-flash": {"in": 0.14, "out": 0.28},
-}
-
 # DeepSeek retired this identifier. Keep this normalization at the request
 # boundary too: deployment environments can still have an old explicit env
 # value even after their database rows are migrated on startup.
@@ -39,10 +31,43 @@ class CostTracker:
     cache_read_tokens: int = 0
     cache_creation_tokens: int = 0
     usd: float = 0.0
+    has_unknown_price: bool = False
     calls: list[dict[str, Any]] = field(default_factory=list)
 
-    def add(self, model: str, usage: Any) -> None:
-        price = PRICING.get(model, {"in": 1.0, "out": 5.0})
+    @property
+    def total_usd(self) -> float | None:
+        """Return a total only when every tracked provider call was priced."""
+        return None if self.has_unknown_price else self.usd
+
+    def add(self, model: str, usage: Any, *, cfg: "UserLLMConfig | None" = None) -> None:
+        """Add provider-reported usage using a profile override or models.dev.
+
+        Never use a made-up fallback price: a partial total is worse than an
+        explicit unknown total when a custom gateway bills differently.
+        """
+        from src.infra.model_catalog import ModelPricing, resolve_model_pricing
+
+        override = (getattr(cfg, "model_pricing_overrides", {}) or {}).get(model)
+        if override is not None:
+            try:
+                price = ModelPricing(
+                    input=float(override["input"]),
+                    output=float(override["output"]),
+                    cache_read=(
+                        float(override["cache_read"])
+                        if override.get("cache_read") is not None
+                        else None
+                    ),
+                    cache_write=(
+                        float(override["cache_write"])
+                        if override.get("cache_write") is not None
+                        else None
+                    ),
+                )
+            except (KeyError, TypeError, ValueError):
+                price = None
+        else:
+            price = resolve_model_pricing(model, provider=getattr(cfg, "provider", None))
         in_t = getattr(usage, "input_tokens", 0) or getattr(usage, "prompt_tokens", 0)
         out_t = getattr(usage, "output_tokens", 0) or getattr(usage, "completion_tokens", 0)
         cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
@@ -53,12 +78,23 @@ class CostTracker:
         self.cache_read_tokens += cache_read
         self.cache_creation_tokens += cache_create
 
-        # Cache read costs 10% of normal input.
+        if price is None:
+            self.has_unknown_price = True
+            self.calls.append(
+                {"model": model, "in": in_t, "out": out_t, "cache_read": cache_read, "usd": None}
+            )
+            return
+
+        # Some catalog entries do not publish cache prices. Anthropic's
+        # standard 10% read / 125% write rule is retained only as a documented
+        # fallback for those entries, never as a fallback for model pricing.
+        cache_read_price = price.cache_read if price.cache_read is not None else price.input * 0.1
+        cache_write_price = price.cache_write if price.cache_write is not None else price.input * 1.25
         call_cost = (
-            in_t * price["in"] / 1_000_000
-            + out_t * price["out"] / 1_000_000
-            + cache_read * price["in"] * 0.1 / 1_000_000
-            + cache_create * price["in"] * 1.25 / 1_000_000
+            in_t * price.input / 1_000_000
+            + out_t * price.output / 1_000_000
+            + cache_read * cache_read_price / 1_000_000
+            + cache_create * cache_write_price / 1_000_000
         )
         self.usd += call_cost
         self.calls.append(
@@ -140,7 +176,10 @@ def resolve_empty_answer_fallback_model(
     fallback_model = normalize_model_name(fallback_model) or (fallback_model or "").strip()
     if fallback_model and fallback_model != current:
         return fallback_model
-    if getattr(cfg, "complex_enabled", True) and complex_model and complex_model != current:
+    # Empty-answer recovery is a resilience path, not normal automatic
+    # complexity routing. A separately configured complex model remains a
+    # valid one-shot fallback even when automatic upgrades are disabled.
+    if complex_model and complex_model != current:
         return complex_model
     if default_model and default_model != current:
         return default_model

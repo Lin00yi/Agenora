@@ -308,7 +308,8 @@ def _run_chat_session(
                 # persisted so the in-chat trace and durable message agree.
                 await queue.put({"event": "context_ready", "memory_trace": memory_trace})
             report = redact_sensitive_output(final_state.get("final_report") or "")
-            cost_usd = round(final_state.get("cost_usd", 0.0), 6)
+            raw_cost_usd = final_state.get("cost_usd")
+            cost_usd = round(raw_cost_usd, 6) if isinstance(raw_cost_usd, (int, float)) else None
             report_streamed = bool(final_state.get("report_streamed"))
             if not report.strip():
                 # Last-resort guard: never end the SSE round with zero tokens.

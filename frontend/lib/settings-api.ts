@@ -67,6 +67,8 @@ export type LLMModelProfile = {
   context_window: number | null;
   context_window_resolved?: number | null;
   context_window_source?: "manual" | "models.dev" | "fallback" | null;
+  /** User-specific reseller/proxy pricing, USD per 1M tokens. */
+  pricing_override?: ModelPricing | null;
   /** Offline metadata generated from the models.dev SDK snapshot. */
   catalog?: {
     canonical_id: string;
@@ -74,10 +76,18 @@ export type LLMModelProfile = {
     lab: string;
     context_window: number;
     max_output_tokens: number | null;
+    pricing: ModelPricing | null;
     logo_url: string;
   } | null;
   enabled: boolean;
   supports_tools: boolean;
+};
+
+export type ModelPricing = {
+  input: number;
+  output: number;
+  cache_read: number | null;
+  cache_write: number | null;
 };
 
 export type MyEmbeddingSettings = {
@@ -128,6 +138,10 @@ export type SaveLLMModelProfileBody = {
   display_name: string;
   model_id: string;
   context_window: number | null;
+  input_price_per_million?: number | null;
+  output_price_per_million?: number | null;
+  cache_read_price_per_million?: number | null;
+  cache_write_price_per_million?: number | null;
   enabled: boolean;
   supports_tools: boolean;
 };

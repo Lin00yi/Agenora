@@ -131,7 +131,7 @@ def _apply_query_policy_decision(
         "query_policy_latency_ms": decision["latency_ms"],
     }
     if cost is not None:
-        next_state["cost_usd"] = cost.usd
+        next_state["cost_usd"] = cost.total_usd
     return next_state
 
 
@@ -354,7 +354,7 @@ async def query_policy_node(
                     ],
                     max_tokens=512,
                 )
-                cost.add(model, getattr(resp, "usage", None))
+                cost.add(model, getattr(resp, "usage", None), cfg=llm_cfg)
                 text = resp.choices[0].message.content or ""
                 if gen is not None:
                     gen.update(output=text, usage=getattr(resp, "usage", None))
@@ -365,7 +365,7 @@ async def query_policy_node(
                     system=with_cache_control([{"type": "text", "text": system_prompt}], llm_cfg),
                     messages=[{"role": "user", "content": user_query}],
                 )
-                cost.add(model, resp.usage)
+                cost.add(model, resp.usage, cfg=llm_cfg)
                 text = "\n".join(
                     block.text for block in resp.content if getattr(block, "type", "") == "text"
                 )

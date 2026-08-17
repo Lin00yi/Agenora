@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { cn } from "@/lib/cn";
 
 export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || "Agenora";
@@ -33,32 +34,14 @@ const SIZES: Record<BrandSize, { box: string; mark: string; text: string }> = {
 
 function BrandMark({ className }: { className?: string }) {
   return (
-    <svg
+    <Image
       aria-hidden="true"
+      alt=""
       className={className}
-      fill="none"
-      viewBox="0 0 1254 1254"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        fill="#272e3e"
-        fillRule="evenodd"
-        d="M810.6 612.93a187.5 187.5 0 1 1-375 0 187.5 187.5 0 1 1 375 0ZM803.5 498a67.1 67.1 0 1 0-134.2 0 67.1 67.1 0 1 0 134.2 0Z"
-      />
-      <path
-        d="M899.77 582.87a278.3 278.3 0 0 1-429.06 262.93"
-        stroke="#575e72"
-        strokeWidth="65.7"
-        strokeLinecap="round"
-      />
-      <path
-        d="M370.08 748.6a287.1 287.1 0 0 1 347.44-406.8"
-        stroke="#202737"
-        strokeWidth="68.5"
-        strokeLinecap="round"
-      />
-      <circle cx="845.4" cy="435.5" r="50.2" fill="#7e89cb" />
-    </svg>
+      height={56}
+      src="/logo.svg"
+      width={56}
+    />
   );
 }
 

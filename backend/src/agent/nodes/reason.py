@@ -482,7 +482,7 @@ async def reason_node(
                 on_tool_detected=_on_tool_detected,
             ),
         )
-    cost.add(model, resp.usage)
+    cost.add(model, resp.usage, cfg=active_llm_cfg)
     cache_trace = prompt_trace.get("cache")
     if isinstance(cache_trace, dict):
         cache_trace["cache_read_tokens"] = int(
@@ -522,6 +522,7 @@ async def reason_node(
                 adapter,
                 cost=cost,
                 model=model,
+                llm_cfg=active_llm_cfg,
                 system_prompt=effective_system_prompt,
                 provider_messages=provider_messages,
                 initial_text=final_report,
@@ -547,6 +548,8 @@ async def reason_node(
             cost=cost,
             model=model,
             fallback_model=fallback_model,
+            llm_cfg=active_llm_cfg,
+            fallback_llm_cfg=fallback_llm_cfg,
             fallback_adapter=(
                 create_tool_adapter(fallback_llm_cfg)
                 if fallback_llm_cfg is not None and fallback_llm_cfg != active_llm_cfg
@@ -575,7 +578,7 @@ async def reason_node(
         "iterations": iters + 1,
         "final_report": final_report,
         "report_streamed": report_streamed,
-        "cost_usd": cost.usd,
+        "cost_usd": cost.total_usd,
         "prompt_trace": prompt_trace,
     }
 
@@ -603,6 +606,7 @@ async def _recover_empty_answer(
     *,
     cost: CostTracker,
     model: str,
+    llm_cfg: "UserLLMConfig | None",
     system_prompt: str,
     provider_messages: list[dict[str, Any]],
     max_tokens: int,
@@ -645,7 +649,7 @@ async def _recover_empty_answer(
         log.exception("empty_answer_recovery_failed model=%s", model)
         return "", False
 
-    cost.add(model, resp.usage)
+    cost.add(model, resp.usage, cfg=llm_cfg)
     text = _join_usable_text(resp.text_parts)
     if not text:
         return "", streamed
@@ -674,6 +678,7 @@ async def _recover_empty_answer(
             adapter,
             cost=cost,
             model=model,
+            llm_cfg=llm_cfg,
             system_prompt=system_prompt,
             provider_messages=recovery_messages,
             initial_text=text,
@@ -691,6 +696,8 @@ async def _recover_empty_answer_pipeline(
     cost: CostTracker,
     model: str,
     fallback_model: str | None,
+    llm_cfg: "UserLLMConfig | None",
+    fallback_llm_cfg: "UserLLMConfig | None" = None,
     fallback_adapter: Any | None = None,
     system_prompt: str,
     provider_messages: list[dict[str, Any]],
@@ -703,6 +710,7 @@ async def _recover_empty_answer_pipeline(
         adapter,
         cost=cost,
         model=model,
+        llm_cfg=llm_cfg,
         system_prompt=system_prompt,
         provider_messages=provider_messages,
         max_tokens=max_tokens,
@@ -724,6 +732,7 @@ async def _recover_empty_answer_pipeline(
         fallback_adapter or adapter,
         cost=cost,
         model=fallback_model,
+        llm_cfg=fallback_llm_cfg or llm_cfg,
         system_prompt=system_prompt,
         provider_messages=provider_messages,
         max_tokens=max_tokens,
@@ -813,6 +822,7 @@ async def _auto_continue_report(
     *,
     cost: CostTracker,
     model: str,
+    llm_cfg: "UserLLMConfig | None",
     system_prompt: str,
     provider_messages: list[dict[str, Any]],
     initial_text: str,
@@ -844,7 +854,7 @@ async def _auto_continue_report(
             stream=emit is not None,
             hooks=hooks,
         )
-        cost.add(model, resp.usage)
+        cost.add(model, resp.usage, cfg=llm_cfg)
         text = "\n".join(resp.text_parts).strip()
         if not text:
             break

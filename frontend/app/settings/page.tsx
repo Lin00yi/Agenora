@@ -39,6 +39,7 @@ import {
   probeLLMConnection,
   saveLLMModelPolicy,
   saveLLMSettings,
+  updateLLMModelProfile,
   type LLMConnection,
   type LLMModelProfile,
   type LLMProvider,
@@ -100,6 +101,13 @@ function formatProfileContextWindow(profile: LLMModelProfile) {
   if (!window) return "上下文自动识别";
   if (window % 1_000_000 === 0) return `${window / 1_000_000}M`;
   return `${window / 1_000}K`;
+}
+
+function formatProfilePricing(profile: LLMModelProfile) {
+  const pricing = profile.pricing_override ?? profile.catalog?.pricing;
+  if (!pricing) return "价格未知";
+  const source = profile.pricing_override ? "自定义" : "models.dev";
+  return `${source}：$${pricing.input}/$${pricing.output} / M tokens`;
 }
 
 /** User-level LLM configuration. KB retrieval options remain a separate region below. */
@@ -659,6 +667,10 @@ function ModelProfilesManager({
   const [modelId, setModelId] = useState("");
   const [connectionId, setConnectionId] = useState("");
   const [windowValue, setWindowValue] = useState("");
+  const [inputPrice, setInputPrice] = useState("");
+  const [outputPrice, setOutputPrice] = useState("");
+  const [cacheReadPrice, setCacheReadPrice] = useState("");
+  const [cacheWritePrice, setCacheWritePrice] = useState("");
   const [connectionProvider, setConnectionProvider] = useState<LLMProvider>("openai-compat");
   const [connectionUrl, setConnectionUrl] = useState("");
   const [connectionKey, setConnectionKey] = useState("");
@@ -669,6 +681,12 @@ function ModelProfilesManager({
   const [savingPolicy, setSavingPolicy] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [profilePendingRemoval, setProfilePendingRemoval] = useState<LLMModelProfile | null>(null);
+  const [pricingProfile, setPricingProfile] = useState<LLMModelProfile | null>(null);
+  const [editingInputPrice, setEditingInputPrice] = useState("");
+  const [editingOutputPrice, setEditingOutputPrice] = useState("");
+  const [editingCacheReadPrice, setEditingCacheReadPrice] = useState("");
+  const [editingCacheWritePrice, setEditingCacheWritePrice] = useState("");
+  const [savingPricing, setSavingPricing] = useState(false);
   const [connectionPendingRemoval, setConnectionPendingRemoval] = useState<LLMConnection | null>(null);
   const [defaultModel, setDefaultModel] = useState(initial?.default_profile_id ?? "");
   const [complexEnabled, setComplexEnabled] = useState(initial?.complex_enabled ?? false);
@@ -702,6 +720,10 @@ function ModelProfilesManager({
     setManualProfileModelId(false);
     setProfileContextOverride(false);
     setWindowValue("");
+    setInputPrice("");
+    setOutputPrice("");
+    setCacheReadPrice("");
+    setCacheWritePrice("");
   };
 
   const selectProfileConnection = (nextConnectionId: string) => {
@@ -833,9 +855,27 @@ function ModelProfilesManager({
 
   const addProfile = async () => {
     const parsedWindow = windowValue.trim() ? Number(windowValue) : null;
+    const parsePrice = (value: string) => value.trim() ? Number(value) : null;
+    const parsedInputPrice = parsePrice(inputPrice);
+    const parsedOutputPrice = parsePrice(outputPrice);
+    const parsedCacheReadPrice = parsePrice(cacheReadPrice);
+    const parsedCacheWritePrice = parsePrice(cacheWritePrice);
     if (!modelId.trim()) return;
     if (parsedWindow !== null && (!Number.isInteger(parsedWindow) || parsedWindow < 4_096 || parsedWindow > 2_000_000)) {
       toast.error("上下文窗口需在 4,096 到 2,000,000 之间。");
+      return;
+    }
+    const prices = [parsedInputPrice, parsedOutputPrice, parsedCacheReadPrice, parsedCacheWritePrice];
+    if (prices.some((price) => price !== null && (!Number.isFinite(price) || price < 0))) {
+      toast.error("价格必须是大于或等于 0 的数字。");
+      return;
+    }
+    if ((parsedInputPrice === null) !== (parsedOutputPrice === null)) {
+      toast.error("自定义价格需同时填写输入和输出单价。");
+      return;
+    }
+    if (parsedInputPrice === null && (parsedCacheReadPrice !== null || parsedCacheWritePrice !== null)) {
+      toast.error("缓存价格需与输入、输出自定义价格一起填写。");
       return;
     }
     setSavingProfile(true);
@@ -850,6 +890,10 @@ function ModelProfilesManager({
         display_name: name.trim() || modelId.trim(),
         model_id: modelId.trim(),
         context_window: parsedWindow,
+        input_price_per_million: parsedInputPrice,
+        output_price_per_million: parsedOutputPrice,
+        cache_read_price_per_million: parsedCacheReadPrice,
+        cache_write_price_per_million: parsedCacheWritePrice,
         enabled: true,
         supports_tools: true,
       });
@@ -919,6 +963,55 @@ function ModelProfilesManager({
       toast.error(error instanceof Error ? error.message : "移除模型失败");
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const openPricingEditor = (profile: LLMModelProfile) => {
+    const pricing = profile.pricing_override;
+    setPricingProfile(profile);
+    setEditingInputPrice(pricing?.input?.toString() ?? "");
+    setEditingOutputPrice(pricing?.output?.toString() ?? "");
+    setEditingCacheReadPrice(pricing?.cache_read?.toString() ?? "");
+    setEditingCacheWritePrice(pricing?.cache_write?.toString() ?? "");
+  };
+
+  const savePricingOverride = async () => {
+    if (!pricingProfile) return;
+    const parsePrice = (value: string) => value.trim() ? Number(value) : null;
+    const input = parsePrice(editingInputPrice);
+    const output = parsePrice(editingOutputPrice);
+    const cacheRead = parsePrice(editingCacheReadPrice);
+    const cacheWrite = parsePrice(editingCacheWritePrice);
+    const values = [input, output, cacheRead, cacheWrite];
+    if (values.some((price) => price !== null && (!Number.isFinite(price) || price < 0))) {
+      toast.error("价格必须是大于或等于 0 的数字。");
+      return;
+    }
+    if ((input === null) !== (output === null) || (input === null && (cacheRead !== null || cacheWrite !== null))) {
+      toast.error("自定义价格需同时填写输入和输出；缓存价格不能单独填写。");
+      return;
+    }
+    setSavingPricing(true);
+    try {
+      await updateLLMModelProfile(pricingProfile.id, {
+        connection_id: pricingProfile.connection_id,
+        display_name: pricingProfile.display_name,
+        model_id: pricingProfile.model_id,
+        context_window: pricingProfile.context_window,
+        input_price_per_million: input,
+        output_price_per_million: output,
+        cache_read_price_per_million: cacheRead,
+        cache_write_price_per_million: cacheWrite,
+        enabled: pricingProfile.enabled,
+        supports_tools: pricingProfile.supports_tools,
+      });
+      await onChanged();
+      setPricingProfile(null);
+      toast.success(input === null ? "已恢复 models.dev 自动计价" : "自定义计价已保存");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "保存计价失败");
+    } finally {
+      setSavingPricing(false);
     }
   };
 
@@ -1107,7 +1200,7 @@ function ModelProfilesManager({
           <p className="text-xs font-semibold text-brand">模型配置</p>
           <h3 id="model-profiles-heading" className="mt-1 text-balance text-lg font-semibold">可用模型配置</h3>
           <p className="mt-1 text-pretty text-sm leading-6 text-muted">
-            每个配置绑定一个连接、模型 ID 和上下文窗口。会话固定选择与路由策略都使用这份列表。
+            每个配置绑定一个连接、模型 ID、上下文窗口和计价来源。会话固定选择与路由策略都使用这份列表。
           </p>
         </div>
         <Button type="button" size="sm" onClick={() => setAdding(true)}><Plus className="h-4 w-4" />添加模型</Button>
@@ -1123,6 +1216,7 @@ function ModelProfilesManager({
                   {profile.enabled ? "可选" : "已停用"}
                 </Badge>
                 <span className="text-xs text-muted">{formatProfileContextWindow(profile)}</span>
+                <span className="text-xs text-muted">{formatProfilePricing(profile)}</span>
               </div>
               <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted">
                 {profile.display_name !== profile.model_id && <span className="font-mono" title={profile.model_id}>{profile.model_id}</span>}
@@ -1132,10 +1226,13 @@ function ModelProfilesManager({
                 })()}
               </p>
             </div>
-            <Button type="button" variant="destructive" size="sm" onClick={() => setProfilePendingRemoval(profile)} disabled={deletingId === profile.id}>
-              {deletingId === profile.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-              移除
-            </Button>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => openPricingEditor(profile)}>定价</Button>
+              <Button type="button" variant="destructive" size="sm" onClick={() => setProfilePendingRemoval(profile)} disabled={deletingId === profile.id}>
+                {deletingId === profile.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                移除
+              </Button>
+            </div>
           </div>
         ))}
       </div>
@@ -1231,7 +1328,7 @@ function ModelProfilesManager({
             >
               <span className="flex min-w-0 items-center gap-2">
                 <span className="text-ink">高级选项</span>
-                <span className="truncate text-xs font-normal text-muted">自定义显示名称</span>
+                <span className="truncate text-xs font-normal text-muted">显示名称与代理/转售价格</span>
               </span>
               <ChevronDown className={cn("size-4 shrink-0", showProfileOverrides && "rotate-180")} aria-hidden />
             </button>
@@ -1240,6 +1337,24 @@ function ModelProfilesManager({
                 <Field label="显示名称（可选）" htmlFor="profile-name" description="留空时直接使用模型 ID。">
                   <input id="profile-name" value={name} onChange={(event) => setName(event.target.value)} className="admin-input" placeholder={modelId || "例如 长文分析"} autoComplete="off" />
                 </Field>
+                <div className="mt-4 border-t border-surface-border/70 pt-4">
+                  <p className="text-sm font-medium text-ink">自定义计价（可选）</p>
+                  <p className="mt-1 text-xs leading-5 text-muted">仅当此服务的实际账单价不同于 models.dev 时填写，单位为美元 / 百万 tokens。输入与输出必须成对填写；留空则自动使用模型目录，未知模型不显示成本。</p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <Field label="输入单价" htmlFor="profile-input-price" description="美元 / M tokens。">
+                      <input id="profile-input-price" type="number" min="0" step="0.0001" value={inputPrice} onChange={(event) => setInputPrice(event.target.value)} className="admin-input font-mono" placeholder="例如 0.14" />
+                    </Field>
+                    <Field label="输出单价" htmlFor="profile-output-price" description="美元 / M tokens。">
+                      <input id="profile-output-price" type="number" min="0" step="0.0001" value={outputPrice} onChange={(event) => setOutputPrice(event.target.value)} className="admin-input font-mono" placeholder="例如 0.28" />
+                    </Field>
+                    <Field label="缓存读取单价（可选）" htmlFor="profile-cache-read-price" description="美元 / M tokens。">
+                      <input id="profile-cache-read-price" type="number" min="0" step="0.0001" value={cacheReadPrice} onChange={(event) => setCacheReadPrice(event.target.value)} className="admin-input font-mono" placeholder="默认按输入单价的 10%" />
+                    </Field>
+                    <Field label="缓存写入单价（可选）" htmlFor="profile-cache-write-price" description="美元 / M tokens。">
+                      <input id="profile-cache-write-price" type="number" min="0" step="0.0001" value={cacheWritePrice} onChange={(event) => setCacheWritePrice(event.target.value)} className="admin-input font-mono" placeholder="默认按输入单价的 125%" />
+                    </Field>
+                  </div>
+                </div>
               </div>
             ) : null}
           </div>
@@ -1250,6 +1365,37 @@ function ModelProfilesManager({
             </Button>
           </div>
         </section>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {pricingProfile && (
+        <Dialog open={Boolean(pricingProfile)} onOpenChange={(open) => {
+          if (!open && !savingPricing) setPricingProfile(null);
+        }}>
+          <DialogContent closeDisabled={savingPricing} className="sm:max-w-xl">
+            <DialogHeader>
+              <DialogTitle>配置“{pricingProfile.display_name}”的计价</DialogTitle>
+              <DialogDescription>默认使用 models.dev 中该模型的官方价。若当前连接是转售、代理或私有网关，请改为其实际账单价。单位均为美元 / 百万 tokens。</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="输入单价" htmlFor="edit-profile-input-price" description="留空需同时清空输出单价，以恢复自动计价。">
+                <input id="edit-profile-input-price" type="number" min="0" step="0.0001" value={editingInputPrice} onChange={(event) => setEditingInputPrice(event.target.value)} className="admin-input font-mono" />
+              </Field>
+              <Field label="输出单价" htmlFor="edit-profile-output-price" description="美元 / M tokens。">
+                <input id="edit-profile-output-price" type="number" min="0" step="0.0001" value={editingOutputPrice} onChange={(event) => setEditingOutputPrice(event.target.value)} className="admin-input font-mono" />
+              </Field>
+              <Field label="缓存读取单价（可选）" htmlFor="edit-profile-cache-read-price" description="留空时使用输入单价的 10%。">
+                <input id="edit-profile-cache-read-price" type="number" min="0" step="0.0001" value={editingCacheReadPrice} onChange={(event) => setEditingCacheReadPrice(event.target.value)} className="admin-input font-mono" />
+              </Field>
+              <Field label="缓存写入单价（可选）" htmlFor="edit-profile-cache-write-price" description="留空时使用输入单价的 125%。">
+                <input id="edit-profile-cache-write-price" type="number" min="0" step="0.0001" value={editingCacheWritePrice} onChange={(event) => setEditingCacheWritePrice(event.target.value)} className="admin-input font-mono" />
+              </Field>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setPricingProfile(null)} disabled={savingPricing}>取消</Button>
+              <Button type="button" onClick={savePricingOverride} disabled={savingPricing}>{savingPricing && <Loader2 className="h-4 w-4 animate-spin" />}{savingPricing ? "正在保存" : "保存计价"}</Button>
+            </div>
           </DialogContent>
         </Dialog>
       )}
