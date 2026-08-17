@@ -113,13 +113,15 @@ async def test_call_tools_node_enforces_web_call_and_total_evidence_limits() -> 
 
     assert [call["query"] for call in tool.calls] == ["first", "second"]
     tool_results = next_state["messages"][-1]["content"]
-    assert tool_results[2]["is_error"] is True
-    assert "web_search call limit exceeded: max 2 per response" in tool_results[2]["content"]
+    assert tool_results[2]["is_error"] is False
+    assert "web search budget exhausted" in tool_results[2]["content"]
     # The second query's higher-quality rows win the whole-response budget.
     assert len(next_state["citations"]) == 5
     assert all("/second/" in citation["url"] for citation in next_state["citations"])
     assert next_state["web_search_call_count"] == 2
     assert next_state["web_search_evidence_count"] == 5
+    assert not [event for event in events if event["event"] == "tool_blocked"]
+    assert len(next_state["tool_call_log"]) == 2
     web_end_citations = [
         citation
         for event in events

@@ -38,6 +38,10 @@ async def call_tools_node(
     _ = llm_cfg
 
     blocked_tool_call_ids: dict[str, str] = {}
+    # A spent search budget is expected control flow, not a safety violation.
+    # Keep it out of the user-facing tool timeline while telling the model to
+    # finish from the evidence already collected.
+    exhausted_web_tool_call_ids: set[str] = set()
     search_kb_calls = 0
     previous_web_calls = max(0, int(state.get("web_search_call_count") or 0))
     allowed_web_calls = previous_web_calls
@@ -51,16 +55,25 @@ async def call_tools_node(
                 )
         if name == "web_search" and web_search_max_calls is not None:
             if allowed_web_calls >= max(0, web_search_max_calls):
-                blocked_tool_call_ids[tc["id"]] = (
-                    "web_search call limit exceeded: "
-                    f"max {max(0, web_search_max_calls)} per response"
-                )
+                exhausted_web_tool_call_ids.add(tc["id"])
             else:
                 allowed_web_calls += 1
 
     async def _run(tc: dict[str, Any]) -> dict[str, Any]:
         name = tc["name"]
         args = tc.get("input") or {}
+        if tc["id"] in exhausted_web_tool_call_ids:
+            return {
+                "type": "tool_result",
+                "tool_use_id": tc["id"],
+                "content": (
+                    "[web search budget exhausted] 本轮外网检索额度已用尽。"
+                    "不要再调用 web_search；请仅基于已获得的网页证据回答。"
+                    "若证据不足，请直接说明无法确认的部分。"
+                ),
+                "is_error": False,
+                "hidden_from_trace": True,
+            }
         if tc["id"] in blocked_tool_call_ids:
             reason = blocked_tool_call_ids[tc["id"]]
             await emit(
@@ -144,7 +157,11 @@ async def call_tools_node(
     accepted_web_evidence = 0
     web_rows: list[tuple[int, int, int]] = []
     for result_index, (tc, result) in enumerate(zip(pending, results, strict=False)):
-        if tc.get("name") != "web_search" or result.get("is_error"):
+        if (
+            tc.get("name") != "web_search"
+            or result.get("is_error")
+            or result.get("hidden_from_trace")
+        ):
             continue
         raw = result.get("raw")
         rows = raw.get("results", []) if isinstance(raw, dict) else []
@@ -170,7 +187,11 @@ async def call_tools_node(
             selected_rows.setdefault(result_index, set()).add(row_index)
 
     for result_index, (tc, result) in enumerate(zip(pending, results, strict=False)):
-        if tc.get("name") != "web_search" or result.get("is_error"):
+        if (
+            tc.get("name") != "web_search"
+            or result.get("is_error")
+            or result.get("hidden_from_trace")
+        ):
             continue
         raw = select_web_result_raw(
             result.get("raw"), indices=selected_rows.get(result_index, set())
@@ -195,6 +216,8 @@ async def call_tools_node(
     tool_log = list(state.get("tool_call_log") or [])
     turn_citations = list(state.get("citations") or [])
     for tc, r in zip(pending, results, strict=False):
+        if r.get("hidden_from_trace"):
+            continue
         cites = r.get("citations") or []
         turn_citations = merge_citations(turn_citations, cites)
         tool_log.append(
