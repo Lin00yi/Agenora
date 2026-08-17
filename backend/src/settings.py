@@ -74,6 +74,15 @@ class Settings(BaseSettings):
     kb_retrieval_min_dense_score: float = 0.4
     # A dense hit at or above this score makes the optional KG fallback unnecessary.
     kb_kg_skip_if_dense_score_ge: float = 0.7
+    # ===== Web search budgets =====
+    # General chat may verify a topic from more than one angle. KB-bound chat
+    # keeps the web as a small fallback so private documents remain primary.
+    general_web_search_max_calls: int = 2
+    general_web_search_results_per_call: int = 5
+    general_web_search_evidence_limit: int = 5
+    kb_web_search_max_calls: int = 1
+    kb_web_search_results_per_call: int = 3
+    kb_web_search_evidence_limit: int = 3
     # Skip cross-encoder rerank when first-stage top score is already strong.
     # Set to 0 to always rerank when configured.
     kb_rerank_skip_if_score_ge: float = 0.7

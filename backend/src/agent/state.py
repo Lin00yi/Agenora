@@ -36,6 +36,9 @@ class AgentState(TypedDict, total=False):
     messages: list[dict[str, Any]]           # Anthropic messages history
     pending_tool_calls: list[dict[str, Any]] # tool_use blocks awaiting execution
     tool_call_log: list[ToolCallRecord]      # observable timeline for ThinkingChain UI
+    # Server-enforced web-search budget across all tool-loop iterations.
+    web_search_call_count: int
+    web_search_evidence_count: int
     kb_queries: list[dict[str, Any]]         # deterministic KB search queries from query_policy_node
     # Legacy flattened retrieval text. Retained only for a reversible
     # ``legacy_system`` rollout mode; new requests use ``retrieved_evidence``.

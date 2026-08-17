@@ -139,11 +139,12 @@ def build_default_registry(
     skip rerank (default). System KBs ignore this regardless.
 
     `user_kb_web_search_enabled` (v2-M6): per-user opt-in flag. When True and
-    a user KB is selected, also mount `WebSearchTool(default=3, cap=5)` —
+    a user KB is selected, also mount `WebSearchTool(default=3, cap=3)` —
     tighter than the unbound-chat mount because KB chunks should remain the
     primary source.
     """
     from src.kb.models import SYSTEM_TRAVEL_KB_ID
+    from src.infra.web_search_policy import resolve_web_search_policy
 
     reg = ToolRegistry()
 
@@ -153,8 +154,14 @@ def build_default_registry(
         from src.tools.current_time import CurrentTimeTool
         from src.tools.web_search import WebSearchTool
 
+        web_policy = resolve_web_search_policy("general")
         reg.register(CurrentTimeTool())
-        reg.register(WebSearchTool())
+        reg.register(
+            WebSearchTool(
+                max_results_default=web_policy.results_per_call,
+                max_results_cap=web_policy.results_per_call,
+            )
+        )
         return reg
 
     # Built-in travel demo KB — keep v1 four-tool kit.
@@ -188,5 +195,11 @@ def build_default_registry(
 
         # Tighter caps than general chat: KB is the primary source so web is
         # just a fallback for queries the KB doesn't cover.
-        reg.register(WebSearchTool(max_results_default=3, max_results_cap=5))
+        web_policy = resolve_web_search_policy("kb")
+        reg.register(
+            WebSearchTool(
+                max_results_default=web_policy.results_per_call,
+                max_results_cap=web_policy.results_per_call,
+            )
+        )
     return reg

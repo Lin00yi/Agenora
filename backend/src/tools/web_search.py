@@ -1,11 +1,81 @@
 """web_search general-purpose web search tool."""
 from __future__ import annotations
 
+import re
 from typing import Any
+from urllib.parse import urlparse
 
 from src.settings import get_settings
 from src.tools.base import Tool, ToolResult
 from src.tools.search_providers import get_search_provider
+
+
+_GENERIC_TITLES = {"untitled", "undefined", "null", "n/a"}
+_ASCII_TERM_RE = re.compile(r"[a-z0-9][a-z0-9._+-]{1,}", re.I)
+_CJK_CHAR_RE = re.compile(r"[\u3400-\u9fff]")
+
+
+def _normalized_text(value: str) -> str:
+    return " ".join((value or "").lower().split())
+
+
+def _quality_score(query: str, *, title: str, url: str, body: str) -> int | None:
+    """Return a lightweight relevance score or ``None`` for unusable results.
+
+    Search providers already rank candidates. This guard removes common noisy
+    rows (blank/Untitled cards, malformed URLs, and zero overlap with the
+    query) before results become model evidence or visible citations.
+    """
+    clean_title = (title or "").strip()
+    clean_body = (body or "").strip()
+    parsed = urlparse((url or "").strip())
+    if (
+        not clean_title
+        or clean_title.lower() in _GENERIC_TITLES
+        or not clean_body
+        or parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+    ):
+        return None
+
+    haystack = _normalized_text(f"{clean_title} {clean_body} {parsed.netloc}")
+    ascii_terms = set(_ASCII_TERM_RE.findall(_normalized_text(query)))
+    ascii_hits = sum(term in haystack for term in ascii_terms)
+    cjk_chars = set(_CJK_CHAR_RE.findall(query))
+    cjk_hits = sum(char in haystack for char in cjk_chars)
+    if ascii_terms and ascii_hits == 0 and cjk_hits < 2:
+        return None
+    if cjk_chars and cjk_hits < min(2, len(cjk_chars)) and ascii_hits == 0:
+        return None
+    return ascii_hits * 4 + cjk_hits
+
+
+def _format_web_results(raw: dict[str, Any]) -> str:
+    query = str(raw.get("query") or "")
+    rows = raw.get("results") if isinstance(raw.get("results"), list) else []
+    if not rows:
+        return f"未找到关于 '{query}' 的高质量网络结果。"
+    lines = []
+    for index, row in enumerate(rows, start=1):
+        if not isinstance(row, dict):
+            continue
+        lines.append(
+            f"[{index}] {str(row.get('title') or '').strip()}\n"
+            f"    URL: {str(row.get('url') or '').strip()}\n"
+            f"    摘要: {str(row.get('body') or '').strip()}"
+        )
+    return "\n\n".join(lines) or f"未找到关于 '{query}' 的高质量网络结果。"
+
+
+def select_web_result_raw(raw: Any, *, indices: set[int]) -> dict[str, Any]:
+    """Keep selected row indexes from a successful web-search payload."""
+    payload = dict(raw) if isinstance(raw, dict) else {"results": []}
+    rows = payload.get("results") if isinstance(payload.get("results"), list) else []
+    kept = [dict(row) for index, row in enumerate(rows) if index in indices and isinstance(row, dict)]
+    payload["results"] = kept
+    payload["count"] = len(kept)
+    payload["truncated"] = len(kept) < len(rows)
+    return payload
 
 
 class WebSearchTool(Tool):
@@ -15,7 +85,7 @@ class WebSearchTool(Tool):
         self,
         *,
         max_results_default: int = 5,
-        max_results_cap: int = 10,
+        max_results_cap: int = 5,
     ) -> None:
         """Per-mount config.
 
@@ -68,9 +138,22 @@ class WebSearchTool(Tool):
         except Exception as exc:  # noqa: BLE001
             return ToolResult(text="", latency_ms=0, error=f"web_search failed: {exc}")
 
-        if not results:
+        ranked: list[tuple[int, int, dict[str, str]]] = []
+        for index, result in enumerate(results):
+            title = result.title.strip()[:120]
+            url = result.url.strip()
+            body = result.body.strip()[:240]
+            quality = _quality_score(query, title=title, url=url, body=body)
+            if quality is not None:
+                ranked.append(
+                    (quality, -index, {"title": title, "url": url, "body": body, "_quality": quality})
+                )
+        ranked.sort(reverse=True)
+        structured = [row for _, _, row in ranked[:n]]
+
+        if not structured:
             return ToolResult(
-                text=f"未找到关于 '{query}' 的网络结果。",
+                text=f"未找到关于 '{query}' 的高质量网络结果。",
                 latency_ms=0,
                 raw={
                     "count": 0,
@@ -80,22 +163,14 @@ class WebSearchTool(Tool):
                 },
             )
 
-        lines: list[str] = []
-        structured: list[dict[str, str]] = []
-        for i, result in enumerate(results, 1):
-            title = result.title.strip()[:120]
-            url = result.url.strip()
-            body = result.body.strip()[:240]
-            lines.append(f"[{i}] {title}\n    URL: {url}\n    摘要: {body}")
-            structured.append({"title": title, "url": url, "body": body})
-
+        raw = {
+            "count": len(structured),
+            "query": query,
+            "provider": provider.name,
+            "results": structured,
+        }
         return ToolResult(
-            text="\n\n".join(lines),
+            text=_format_web_results(raw),
             latency_ms=0,
-            raw={
-                "count": len(results),
-                "query": query,
-                "provider": provider.name,
-                "results": structured,
-            },
+            raw=raw,
         )

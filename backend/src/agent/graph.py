@@ -20,6 +20,7 @@ from src.agent.prompts import (
 )
 from src.agent.state import AgentState
 from src.infra.llm import CostTracker
+from src.infra.web_search_policy import resolve_web_search_policy
 from src.tools.base import ToolRegistry, build_default_registry
 
 if TYPE_CHECKING:
@@ -57,7 +58,7 @@ def build_graph(
     visiting the settings page).
 
     v2-M6: `kb_web_search_enabled` is a per-user opt-in. When True AND a user
-    KB is selected, also mount a tighter `WebSearchTool(default=3, cap=5)` and
+    KB is selected, also mount a tighter `WebSearchTool(default=3, cap=3)` and
     extend the KB prompt with score-interpretation + fallback guidance.
 
     v3-M4: `reranker_cfg` is a per-user opt-in cross-encoder reranker (default
@@ -82,11 +83,13 @@ def build_graph(
         include_travel_skill = False
         include_kb_skill = False
         user_kb_mode = False
+        web_search_policy = resolve_web_search_policy("general")
     elif kb.id == SYSTEM_TRAVEL_KB_ID:
         system_prompt = build_travel_system_prompt()
         include_travel_skill = True
         include_kb_skill = False
         user_kb_mode = False
+        web_search_policy = resolve_web_search_policy("disabled")
     else:
         system_prompt = build_kb_reason_system_prompt(
             kb.name,
@@ -96,6 +99,9 @@ def build_graph(
         include_travel_skill = False
         include_kb_skill = True
         user_kb_mode = True
+        web_search_policy = resolve_web_search_policy(
+            "kb" if kb_web_search_enabled else "disabled"
+        )
 
     cost = CostTracker()
 
@@ -142,7 +148,14 @@ def build_graph(
     )
     g.add_node(
         "call_tools",
-        partial(call_tools_node, registry=registry, emit=em, llm_cfg=llm_cfg),
+        partial(
+            call_tools_node,
+            registry=registry,
+            emit=em,
+            llm_cfg=llm_cfg,
+            web_search_max_calls=web_search_policy.max_calls,
+            web_search_evidence_limit=web_search_policy.evidence_limit,
+        ),
     )
 
     if user_kb_mode:
