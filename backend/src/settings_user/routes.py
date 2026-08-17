@@ -26,28 +26,21 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from src.auth.middleware import CurrentUser
 from src.auth.models import User
+from src.conversations.context import resolve_context_window
 from src.infra.crypto import decrypt, encrypt
 from src.infra.database import get_session
 from src.infra.llm import normalize_model_name
+from src.infra.model_catalog import resolve_model_catalog_entry
 from src.kb.models import KB
-from src.conversations.context import resolve_context_window
-from src.settings_user.probe import (
-    EmbeddingProbeResult,
-    ProbeError,
-    probe_embedding,
-    probe_llm_models,
-)
-from src.settings_user.models import (
-    LLMConnection,
-    LLMModelProfile,
-    ensure_legacy_llm_connection,
-    ensure_legacy_llm_model_profiles,
-    list_llm_connections,
-    list_llm_model_profiles,
-)
+from src.settings_user.models import (LLMConnection, LLMModelProfile,
+                                      ensure_legacy_llm_connection,
+                                      ensure_legacy_llm_model_profiles,
+                                      list_llm_connections,
+                                      list_llm_model_profiles)
+from src.settings_user.probe import (EmbeddingProbeResult, ProbeError,
+                                     probe_embedding, probe_llm_models)
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -159,6 +152,11 @@ def _profile_to_public(profile: LLMModelProfile) -> dict:
         **profile.to_public_dict(),
         "context_window_resolved": context.value,
         "context_window_source": context.source,
+        "catalog": (
+            entry.to_public_dict()
+            if (entry := resolve_model_catalog_entry(profile.model_id))
+            else None
+        ),
     }
 
 
@@ -521,7 +519,7 @@ async def probe_saved_llm_connection(
                 "source": resolution.source,
             }
             for model in models
-            if (resolution := resolve_context_window(model)).source == "registry"
+            if (resolution := resolve_context_window(model)).source == "models.dev"
         },
     }
 
@@ -795,7 +793,7 @@ async def probe_llm(
                 "source": resolution.source,
             }
             for model in models
-            if (resolution := resolve_context_window(model)).source == "registry"
+            if (resolution := resolve_context_window(model)).source == "models.dev"
         },
     }
 

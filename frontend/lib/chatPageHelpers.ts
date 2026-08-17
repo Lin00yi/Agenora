@@ -8,31 +8,18 @@ export const CONVERSATION_PAGE_SIZE = 30;
 export const CHAT_PANE_FADE_MS = 180;
 
 const DEFAULT_CONTEXT_WINDOW = 16_000;
-const CONTEXT_WINDOWS: Record<string, number> = {
-  // Kept temporarily for conversations that have not yet been opened since
-  // the backend startup migration; new DeepSeek calls use the V4 models.
-  "deepseek-chat": 64_000,
-  "deepseek-reasoner": 64_000,
-  "deepseek-v4-flash": 1_000_000,
-  "deepseek-v4-pro": 1_000_000,
-  "gpt-4o": 128_000,
-  "gpt-4o-mini": 128_000,
-  "claude-haiku-4-5-20251001": 200_000,
-  "claude-sonnet-4-6": 200_000,
-  "claude-opus-4-7": 200_000,
-};
 const CONTEXT_OUTPUT_RESERVE = 2_048;
 const CONTEXT_SYSTEM_TOOL_RESERVE = 6_000;
 const CONTEXT_RAG_RESERVE = 8_000;
 const CONTEXT_SAFETY_RESERVE = 2_000;
 
 export function getContextWindowForModel(model: string | null, fallbackModels: string[] = []) {
-  if (model) return CONTEXT_WINDOWS[model] ?? DEFAULT_CONTEXT_WINDOW;
-  const fallbackWindow = Math.max(
-    ...fallbackModels.map((candidate) => CONTEXT_WINDOWS[candidate] ?? DEFAULT_CONTEXT_WINDOW),
-    DEFAULT_CONTEXT_WINDOW
-  );
-  return fallbackWindow;
+  // The backend owns the generated models.dev snapshot. This client-side
+  // estimator only runs when that authoritative context endpoint is down, so
+  // it must not duplicate a second, stale static model table.
+  void model;
+  void fallbackModels;
+  return DEFAULT_CONTEXT_WINDOW;
 }
 
 export function estimateContextStatus(

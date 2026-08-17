@@ -1,8 +1,9 @@
 "use client";
 
-import {
+import React, {
   forwardRef,
   useEffect,
+  useRef,
   useState,
   type ChangeEvent,
   type ReactNode,
@@ -87,6 +88,8 @@ const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(
   ref
 ) {
   const [open, setOpen] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const selectedItemRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (disabled) setOpen(false);
   }, [disabled]);
@@ -111,6 +114,37 @@ const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(
 
   const selected = fromRadixValue(currentValue);
   const selectedOption = allOptions.find((option) => option.value === selected);
+
+  useEffect(() => {
+    if (!open) return;
+
+    // The menu is portalled and positioned after opening. Defer one frame so
+    // its final height is available before deciding whether the selected item
+    // needs to be brought into view.
+    const frameId = requestAnimationFrame(() => {
+      const content = contentRef.current;
+      const selectedItem = selectedItemRef.current;
+      if (
+        !content ||
+        !selectedItem ||
+        !content.contains(selectedItem) ||
+        content.scrollHeight <= content.clientHeight
+      ) {
+        return;
+      }
+
+      const contentBounds = content.getBoundingClientRect();
+      const itemBounds = selectedItem.getBoundingClientRect();
+      if (itemBounds.top < contentBounds.top) {
+        content.scrollTop += itemBounds.top - contentBounds.top;
+      } else if (itemBounds.bottom > contentBounds.bottom) {
+        content.scrollTop += itemBounds.bottom - contentBounds.bottom;
+      }
+    });
+
+    return () => cancelAnimationFrame(frameId);
+  }, [open, selected]);
+
   const currentLabel = selectedOption?.label ?? placeholder ?? placeholderOption?.label ?? "请选择";
   const itemLeading = (option: SelectOption) => (
     <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
@@ -160,23 +194,33 @@ const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
+        ref={contentRef}
         align={contentAlign ?? "start"}
         className={cn("min-w-[var(--radix-dropdown-menu-trigger-width)]", contentClassName)}
       >
         {placeholderOption && (
-          <DropdownMenuItem onSelect={() => emitChange(placeholderOption.value)}>
+          <DropdownMenuItem
+            ref={placeholderOption.value === selected ? selectedItemRef : undefined}
+            onSelect={() => emitChange(placeholderOption.value)}
+          >
             {optionContent(placeholderOption)}
           </DropdownMenuItem>
         )}
         {options.map((option) => (
-          <DropdownMenuItem key={option.value} onSelect={() => emitChange(option.value)}>
+          <DropdownMenuItem
+            key={option.value}
+            ref={option.value === selected ? selectedItemRef : undefined}
+            onSelect={() => emitChange(option.value)}
+          >
             {optionContent(option)}
           </DropdownMenuItem>
         ))}
         {options.length > 0 && submenus.length > 0 && <DropdownMenuSeparator />}
         {submenus.map((submenu) => (
           <DropdownMenuSub key={submenu.label}>
-            <DropdownMenuSubTrigger>
+            <DropdownMenuSubTrigger
+              ref={submenu.options.some((option) => option.value === selected) ? selectedItemRef : undefined}
+            >
               <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
                 {submenu.options.some((option) => option.value === selected) && <CheckIcon className="size-3.5 text-brand" />}
               </span>

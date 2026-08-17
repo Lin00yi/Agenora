@@ -402,7 +402,9 @@ export function formatMessageTime(value?: number | null, now: number = Date.now(
     date.getDate() === current.getDate();
 
   if (isToday) return time;
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${time}:${pad(date.getSeconds())}`;
+  // An en space stays visually wider than a collapsed HTML space while
+  // retaining a compact, single-line timestamp.
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}\u2002${time}:${pad(date.getSeconds())}`;
 }
 
 export function hasVisibleCitations(citations?: Citation[] | null) {

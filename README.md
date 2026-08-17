@@ -52,6 +52,13 @@ cp .env.example .env
 - 后端健康检查：<http://localhost:8000/health>
 - 停止：在运行脚本的终端按 `Ctrl+C`。
 
+模型上下文、实验室名称和 Logo 由 [`@opencode-ai/models`](https://models.dev/) 的离线快照提供；升级该依赖后执行以下命令，并提交生成的 `backend/config/models.dev.snapshot.json`：
+
+```bash
+cd frontend
+npm run sync:model-catalog
+```
+
 `backend/.env` 中须配置可用的 LLM；知识库检索还须配置 Embedding。没有 Key 时前后端仍可启动并访问界面，但无法完成实际模型对话。本地示例未配置 `LIGHTRAG_BASE_URL`，因此不会启用图谱检索；需要该能力时请改为 Docker 模式，或自行启动 LightRAG 与 Neo4j 后配置该地址。
 
 ### 方式二：Docker 本地调试（完整依赖）

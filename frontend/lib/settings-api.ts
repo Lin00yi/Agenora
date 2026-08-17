@@ -18,10 +18,10 @@ export type MyLLMSettings = {
   base_url: string | null;
   default_model: string | null;
   complex_model: string | null;
-  /** Explicit user override. Null means resolve from the server-owned model registry. */
+  /** Explicit user override. Null means resolve from the models.dev snapshot. */
   context_window: number | null;
   context_window_resolved?: number | null;
-  context_window_source?: "manual" | "registry" | "fallback" | null;
+  context_window_source?: "manual" | "models.dev" | "fallback" | null;
   has_key: boolean;
   configured: boolean;
   effective_configured?: boolean;
@@ -29,7 +29,7 @@ export type MyLLMSettings = {
   effective_model?: string | null;
   effective_complex_model?: string | null;
   effective_context_window?: number | null;
-  effective_context_window_source?: "manual" | "registry" | "fallback" | null;
+  effective_context_window_source?: "manual" | "models.dev" | "fallback" | null;
   complex_enabled?: boolean;
   default_profile_id?: string | null;
   complex_profile_id?: string | null;
@@ -63,10 +63,19 @@ export type LLMModelProfile = {
   connection_id: string | null;
   display_name: string;
   model_id: string;
-  /** Explicit user override. Null means the server uses the model capability registry. */
+  /** Explicit user override. Null means the server uses the models.dev snapshot. */
   context_window: number | null;
   context_window_resolved?: number | null;
-  context_window_source?: "manual" | "registry" | "fallback" | null;
+  context_window_source?: "manual" | "models.dev" | "fallback" | null;
+  /** Offline metadata generated from the models.dev SDK snapshot. */
+  catalog?: {
+    canonical_id: string;
+    name: string;
+    lab: string;
+    context_window: number;
+    max_output_tokens: number | null;
+    logo_url: string;
+  } | null;
   enabled: boolean;
   supports_tools: boolean;
 };
@@ -164,7 +173,7 @@ export type ProbeLLMBody = {
 
 export type ProbeLLMResult = {
   models: string[];
-  context_windows?: Record<string, { value: number; source: "registry" }>;
+  context_windows?: Record<string, { value: number; source: "models.dev" }>;
 };
 
 export type ProbeEmbeddingBody = {
@@ -321,7 +330,7 @@ export async function clearEmbeddingSettings(): Promise<void> {
 
 export async function probeLLM(body: ProbeLLMBody): Promise<{
   models: string[];
-  context_windows?: Record<string, { value: number; source: "registry" }>;
+  context_windows?: Record<string, { value: number; source: "models.dev" }>;
 }> {
   return unwrap(
     await authFetch("/api/settings/probe/llm", {

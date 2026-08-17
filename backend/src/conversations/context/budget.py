@@ -12,7 +12,6 @@ from .constants import (
     FORCE_SUMMARY_RATIO,
     MAX_OUTPUT_TOKENS,
     MIN_OUTPUT_TOKENS,
-    MODEL_CONTEXT_WINDOWS,
     OUTPUT_TASK_TARGETS,
     OUTPUT_TOKEN_HARD_CAP,
     PREPARE_SUMMARY_RATIO,
@@ -190,7 +189,7 @@ def trim_messages_to_token_budget(
     return kept
 
 
-ContextWindowSource = Literal["manual", "registry", "fallback"]
+ContextWindowSource = Literal["manual", "models.dev", "fallback"]
 
 
 @dataclass(frozen=True)
@@ -204,7 +203,7 @@ class ContextWindowResolution:
 def resolve_context_window(
     model: str | None, configured_window: int | None = None
 ) -> ContextWindowResolution:
-    """Resolve a model's usable input window from one server-owned registry.
+    """Resolve a model's usable input window from the models.dev catalog.
 
     A stored value is an intentional BYOK override. Unknown OpenAI-compatible
     models fall back conservatively rather than assuming the capacity of a
@@ -214,12 +213,10 @@ def resolve_context_window(
         return ContextWindowResolution(configured_window, "manual")
     if not model:
         return ContextWindowResolution(DEFAULT_CONTEXT_WINDOW, "fallback")
-    configured = MODEL_CONTEXT_WINDOWS.get(model)
-    if configured:
-        return ContextWindowResolution(configured, "registry")
-    normalized = model.lower()
-    if normalized.startswith(("gpt-3.5", "gpt-4-0613", "gpt-4-32k")):
-        return ContextWindowResolution(16_000, "registry")
+    from src.infra.model_catalog import resolve_model_catalog_entry
+
+    if catalog_entry := resolve_model_catalog_entry(model):
+        return ContextWindowResolution(catalog_entry.context_window, "models.dev")
     return ContextWindowResolution(DEFAULT_CONTEXT_WINDOW, "fallback")
 
 

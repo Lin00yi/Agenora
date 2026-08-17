@@ -9,9 +9,11 @@
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "fix:encoding": "node scripts/fix-frontend-encoding.js"
+    "fix:encoding": "node scripts/fix-frontend-encoding.js",
+    "sync:model-catalog": "node scripts/sync-models-dev-catalog.mjs"
   },
   "dependencies": {
+    "@opencode-ai/models": "^0.0.45",
     "class-variance-authority": "0.7.0",
     "clsx": "2.1.1",
     "html2canvas": "^1.4.1",

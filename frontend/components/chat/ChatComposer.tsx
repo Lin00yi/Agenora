@@ -26,6 +26,7 @@ import type { LlmSource } from "./types";
 import { formatContextUsagePercent, resolveContextUsagePercent } from "./utils";
 
 const MANAGE_MODELS_VALUE = "__manage_models__";
+const modelIdCollator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
 
 export function SmallAction({
   label,
@@ -103,15 +104,19 @@ export function Composer({
   onManageModels: () => void;
   centered?: boolean;
 }) {
-  const profileOptions = modelProfiles.map((profile) => ({
-    value: profile.id,
-    label: modelLabels[profile.id] ?? profile.model_id,
-    icon: <ProviderLogo connection={modelConnections.find((connection) => connection.id === profile.connection_id)} />,
-  }));
+  const profileOptions = [...modelProfiles]
+    .sort((left, right) => modelIdCollator.compare(left.model_id, right.model_id) || left.id.localeCompare(right.id))
+    .map((profile) => ({
+      value: profile.id,
+      label: modelLabels[profile.id] ?? profile.model_id,
+      icon: <ProviderLogo connection={modelConnections.find((connection) => connection.id === profile.connection_id)} catalog={profile.catalog} />,
+    }));
   const visibleModelOptions =
     profileOptions.length > 0
       ? profileOptions
       : (currentModel && !modelOptions.includes(currentModel) ? [currentModel, ...modelOptions] : modelOptions)
+          .slice()
+          .sort(modelIdCollator.compare)
           .map((model) => ({ value: model, label: modelLabels[model] ? `${modelLabels[model]} · ${model}` : model, icon: <ProviderLogo /> }));
   const selectableModelOptions = [
     ...visibleModelOptions,
@@ -181,7 +186,7 @@ export function Composer({
             />
             <ModelSelect
               aria-label="模型选择"
-              className="kf-model-trigger h-[var(--control-h-sm)] min-w-0 flex-1 text-xs sm:min-w-[120px] sm:max-w-[176px]"
+              className="kf-model-trigger h-8 min-w-0 flex-1 text-sm sm:min-w-[132px] sm:max-w-[200px]"
               tone="plain"
               contentAlign="end"
               contentClassName="kf-model-content"
@@ -246,6 +251,7 @@ export function ContextUsageIndicator({
       : "暂时无法读取上下文状态，请刷新后重试。",
     current_tokens: 0,
     available_tokens: 0,
+    context_window: 0,
     percent: 0,
     ratio: 0,
     retained_recent_turns: 10,
@@ -317,7 +323,10 @@ export function ContextUsageIndicator({
             {loading ? "正在读取" : `${percentLabel}% 已用（剩余 ${remainingPercentLabel}%）`}
           </p>
           <p className="kf-context-tooltip-title text-sm font-medium leading-6 tabular-nums">
-            已用 {displayTokenCount(status.current_tokens)} 标记，共 {displayTokenCount(status.available_tokens)}
+            历史已用 {displayTokenCount(status.current_tokens)} / 预算 {displayTokenCount(status.available_tokens)}
+          </p>
+          <p className="kf-context-tooltip-muted text-xs leading-5 tabular-nums">
+            模型窗口 {displayTokenCount(status.context_window)}；其余预留给系统、检索与输出
           </p>
           {status.state === "compressed" && (
             <p className="kf-context-tooltip-summary kf-context-tooltip-muted mt-2 border-t pt-2 text-xs leading-5">

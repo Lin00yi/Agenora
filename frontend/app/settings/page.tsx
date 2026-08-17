@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Bot,
   CheckCircle2,
+  ChevronDown,
   CircleAlert,
   Cloud,
   KeyRound,
@@ -65,6 +66,15 @@ const SERVICE_PRESETS = {
   deepseek: { provider: "openai-compat", baseUrl: "https://api.deepseek.com" },
 } satisfies Record<string, ServicePreset>;
 
+const listLabelCollator = new Intl.Collator("zh-Hans-CN-u-co-pinyin", {
+  numeric: true,
+  sensitivity: "base",
+});
+
+function compareListLabels(left: string, right: string) {
+  return listLabelCollator.compare(left, right);
+}
+
 function generatedConnectionName(provider: LLMProvider, baseUrl: string) {
   const endpoint = baseUrl.toLowerCase();
   if (endpoint.includes("deepseek")) return "DeepSeek";
@@ -83,7 +93,7 @@ function connectionLabel(connection?: LLMConnection) {
 
 function formatProfileContextWindow(profile: LLMModelProfile) {
   const window = profile.context_window ?? (
-    profile.context_window_source === "registry"
+    profile.context_window_source === "models.dev"
       ? profile.context_window_resolved ?? null
       : null
   );
@@ -194,7 +204,7 @@ function LLMSettingsPanel({
   const hasVerifiedModels = probeState.kind === "success" && models.length > 0;
   const detectedContextWindow =
     modelContextWindows[defaultModel] ??
-    (contextWindow === null && initial?.context_window_source === "registry"
+    (contextWindow === null && initial?.context_window_source === "models.dev"
       ? initial.context_window_resolved ?? undefined
       : undefined);
   const contextWindowIsAutomatic = contextWindow === null && Boolean(detectedContextWindow);
@@ -593,13 +603,50 @@ function ModelProfilesManager({
   view: "connections" | "models" | "routing";
   onManageConnections?: () => void;
 }) {
-  const profiles = initial?.model_profiles ?? [];
+  const profiles = useMemo(() => initial?.model_profiles ?? [], [initial?.model_profiles]);
   const connections = useMemo(() => initial?.connections ?? [], [initial?.connections]);
-  const managedConnections = connections.filter((connection) => !connection.is_legacy_default);
+  const managedConnections = useMemo(
+    () =>
+      connections
+        .filter((connection) => !connection.is_legacy_default)
+        .sort((left, right) => compareListLabels(connectionLabel(left), connectionLabel(right)) || left.id.localeCompare(right.id)),
+    [connections]
+  );
+  const sortedProfiles = useMemo(
+    () =>
+      [...profiles].sort(
+        (left, right) =>
+          compareListLabels(left.display_name, right.display_name) ||
+          compareListLabels(left.model_id, right.model_id) ||
+          left.id.localeCompare(right.id)
+      ),
+    [profiles]
+  );
+  const connectionCatalogs = useMemo(() => {
+    const catalogs = new Map<string, NonNullable<LLMModelProfile["catalog"]>>();
+    const ambiguousConnectionIds = new Set<string>();
+
+    for (const profile of sortedProfiles) {
+      if (!profile.connection_id || !profile.catalog) continue;
+      if (ambiguousConnectionIds.has(profile.connection_id)) continue;
+      const previous = catalogs.get(profile.connection_id);
+      // One connection can expose models from several labs through a proxy.
+      // Keep the neutral connection fallback in that ambiguous case instead of
+      // showing an arbitrary model vendor as the service logo.
+      if (!previous) {
+        catalogs.set(profile.connection_id, profile.catalog);
+      } else if (previous.logo_url !== profile.catalog.logo_url) {
+        catalogs.delete(profile.connection_id);
+        ambiguousConnectionIds.add(profile.connection_id);
+      }
+    }
+
+    return catalogs;
+  }, [sortedProfiles]);
   const assignableConnections = managedConnections.filter((connection) => connection.enabled);
   const legacyConnections = connections.filter((connection) => connection.is_legacy_default && connection.enabled);
   const profileConnectionOptions = assignableConnections.length > 0 ? assignableConnections : legacyConnections;
-  const enabledProfiles = profiles.filter((profile) => profile.enabled);
+  const enabledProfiles = sortedProfiles.filter((profile) => profile.enabled);
   const [adding, setAdding] = useState(false);
   const [addingService, setAddingService] = useState(false);
   const [showProfileOverrides, setShowProfileOverrides] = useState(false);
@@ -683,7 +730,7 @@ function ModelProfilesManager({
 
   const applyProfileProbeResult = (result: {
     models: string[];
-    context_windows?: Record<string, { value: number; source: "registry" }>;
+    context_windows?: Record<string, { value: number; source: "models.dev" }>;
   }) => {
     setProfileModels(result.models);
     setProfileModelContextWindows(
@@ -914,7 +961,7 @@ function ModelProfilesManager({
                 <div key={connection.id} className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <ProviderLogo connection={connection} />
+                      <ProviderLogo connection={connection} catalog={connectionCatalogs.get(connection.id)} />
                       <p className="text-sm font-medium text-ink">{connectionLabel(connection)}</p>
                       <Badge variant="outline" className="border-brand/25 bg-brand/10 text-brand">{connection.provider === "anthropic" ? "Anthropic Messages" : "OpenAI Compatible"}</Badge>
                       <span className="text-xs text-muted">{usageCount ? `供 ${usageCount} 个模型使用` : "尚未绑定模型"}</span>
@@ -1067,7 +1114,7 @@ function ModelProfilesManager({
       </div>
 
       <div className="mt-5 divide-y divide-surface-border/70 border-y border-surface-border/70">
-        {profiles.map((profile) => (
+        {sortedProfiles.map((profile) => (
           <div key={profile.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
@@ -1081,7 +1128,7 @@ function ModelProfilesManager({
                 {profile.display_name !== profile.model_id && <span className="font-mono" title={profile.model_id}>{profile.model_id}</span>}
                 {(() => {
                   const connection = connections.find((item) => item.id === profile.connection_id);
-                  return <span className="inline-flex items-center gap-1.5"><ProviderLogo connection={connection} />服务：{connectionLabel(connection)}</span>;
+                  return <span className="inline-flex items-center gap-1.5"><ProviderLogo connection={connection} catalog={profile.catalog} />服务：{connectionLabel(connection)}</span>;
                 })()}
               </p>
             </div>
@@ -1174,14 +1221,28 @@ function ModelProfilesManager({
             </Field>
           </div>
           <ProbeFeedback state={profileProbeState} />
-          <details className="mt-4 border-t border-surface-border/70 pt-3" open={showProfileOverrides} onToggle={(event) => setShowProfileOverrides(event.currentTarget.open)}>
-            <summary className="cursor-pointer text-xs font-medium text-muted hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30">高级选项：自定义显示名称</summary>
-            <div className="mt-4">
-              <Field label="显示名称（可选）" htmlFor="profile-name" description="留空时直接使用模型 ID。">
-                <input id="profile-name" value={name} onChange={(event) => setName(event.target.value)} className="admin-input" placeholder={modelId || "例如 长文分析"} autoComplete="off" />
-              </Field>
-            </div>
-          </details>
+          <div className="mt-4 border-t border-surface-border/70 pt-2">
+            <button
+              type="button"
+              aria-controls="profile-advanced-options"
+              aria-expanded={showProfileOverrides}
+              onClick={() => setShowProfileOverrides((open) => !open)}
+              className="flex min-h-[var(--control-h)] w-full items-center justify-between gap-3 rounded-lg px-2.5 text-left text-sm font-medium text-muted hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="text-ink">高级选项</span>
+                <span className="truncate text-xs font-normal text-muted">自定义显示名称</span>
+              </span>
+              <ChevronDown className={cn("size-4 shrink-0", showProfileOverrides && "rotate-180")} aria-hidden />
+            </button>
+            {showProfileOverrides ? (
+              <div id="profile-advanced-options" className="mt-2 rounded-lg border border-surface-border/70 bg-surface-2/40 p-3">
+                <Field label="显示名称（可选）" htmlFor="profile-name" description="留空时直接使用模型 ID。">
+                  <input id="profile-name" value={name} onChange={(event) => setName(event.target.value)} className="admin-input" placeholder={modelId || "例如 长文分析"} autoComplete="off" />
+                </Field>
+              </div>
+            ) : null}
+          </div>
           <div className="mt-5 flex items-center gap-2">
             <Button type="button" size="sm" onClick={addProfile} disabled={savingProfile || !modelId.trim() || !connectionId}>
               {savingProfile && <Loader2 className="h-4 w-4 animate-spin" />}

@@ -394,10 +394,14 @@ async def test_consolidation_rewrites_legacy_hash_constraint_keys(db, create_use
 
 def test_unknown_models_use_a_conservative_context_window() -> None:
     from src.conversations.context import context_window_for_model, resolve_context_window
+    from src.infra.model_catalog import resolve_model_catalog_entry
 
     assert context_window_for_model("custom-small-model") == 16_000
     assert context_window_for_model("custom-small-model", configured_window=8_192) == 8_192
-    assert resolve_context_window("gpt-4o").source == "registry"
+    assert resolve_context_window("gpt-4o").source == "models.dev"
+    assert resolve_context_window("gpt-5.6-terra").value == 1_050_000
+    assert resolve_context_window("gpt-5.6-terra").source == "models.dev"
+    assert resolve_model_catalog_entry("gpt-5.6-terra").canonical_id == "openai/gpt-5.6-terra"
     assert resolve_context_window("custom-small-model").source == "fallback"
     assert resolve_context_window("gpt-4o", configured_window=8_192).source == "manual"
 
@@ -1015,6 +1019,7 @@ def test_provider_allocator_measures_system_and_tools_before_history() -> None:
         system_prompt=system_prompt,
         tools_schema=tools_schema,
         conversation_messages=messages,
+        configured_context_window=64_000,
     )
 
     available = 64_000 - 2_048 - 2_000 - estimate_tokens(system_prompt) - estimate_tokens(
@@ -1224,7 +1229,7 @@ async def test_long_conversation_is_summarized_and_recent_turns_are_retained(db,
         session.add_all(rows)
         await session.commit()
 
-        budget = compute_budget(rows, "deepseek-chat")
+        budget = compute_budget(rows, "deepseek-chat", configured_window=64_000)
         summary = await ensure_summary_if_needed(
             session,
             conversation_id=conv.id,
@@ -1388,7 +1393,7 @@ async def test_summary_is_updated_in_place_when_coverage_advances(db, create_use
         session.add_all(rows)
         await session.commit()
         first = await ensure_summary_if_needed(
-            session, conversation_id=conv.id, messages=rows, budget=compute_budget(rows, "deepseek-chat")
+            session, conversation_id=conv.id, messages=rows, budget=compute_budget(rows, "deepseek-chat", configured_window=64_000)
         )
         assert first is not None
 
@@ -1526,7 +1531,7 @@ async def test_structured_summary_uses_only_newly_covered_messages(db, create_us
         session.add_all(rows)
         await session.commit()
         first = await ensure_summary_if_needed(
-            session, conversation_id=conv.id, messages=rows, budget=compute_budget(rows, "deepseek-chat")
+            session, conversation_id=conv.id, messages=rows, budget=compute_budget(rows, "deepseek-chat", configured_window=64_000)
         )
         assert first is not None
 
@@ -1545,7 +1550,7 @@ async def test_structured_summary_uses_only_newly_covered_messages(db, create_us
             session,
             conversation_id=conv.id,
             messages=[*rows, *extra],
-            budget=compute_budget([*rows, *extra], "deepseek-chat"),
+                budget=compute_budget([*rows, *extra], "deepseek-chat", configured_window=64_000),
         )
 
     assert second is not None

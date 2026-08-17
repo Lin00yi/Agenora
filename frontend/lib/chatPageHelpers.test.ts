@@ -11,10 +11,10 @@ import {
 import { joinAssistantText } from "@/lib/conversationStore";
 
 describe("chatPageHelpers", () => {
-  it("resolves known model context windows and falls back safely", () => {
-    expect(getContextWindowForModel("gpt-4o")).toBe(128_000);
+  it("keeps a conservative fallback when the authoritative status is unavailable", () => {
+    expect(getContextWindowForModel("gpt-4o")).toBe(16_000);
     expect(getContextWindowForModel("unknown-model")).toBe(16_000);
-    expect(getContextWindowForModel(null, ["claude-sonnet-4-6"])).toBe(200_000);
+    expect(getContextWindowForModel(null, ["claude-sonnet-4-6"])).toBe(16_000);
   });
 
   it("builds and parses conversation paths", () => {

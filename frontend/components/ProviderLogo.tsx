@@ -1,17 +1,18 @@
 import { Boxes } from "lucide-react";
 
 import { resolveProviderBrand } from "@/lib/provider-brand";
-import type { LLMConnection } from "@/lib/settings-api";
+import type { LLMConnection, LLMModelProfile } from "@/lib/settings-api";
 import { cn } from "@/lib/utils";
 
 type ProviderLogoProps = {
   connection?: Pick<LLMConnection, "provider" | "base_url">;
+  catalog?: LLMModelProfile["catalog"];
   className?: string;
   size?: "sm" | "md";
 };
 
-export function ProviderLogo({ connection, className, size = "sm" }: ProviderLogoProps) {
-  const brand = resolveProviderBrand(connection);
+export function ProviderLogo({ connection, catalog, className, size = "sm" }: ProviderLogoProps) {
+  const brand = resolveProviderBrand(connection, catalog);
   const sizeClass = size === "md" ? "size-8 rounded-lg" : "size-6 rounded-md";
 
   return (

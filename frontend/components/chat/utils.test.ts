@@ -11,6 +11,6 @@ describe("formatMessageTime", () => {
 
   it("shows a full local timestamp for messages from another day", () => {
     const messageTime = new Date(2026, 7, 13, 9, 3, 5).getTime();
-    expect(formatMessageTime(messageTime, now)).toBe("2026-08-13 09:03:05");
+    expect(formatMessageTime(messageTime, now)).toBe("2026-08-13\u200209:03:05");
   });
 });

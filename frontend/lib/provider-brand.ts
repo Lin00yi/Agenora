@@ -1,6 +1,6 @@
-import type { LLMProvider } from "@/lib/settings-api";
+import type { LLMModelProfile, LLMProvider } from "@/lib/settings-api";
 
-export type ProviderBrandKey = "anthropic" | "deepseek" | "openai" | "compatible";
+export type ProviderBrandKey = "anthropic" | "deepseek" | "openai" | "compatible" | "models.dev";
 
 export type ProviderBrand = {
   key: ProviderBrandKey;
@@ -13,6 +13,8 @@ type ProviderBrandInput = {
   provider: LLMProvider;
   base_url: string;
 };
+
+type ModelCatalogBrand = NonNullable<LLMModelProfile["catalog"]>;
 
 function hostname(baseUrl: string) {
   try {
@@ -27,10 +29,22 @@ function matchesDomain(host: string, domain: string) {
 }
 
 /**
- * Resolve a locally bundled provider identity. Only official domains are
- * branded; proxies and private deployments deliberately remain neutral.
+ * Model profiles use the models.dev lab mapping first, so an OpenAI-compatible
+ * proxy can still identify its actual model. Connection-only surfaces retain
+ * the conservative official-domain branding fallback.
  */
-export function resolveProviderBrand(connection?: ProviderBrandInput): ProviderBrand {
+export function resolveProviderBrand(
+  connection?: ProviderBrandInput,
+  catalog?: ModelCatalogBrand | null,
+): ProviderBrand {
+  if (catalog) {
+    return {
+      key: "models.dev",
+      label: catalog.name,
+      iconPath: catalog.logo_url,
+      colorClassName: "text-ink",
+    };
+  }
   if (!connection) return { key: "compatible", label: "兼容服务", colorClassName: "text-muted" };
 
   const host = hostname(connection.base_url);
