@@ -8,7 +8,6 @@ import { toast } from "@/lib/toast";
 
 import Brand, { APP_NAME } from "@/components/Brand";
 import BrandPanel from "@/components/BrandPanel";
-import ThemeToggle from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -49,7 +48,6 @@ export default function RegisterPage() {
             <ChevronLeft className="h-4 w-4" />
             返回首页
           </Link>
-          <ThemeToggle />
         </div>
 
         <div className="flex flex-1 items-center justify-center py-8">

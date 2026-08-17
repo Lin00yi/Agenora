@@ -15,7 +15,6 @@ import { getToken, getUser, refreshMe } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { LoadingState, StateView } from "@/components/ui/state-view";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import ThemeToggle from "@/components/ThemeToggle";
 
 const TABS = [
   { href: "/admin", label: "看板", icon: LayoutDashboard, title: "看板" },
@@ -77,7 +76,6 @@ export default function AdminShell({ children }: { children: ReactNode }) {
               <span>返回对话</span>
             </Link>
             <div className="flex-1" />
-            <ThemeToggle compact />
           </div>
         </header>
         <main className="app-page-content mx-auto flex min-h-[calc(100dvh-56px)] max-w-5xl items-center justify-center px-4 py-10 sm:px-6">
@@ -122,7 +120,6 @@ export default function AdminShell({ children }: { children: ReactNode }) {
             {activeTab.title}
           </span>
           <div className="flex-1" />
-          <ThemeToggle compact />
         </div>
         <nav className="mx-auto max-w-7xl overflow-x-auto px-4 pb-3 sm:px-6" aria-label="管理分区">
           <Tabs value={activeTab.href} onValueChange={(href) => router.push(href)} className="w-max">

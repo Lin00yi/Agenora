@@ -42,7 +42,7 @@ function SelectTrigger({
   size?: "sm" | "default"
   /** plain: layout/focus only — caller (e.g. Chat) owns paint via CSS */
   tone?: "default" | "plain"
-  /** icon: single-cell square control (ThemeToggle compact) */
+  /** icon: single-cell square control */
   layout?: "default" | "icon"
 }) {
   return (

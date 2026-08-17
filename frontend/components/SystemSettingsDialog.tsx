@@ -1,55 +1,71 @@
 "use client";
 
 /**
- * v3-M5: System Settings Dialog - multi-tab modal mirrored after DeepSeek.
- *
- * Tabs:
- *   1. 通用 - edit display_name + theme toggle
- *   2. 账号 - email (read-only) + change password
- *   3. 数据 - export conversations / clear conversations / delete account
- *   4. 关于 - version + project links + MIT license
- *
- * The original /settings page (LLM / embedding / reranker provider credentials)
- * stays untouched - this dialog is purely the account-level UX surface.
+ * The single settings workspace owns personal, model, knowledge-base and memory
+ * configuration. The direct routes remain available for bookmarks.
  */
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import {
-  User as UserIcon,
-  KeyRound,
-  Database,
-  Info,
-  Download,
-  Trash2,
-  AlertTriangle,
-} from "lucide-react";
 import { toast } from "@/lib/toast";
+import {
+  AlertTriangle,
+  BookOpen,
+  BrainCircuit,
+  Download,
+  Info,
+  SlidersHorizontal,
+  Trash2,
+  User as UserIcon,
+} from "lucide-react";
+import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 
-import { ConfirmDialog } from "@/components/ConfirmDialog";
 import AppModal from "@/components/AppModal";
-import ThemeToggle from "@/components/ThemeToggle";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { useTheme, type Theme } from "@/components/ThemeProvider";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   changePassword,
   deleteAccount,
   updateProfile,
   type User,
 } from "@/lib/auth";
+import { cn } from "@/lib/cn";
 import {
   deleteAllConversations,
   exportConversations,
 } from "@/lib/conversations-api";
-import { cn } from "@/lib/cn";
-import Link from "next/link";
 
-type Tab = "general" | "account" | "data" | "about";
+const ModelSettingsModule = dynamic(
+  () => import("@/components/settings/ModelSettingsModule").then((module) => module.ModelSettingsModule),
+  { ssr: false }
+);
+const KnowledgeBaseModule = dynamic(
+  () => import("@/components/settings/KnowledgeBaseModule").then((module) => module.KnowledgeBaseModule),
+  { ssr: false }
+);
+const MemorySystemModule = dynamic(
+  () => import("@/components/settings/MemorySystemModule").then((module) => module.MemorySystemModule),
+  { ssr: false }
+);
 
-const TABS: { key: Tab; label: string; Icon: typeof UserIcon }[] = [
-  { key: "general", label: "通用", Icon: UserIcon },
-  { key: "account", label: "账号", Icon: KeyRound },
-  { key: "data", label: "数据", Icon: Database },
+type SettingsModule = "personal" | "model" | "knowledge" | "memory" | "about";
+type PersonalTab = "general" | "appearance" | "account" | "data";
+
+const MODULES: { key: SettingsModule; label: string; Icon: typeof UserIcon }[] = [
+  { key: "personal", label: "个人", Icon: UserIcon },
+  { key: "model", label: "模型", Icon: SlidersHorizontal },
+  { key: "knowledge", label: "知识库", Icon: BookOpen },
+  { key: "memory", label: "记忆系统", Icon: BrainCircuit },
   { key: "about", label: "关于", Icon: Info },
+];
+
+const PERSONAL_TABS: { key: PersonalTab; label: string }[] = [
+  { key: "general", label: "通用" },
+  { key: "appearance", label: "外观" },
+  { key: "account", label: "账号" },
+  { key: "data", label: "数据迁移" },
 ];
 
 type Props = {
@@ -65,7 +81,8 @@ export default function SystemSettingsDialog({
   user,
   onUserChanged,
 }: Props) {
-  const [tab, setTab] = useState<Tab>("general");
+  const [module, setModule] = useState<SettingsModule>("personal");
+  const [personalTab, setPersonalTab] = useState<PersonalTab>("general");
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -107,20 +124,20 @@ export default function SystemSettingsDialog({
         }}
         bare
         size="xl"
-        className="h-[min(680px,calc(100dvh-2rem))] max-w-3xl sm:max-w-3xl"
+        className="h-[min(760px,calc(100dvh-2rem))] max-w-6xl sm:max-w-6xl"
         showCloseButton
       >
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden sm:flex-row">
-          <nav className="flex w-full shrink-0 gap-1 overflow-x-auto border-b border-surface-border/70 bg-surface-2/50 p-2 sm:w-44 sm:flex-col sm:overflow-visible sm:border-b-0 sm:border-r">
-            <div className="hidden px-2 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted sm:block">
-              系统设置
+          <nav className="flex w-full shrink-0 gap-1 overflow-x-auto border-b border-surface-border/70 bg-surface-2/50 p-2 sm:w-48 sm:flex-col sm:overflow-visible sm:border-b-0 sm:border-r">
+            <div className="hidden px-2 py-2 text-xs font-semibold text-muted sm:block">
+              设置
             </div>
-            {TABS.map(({ key, label, Icon }) => {
-              const active = tab === key;
+            {MODULES.map(({ key, label, Icon }) => {
+              const active = module === key;
               return (
                 <button
                   key={key}
-                  onClick={() => setTab(key)}
+                  onClick={() => setModule(key)}
                   className={cn(
                     "flex h-[var(--control-h)] shrink-0 cursor-pointer items-center gap-2 rounded-md border border-transparent px-3 text-sm font-medium transition-[background-color,border-color,color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 sm:w-full sm:px-2",
                     active
@@ -135,46 +152,34 @@ export default function SystemSettingsDialog({
                 </button>
               );
             })}
-            <div className="mt-auto hidden border-t border-surface-border/70 pt-2 sm:block">
-              <p className="mb-2 px-2 text-[11px] text-muted">更多设置</p>
-              <div className="flex flex-col gap-0.5 px-1">
-                <Link
-                  href="/settings"
-                  onClick={onClose}
-                  className="rounded-md px-2 py-1.5 text-sm text-muted hover:bg-surface/75 hover:text-ink"
-                >
-                  模型设置
-                </Link>
-                <Link
-                  href="/memories"
-                  onClick={onClose}
-                  className="rounded-md px-2 py-1.5 text-sm text-muted hover:bg-surface/75 hover:text-ink"
-                >
-                  记忆系统
-                </Link>
-              </div>
-            </div>
           </nav>
 
           <div className="flex min-h-0 flex-1 flex-col">
             <header className="flex h-14 shrink-0 items-center border-b border-surface-border/70 bg-surface px-5 pr-14">
               <h2 className="text-[15px] font-semibold tracking-tight">
-                {TABS.find((t) => t.key === tab)?.label}
+                {MODULES.find((item) => item.key === module)?.label}
               </h2>
             </header>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-5">
-              {tab === "general" && (
-                <GeneralTab user={user} onUserChanged={onUserChanged} />
-              )}
-              {tab === "account" && <AccountTab user={user} />}
-              {tab === "data" && (
-                <DataTab
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {module === "personal" && (
+                <PersonalModule
+                  activeTab={personalTab}
+                  onTabChange={setPersonalTab}
+                  user={user}
+                  onUserChanged={onUserChanged}
                   onRequestClear={() => setConfirmClear(true)}
                   onRequestDelete={() => setConfirmDelete(true)}
                 />
               )}
-              {tab === "about" && <AboutTab />}
+              {module === "model" && <ModelSettingsModule embedded />}
+              {module === "knowledge" && <KnowledgeBaseModule embedded />}
+              {module === "memory" && <MemorySystemModule embedded />}
+              {module === "about" && (
+                <div className="px-5 py-5 sm:px-6">
+                  <AboutTab />
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -205,8 +210,62 @@ export default function SystemSettingsDialog({
   );
 }
 
+function PersonalModule({
+  activeTab,
+  onTabChange,
+  user,
+  onUserChanged,
+  onRequestClear,
+  onRequestDelete,
+}: {
+  activeTab: PersonalTab;
+  onTabChange: (tab: PersonalTab) => void;
+  user: User;
+  onUserChanged: (user: User) => void;
+  onRequestClear: () => void;
+  onRequestDelete: () => void;
+}) {
+  return (
+    <div className="px-5 py-5 sm:px-6">
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => onTabChange(value as PersonalTab)}
+        className="gap-0"
+      >
+        <div className="mb-6 max-w-full overflow-x-auto pb-1">
+          <TabsList
+            aria-label="个人设置"
+          >
+            {PERSONAL_TABS.map(({ key, label }) => (
+              <TabsTrigger
+                key={key}
+                value={key}
+              >
+                {label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
+
+        <TabsContent value="general" className="m-0">
+          <GeneralTab user={user} onUserChanged={onUserChanged} />
+        </TabsContent>
+        <TabsContent value="appearance" className="m-0">
+          <AppearanceTab />
+        </TabsContent>
+        <TabsContent value="account" className="m-0">
+          <AccountTab user={user} onRequestDelete={onRequestDelete} />
+        </TabsContent>
+        <TabsContent value="data" className="m-0">
+          <DataTab onRequestClear={onRequestClear} />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
-// Tab: 通用
+// Personal: 通用 / 外观
 // ---------------------------------------------------------------------------
 function GeneralTab({
   user,
@@ -262,20 +321,89 @@ function GeneralTab({
         </div>
       </Field>
 
-      <Field label="主题">
-        <ThemeToggle />
-        <p className="mt-2 text-xs text-muted">
-          跟随系统会自动切换，也可以手动指定亮色 / 暗色。
-        </p>
-      </Field>
     </div>
+  );
+}
+
+function AppearanceTab() {
+  const { theme, setTheme } = useTheme();
+
+  return (
+    <div>
+      <h3 className="text-balance text-sm font-semibold text-ink">主题</h3>
+      <p className="mt-1 text-pretty text-sm leading-6 text-muted">
+        选择应用外观。跟随系统会根据设备偏好自动切换。
+      </p>
+      <div className="mt-5 grid gap-4 sm:grid-cols-3">
+        <ThemePreview value="system" label="系统" selected={theme === "system"} onSelect={setTheme} />
+        <ThemePreview value="light" label="浅色" selected={theme === "light"} onSelect={setTheme} />
+        <ThemePreview value="dark" label="深色" selected={theme === "dark"} onSelect={setTheme} />
+      </div>
+    </div>
+  );
+}
+
+function ThemePreview({
+  value,
+  label,
+  selected,
+  onSelect,
+}: {
+  value: Theme;
+  label: string;
+  selected: boolean;
+  onSelect: (theme: Theme) => void;
+}) {
+  const dark = value === "dark";
+  const system = value === "system";
+
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      aria-label={`切换为${label}主题`}
+      onClick={() => onSelect(value)}
+      className={cn(
+        "group rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
+        selected && "ring-2 ring-brand"
+      )}
+    >
+      <span className="relative block aspect-[4/3] overflow-hidden rounded-xl border border-surface-border bg-zinc-100">
+        {system ? (
+          <span className="absolute inset-0 flex" aria-hidden="true">
+            <span className="w-1/2 bg-zinc-100" />
+            <span className="w-1/2 bg-zinc-700" />
+          </span>
+        ) : (
+          <span className={cn("absolute inset-0", dark ? "bg-zinc-700" : "bg-zinc-100")} aria-hidden="true" />
+        )}
+        <span className="absolute inset-x-[9%] top-[22%] h-[70%] overflow-hidden rounded-t-[1.15rem] bg-white shadow-sm">
+          <span className="mx-auto mt-[12%] block h-2 w-[46%] rounded-full bg-zinc-300" />
+          <span className="mx-[8%] mt-[5%] block h-1.5 rounded-full bg-zinc-200" />
+          <span className="mt-[7%] block border-t border-zinc-100" />
+          <span className="mx-[8%] mt-[6%] block h-2 w-[34%] rounded-full bg-zinc-300" />
+          <span className="mx-[8%] mt-[5%] block h-1.5 w-[48%] rounded-full bg-zinc-200" />
+          <span className="mt-[7%] block border-t border-zinc-100" />
+          <span className="mx-[8%] mt-[6%] block h-2 w-[34%] rounded-full bg-zinc-300" />
+        </span>
+      </span>
+      <span className={cn("mt-3 block text-center text-sm font-medium", selected ? "text-ink" : "text-muted")}>
+        {label}
+      </span>
+    </button>
   );
 }
 
 // ---------------------------------------------------------------------------
 // Tab: 账号
 // ---------------------------------------------------------------------------
-function AccountTab({ user }: { user: User }) {
+function AccountTab({
+  user,
+  onRequestDelete,
+}: {
+  user: User;
+  onRequestDelete: () => void;
+}) {
   const [oldPw, setOldPw] = useState("");
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
@@ -358,19 +486,37 @@ function AccountTab({ user }: { user: User }) {
           </div>
         </div>
       </div>
+
+      <div className="rounded-lg border border-danger/30 bg-danger/5 p-4 shadow-sm">
+        <div className="flex items-start gap-3">
+          <span className="admin-icon-tile admin-icon-tile-danger">
+            <AlertTriangle className="h-4 w-4" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm font-semibold text-danger">危险操作</h3>
+            <p className="mt-1 text-xs leading-5 text-muted">
+              删除账号会同时删除你的对话、拥有的知识库和上传文档，且无法恢复。
+            </p>
+            <Button
+              onClick={onRequestDelete}
+              className="mt-4"
+              variant="destructive"
+              type="button"
+            >
+              删除我的账号
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Tab: 数据
+// Personal: 数据迁移
 // ---------------------------------------------------------------------------
-function DataTab({
-  onRequestClear,
-  onRequestDelete,
-}: {
+function DataTab({ onRequestClear }: {
   onRequestClear: () => void;
-  onRequestDelete: () => void;
 }) {
   const [exporting, setExporting] = useState(false);
 
@@ -415,27 +561,6 @@ function DataTab({
         }
       />
 
-      <div className="rounded-lg border border-danger/30 bg-danger/5 p-4 shadow-sm">
-        <div className="flex items-start gap-3">
-          <span className="admin-icon-tile admin-icon-tile-danger">
-            <AlertTriangle className="h-4 w-4" />
-          </span>
-          <div className="flex-1">
-            <h3 className="text-sm font-semibold text-danger">删除账号</h3>
-            <p className="mt-1 text-xs leading-5 text-muted">
-              永久删除账号、所有对话、所拥有的知识库以及上传的文档。<strong>不可恢复。</strong>
-            </p>
-            <Button
-              onClick={onRequestDelete}
-              className="mt-4"
-              variant="destructive"
-              type="button"
-            >
-              删除我的账号
-            </Button>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

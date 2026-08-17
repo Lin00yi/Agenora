@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 
 import Brand, { APP_NAME } from "@/components/Brand";
-import ThemeToggle from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { getToken } from "@/lib/auth";
 
@@ -31,7 +30,6 @@ export default function WelcomePage() {
         <div className="mx-auto flex h-14 max-w-6xl items-center px-4 sm:px-6 lg:px-8">
           <Brand size="sm" showWordmark />
           <div className="ml-auto flex items-center gap-2">
-            <ThemeToggle />
             {signedIn ? (
               <Button asChild>
                 <Link href="/">

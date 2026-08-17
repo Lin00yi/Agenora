@@ -5,7 +5,6 @@ import { ChevronRight } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
-import ThemeToggle from "@/components/ThemeToggle";
 
 export type BreadcrumbItem = {
   label: string;
@@ -60,7 +59,6 @@ export function AdminPageShell({
               </span>
             ))}
           </nav>
-          <ThemeToggle compact />
         </div>
       </header>
 

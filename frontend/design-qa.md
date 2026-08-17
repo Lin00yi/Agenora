@@ -131,13 +131,13 @@ Token contrast (computed from CSS vars):
 
 Also in this pass:
 
-- `SelectTrigger` `layout="icon"` removes ThemeToggle compact `!grid-cols-1`.
+- `SelectTrigger` `layout="icon"` removes compact icon controls' `!grid-cols-1`.
 - No visual regressions spotted on authenticated Chat / KB / Settings.
 
 ## 2026-08-05 — Cleanup complete (post-convergence)
 
 - Chat paint rules unlayered; conflict `!important` eliminated (only `prefers-reduced-motion` remains).
-- `SelectTrigger` gains `tone="plain"` for Chat ThemeToggle / model / KB selects.
+- `SelectTrigger` gains `tone="plain"` for chat, model and KB selects.
 - Context ring tones use `kf-context-ring-brand|warning|muted` (no utility color fights).
 - Renamed `Dialog.tsx` → `ConfirmDialog.tsx`; all imports updated.
 - Migrated `admin-toolbar-btn` / `admin-row-action` to `<Button>` via `AdminTableActions`; deleted dead CSS.
@@ -146,7 +146,7 @@ Also in this pass:
 
 - Removed dead `.kf-chat` `--kf-*` color channel aliases (unused; paint uses `--chat-*` / semantic RGB).
 - Renamed layout vars: `--chat-composer-offset`, `--chat-thread-scrollbar`.
-- Dropped most Chat `!important` (~160 → ~50); kept only where fighting shadcn Select / ThemeToggle / send / sidebar-new.
+- Dropped most Chat `!important` (~160 → ~50); kept only where fighting shadcn Select / send / sidebar-new.
 - ChatPageClient: removed competing paint utilities on sidebar shell, composer box/controls, popover/notice shadows; sidebar rows no longer use `border-transparent`.
 
 ## 2026-08-05 — Button API sole source (post-P4)

@@ -3,8 +3,6 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  BookOpen,
-  BrainCircuit,
   ChevronDown,
   LoaderCircle,
   LogOut,
@@ -13,12 +11,10 @@ import {
   Search,
   Settings,
   Shield,
-  SlidersHorizontal,
   Trash2,
   X,
 } from "lucide-react";
 import Brand from "@/components/Brand";
-import ThemeToggle from "@/components/ThemeToggle";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { cn } from "@/lib/cn";
 import type { User } from "@/lib/auth";
@@ -228,32 +224,8 @@ export function ChatSidebar({
               type="button"
             >
               <Settings className="kf-user-menu-icon h-4 w-4" />
-              账号设置
+              设置
             </button>
-            <Link
-              className="kf-user-menu-item flex min-h-[var(--control-h)] items-center gap-2 px-3 py-2.5 text-sm transition"
-              href="/settings"
-              onClick={() => setUserMenuOpen(false)}
-            >
-              <SlidersHorizontal className="kf-user-menu-icon h-4 w-4" />
-              模型设置
-            </Link>
-            <Link
-              className="kf-user-menu-item flex min-h-[var(--control-h)] items-center gap-2 px-3 py-2.5 text-sm transition"
-              href="/kbs"
-              onClick={() => setUserMenuOpen(false)}
-            >
-              <BookOpen className="kf-user-menu-icon h-4 w-4" />
-              我的知识库
-            </Link>
-            <Link
-              className="kf-user-menu-item flex min-h-[var(--control-h)] items-center gap-2 px-3 py-2.5 text-sm transition"
-              href="/memories"
-              onClick={() => setUserMenuOpen(false)}
-            >
-              <BrainCircuit className="kf-user-menu-icon h-4 w-4" />
-              记忆系统
-            </Link>
             {user?.is_admin && (
               <Link
                 className="kf-user-menu-item flex min-h-[var(--control-h)] items-center gap-2 px-3 py-2.5 text-sm transition"
@@ -305,7 +277,6 @@ export function ChatSidebar({
             </span>
             <ChevronDown className={cn("kf-user-chevron h-4 w-4 shrink-0 transition", userMenuOpen && "rotate-180")} />
           </button>
-          <ThemeToggle compact />
         </div>
       </div>
       <ConfirmDialog
