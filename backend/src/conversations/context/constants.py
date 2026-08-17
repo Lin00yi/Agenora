@@ -32,7 +32,12 @@ MAX_PROFILE_MEMORY_ROWS = 40
 PREPARE_SUMMARY_RATIO = 0.60
 SUMMARY_TRIGGER_RATIO = 0.72
 FORCE_SUMMARY_RATIO = 0.85
-RECENT_TURNS = 10
+# Keep a predictable amount of verbatim dialogue before token budgeting takes
+# over: the latest 20 completed user/assistant turns plus the current user
+# message.  A small model can still retain fewer messages when this window does
+# not fit, but older rows must first be represented by the rolling summary.
+RECENT_TURNS = 20
+MIN_RECENT_TURNS_ON_PRESSURE = 10
 # Stable response preferences that belong in the always-on profile block.
 # Query-retrieved memories exclude these ids so the same fact is not injected twice.
 PROFILE_PREFERENCE_KEYS = frozenset(
@@ -92,4 +97,3 @@ class MemoryCandidate:
     source: str
     scope: str = "personal"
     expires_in_days: int | None = None
-

@@ -146,16 +146,26 @@ const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(
   }, [open, selected]);
 
   const currentLabel = selectedOption?.label ?? placeholder ?? placeholderOption?.label ?? "请选择";
-  const itemLeading = (option: SelectOption) => (
-    <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
-      {selected === option.value && <CheckIcon className="size-3.5 text-brand" />}
-    </span>
-  );
+  const itemTrailing = (option: SelectOption) =>
+    selected === option.value ? (
+      <span
+        className="ml-auto flex size-4 shrink-0 items-center justify-center"
+        data-slot="select-item-indicator"
+        aria-hidden
+      >
+        <CheckIcon className="size-3.5 text-brand" />
+      </span>
+    ) : null;
   const optionContent = (option: SelectOption) => (
     <>
-      {itemLeading(option)}
-      {option.icon && <span className="inline-flex shrink-0" aria-hidden>{option.icon}</span>}
-      <span className="min-w-0 truncate">{option.prefix ? `${option.prefix} ${option.label}` : option.label}</span>
+      <span
+        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        data-slot="select-item-label"
+      >
+        {option.icon && <span className="inline-flex shrink-0" aria-hidden>{option.icon}</span>}
+        <span className="min-w-0 truncate">{option.prefix ? `${option.prefix} ${option.label}` : option.label}</span>
+      </span>
+      {itemTrailing(option)}
     </>
   );
   return (
@@ -221,10 +231,7 @@ const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(
             <DropdownMenuSubTrigger
               ref={submenu.options.some((option) => option.value === selected) ? selectedItemRef : undefined}
             >
-              <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
-                {submenu.options.some((option) => option.value === selected) && <CheckIcon className="size-3.5 text-brand" />}
-              </span>
-              {submenu.label}
+              <span className="min-w-0 flex-1 truncate text-left">{submenu.label}</span>
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
               {submenu.options.map((option) => (

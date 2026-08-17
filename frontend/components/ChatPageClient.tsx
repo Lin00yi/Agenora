@@ -105,6 +105,15 @@ export function ChatPage({
   );
 
   const hasConversationMessages = visibleMessages.length > 0;
+  const currentPromptTrace = useMemo(() => {
+    for (let index = visibleMessages.length - 1; index >= 0; index -= 1) {
+      const message = visibleMessages[index];
+      if (message.role === "assistant" && message.memory_trace?.prompt) {
+        return message.memory_trace.prompt;
+      }
+    }
+    return null;
+  }, [visibleMessages]);
 
   const loadConversation = useCallback(async (id: string) => {
     setMissingConversationId(null);
@@ -725,6 +734,7 @@ export function ChatPage({
                       llmSource={llmSource}
                       contextStatus={currentContextStatus}
                       contextStatusLoading={contextStatusLoading}
+                      promptTrace={currentPromptTrace}
                       kbLocked={false}
                       onChange={setComposerValue}
                       onSubmit={submitComposerWithLlmGuard}
@@ -783,6 +793,7 @@ export function ChatPage({
                         llmSource={llmSource}
                         contextStatus={currentContextStatus}
                         contextStatusLoading={contextStatusLoading}
+                        promptTrace={currentPromptTrace}
                         kbLocked={!!currentId && hasConversationMessages}
                         onChange={setComposerValue}
                         onSubmit={submitComposerWithLlmGuard}

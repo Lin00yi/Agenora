@@ -40,6 +40,7 @@ import {
   saveLLMModelPolicy,
   saveLLMSettings,
   updateLLMModelProfile,
+  SettingsApiError,
   type LLMConnection,
   type LLMModelProfile,
   type LLMProvider,
@@ -681,6 +682,8 @@ function ModelProfilesManager({
   const [savingPolicy, setSavingPolicy] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [profilePendingRemoval, setProfilePendingRemoval] = useState<LLMModelProfile | null>(null);
+  const [replacementProfileId, setReplacementProfileId] = useState("");
+  const [profileRemovalError, setProfileRemovalError] = useState<string | null>(null);
   const [pricingProfile, setPricingProfile] = useState<LLMModelProfile | null>(null);
   const [editingInputPrice, setEditingInputPrice] = useState("");
   const [editingOutputPrice, setEditingOutputPrice] = useState("");
@@ -956,10 +959,24 @@ function ModelProfilesManager({
   const removeProfile = async (profile: LLMModelProfile) => {
     setDeletingId(profile.id);
     try {
-      await deleteLLMModelProfile(profile.id);
+      const result = await deleteLLMModelProfile(profile.id, replacementProfileId || null);
       await onChanged();
-      toast.success("模型已从可用列表移除");
+      setProfilePendingRemoval(null);
+      setReplacementProfileId("");
+      setProfileRemovalError(null);
+      toast.success(
+        result.migrated_conversations
+          ? `模型已移除，${result.migrated_conversations} 个历史会话已迁移。`
+          : "模型已从可用列表移除"
+      );
     } catch (error) {
+      if (
+        error instanceof SettingsApiError &&
+        (error.detail as { code?: string } | null)?.code === "model_profile_in_use"
+      ) {
+        setProfileRemovalError(error.message);
+        return;
+      }
       toast.error(error instanceof Error ? error.message : "移除模型失败");
     } finally {
       setDeletingId(null);
@@ -1228,7 +1245,11 @@ function ModelProfilesManager({
             </div>
             <div className="flex gap-2">
               <Button type="button" variant="outline" size="sm" onClick={() => openPricingEditor(profile)}>定价</Button>
-              <Button type="button" variant="destructive" size="sm" onClick={() => setProfilePendingRemoval(profile)} disabled={deletingId === profile.id}>
+              <Button type="button" variant="destructive" size="sm" onClick={() => {
+                setProfileRemovalError(null);
+                setReplacementProfileId("");
+                setProfilePendingRemoval(profile);
+              }} disabled={deletingId === profile.id}>
                 {deletingId === profile.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                 移除
               </Button>
@@ -1400,22 +1421,62 @@ function ModelProfilesManager({
         </Dialog>
       )}
 
-      <ConfirmDialog
-        open={Boolean(profilePendingRemoval)}
-        onOpenChange={(open) => {
-          if (!open) setProfilePendingRemoval(null);
-        }}
-        title={profilePendingRemoval ? `移除“${profilePendingRemoval.display_name}”？` : "移除模型配置？"}
-        description="模型会从会话选择和路由策略的可用列表中移除。已保存的服务连接不会被删除。"
-        confirmLabel="移除模型"
-        variant="danger"
-        busy={Boolean(profilePendingRemoval && deletingId === profilePendingRemoval.id)}
-        onConfirm={async () => {
-          if (!profilePendingRemoval) return;
-          await removeProfile(profilePendingRemoval);
-          setProfilePendingRemoval(null);
-        }}
-      />
+      {profilePendingRemoval && (
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!open && !deletingId) {
+              setProfilePendingRemoval(null);
+              setProfileRemovalError(null);
+              setReplacementProfileId("");
+            }
+          }}
+        >
+          <DialogContent closeDisabled={Boolean(deletingId)} className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>移除“{profilePendingRemoval.display_name}”？</DialogTitle>
+              <DialogDescription>
+                模型会从会话选择和路由策略的可用列表中移除。若它仍被历史会话使用，必须先选择替代模型；这些会话会在删除时一并迁移。
+              </DialogDescription>
+            </DialogHeader>
+            <Field
+              label="替代模型"
+              htmlFor="profile-removal-replacement"
+              description="没有历史会话引用时无需选择；如存在引用，必须选择一个已启用的模型。"
+            >
+              <Select
+                id="profile-removal-replacement"
+                value={replacementProfileId}
+                onChange={(event) => {
+                  setReplacementProfileId(event.target.value);
+                  setProfileRemovalError(null);
+                }}
+                options={enabledProfiles
+                  .filter((profile) => profile.id !== profilePendingRemoval.id)
+                  .map((profile) => ({
+                    value: profile.id,
+                    label: profile.display_name === profile.model_id
+                      ? profile.model_id
+                      : `${profile.display_name} · ${profile.model_id}`,
+                  }))}
+                placeholderOption={{ value: "", label: "不迁移（仅无历史会话时可用）" }}
+              />
+            </Field>
+            {profileRemovalError && (
+              <p className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm leading-6 text-warning" role="alert">
+                {profileRemovalError}
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setProfilePendingRemoval(null)} disabled={Boolean(deletingId)}>取消</Button>
+              <Button type="button" variant="destructive" onClick={() => void removeProfile(profilePendingRemoval)} disabled={Boolean(deletingId)}>
+                {deletingId && <Loader2 className="h-4 w-4 animate-spin" />}
+                {deletingId ? "正在迁移" : "迁移并移除"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
 
     </section>
   );

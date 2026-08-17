@@ -48,5 +48,11 @@ describe("Select", () => {
     runOpenFrame?.(0);
 
     expect(content!.scrollTop).toBe(60);
+    expect(
+      selectedItem?.querySelector('[data-slot="select-item-label"]')?.className
+    ).toContain("text-left");
+    expect(
+      selectedItem?.querySelector('[data-slot="select-item-indicator"]')?.className
+    ).toContain("ml-auto");
   });
 });

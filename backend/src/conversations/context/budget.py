@@ -341,7 +341,10 @@ def context_status_payload(
     if summary:
         state = "compressed"
         label = "已压缩"
-        description = f"已压缩早期 {summary.covered_message_count} 条消息，保留最近 {RECENT_TURNS} 轮完整对话。"
+        description = (
+            f"已压缩早期 {summary.covered_message_count} 条消息，优先保留最近 "
+            f"{RECENT_TURNS} 轮；空间不足时会继续按 token 预算保留更近的对话。"
+        )
     elif budget.force_summarize:
         state = "critical"
         label = "即将压缩"

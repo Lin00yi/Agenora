@@ -21,6 +21,7 @@ import {
 import type { ConversationContextStatus } from "@/lib/conversations-api";
 import type { KB } from "@/lib/kb-api";
 import type { LLMConnection, LLMModelProfile } from "@/lib/settings-api";
+import type { MemoryTrace } from "@/lib/sseClient";
 import { cn } from "@/lib/cn";
 import type { LlmSource } from "./types";
 import { formatContextUsagePercent, resolveContextUsagePercent } from "./utils";
@@ -72,6 +73,7 @@ export function Composer({
   llmSource,
   contextStatus,
   contextStatusLoading,
+  promptTrace,
   kbLocked,
   onChange,
   onSubmit,
@@ -95,6 +97,8 @@ export function Composer({
   llmSource: LlmSource;
   contextStatus: ConversationContextStatus | null;
   contextStatusLoading: boolean;
+  /** Safe token counts for the latest completed provider request. */
+  promptTrace?: MemoryTrace["prompt"] | null;
   kbLocked: boolean;
   onChange: (value: string) => void;
   onSubmit: () => void;
@@ -183,6 +187,7 @@ export function Composer({
             <ContextUsageIndicator
               contextStatus={contextStatus}
               loading={contextStatusLoading}
+              promptTrace={promptTrace}
             />
             <ModelSelect
               aria-label="模型选择"
@@ -239,9 +244,11 @@ export function Composer({
 export function ContextUsageIndicator({
   contextStatus,
   loading,
+  promptTrace,
 }: {
   contextStatus: ConversationContextStatus | null;
   loading: boolean;
+  promptTrace?: MemoryTrace["prompt"] | null;
 }) {
   const status = contextStatus ?? {
     state: "normal" as const,
@@ -254,7 +261,7 @@ export function ContextUsageIndicator({
     context_window: 0,
     percent: 0,
     ratio: 0,
-    retained_recent_turns: 10,
+    retained_recent_turns: 20,
     summary: null,
   };
   const precisePercent = resolveContextUsagePercent(status);
@@ -277,20 +284,46 @@ export function ContextUsageIndicator({
         : "kf-context-ring-muted";
   const detail =
     status.state === "compressed"
-      ? `已自动压缩长期上下文，保留最近 ${status.retained_recent_turns} 轮对话。`
+      ? `已自动压缩长期上下文，优先保留最近 ${status.retained_recent_turns} 轮；空间不足时优先保留更近的对话。`
       : status.description;
   const displayTokenCount = (value: number) => {
     if (!Number.isFinite(value) || value <= 0) return "-";
-    return value >= 1_000 ? `${Math.round(value / 1_000)}k` : String(Math.round(value));
+    return value >= 1_000 ? `${(value / 1_000).toFixed(1)}k` : String(Math.round(value));
   };
+  const formatPromptTokenCount = (value: number) => {
+    if (!Number.isFinite(value) || value <= 0) return "0";
+    return value >= 1_000 ? `${(value / 1_000).toFixed(1)}k` : String(Math.round(value));
+  };
+  const promptTokens = promptTrace?.tokens;
+  const promptWindow = promptTrace?.context_window ?? status.context_window;
+  const currentHistoryTokens = promptTokens
+    ? status.current_tokens > 0
+      ? status.current_tokens
+      : promptTokens.history
+    : 0;
+  const promptTotal = promptTokens
+    ? Math.max(0, promptTokens.total_input - promptTokens.history + currentHistoryTokens)
+    : 0;
+  const promptPercent = promptWindow > 0 ? Math.min(100, (promptTotal / promptWindow) * 100) : 0;
+  const segments = promptTokens
+    ? [
+        { label: "系统规则", value: promptTokens.system, tone: "bg-muted" },
+        { label: "工具定义", value: promptTokens.tools, tone: "bg-brand/75" },
+        { label: "用户偏好", value: promptTokens.profile ?? 0, tone: "bg-info" },
+        { label: "长期记忆", value: promptTokens.memory ?? 0, tone: "bg-success" },
+        { label: "会话摘要", value: promptTokens.summary ?? 0, tone: "bg-warning" },
+        { label: "对话历史", value: currentHistoryTokens, tone: "bg-brand" },
+        { label: "知识库资料", value: promptTokens.rag, tone: "bg-danger" },
+      ]
+    : [];
 
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
           <button
-            aria-label={loading ? "正在读取背景信息窗口" : `背景信息窗口已用 ${percentLabel}%`}
-            className="kf-context-usage inline-flex size-7 cursor-default items-center justify-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
+            aria-label={loading ? "正在读取背景信息窗口" : `查看上下文使用情况，历史已用 ${percentLabel}%`}
+            className="kf-context-usage inline-flex size-7 cursor-help items-center justify-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
             type="button"
           >
             <svg
@@ -315,19 +348,67 @@ export function ContextUsageIndicator({
         </TooltipTrigger>
         <TooltipContent
           align="center"
-          className="kf-context-tooltip w-64 px-3 py-3 text-center"
+          className="kf-context-tooltip w-80 px-3 py-3 text-left"
           side="top"
         >
-          <p className="kf-context-tooltip-muted text-sm font-medium leading-5">背景信息窗口：</p>
-          <p className="kf-context-tooltip-title text-base font-semibold leading-6 tabular-nums">
-            {loading ? "正在读取" : `${percentLabel}% 已用（剩余 ${remainingPercentLabel}%）`}
-          </p>
-          <p className="kf-context-tooltip-title text-sm font-medium leading-6 tabular-nums">
-            历史已用 {displayTokenCount(status.current_tokens)} / 预算 {displayTokenCount(status.available_tokens)}
-          </p>
-          <p className="kf-context-tooltip-muted text-xs leading-5 tabular-nums">
-            模型窗口 {displayTokenCount(status.context_window)}；其余预留给系统、检索与输出
-          </p>
+          <div className="space-y-1 text-center">
+            <p className="kf-context-tooltip-muted text-sm font-medium leading-5">会话历史预算</p>
+            <p className="kf-context-tooltip-title text-base font-semibold leading-6 tabular-nums">
+              {loading ? "正在读取" : `${percentLabel}% 已用（剩余 ${remainingPercentLabel}%）`}
+            </p>
+            <p className="kf-context-tooltip-title text-sm font-medium leading-6 tabular-nums">
+              历史 {displayTokenCount(status.current_tokens)} / 可用历史预算 {displayTokenCount(status.available_tokens)}
+            </p>
+          </div>
+          {promptTokens ? (
+            <div className="mt-3 border-t border-surface-border/70 pt-3">
+              <div className="flex items-baseline justify-between gap-3">
+                <p className="kf-context-tooltip-muted text-sm font-medium">最近一次请求（已同步）</p>
+                <p className="kf-context-tooltip-title shrink-0 text-sm font-semibold tabular-nums">
+                  {formatContextUsagePercent(promptPercent)}% 已用
+                </p>
+              </div>
+              <p className="mt-1 text-sm tabular-nums text-ink">
+                {formatPromptTokenCount(promptTotal)} / {formatPromptTokenCount(promptWindow)} tokens
+              </p>
+              <div
+                aria-label={`最近一次请求同步后的上下文使用 ${formatContextUsagePercent(promptPercent)}%`}
+                aria-valuemax={promptWindow}
+                aria-valuemin={0}
+                aria-valuenow={promptTotal}
+                className="mt-2 flex h-2 overflow-hidden rounded-full bg-surface-2"
+                role="progressbar"
+              >
+                {segments.map((segment) => (
+                  <span
+                    className={segment.tone}
+                    key={segment.label}
+                    style={{ width: `${Math.min(100, (segment.value / promptWindow) * 100)}%` }}
+                    title={`${segment.label} ${formatPromptTokenCount(segment.value)}`}
+                  />
+                ))}
+              </div>
+              <ul className="mt-3 space-y-1.5">
+                {segments.map((segment) => (
+                  <li className="flex items-center justify-between gap-3 text-sm" key={segment.label}>
+                    <span className="flex min-w-0 items-center gap-2 text-muted">
+                      <span className={cn("size-2 shrink-0 rounded-sm", segment.tone)} aria-hidden />
+                      <span className="truncate">{segment.label}</span>
+                    </span>
+                    <span className="shrink-0 tabular-nums text-ink">{formatPromptTokenCount(segment.value)}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 text-xs leading-5 text-muted tabular-nums">
+                输出预留 {formatPromptTokenCount(promptTokens.output)} · 安全余量 {formatPromptTokenCount(promptTokens.safety)}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-muted">单位：tokens（1k = 1,000 tokens）</p>
+            </div>
+          ) : (
+            <p className="mt-2 border-t border-surface-border/70 pt-2 text-xs leading-5 text-muted">
+              最近一次请求的分段用量会在回答完成后显示。
+            </p>
+          )}
           {status.state === "compressed" && (
             <p className="kf-context-tooltip-summary kf-context-tooltip-muted mt-2 border-t pt-2 text-xs leading-5">
               {detail}

@@ -16,7 +16,7 @@ from .budget import (
     trim_messages_to_token_budget,
     truncate_text_to_token_budget,
 )
-from .constants import MAX_SUMMARY_CONTEXT_TOKENS, BuiltContext
+from .constants import MAX_SUMMARY_CONTEXT_TOKENS, RECENT_TURNS, BuiltContext
 from .memory_retrieve import memory_block, retrieve_user_memories
 from .memory_store import _memory_trace_item
 from .profile import build_user_memory_profile, user_profile_block
@@ -24,6 +24,21 @@ from .summary import ensure_summary_if_needed
 
 if TYPE_CHECKING:
     from src.settings_user import UserLLMConfig
+
+
+def _recent_turn_window(messages: list[Message]) -> list[Message]:
+    """Keep 20 completed turns plus the latest user message before token trim."""
+    if not messages:
+        return []
+    latest_user_index = next(
+        (index for index in range(len(messages) - 1, -1, -1) if messages[index].role == "user"),
+        None,
+    )
+    if latest_user_index is None:
+        return messages[-(RECENT_TURNS * 2) :]
+    prior_turns = messages[:latest_user_index]
+    return prior_turns[-(RECENT_TURNS * 2) :] + messages[latest_user_index:]
+
 
 async def build_context_for_conversation(
     session: AsyncSession,
@@ -116,7 +131,7 @@ async def build_context_for_conversation(
         # Keep every turn that has not entered the rolling summary, subject to
         # the selected model's measured budget. This avoids silently losing
         # messages that arrived after an older summary when switching models.
-        live_source = messages[covered_count:] if summary else messages
+        live_source = _recent_turn_window(messages[covered_count:] if summary else messages)
         rehydrated: list[Message] = []
         if summary and allocation.recent:
             live_tokens = 0 if not live_source else sum(

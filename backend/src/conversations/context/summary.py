@@ -15,6 +15,7 @@ from src.conversations.models import ConversationSummary, Message
 from .budget import compute_budget, context_window_for_model, estimate_tokens, truncate_text_to_token_budget
 from .constants import (
     MAX_SUMMARY_SOURCE_CHARS,
+    MIN_RECENT_TURNS_ON_PRESSURE,
     RECENT_TURNS,
     SAFETY_RESERVE,
     ContextBudget,
@@ -369,11 +370,25 @@ async def ensure_summary_if_needed(
     if prepare and not budget.should_prepare_summary:
         return summary if summary and not summary.is_prepared else None
 
-    keep_count = RECENT_TURNS * 2
-    older = messages[:-keep_count] if len(messages) > keep_count else []
+    active_user_index = len(messages) - 1 if messages and messages[-1].role == "user" else None
     # At the force threshold, compress even a thin older window so the UI
     # "critical" state actually drives a write instead of only a label change.
-    min_older = 2 if budget.force_summarize else 4
+    min_older = 2 if budget.force_summarize or active_user_index is not None else 4
+    normal_keep = RECENT_TURNS * 2
+    pressure_keep = MIN_RECENT_TURNS_ON_PRESSURE * 2
+    if active_user_index is None:
+        older_end = max(0, len(messages) - normal_keep)
+        if older_end < min_older and len(messages) > pressure_keep:
+            older_end = len(messages) - pressure_keep
+    else:
+        # Preserve the latest 20 complete turns and the active user turn in a
+        # healthy window. Once compaction is needed before that point, retain
+        # at least ten complete turns plus that active user message instead of
+        # silently relying on token trimming alone.
+        older_end = max(0, active_user_index - normal_keep)
+        if older_end < min_older and active_user_index > pressure_keep:
+            older_end = active_user_index - pressure_keep
+    older = messages[:older_end]
     if len(older) < min_older:
         return summary
 

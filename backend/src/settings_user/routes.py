@@ -24,10 +24,11 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth.middleware import CurrentUser
 from src.auth.models import User
+from src.conversations.models import Conversation
 from src.conversations.context import resolve_context_window
 from src.infra.crypto import decrypt, encrypt
 from src.infra.database import get_session
@@ -100,6 +101,12 @@ class LLMModelPolicyBody(BaseModel):
     complex_profile_id: str | None = Field(default=None, max_length=36)
     triage_profile_id: str | None = Field(default=None, max_length=36)
     fallback_profile_id: str | None = Field(default=None, max_length=36)
+
+
+class DeleteLLMModelProfileBody(BaseModel):
+    """Optional replacement used to preserve historical conversation choices."""
+
+    replacement_profile_id: str | None = Field(default=None, max_length=36)
 
 
 class EmbeddingBody(BaseModel):
@@ -627,12 +634,13 @@ async def update_llm_model_profile(
     return _profile_to_public(profile)
 
 
-@router.delete("/llm/models/{profile_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+@router.delete("/llm/models/{profile_id}")
 async def delete_llm_model_profile(
     profile_id: str,
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
-) -> None:
+    body: DeleteLLMModelProfileBody | None = None,
+) -> dict:
     profile = await session.get(LLMModelProfile, profile_id)
     if profile is None or profile.user_id != user.id:
         raise HTTPException(status_code=404, detail="model profile not found")
@@ -644,8 +652,51 @@ async def delete_llm_model_profile(
     }
     if profile.id in protected:
         raise HTTPException(status_code=409, detail="该模型正在被路由策略使用，请先调整策略。")
+
+    conversation_count = await session.scalar(
+        select(func.count())
+        .select_from(Conversation)
+        .where(
+            Conversation.user_id == user.id,
+            Conversation.llm_profile_id == profile.id,
+        )
+    )
+    conversation_count = int(conversation_count or 0)
+    replacement_id = body.replacement_profile_id if body is not None else None
+    if conversation_count and not replacement_id:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "model_profile_in_use",
+                "conversation_count": conversation_count,
+                "message": f"该模型仍被 {conversation_count} 个历史会话使用，请选择替代模型后再移除。",
+            },
+        )
+    if replacement_id:
+        if replacement_id == profile.id:
+            raise HTTPException(status_code=422, detail="替代模型不能与待移除模型相同。")
+        replacement = await session.get(LLMModelProfile, replacement_id)
+        if (
+            replacement is None
+            or replacement.user_id != user.id
+            or not replacement.enabled
+        ):
+            raise HTTPException(status_code=422, detail="替代模型不可用，请选择一个已启用的模型。")
+        if conversation_count:
+            await session.execute(
+                update(Conversation)
+                .where(
+                    Conversation.user_id == user.id,
+                    Conversation.llm_profile_id == profile.id,
+                )
+                .values(
+                    llm_profile_id=replacement.id,
+                    llm_model=replacement.model_id,
+                )
+            )
     await session.delete(profile)
     await session.commit()
+    return {"migrated_conversations": conversation_count}
 
 
 @router.put("/llm/policy")

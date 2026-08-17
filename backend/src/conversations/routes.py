@@ -138,11 +138,47 @@ async def _build_context_status(
             model=conv.llm_model,
             available_history_tokens=budget.available_history_tokens,
         )
-    return context_status_payload(
+    payload = context_status_payload(
         budget=budget,
         summary=summary,
         effective_tokens=effective,
     )
+    covered_count = min(max(0, summary.covered_message_count), len(messages)) if summary else 0
+    payload["recent_message_count"] = len(messages) - covered_count
+    return payload
+
+
+def _synchronize_memory_trace_after_completion(
+    memory_trace: dict[str, Any] | None, context_status: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Refresh the displayed trace after its assistant reply is persisted.
+
+    Prompt metadata is initially captured before generation.  The response then
+    becomes part of the conversation, so leaving that snapshot untouched makes
+    the assistant-card trace disagree with the composer card.  Keep the stable
+    request categories, but advance raw history and the reconstructed total to
+    the same persisted-session snapshot used by context status.
+    """
+    if not isinstance(memory_trace, dict):
+        return memory_trace
+    trace = json.loads(json.dumps(memory_trace, ensure_ascii=False))
+    trace["recent_message_count"] = max(0, int(context_status.get("recent_message_count") or 0))
+    prompt = trace.get("prompt")
+    if not isinstance(prompt, dict):
+        return trace
+    tokens = prompt.get("tokens")
+    if not isinstance(tokens, dict):
+        return trace
+    previous_history = max(0, int(tokens.get("history") or 0))
+    summary_tokens = max(0, int(tokens.get("summary") or 0))
+    current_effective = max(0, int(context_status.get("current_tokens") or 0))
+    synced_history = max(0, current_effective - summary_tokens)
+    tokens["history"] = synced_history
+    tokens["total_input"] = max(
+        0, int(tokens.get("total_input") or 0) + synced_history - previous_history
+    )
+    prompt["context_window"] = max(0, int(context_status.get("context_window") or 0))
+    return trace
 
 
 async def _context_cfg_for_user(session: AsyncSession, user: CurrentUser):
@@ -635,6 +671,7 @@ async def append_message(
         error=error,
     )
     session.add(msg)
+    await session.flush()
 
     pending_memory_ids: list[str] = []
     embedding_cfg = None
@@ -656,6 +693,21 @@ async def append_message(
 
     conv.updated_at = datetime.now(timezone.utc)
     conv.finalized_at = None
+
+    if req.role == "assistant" and req.memory_trace:
+        trace_llm_cfg = await _context_cfg_for_conversation(session, conv, user)
+        trace_model = conv.llm_model or (
+            trace_llm_cfg.default_model if trace_llm_cfg is not None else None
+        )
+        trace_status = await _build_context_status(
+            session,
+            conv,
+            context_window=configured_context_window_for_model(trace_llm_cfg, trace_model),
+        )
+        synced_trace = _synchronize_memory_trace_after_completion(req.memory_trace, trace_status)
+        msg.tool_call_log = Message.encode_tool_call_log(
+            tools, parts, synced_trace, req.citations
+        )
 
     await session.commit()
     await session.refresh(msg)

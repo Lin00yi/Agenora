@@ -38,6 +38,51 @@ async def test_context_status_remains_available_without_summary_table(db, create
     assert status["state"] == "normal"
     assert status["summary"] is None
     assert status["current_tokens"] == compute_budget([message], None).current_history_tokens
+    assert status["recent_message_count"] == 1
+
+
+def test_completed_response_trace_is_synchronized_to_current_history() -> None:
+    from src.conversations.routes import _synchronize_memory_trace_after_completion
+
+    trace = {
+        "recent_message_count": 1,
+        "prompt": {
+            "context_window": 1_000_000,
+            "tokens": {
+                "system": 837,
+                "tools": 742,
+                "history": 11,
+                "summary": 0,
+                "rag": 0,
+                "total_input": 1_590,
+            },
+        },
+    }
+    synced = _synchronize_memory_trace_after_completion(
+        trace,
+        {"current_tokens": 68, "context_window": 1_000_000, "recent_message_count": 2},
+    )
+
+    assert synced is not None
+    assert synced["recent_message_count"] == 2
+    assert synced["prompt"]["tokens"]["history"] == 68
+    assert synced["prompt"]["tokens"]["total_input"] == 1_647
+
+
+def test_completed_response_trace_does_not_double_count_summary() -> None:
+    from src.conversations.routes import _synchronize_memory_trace_after_completion
+
+    trace = {
+        "prompt": {"tokens": {"history": 10, "summary": 30, "total_input": 100}}
+    }
+    synced = _synchronize_memory_trace_after_completion(
+        trace,
+        {"current_tokens": 50, "context_window": 16_000, "recent_message_count": 4},
+    )
+
+    assert synced is not None
+    assert synced["prompt"]["tokens"]["history"] == 20
+    assert synced["prompt"]["tokens"]["total_input"] == 110
 
 
 @pytest.mark.asyncio

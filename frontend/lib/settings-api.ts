@@ -162,6 +162,10 @@ export type SaveLLMModelPolicyBody = {
   fallback_profile_id: string | null;
 };
 
+export type DeleteLLMModelProfileResult = {
+  migrated_conversations: number;
+};
+
 export type SaveEmbeddingBody = {
   provider: EmbeddingProvider;
   base_url: string;
@@ -312,8 +316,17 @@ export async function updateLLMModelProfile(
   );
 }
 
-export async function deleteLLMModelProfile(id: string): Promise<void> {
-  await unwrap(await authFetch(`/api/settings/llm/models/${id}`, { method: "DELETE" }));
+export async function deleteLLMModelProfile(
+  id: string,
+  replacementProfileId?: string | null
+): Promise<DeleteLLMModelProfileResult> {
+  return unwrap(
+    await authFetch(`/api/settings/llm/models/${id}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ replacement_profile_id: replacementProfileId ?? null }),
+    })
+  );
 }
 
 export async function saveLLMModelPolicy(body: SaveLLMModelPolicyBody): Promise<MySettings> {

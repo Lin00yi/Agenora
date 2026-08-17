@@ -64,7 +64,7 @@ export function estimateContextStatus(
     prepare_threshold_percent: 60,
     summary_threshold_percent: 72,
     force_threshold_percent: 85,
-    retained_recent_turns: 10,
+    retained_recent_turns: 20,
     summary: null,
   };
 }

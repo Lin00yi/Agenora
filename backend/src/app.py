@@ -301,8 +301,14 @@ def _run_chat_session(
                         block = block_trace.get(name)
                         if not isinstance(block, dict):
                             continue
-                        tokens[name] = int(block.get("injected_tokens") or 0)
+                        injected_tokens = int(block.get("injected_tokens") or 0)
+                        tokens[name] = injected_tokens
                         truncation[name] = bool(block.get("truncated"))
+                    # Profile, memory, and summary are now attached to the
+                    # latest user turn as untrusted data. ``reason`` excludes
+                    # their measured payload from history before this trace is
+                    # emitted, so adding their own UI segments does not alter
+                    # the total or double-count them.
                 memory_trace = {**memory_trace, "prompt": prompt_trace}
                 # Replace the early context snapshot before the answer is
                 # persisted so the in-chat trace and durable message agree.
