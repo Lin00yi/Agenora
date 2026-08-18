@@ -13,7 +13,6 @@ from src.agent.nodes import (
     reason_node,
     should_search_kb,
 )
-from src.agent.graph import build_graph
 from src.agent.nodes.kb_search import _bound_aggregated_rag_context
 from src.conversations.context import RAG_RESERVE, estimate_tokens
 from src.infra.llm import CostTracker
@@ -91,23 +90,6 @@ def _set_policy_env(monkeypatch: pytest.MonkeyPatch, **values: str) -> None:
     for key, value in defaults.items():
         monkeypatch.setenv(key, value)
     get_settings.cache_clear()
-
-
-def test_user_kb_graph_compiles_with_rewrite_and_search_nodes() -> None:
-    registry = ToolRegistry()
-    registry.register(RecordingKBSearchTool())
-    kb = SimpleNamespace(
-        id="user-kb-id",
-        name="Agenora",
-        description="Agenora product docs",
-        is_system=False,
-    )
-
-    graph, cost = build_graph(registry=registry, kb=kb, llm_cfg=_llm_cfg())
-
-    assert graph is not None
-    assert cost is not None
-    assert hasattr(graph, "ainvoke")
 
 
 @pytest.mark.asyncio

@@ -1,4 +1,4 @@
-"""LangGraph nodes: plan, call_tools, skill_report.
+"""LangGraph nodes: query_policy, kb_search, reason, call_tools.
 
 Public re-exports preserve ``from src.agent.nodes import X`` for graph, app, and tests.
 """
@@ -14,7 +14,6 @@ from .prompts_budget import allocate_provider_context, build_effective_system_pr
 from .query_policy import _rule_query_policy, query_policy_node
 from .reason import reason_node
 from .routing import should_continue, should_search_kb
-from .skills_schema import plan_node
 
 __all__ = [
     "EMPTY_ANSWER_FALLBACK",
@@ -24,7 +23,6 @@ __all__ = [
     "call_tools_node",
     "get_client",
     "kb_search_node",
-    "plan_node",
     "query_policy_node",
     "reason_node",
     "should_continue",

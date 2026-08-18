@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.agent.nodes import allocate_provider_context, build_effective_system_prompt, plan_node
+from src.agent.nodes import allocate_provider_context, build_effective_system_prompt, reason_node
 from src.conversations.context import (
     MAX_MEMORY_CONTEXT_TOKENS,
     allocate_context_blocks,
@@ -178,7 +178,7 @@ async def test_openai_request_attaches_saved_context_to_latest_user_turn(monkeyp
     monkeypatch.setattr(llm_adapters, "get_client", lambda _cfg: client)
     cfg = SimpleNamespace(provider="openai-compat", default_model="test", complex_model=None)
 
-    await plan_node(
+    await reason_node(
         {
             "messages": [
                 {
@@ -223,7 +223,7 @@ async def test_anthropic_request_keeps_system_content_out_of_messages(monkeypatc
     monkeypatch.setattr(llm_adapters, "get_client", lambda _cfg: client)
     cfg = SimpleNamespace(provider="anthropic", default_model="test", complex_model=None)
 
-    await plan_node(
+    await reason_node(
         {
             "messages": [
                 {
