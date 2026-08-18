@@ -90,11 +90,36 @@ class ToolRegistry:
             if result.latency_ms == 0:
                 result.latency_ms = int((time.perf_counter() - start) * 1000)
             if span is not None:
+                metadata = {"latency_ms": result.latency_ms}
+                # Persist normalized retrieval outcome fields on the existing
+                # tool span.  RAG monitoring reads only these numbers, never
+                # prompts or chunk text, and supports historical traces that
+                # do not yet carry the optional block.
+                if name in {"search_kb", "search_kg"}:
+                    raw = result.raw if isinstance(result.raw, dict) else {}
+                    rows = raw.get("results") if isinstance(raw.get("results"), list) else []
+                    max_score = raw.get("max_score")
+                    if max_score is None:
+                        scores = [item.get("score") for item in rows if isinstance(item, dict)]
+                        numeric = []
+                        for score in scores:
+                            try:
+                                numeric.append(float(score))
+                            except (TypeError, ValueError):
+                                continue
+                        max_score = max(numeric) if numeric else None
+                    metadata["rag"] = {
+                        "source": "kb" if name == "search_kb" else "kg",
+                        "result_count": raw.get("hits", len(rows)),
+                        "candidate_count": raw.get("candidate_hits"),
+                        "max_score": max_score,
+                        "truncated": bool(raw.get("truncated", False)),
+                    }
                 span.end(
                     status="error" if result.error else "ok",
                     error=result.error,
                     output=result.text if not result.error else None,
-                    metadata={"latency_ms": result.latency_ms},
+                    metadata=metadata,
                 )
             return result
         except Exception as exc:  # noqa: BLE001

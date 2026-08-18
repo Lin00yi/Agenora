@@ -170,6 +170,17 @@ class Settings(BaseSettings):
     # (prod→production, dev→development, …).
     langfuse_tracing_environment: str = ""
 
+    # ===== RAG quality monitoring =====
+    # The monitor aggregates persisted ``search_kb`` / ``search_kg`` spans.
+    # Alerts are emitted only after enough calls to avoid noisy tiny samples.
+    rag_monitor_window_hours: int = 24
+    rag_monitor_interval_seconds: int = 300
+    rag_monitor_min_calls: int = 20
+    rag_monitor_max_error_rate: float = 0.05
+    rag_monitor_max_empty_rate: float = 0.45
+    rag_monitor_max_p95_latency_ms: int = 5000
+    rag_monitor_min_avg_top_score: float = 0.50
+
     # ===== LightRAG Server (knowledge-graph recall) =====
     # When lightrag_enabled and LIGHTRAG_BASE_URL are set, KBs with kg_enabled
     # sync documents to the server and search_kg runs in parallel with search_kb.

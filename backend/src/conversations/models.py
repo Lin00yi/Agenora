@@ -63,7 +63,10 @@ class Conversation(Base):
     def to_summary_dict(self) -> dict:
         return {
             "id": self.id,
-            "title": self.title,
+            # SQLAlchemy applies column defaults on flush, but callers can
+            # build a draft Conversation before it is persisted.  Keep the
+            # public API stable for that normal in-memory path too.
+            "title": self.title or "新对话",
             "kb_id": self.kb_id,
             "llm_model": self.llm_model,
             "llm_profile_id": self.llm_profile_id,

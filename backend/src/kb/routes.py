@@ -14,7 +14,8 @@ Authorization model:
 Lifecycle of an upload:
   POST /api/kbs/{id}/documents
     → 201 + Document(status="pending")
-    → BackgroundTask spawned to do parse/chunk/embed/upsert
+    → durable IngestionJob enqueued (BackgroundTask is only immediate handoff)
+    → worker parses/chunks/embeds/upserts with bounded retry
     → Client polls GET /api/kbs/{id} (or /documents) for status transitions
 """
 from __future__ import annotations
@@ -37,23 +38,31 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, EmailStr, Field, HttpUrl
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.middleware import CurrentUser
 from src.auth.models import User
 from src.infra.database import get_session
 from src.infra.embedding import _resolve_config, get_vector_size, probe_vector_size
+from src.infra.ingestion_jobs import enqueue_ingestion, run_ingestion_job
 from src.infra.vector_store import get_store
 from src.kb.ingest import (
     delete_document_chunks,
     delete_kb_uploads,
     delete_uploaded_file,
-    ingest_document,
     save_uploaded_file,
     upload_path,
 )
-from src.kb.models import KB, Chunk, ChunkStrategy, Document, KBInvitation, KBMember
+from src.kb.models import (
+    KB,
+    Chunk,
+    ChunkStrategy,
+    Document,
+    IngestionJob,
+    KBInvitation,
+    KBMember,
+)
 from src.kb.parsers import SUPPORTED_EXTS
 from src.settings_user import require_user_embedding, resolve_user_embedding
 from src.settings_user.kb_resolvers import resolve_kb_embedding
@@ -486,6 +495,29 @@ async def purge_kb(session: AsyncSession, kb: KB) -> None:
     """
     collection_name = kb.collection_name
     kb_id = kb.id
+    docs = list(
+        (
+            await session.execute(select(Document).where(Document.kb_id == kb_id))
+        ).scalars()
+    )
+
+    # A graph workspace is an external copy of the source text.  Clear it
+    # before removing relational bookkeeping so a failed call leaves enough
+    # metadata for a retry instead of silently orphaning private content.
+    if bool(getattr(kb, "kg_enabled", False)):
+        from src.kg.sync import delete_document_from_lightrag
+
+        for doc in docs:
+            await delete_document_from_lightrag(
+                kb_id=kb_id,
+                kg_doc_id=getattr(doc, "kg_doc_id", "") or "",
+                kg_track_id=getattr(doc, "kg_track_id", "") or "",
+                strict=True,
+            )
+
+    await session.execute(
+        delete(IngestionJob).where(IngestionJob.document_id.in_([doc.id for doc in docs]))
+    )
 
     # Drop the vector collection first — it's idempotent so leaks here are
     # recoverable, but a dangling DB row pointing at a missing collection would
@@ -630,11 +662,12 @@ async def rebuild_kb(
     await store.delete_collection(collection_name)
     await store.create_collection(collection_name, vector_size)
 
-    # Spawn one ingest task per document; they run sequentially in FastAPI's
-    # BackgroundTasks queue. The user can watch GET /documents to track.
-    ecfg = resolve_user_embedding(user)
-    for did in doc_ids:
-        background.add_task(ingest_document, did, ecfg)
+    # Persist all work before handing it to this process. A worker can resume
+    # any unfinished job after a deploy/restart.
+    jobs = [await enqueue_ingestion(session, document_id=did) for did in doc_ids]
+    await session.commit()
+    for job in jobs:
+        background.add_task(run_ingestion_job, job.id)
 
     return {
         "rebuilding": True,
@@ -670,6 +703,19 @@ async def upload_document(
         raise HTTPException(
             status_code=400,
             detail="provide exactly one of `file` (multipart) or `url` (form field)",
+        )
+
+    # Validate credentials before saving a pending document. Otherwise a
+    # configuration error would leave a record that no worker could process.
+    ecfg = resolve_kb_embedding(kb, user)
+    if ecfg is None:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "embedding_not_configured",
+                "message": "知识库未配置 embedding，且当前用户也未配置默认 embedding；请在创建知识库时填写 embedding 凭据。",
+                "settings_url": "/settings",
+            },
         )
 
     doc_id = str(uuid.uuid4())
@@ -715,27 +761,10 @@ async def upload_document(
         )
 
     session.add(doc)
+    job = await enqueue_ingestion(session, document_id=doc_id)
     await session.commit()
     await session.refresh(doc)
-
-    # v3-M8.2: derive the ingest cfg from the KB row first (KB-level wins),
-    # fall back to user-level only when KB has no own cfg. Without this the
-    # ingest would always use the user-level cfg even when the KB was created
-    # with its own embedding creds — leading to 403s when user-level api_key
-    # is empty / wrong while the KB-level one is correct.
-    ecfg = resolve_kb_embedding(kb, user)
-    if ecfg is None:
-        # Neither KB-level nor user-level cfg available — surface a clear
-        # error now instead of letting ingest die silently in the background.
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "code": "embedding_not_configured",
-                "message": "知识库未配置 embedding，且当前用户也未配置默认 embedding；请在创建知识库时填写 embedding 凭据。",
-                "settings_url": "/settings",
-            },
-        )
-    background.add_task(ingest_document, doc_id, ecfg)
+    background.add_task(run_ingestion_job, job.id)
 
     return doc.to_public_dict(kb=kb)
 
@@ -774,14 +803,9 @@ async def delete_document(
     kg_track_id_snap = getattr(doc, "kg_track_id", "") or ""
     kg_enabled_snap = bool(getattr(kb, "kg_enabled", False))
 
-    # Drop chunks from Qdrant (idempotent), then DB row, then on-disk file.
-    await delete_document_chunks(kb.collection_name, doc_id_snap)
-    await session.delete(doc)
-    if chunks_to_subtract:
-        kb.chunks_count = max(0, (kb.chunks_count or 0) - chunks_to_subtract)
-    await session.commit()
-    delete_uploaded_file(kb_id, doc_id_snap, filename_snap)
-
+    # A graph workspace is an external source copy.  Its strict cleanup must
+    # happen while the Document still retains the LightRAG identifiers, so the
+    # caller can retry a transient failure without losing that metadata.
     if kg_enabled_snap and (kg_doc_id_snap or kg_track_id_snap):
         from src.kg.sync import delete_document_from_lightrag
 
@@ -789,8 +813,17 @@ async def delete_document(
             kb_id=kb_id,
             kg_doc_id=kg_doc_id_snap,
             kg_track_id=kg_track_id_snap,
+            strict=True,
         )
 
+    # Drop chunks from Qdrant (idempotent), then DB row, then on-disk file.
+    await delete_document_chunks(kb.collection_name, doc_id_snap)
+    await session.execute(delete(IngestionJob).where(IngestionJob.document_id == doc_id_snap))
+    await session.delete(doc)
+    if chunks_to_subtract:
+        kb.chunks_count = max(0, (kb.chunks_count or 0) - chunks_to_subtract)
+    await session.commit()
+    delete_uploaded_file(kb_id, doc_id_snap, filename_snap)
 
 @router.get("/{kb_id}/documents/{doc_id}")
 async def get_document(
@@ -873,6 +906,7 @@ async def reingest_document(
 ) -> dict:
     kb = await _load_writable_kb(session, kb_id, user.id)
     doc = await _load_document(session, kb_id, doc_id)
+    await _resolve_doc_embedding_cfg(session, kb, user)
     prev_chunks = doc.chunks_count or 0
     await delete_document_chunks(kb.collection_name, doc.id)
     doc.status = "pending"
@@ -882,8 +916,9 @@ async def reingest_document(
         kb.chunks_count = max(0, (kb.chunks_count or 0) - prev_chunks)
     await session.commit()
 
-    ecfg = await _resolve_doc_embedding_cfg(session, kb, user)
-    background.add_task(ingest_document, doc.id, ecfg)
+    job = await enqueue_ingestion(session, document_id=doc.id)
+    await session.commit()
+    background.add_task(run_ingestion_job, job.id)
     return doc.to_public_dict(kb=kb)
 
 

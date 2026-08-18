@@ -142,6 +142,78 @@ async def stats(admin: AdminUser, session: AsyncSession = Depends(get_session)) 
     }
 
 
+@router.get("/rag/monitor")
+async def rag_monitor(
+    admin: AdminUser,  # noqa: ARG001
+    session: AsyncSession = Depends(get_session),
+    hours: int | None = Query(None, ge=1, le=24 * 31),
+) -> dict:
+    """Operational RAG metrics and threshold alerts, derived from Trace spans."""
+    from src.observability.rag_metrics import build_rag_monitor_snapshot
+
+    return await build_rag_monitor_snapshot(session, hours=hours)
+
+
+class RAGEvaluationCaseRequest(BaseModel):
+    """One golden query executed by the already-running application process."""
+
+    id: str = Field(min_length=1, max_length=128)
+    query: str = Field(min_length=1, max_length=2_000)
+
+
+class RAGEvaluationRetrievalRequest(BaseModel):
+    kb_id: str = Field(min_length=36, max_length=36)
+    cases: list[RAGEvaluationCaseRequest] = Field(min_length=1, max_length=100)
+    limit: int = Field(default=3, ge=1, le=10)
+
+
+@router.post("/rag/evaluate-retrieval")
+async def evaluate_rag_retrieval(
+    req: RAGEvaluationRetrievalRequest,
+    admin: AdminUser,  # noqa: ARG001
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Run golden queries in-process, avoiding a second Milvus Lite file lock.
+
+    This endpoint returns only citation-safe result metadata. It deliberately
+    does not return chunk text or the raw user-owned source document body.
+    """
+    from src.settings_user.kb_resolvers import resolve_kb_embedding, resolve_kb_reranker
+    from src.tools.kb_search import KBSearchTool
+
+    kb = await session.get(KB, req.kb_id)
+    if kb is None:
+        raise HTTPException(status_code=404, detail="knowledge base not found")
+    owner = await session.get(User, kb.user_id)
+    tool = KBSearchTool(
+        kb=kb,
+        embedding_cfg=resolve_kb_embedding(kb, owner),
+        reranker_cfg=resolve_kb_reranker(kb, owner),
+    )
+    predictions: list[dict] = []
+    for case in req.cases:
+        result = await tool.execute(case.query, limit=req.limit)
+        raw = result.raw if isinstance(result.raw, dict) else {}
+        rows = raw.get("results") if isinstance(raw.get("results"), list) else []
+        retrieved = [
+            {
+                "document_id": item.get("doc_id"),
+                "filename": item.get("filename"),
+                "score": item.get("score"),
+            }
+            for item in rows
+            if isinstance(item, dict) and item.get("doc_id")
+        ]
+        predictions.append(
+            {
+                "id": case.id,
+                "retrieved": retrieved,
+                "error": result.error,
+            }
+        )
+    return {"kb_id": kb.id, "limit": req.limit, "predictions": predictions}
+
+
 # ---------------------------------------------------------------------------
 # Users
 # ---------------------------------------------------------------------------

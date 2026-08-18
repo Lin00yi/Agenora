@@ -315,6 +315,36 @@ class Document(Base):
         return out
 
 
+class IngestionJob(Base):
+    """Durable, retryable work item for one document ingest.
+
+    FastAPI BackgroundTasks are only a low-latency handoff: a separate worker
+    claims this row, so process restarts and multiple web workers cannot lose
+    or double-run the authoritative task.
+    """
+
+    __tablename__ = "ingestion_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    document_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("documents.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True, nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True, nullable=False
+    )
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    claim_token: Mapped[str | None] = mapped_column(String(36), nullable=True, default=None)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+
+
 class Chunk(Base):
     """One text chunk within a document — source of truth for chunk management.
 

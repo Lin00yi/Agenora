@@ -32,6 +32,8 @@ RUN pip install --no-cache-dir --retries 5 -i https://pypi.tuna.tsinghua.edu.cn/
 # Source + prompt-injection rule/eval config.
 COPY src ./src
 COPY config ./config
+COPY alembic ./alembic
+COPY alembic.ini ./alembic.ini
 
 # Runtime data dir (PG handles app DB; this volume holds Milvus Lite .db + uploads).
 RUN mkdir -p /app/data/uploads

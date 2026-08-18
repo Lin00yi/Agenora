@@ -87,12 +87,20 @@ async def delete_document_from_lightrag(
     kb_id: str,
     kg_doc_id: str = "",
     kg_track_id: str = "",
-) -> None:
-    """Best-effort remove a document from LightRAG Server."""
+    strict: bool = False,
+) -> bool:
+    """Remove a document from LightRAG Server.
+
+    Interactive document deletion historically treated graph cleanup as best
+    effort.  Account/KB purge passes ``strict=True`` so it never claims that
+    private data has been erased while an external graph copy remains.  Callers
+    can retry a strict failure safely because the LightRAG delete API is
+    idempotent for a known document id.
+    """
     settings = get_settings()
     client = get_lightrag_client()
     if not client.enabled or not settings.lightrag_enabled:
-        return
+        return True
     ids: list[str] = []
     if kg_doc_id:
         ids.append(kg_doc_id)
@@ -101,9 +109,13 @@ async def delete_document_from_lightrag(
             await client.resolve_doc_ids_from_track(kb_id=kb_id, track_id=kg_track_id)
         )
     if not ids:
-        return
+        return True
     try:
         await client.delete_documents(kb_id=kb_id, doc_ids=ids)
         log.info("lightrag_delete_done", kb_id=kb_id, doc_ids=ids)
+        return True
     except Exception as exc:  # noqa: BLE001
         log.warning("lightrag_delete_failed", kb_id=kb_id, error=str(exc)[:500])
+        if strict:
+            raise
+        return False

@@ -301,8 +301,10 @@ class QdrantStore:
 # or MILVUS_URI=http://host:19530 + MILVUS_TOKEN=... (Standalone / Zilliz).
 #
 # Differences vs Qdrant handled internally:
-#   1. Milvus COSINE returns distance (0=match, 1=orthogonal). We convert to
-#      similarity via `score = 1.0 - distance` so callers see Qdrant semantics.
+#   1. Milvus Lite and remote Milvus versions disagree on whether a COSINE
+#      ``distance`` is a distance or a similarity.  We request vectors and
+#      recompute cosine locally so callers always receive stable Qdrant-like
+#      similarity semantics.
 #   2. pymilvus 3.0 search `output_fields=['*']` does NOT return dynamic fields,
 #      so we list every known payload key explicitly (`_KNOWN_PAYLOAD_KEYS`).
 #   3. `drop_collection` on Windows can hit WinError 183 (atomic-rename race in
@@ -655,10 +657,11 @@ class MilvusStore:
                 k: v for k, v in entity.items()
                 if k != "id" and v is not None and v != ""
             }
-            # Milvus COSINE returns distance (0 = identical). Convert to
-            # similarity so callers see Qdrant-equivalent scores in [0, 1].
-            distance = float(hit.get("distance", 0.0))
-            score = 1.0 - distance
+            # Milvus Lite currently returns COSINE similarity here while some
+            # remote Milvus versions return a distance.  Do not trust that
+            # version-dependent field: we requested the stored vector, so a
+            # local cosine calculation gives every backend the same contract.
+            score = _cosine_similarity(query_vector, vec) if vec else 0.0
             results.append({
                 "id": str(hit.get("id", "")),
                 "score": score,

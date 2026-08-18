@@ -18,6 +18,7 @@ def test_conversation_timestamps_are_serialized_as_explicit_utc() -> None:
         "title": "新对话",
         "kb_id": None,
         "llm_model": None,
+        "llm_profile_id": None,
         "message_count": 0,
         "created_at": "2026-08-14T07:22:00+00:00",
         "updated_at": "2026-08-14T07:22:00+00:00",

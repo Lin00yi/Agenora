@@ -136,6 +136,13 @@ services:
       LOG_LEVEL: INFO
       CORS_ORIGINS: ${PUBLIC_URL:-http://localhost}
       RATE_LIMIT_PER_HOUR: ${RATE_LIMIT_PER_HOUR:-60}
+      RAG_MONITOR_WINDOW_HOURS: ${RAG_MONITOR_WINDOW_HOURS:-24}
+      RAG_MONITOR_INTERVAL_SECONDS: ${RAG_MONITOR_INTERVAL_SECONDS:-300}
+      RAG_MONITOR_MIN_CALLS: ${RAG_MONITOR_MIN_CALLS:-20}
+      RAG_MONITOR_MAX_ERROR_RATE: ${RAG_MONITOR_MAX_ERROR_RATE:-0.05}
+      RAG_MONITOR_MAX_EMPTY_RATE: ${RAG_MONITOR_MAX_EMPTY_RATE:-0.45}
+      RAG_MONITOR_MAX_P95_LATENCY_MS: ${RAG_MONITOR_MAX_P95_LATENCY_MS:-5000}
+      RAG_MONITOR_MIN_AVG_TOP_SCORE: ${RAG_MONITOR_MIN_AVG_TOP_SCORE:-0.50}
 
       # --- Observability ---
       TRACE_ENABLED: ${TRACE_ENABLED:-true}
@@ -150,6 +157,25 @@ services:
       - backend-data:/app/data
     expose:
       - "8000"
+
+  # Durable document-ingest worker. It inherits the exact database, vector,
+  # provider and LightRAG configuration from backend; health checks are
+  # disabled because this process deliberately does not expose HTTP.
+  ingestion-worker:
+    extends:
+      service: backend
+    command: ["python", "-m", "src.infra.ingestion_jobs"]
+    healthcheck:
+      disable: true
+
+  # Aggregates persisted RAG tool spans and emits structured warning logs when
+  # error / empty-result / latency / relevance thresholds are breached.
+  rag-monitor:
+    extends:
+      service: backend
+    command: ["python", "-m", "src.observability.rag_monitor"]
+    healthcheck:
+      disable: true
 
   # ===== Frontend (Next.js 14 standalone build) =====
   frontend:

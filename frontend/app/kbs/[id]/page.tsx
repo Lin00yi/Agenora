@@ -5,6 +5,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  use,
   FormEvent,
 } from "react";
 import { useRouter } from "next/navigation";
@@ -104,8 +105,8 @@ const CHUNK_STRATEGY_OPTIONS: { value: ChunkStrategy; label: string }[] = [
 const kbDetailInputClass =
   "admin-input";
 
-export default function KbDetailPage({ params }: { params: { id: string } }) {
-  const { id } = params;
+export default function KbDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const router = useRouter();
 
   const [kb, setKb] = useState<KBDetail | null>(null);

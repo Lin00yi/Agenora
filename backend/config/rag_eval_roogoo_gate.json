@@ -1,0 +1,16 @@
+{
+  "dataset": "config/rag_eval_roogoo.jsonl",
+  "kb_id": "babfc2b9-98e6-48e0-9114-295486489963",
+  "k": 3,
+  "minimums": {
+    "recall_at_k": 0.95,
+    "mrr": 0.85,
+    "ndcg_at_k": 0.88
+  },
+  "baseline": {
+    "recall_at_k": 1.0,
+    "mrr": 0.925,
+    "ndcg_at_k": 0.9446394630357187
+  },
+  "notes": "2026-08-18: live service retrieval baseline. Citation metrics are intentionally absent until answer traces with citations are labeled."
+}

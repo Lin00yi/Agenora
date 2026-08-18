@@ -6,8 +6,9 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+import structlog
 
 from src.auth.middleware import CurrentUser
 from src.auth.models import User
@@ -16,6 +17,7 @@ from src.auth.tokens import issue_token
 from src.infra.database import get_session
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+log = structlog.get_logger()
 
 
 # ---------------------------------------------------------------------------
@@ -130,25 +132,55 @@ async def change_password(
 
 
 async def purge_user(session: AsyncSession, user: User) -> None:
-    """Hard-delete a user plus the KBs and conversations they own.
+    """Hard-delete all user-owned data across relational and external stores.
 
-    KB.user_id / Conversation.user_id are soft FKs (no DB-level cascade), so we
-    clear them explicitly. Shared by the self-delete route (DELETE /me) and the
-    admin delete-user endpoint; callers handle authorization + invariants first.
-
-    NOTE: per-KB vector collections are not dropped here (bulk path, mirrors the
-    original self-delete behavior). Single-KB deletion via kb.routes.purge_kb is
-    what drops vector collections.
+    User/KB relationships are deliberately soft FKs because deleting a KB
+    requires vector, graph, and file cleanup.  This operation therefore first
+    calls the explicit KB purge per owned KB.  Each external deletion is
+    idempotent; if a provider is temporarily unavailable, the user row and
+    remaining metadata stay in place and the same DELETE can be retried.
     """
-    from sqlalchemy import delete
+    from src.conversations.models import Conversation, ConversationSummary, Message, UserMemory
+    from src.kb.models import KB, KBInvitation, KBMember
+    from src.kb.routes import purge_kb
+    from src.observability.models import Observation, Trace
+    from src.settings_user.models import LLMConnection, LLMModelProfile
 
-    from src.conversations.models import Conversation
-    from src.kb.models import KB
+    user_id = user.id
+    try:
+        owned_kbs = list(
+            (await session.execute(select(KB).where(KB.user_id == user_id))).scalars()
+        )
+        for kb in owned_kbs:
+            await purge_kb(session, kb)
 
-    await session.execute(delete(Conversation).where(Conversation.user_id == user.id))
-    await session.execute(delete(KB).where(KB.user_id == user.id))
-    await session.delete(user)
-    await session.commit()
+        conversation_ids = select(Conversation.id).where(Conversation.user_id == user_id)
+        trace_ids = select(Trace.id).where(Trace.user_id == user_id)
+        # Explicit child deletes keep the cleanup correct on SQLite deployments
+        # where foreign-key enforcement may not be enabled for every connection.
+        await session.execute(
+            delete(ConversationSummary).where(
+                ConversationSummary.conversation_id.in_(conversation_ids)
+            )
+        )
+        await session.execute(delete(Message).where(Message.conversation_id.in_(conversation_ids)))
+        await session.execute(delete(Conversation).where(Conversation.user_id == user_id))
+        await session.execute(delete(Observation).where(Observation.trace_id.in_(trace_ids)))
+        await session.execute(delete(Trace).where(Trace.user_id == user_id))
+        await session.execute(delete(UserMemory).where(UserMemory.user_id == user_id))
+        await session.execute(delete(LLMModelProfile).where(LLMModelProfile.user_id == user_id))
+        await session.execute(delete(LLMConnection).where(LLMConnection.user_id == user_id))
+        # Remove the user as a collaborator or invitation creator on KBs owned
+        # by other accounts too; those rows otherwise retain a deleted identity.
+        await session.execute(delete(KBMember).where(KBMember.user_id == user_id))
+        await session.execute(delete(KBInvitation).where(KBInvitation.created_by == user_id))
+        await session.delete(user)
+        await session.commit()
+        log.info("user_purge_completed", user_id=user_id, owned_kb_count=len(owned_kbs))
+    except Exception:
+        await session.rollback()
+        log.exception("user_purge_failed", user_id=user_id)
+        raise
 
 
 @router.delete("/me")

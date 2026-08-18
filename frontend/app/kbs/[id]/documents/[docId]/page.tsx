@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  use,
   FormEvent,
   ChangeEvent,
 } from "react";
@@ -86,9 +87,9 @@ const CHUNK_STRATEGY_OPTIONS: { value: ChunkStrategy; label: string }[] = [
 export default function DocumentDetailPage({
   params,
 }: {
-  params: { id: string; docId: string };
+  params: Promise<{ id: string; docId: string }>;
 }) {
-  const { id: kbId, docId } = params;
+  const { id: kbId, docId } = use(params);
   const router = useRouter();
 
   const [kb, setKb] = useState<KBDetail | null>(null);

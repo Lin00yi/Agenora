@@ -109,6 +109,40 @@ export async function getStats(): Promise<AdminStats> {
   return unwrap(await authFetch("/api/admin/stats"));
 }
 
+export type RagMonitorAlert = {
+  code: string;
+  severity: "warning" | "critical";
+  message: string;
+  value: number;
+  threshold: number;
+};
+
+export type RagMonitorSnapshot = {
+  window_hours: number;
+  generated_at: string;
+  sample_sufficient: boolean;
+  min_calls: number;
+  status: "healthy" | "alert";
+  alerts: RagMonitorAlert[];
+  metrics: {
+    retrieval_calls: number;
+    retrieval_traces: number;
+    kb_calls: number;
+    kg_calls: number;
+    error_calls: number;
+    error_rate: number;
+    measurable_empty_calls: number;
+    empty_calls: number;
+    empty_rate: number | null;
+    p95_latency_ms: number | null;
+    avg_top_score: number | null;
+  };
+};
+
+export async function getRagMonitor(hours = 24): Promise<RagMonitorSnapshot> {
+  return unwrap(await authFetch(`/api/admin/rag/monitor?hours=${hours}`));
+}
+
 // ---------------------------------------------------------------------------
 // Users
 // ---------------------------------------------------------------------------

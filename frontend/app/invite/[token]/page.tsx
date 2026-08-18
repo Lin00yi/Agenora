@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Users, Eye, CheckCircle, BookOpen, ShieldCheck } from "lucide-react";
@@ -31,9 +31,9 @@ import { Button } from "@/components/ui/button";
 export default function InvitePage({
   params,
 }: {
-  params: { token: string };
+  params: Promise<{ token: string }>;
 }) {
-  const { token } = params;
+  const { token } = use(params);
   const router = useRouter();
 
   const [preview, setPreview] = useState<InvitationPreview | null>(null);

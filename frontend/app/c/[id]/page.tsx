@@ -1,5 +1,10 @@
 import { ChatPage } from "@/components/ChatPageClient";
 
-export default function ConversationPage({ params }: { params: { id: string } }) {
-  return <ChatPage routeConversationId={params.id} />;
+export default async function ConversationPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  return <ChatPage routeConversationId={id} />;
 }
