@@ -1,7 +1,5 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -14,14 +12,17 @@ import {
   TriangleAlert,
   Upload,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 
+import Select from "@/components/Select";
 import { AdminPanel, AdminSection } from "@/components/kb/AdminPageShell";
 import { formatAdminDate } from "@/components/kb/admin-utils";
 import { Button } from "@/components/ui/button";
-import Select from "@/components/Select";
 import { StateView } from "@/components/ui/state-view";
-import { toast } from "@/lib/toast";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toastApiError } from "@/lib/byok-toast";
+import { cn } from "@/lib/cn";
 import {
   getKbEvalConfig,
   getKbEvalMonitor,
@@ -38,7 +39,7 @@ import {
   type KbEvalRun,
   type KbEvalTemplate,
 } from "@/lib/kb-api";
-import { cn } from "@/lib/cn";
+import { toast } from "@/lib/toast";
 
 function metricPct(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return "—";
@@ -67,6 +68,9 @@ export function KbEvalSection({ kbId }: { kbId: string }) {
   const goldenInput = useRef<HTMLInputElement>(null);
   const gateInput = useRef<HTMLInputElement>(null);
   const replayInput = useRef<HTMLInputElement>(null);
+
+  type EvalTab = "config" | "regression" | "replay" | "monitor";
+  const [activeTab, setActiveTab] = useState<EvalTab>("config");
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -220,158 +224,185 @@ export function KbEvalSection({ kbId }: { kbId: string }) {
       {loading || !config ? (
         <StateView title="正在加载测评配置" description="读取黄金集、历史运行和监控快照。" />
       ) : (
-        <div className="space-y-4">
-          <AdminPanel
-            title="黄金集配置"
-            subtitle="每个知识库绑定一份 JSONL 问题集和可选门禁阈值。"
-            toolbar={
-              <div className="flex flex-wrap items-center gap-2">
-                {templates.map((tpl) => (
-                  <Button
-                    key={tpl.id}
-                    type="button"
-                    variant="outline"
-                    disabled={saving}
-                    onClick={() => void onImportTemplate(tpl.id as "roogoo")}
-                  >
-                    导入 {tpl.name}
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => setActiveTab(value as EvalTab)}
+          className="space-y-4"
+        >
+          <TabsList>
+            <TabsTrigger value="config">黄金集配置</TabsTrigger>
+            <TabsTrigger value="regression">检索回归</TabsTrigger>
+            <TabsTrigger value="replay">离线回放</TabsTrigger>
+            <TabsTrigger value="monitor">线上监控</TabsTrigger>
+          </TabsList>
+
+          {activeTab === "config" ? (
+            <TabsContent value="config">
+            <AdminPanel
+              title="黄金集配置"
+              subtitle="每个知识库绑定一份 JSONL 问题集和可选门禁阈值。"
+              toolbar={
+                <div className="flex flex-wrap items-center gap-2">
+                  {templates.map((tpl) => (
+                    <Button
+                      key={tpl.id}
+                      type="button"
+                      variant="outline"
+                      disabled={saving}
+                      onClick={() => void onImportTemplate(tpl.id as "roogoo")}
+                    >
+                      导入 {tpl.name}
+                    </Button>
+                  ))}
+                </div>
+              }
+            >
+              <div className="space-y-3 p-4 text-sm">
+                {configured ? (
+                  <p className="text-muted">
+                    {config.case_count} 条用例 · K={config.k}
+                    {config.updated_at ? ` · 更新于 ${formatAdminDate(config.updated_at)}` : ""}
+                  </p>
+                ) : (
+                  <p className="text-muted">尚未配置黄金集。上传 JSONL，或从 Roogoo 模板导入。</p>
+                )}
+                {configured && (
+                  <dl className="grid gap-2 sm:grid-cols-3">
+                    <MetricChip label="Recall@K 门禁" value={metricPct(config.minimums.recall_at_k ?? null)} />
+                    <MetricChip label="MRR 门禁" value={metricPct(config.minimums.mrr ?? null)} />
+                    <MetricChip label="nDCG@K 门禁" value={metricPct(config.minimums.ndcg_at_k ?? null)} />
+                  </dl>
+                )}
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <label className="text-xs text-muted">
+                    黄金集 JSONL
+                    <input ref={goldenInput} type="file" accept=".jsonl,.json,text/plain" className="mt-1 block text-xs" />
+                  </label>
+                  <label className="text-xs text-muted">
+                    门禁 JSON（可选）
+                    <input ref={gateInput} type="file" accept=".json,text/plain" className="mt-1 block text-xs" />
+                  </label>
+                  <Button type="button" variant="outline" disabled={saving} onClick={() => void onUploadConfig()}>
+                    <Upload className="h-4 w-4" />
+                    保存配置
                   </Button>
-                ))}
+                </div>
               </div>
-            }
-          >
-            <div className="space-y-3 p-4 text-sm">
-              {configured ? (
-                <p className="text-muted">
-                  {config.case_count} 条用例 · K={config.k}
-                  {config.updated_at ? ` · 更新于 ${formatAdminDate(config.updated_at)}` : ""}
-                </p>
-              ) : (
-                <p className="text-muted">尚未配置黄金集。上传 JSONL，或从 Roogoo 模板导入。</p>
-              )}
-              {configured && (
-                <dl className="grid gap-2 sm:grid-cols-3">
-                  <MetricChip label="Recall@K 门禁" value={metricPct(config.minimums.recall_at_k ?? null)} />
-                  <MetricChip label="MRR 门禁" value={metricPct(config.minimums.mrr ?? null)} />
-                  <MetricChip label="nDCG@K 门禁" value={metricPct(config.minimums.ndcg_at_k ?? null)} />
-                </dl>
-              )}
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <label className="text-xs text-muted">
-                  黄金集 JSONL
-                  <input ref={goldenInput} type="file" accept=".jsonl,.json,text/plain" className="mt-1 block text-xs" />
-                </label>
-                <label className="text-xs text-muted">
-                  门禁 JSON（可选）
-                  <input ref={gateInput} type="file" accept=".json,text/plain" className="mt-1 block text-xs" />
-                </label>
-                <Button type="button" variant="outline" disabled={saving} onClick={() => void onUploadConfig()}>
-                  <Upload className="h-4 w-4" />
-                  保存配置
-                </Button>
-              </div>
-            </div>
-          </AdminPanel>
+            </AdminPanel>
+            </TabsContent>
+          ) : null}
 
-          <AdminPanel
-            title="黄金集检索回归"
-            subtitle="对当前索引重新执行 search_kb，再按文档 ID 计算 Recall@K / MRR / nDCG。"
-            toolbar={
-              <Button type="button" disabled={!configured || running} onClick={() => void onRunRegression()}>
-                {running ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                {running ? "正在检索…" : "运行回归"}
-              </Button>
-            }
-          >
-            <EvalReportBlock
-              emptyTitle="还没有回归结果"
-              emptyDescription="配置黄金集后点击「运行回归」。这会查询当前向量索引，不是离线回放。"
-              run={latest}
-              report={report}
-            />
-          </AdminPanel>
+          {activeTab === "regression" ? (
+            <TabsContent value="regression">
+            <AdminPanel
+              title="黄金集检索回归"
+              subtitle="对当前索引重新执行 search_kb，再按文档 ID 计算 Recall@K / MRR / nDCG。"
+              toolbar={
+                <Button type="button" disabled={!configured || running} onClick={() => void onRunRegression()}>
+                  {running ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                  {running ? "正在检索…" : "运行回归"}
+                </Button>
+              }
+            >
+              <EvalReportBlock
+                emptyTitle="还没有回归结果"
+                emptyDescription="配置黄金集后点击「运行回归」。这会查询当前向量索引，不是离线回放。"
+                run={latest}
+                report={report}
+              />
+            </AdminPanel>
+            </TabsContent>
+          ) : null}
 
-          <AdminPanel
-            title="离线回放"
-            subtitle="不重新检索，只用已保存的 retrieval.jsonl 对照当前黄金集重算分数。"
-            toolbar={
-              <div className="flex flex-wrap items-center gap-2">
-                <Select
-                  value={replayRunId}
-                  onChange={(e) => setReplayRunId(e.target.value)}
-                  options={[
-                    { value: "", label: "选择历史运行" },
-                    ...runs.map((run) => ({
-                      value: run.id,
-                      label: `${run.run_type === "replay" ? "回放" : "回归"} · ${formatAdminDate(run.created_at)}`,
-                    })),
-                  ]}
-                  className="h-[var(--control-h)] min-w-[12rem] admin-select-trigger"
-                  contentAlign="end"
-                  contentPosition="popper"
-                />
-                <Button type="button" variant="outline" disabled={!configured || replaying || !replayRunId} onClick={() => void onReplayHistory()}>
-                  回放选中运行
-                </Button>
-                <Button type="button" variant="outline" disabled={!configured || replaying} onClick={() => replayInput.current?.click()}>
-                  <Upload className="h-4 w-4" />
-                  上传 retrieval.jsonl
-                </Button>
-                <input
-                  ref={replayInput}
-                  type="file"
-                  accept=".jsonl,.json,text/plain"
-                  className="hidden"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) void onReplayUpload(file);
-                  }}
-                />
+          {activeTab === "replay" ? (
+            <TabsContent value="replay">
+            <AdminPanel
+              title="离线回放"
+              subtitle="不重新检索，只用已保存的 retrieval.jsonl 对照当前黄金集重算分数。"
+              toolbar={
+                <div className="flex flex-wrap items-center gap-2">
+                  <Select
+                    value={replayRunId}
+                    onChange={(e) => setReplayRunId(e.target.value)}
+                    options={[
+                      { value: "", label: "选择历史运行" },
+                      ...runs.map((run) => ({
+                        value: run.id,
+                        label: `${run.run_type === "replay" ? "回放" : "回归"} · ${formatAdminDate(run.created_at)}`,
+                      })),
+                    ]}
+                    className="h-[var(--control-h)] min-w-[12rem] admin-select-trigger"
+                    contentAlign="end"
+                    contentPosition="popper"
+                  />
+                  <Button type="button" variant="outline" disabled={!configured || replaying || !replayRunId} onClick={() => void onReplayHistory()}>
+                    回放选中运行
+                  </Button>
+                  <Button type="button" variant="outline" disabled={!configured || replaying} onClick={() => replayInput.current?.click()}>
+                    <Upload className="h-4 w-4" />
+                    上传 retrieval.jsonl
+                  </Button>
+                  <input
+                    ref={replayInput}
+                    type="file"
+                    accept=".jsonl,.json,text/plain"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void onReplayUpload(file);
+                    }}
+                  />
+                </div>
+              }
+            >
+              <div className="space-y-3 p-4">
+                {report?.missing_prediction_ids?.length ? (
+                  <StateView
+                    variant="notice"
+                    density="compact"
+                    title="黄金集已更新，部分用例缺少检索结果"
+                    description={`${report.missing_prediction_ids.join("、")}。请重新运行检索回归。`}
+                  />
+                ) : null}
+                <p className="text-xs text-muted">最近 {runs.length} 次运行会出现在上方列表；上传文件按当前黄金集的 case id 对齐，多余 id 会被忽略。</p>
               </div>
-            }
-          >
-            <div className="space-y-3 p-4">
-              {report?.missing_prediction_ids?.length ? (
-                <StateView
-                  variant="notice"
-                  density="compact"
-                  title="黄金集已更新，部分用例缺少检索结果"
-                  description={`${report.missing_prediction_ids.join("、")}。请重新运行检索回归。`}
-                />
-              ) : null}
-              <p className="text-xs text-muted">最近 {runs.length} 次运行会出现在上方列表；上传文件按当前黄金集的 case id 对齐，多余 id 会被忽略。</p>
-            </div>
-          </AdminPanel>
+            </AdminPanel>
+            </TabsContent>
+          ) : null}
 
-          <AdminPanel
-            title="线上监控"
-            subtitle="真实对话中的检索健康，不是黄金集分数。"
-            toolbar={
-              <div className="flex items-center gap-2">
-                <Select
-                  value={hours}
-                  onChange={(e) => {
-                    setHours(e.target.value);
-                    void refreshMonitor(e.target.value);
-                  }}
-                  options={[
-                    { value: "24", label: "过去 24 小时" },
-                    { value: "168", label: "过去 7 天" },
-                  ]}
-                  className="h-[var(--control-h)] admin-select-trigger"
-                  contentAlign="end"
-                  contentPosition="popper"
-                />
-                <Button type="button" variant="outline" disabled={monitorBusy} onClick={() => void refreshMonitor()}>
-                  <RefreshCw className={cn("h-4 w-4", monitorBusy && "animate-spin")} />
-                  刷新
-                </Button>
-              </div>
-            }
-          >
-            {monitor ? <MonitorBlock snapshot={monitor} /> : <p className="p-4 text-sm text-muted">暂无监控数据。</p>}
-          </AdminPanel>
-        </div>
+          {activeTab === "monitor" ? (
+            <TabsContent value="monitor">
+            <AdminPanel
+              title="线上监控"
+              subtitle="真实对话中的检索健康，不是黄金集分数。"
+              toolbar={
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={hours}
+                    onChange={(e) => {
+                      setHours(e.target.value);
+                      void refreshMonitor(e.target.value);
+                    }}
+                    options={[
+                      { value: "24", label: "过去 24 小时" },
+                      { value: "168", label: "过去 7 天" },
+                    ]}
+                    className="h-[var(--control-h)] admin-select-trigger"
+                    contentAlign="end"
+                    contentPosition="popper"
+                  />
+                  <Button type="button" variant="outline" disabled={monitorBusy} onClick={() => void refreshMonitor()}>
+                    <RefreshCw className={cn("h-4 w-4", monitorBusy && "animate-spin")} />
+                    刷新
+                  </Button>
+                </div>
+              }
+            >
+              {monitor ? <MonitorBlock snapshot={monitor} /> : <p className="p-4 text-sm text-muted">暂无监控数据。</p>}
+            </AdminPanel>
+            </TabsContent>
+          ) : null}
+        </Tabs>
       )}
     </AdminSection>
   );
@@ -405,13 +436,17 @@ function EvalReportBlock({
     );
   }
   const metrics = report.metrics;
-  const failed = report.per_case.filter((row) => row.recall < 1);
+  const allCases = report.per_case;
+  const passedCount = allCases.filter((row) => row.recall >= 1).length;
+  const failedCount = allCases.length - passedCount;
   return (
     <div className="space-y-4 p-4">
       <div className={cn("flex items-center gap-2 rounded-lg border p-3 text-sm", run.gate_passed ? "border-success/30 bg-success/10 text-success" : "border-danger/35 bg-danger/10 text-danger")}>
         {run.gate_passed ? <CheckCircle2 className="h-4 w-4" /> : <TriangleAlert className="h-4 w-4" />}
         {run.gate_passed ? "门禁通过" : report.gate_error || "门禁未通过"}
-        <span className="ml-auto text-xs text-muted">{formatAdminDate(run.created_at)}</span>
+        <span className="ml-auto text-xs text-muted">
+          {passedCount}/{allCases.length} 通过 · {formatAdminDate(run.created_at)}
+        </span>
       </div>
       <div className="grid gap-2 sm:grid-cols-4">
         <MetricChip label="Recall@K" value={metricPct(metrics.recall_at_k)} />
@@ -419,7 +454,7 @@ function EvalReportBlock({
         <MetricChip label="nDCG@K" value={metricPct(metrics.ndcg_at_k)} />
         <MetricChip label="Precision@K" value={metricPct(metrics.precision_at_k)} />
       </div>
-      {failed.length > 0 && (
+      {allCases.length > 0 && (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="text-muted">
@@ -431,7 +466,7 @@ function EvalReportBlock({
               </tr>
             </thead>
             <tbody>
-              {failed.map((row) => (
+              {allCases.map((row) => (
                 <CaseRow key={row.id} row={row} />
               ))}
             </tbody>
@@ -443,10 +478,14 @@ function EvalReportBlock({
 }
 
 function CaseRow({ row }: { row: KbEvalPerCase }) {
+  const hit = row.recall >= 1;
   return (
-    <tr className="border-t border-surface-border/60 align-top">
-      <td className="py-2 pr-3 font-mono">{row.id}</td>
-      <td className="py-2 pr-3 tabular-nums">{metricPct(row.recall)}</td>
+    <tr className={cn("border-t border-surface-border/60 align-top", hit ? "bg-success/5" : "bg-danger/5")}>
+      <td className="py-2 pr-3 font-mono">
+        <span className={cn("inline-block h-2 w-2 rounded-full mr-1.5", hit ? "bg-success" : "bg-danger")} />
+        {row.id}
+      </td>
+      <td className={cn("py-2 pr-3 tabular-nums font-semibold", hit ? "text-success" : "text-danger")}>{metricPct(row.recall)}</td>
       <td className="py-2 pr-3 font-mono text-[11px]">{row.expected_document_ids.join(", ") || "—"}</td>
       <td className="py-2 font-mono text-[11px]">{row.retrieved_document_ids.join(", ") || "—"}</td>
     </tr>

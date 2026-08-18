@@ -1,82 +1,46 @@
 "use client";
 
+import { toast } from "@/lib/toast";
 import {
+  AlertCircle,
+  BookOpen,
+  ClipboardList,
+  Copy,
+  Eye,
+  FileText,
+  Layers,
+  Link2,
+  Lock,
+  Play,
+  Plus,
+  RefreshCw,
+  Search,
+  SlidersHorizontal,
+  Trash2,
+  UserPlus,
+  Users,
+  X,
+} from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import {
+  FormEvent,
+  use,
   useCallback,
   useEffect,
   useMemo,
   useState,
-  use,
-  FormEvent,
 } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import {
-  Trash2,
-  FileText,
-  Link2,
-  RefreshCw,
-  AlertCircle,
-  Lock,
-  Layers,
-  BookOpen,
-  SlidersHorizontal,
-  Users,
-  Eye,
-  UserPlus,
-  Copy,
-  X,
-  Search,
-  Plus,
-  Play,
-  ClipboardList,
-} from "lucide-react";
-import { toast } from "@/lib/toast";
 
-import { getToken } from "@/lib/auth";
-import {
-  getKb,
-  uploadFile,
-  uploadUrl,
-  deleteDocument,
-  deleteKb,
-  patchKb,
-  patchDocument,
-  rebuildKb,
-  reingestDocument,
-  listMembers,
-  inviteMember,
-  patchMember,
-  removeMember,
-  listInvitations,
-  createInvitation,
-  deleteInvitation,
-  type KBDetail,
-  type Document,
-  type DocStatus,
-  type ChunkStrategy,
-  type KbMemberListResponse,
-  type KbInvitation,
-  type MemberRole,
-  type KbRole,
-  formatKbRole,
-} from "@/lib/kb-api";
-import { toastApiError } from "@/lib/byok-toast";
-import { cn } from "@/lib/cn";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
 import AppModal from "@/components/AppModal";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { AddDocumentDialog } from "@/components/kb/AddDocumentDialog";
-import { KbEvalSection } from "@/components/kb/KbEvalSection";
-import Select from "@/components/Select";
-import { LoadingState, StateView } from "@/components/ui/state-view";
-import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  DOC_STATUS_UI,
+  fileExtension,
+  formatAdminDate,
+  formatFileSize,
+} from "@/components/kb/admin-utils";
 import {
   AdminPageShell,
   AdminPanel,
@@ -88,12 +52,48 @@ import {
   AdminRowMoreTrigger,
   AdminToolbarButton,
 } from "@/components/kb/AdminTableActions";
+import { KbEvalSection } from "@/components/kb/KbEvalSection";
+import Select from "@/components/Select";
+import { Button } from "@/components/ui/button";
 import {
-  DOC_STATUS_UI,
-  fileExtension,
-  formatAdminDate,
-  formatFileSize,
-} from "@/components/kb/admin-utils";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { LoadingState, StateView } from "@/components/ui/state-view";
+import { Switch } from "@/components/ui/switch";
+import { getToken } from "@/lib/auth";
+import { toastApiError } from "@/lib/byok-toast";
+import { cn } from "@/lib/cn";
+import {
+  createInvitation,
+  deleteDocument,
+  deleteInvitation,
+  deleteKb,
+  formatKbRole,
+  getKb,
+  inviteMember,
+  listInvitations,
+  listMembers,
+  patchDocument,
+  patchKb,
+  patchMember,
+  rebuildKb,
+  reingestDocument,
+  removeMember,
+  uploadFile,
+  uploadUrl,
+  type ChunkStrategy,
+  type DocStatus,
+  type Document,
+  type KBDetail,
+  type KbInvitation,
+  type KbMemberListResponse,
+  type KbRole,
+  type MemberRole,
+} from "@/lib/kb-api";
 
 const CHUNK_STRATEGY_OPTIONS: { value: ChunkStrategy; label: string }[] = [
   { value: "recursive", label: "递归文本切分" },
@@ -416,6 +416,50 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
     setDocPage(1);
   }, [docSearch, docStatusFilter]);
 
+  type KbSectionId = "documents" | "members" | "evaluation" | "retrieval" | "danger";
+  const [activeSection, setActiveSection] = useState<KbSectionId>("documents");
+
+  // Allow flags used only for section mounting logic.
+  // Keep them safe during initial renders when `kb` is still null/undefined,
+  // so Hook order stays stable (no conditional early returns).
+  const allowMembers = !kb?.is_system;
+  const allowEvaluation = (() => {
+    if (!kb) return false;
+    const myRole = kb.my_role ?? (kb.is_system ? "viewer" : "owner");
+    const isOwner = myRole === "owner";
+    return (isOwner || myRole === "editor") && !kb.is_system;
+  })();
+  const allowRetrieval = (() => {
+    if (!kb) return false;
+    const myRole = kb.my_role ?? (kb.is_system ? "viewer" : "owner");
+    return myRole === "owner" && !kb.is_system;
+  })();
+  const allowDanger = allowRetrieval;
+
+  useEffect(() => {
+    const resolve = (): KbSectionId => {
+      const raw = window.location.hash.replace(/^#/, "");
+      const next = raw as KbSectionId;
+      if (next === "documents") return "documents";
+      if (next === "members" && allowMembers) return "members";
+      if (next === "evaluation" && allowEvaluation) return "evaluation";
+      if (next === "retrieval" && allowRetrieval) return "retrieval";
+      if (next === "danger" && allowDanger) return "danger";
+      return "documents";
+    };
+
+    const onHashChange = () => setActiveSection(resolve());
+    setActiveSection(resolve());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowMembers, allowEvaluation, allowRetrieval, allowDanger]);
+
+  useEffect(() => {
+    const el = document.getElementById(activeSection);
+    el?.scrollIntoView();
+  }, [activeSection]);
+
   if (loading) {
     return (
       <div className="flex min-h-dvh items-center justify-center px-4">
@@ -570,17 +614,18 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
           ]}
         />
 
-        <AdminSection
-          id="documents"
-          icon={FileText}
-          title={kb.is_system ? "示例说明" : "文档"}
-          description={
-            kb.is_system
-              ? "内置示例库仅供对话演示，内容只读，不开放文档管理。"
-              : "上传、筛选、启停文档，并进入单篇文档的分块管理。"
-          }
-          className="mt-6"
-        >
+        {activeSection === "documents" ? (
+          <AdminSection
+            id="documents"
+            icon={FileText}
+            title={kb.is_system ? "示例说明" : "文档"}
+            description={
+              kb.is_system
+                ? "内置示例库仅供对话演示，内容只读，不开放文档管理。"
+                : "上传、筛选、启停文档，并进入单篇文档的分块管理。"
+            }
+            className="mt-6"
+          >
         {kb.is_system ? (
           <StateView
             variant="notice"
@@ -906,9 +951,10 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
           )}
         </AdminPanel>
         )}
-        </AdminSection>
+          </AdminSection>
+        ) : null}
 
-        {!kb.is_system && (
+        {!kb.is_system && activeSection === "members" ? (
           <AdminSection
             id="members"
             icon={Users}
@@ -918,12 +964,12 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
           >
             <MembersSection kbId={kb.id} isOwner={isOwner} />
           </AdminSection>
-        )}
+        ) : null}
 
-        {canWrite && <KbEvalSection kbId={kb.id} />}
+        {canWrite && activeSection === "evaluation" ? <KbEvalSection kbId={kb.id} /> : null}
 
         {/* v3-M3: owner-only advanced settings - grouping toggle + hybrid rebuild. */}
-        {isOwner && !kb.is_system && (
+        {isOwner && !kb.is_system && activeSection === "retrieval" ? (
           <AdminSection
             id="retrieval"
             icon={SlidersHorizontal}
@@ -1051,10 +1097,10 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
             </div>
           </section>
           </AdminSection>
-        )}
+        ) : null}
 
         {/* v3-M1: owner-only danger zone for KB deletion. */}
-        {isOwner && !kb.is_system && (
+        {isOwner && !kb.is_system && activeSection === "danger" ? (
           <AdminSection
             id="danger"
             icon={AlertCircle}
@@ -1086,7 +1132,7 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
             </Button>
           </div>
           </AdminSection>
-        )}
+        ) : null}
 
       <AddDocumentDialog
         open={addDocOpen}
