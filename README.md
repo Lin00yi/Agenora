@@ -96,7 +96,14 @@ cp config/rag_eval_cases.example.jsonl config/rag_eval_cases.jsonl
   --write-results artifacts/rag-retrieval.jsonl --report artifacts/rag-report.json
 ```
 
-每个生产知识库应将实际运行的基线和允许回退阈值保存为可审查的 JSON；Roogoo 的首版示例见 `backend/config/rag_eval_roogoo_gate.json`。例如其发布门禁为 `Recall@3 ≥ 0.95`、`MRR ≥ 0.85`、`nDCG@3 ≥ 0.88`。
+每个生产知识库应将实际运行的基线和允许回退阈值保存为可审查的 JSON；Roogoo 见 `backend/config/rag_eval_roogoo_gate.json`。检索按 **文档 ID 去重** 后计算 Recall@K / MRR / nDCG，卡片类问题允许一组相关文档，而不是唯一一篇。CLI 可直接读门禁：
+
+```bash
+.venv/bin/python -m src.rag_eval.cli \
+  --gate config/rag_eval_roogoo_gate.json \
+  --api-base-url http://127.0.0.1:8000 --api-token <admin-bearer-token> \
+  --write-results artifacts/rag-retrieval.jsonl --report artifacts/rag-report.json
+```
 
 上线后，`search_kb` / `search_kg` 的结果数、最高相关度、延迟和失败状态会写入 Trace。Docker 自动运行 `rag-monitor`，按 `RAG_MONITOR_*` 阈值输出结构化告警日志；管理员可在 `/admin/rag` 查看过去 24 小时的空检索率、错误率、P95 延迟和相关度。没有 Docker 时可手动运行一次（加 `--fail-on-alert` 会在告警时以退出码 2 结束，适合 cron/CI）：
 

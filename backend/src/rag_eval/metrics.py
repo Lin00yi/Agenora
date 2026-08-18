@@ -98,6 +98,51 @@ def load_predictions(path: str | Path) -> dict[str, dict[str, Any]]:
     return rows
 
 
+def unique_ids(ids: Iterable[str], *, limit: int | None = None) -> list[str]:
+    """Preserve first-seen order so duplicate chunks cannot inflate rankings."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in ids:
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+        if limit is not None and len(out) >= limit:
+            break
+    return out
+
+
+def collapse_retrieved_to_documents(rows: list[Any], *, k: int) -> list[dict[str, Any]]:
+    """Keep the first chunk per document so document-level top-k is well-defined."""
+    top_k = max(1, min(int(k), 100))
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for item in rows:
+        if isinstance(item, str):
+            doc_id = item.strip()
+            row: dict[str, Any] = {"document_id": doc_id}
+        elif isinstance(item, dict):
+            doc_id = str(item.get("document_id") or item.get("doc_id") or "").strip()
+            row = dict(item)
+            if doc_id:
+                row["document_id"] = doc_id
+        else:
+            continue
+        if not doc_id or doc_id in seen:
+            continue
+        seen.add(doc_id)
+        out.append(row)
+        if len(out) >= top_k:
+            break
+    return out
+
+
+def search_overfetch_limit(k: int, *, cap: int = 30) -> int:
+    """Fetch extra chunks so collapsing to K unique documents stays possible."""
+    top_k = max(1, min(int(k), 100))
+    return max(top_k, min(int(cap), top_k * 4))
+
+
 def _document_ids(row: dict[str, Any], field: str) -> list[str]:
     entries = row.get(field) or []
     if not isinstance(entries, list):
@@ -148,21 +193,25 @@ def evaluate(
             citations: list[str] = []
             has_citation_judgment = False
         else:
-            retrieved = _document_ids(row, "retrieved")[:top_k]
-            citations = _document_ids(row, "citations")
+            retrieved = unique_ids(_document_ids(row, "retrieved"), limit=top_k)
+            citations = unique_ids(_document_ids(row, "citations"))
             # A retrieval-only run deliberately has no answer citations. Do
             # not turn that absence into a misleading zero-quality score.
             has_citation_judgment = "citations" in row
         relevant = [doc_id in case.expected_document_ids for doc_id in retrieved]
         hits = sum(relevant)
-        recalls.append(hits / len(case.expected_document_ids))
+        # Document-level Recall@K: unique hits over how many relevant documents
+        # could fit in the cutoff. A six-document allowed set must not make
+        # Recall@3 max out at 0.5.
+        recall_denom = min(len(case.expected_document_ids), top_k)
+        recalls.append(hits / recall_denom if recall_denom else 0.0)
         precisions.append(hits / len(retrieved) if retrieved else 0.0)
         first_hit = next((rank for rank, ok in enumerate(relevant, start=1) if ok), None)
         reciprocal_ranks.append(1.0 / first_hit if first_hit is not None else 0.0)
         ideal = _dcg([True] * min(len(case.expected_document_ids), top_k))
         ndcgs.append(_dcg(relevant) / ideal if ideal else 0.0)
 
-        citation_hits = sum(doc_id in case.expected_citation_document_ids for doc_id in citations)
+        citation_hits = sum(1 for doc_id in citations if doc_id in case.expected_citation_document_ids)
         if has_citation_judgment:
             if citations:
                 citation_precisions.append(citation_hits / len(citations))
@@ -200,6 +249,38 @@ def evaluate(
             "citation_recall": _mean(citation_recalls),
         },
         "per_case": per_case,
+    }
+
+
+def load_gate(path: str | Path) -> dict[str, Any]:
+    """Load a checked-in retrieval gate: dataset, kb, k, and minimums."""
+    source = Path(path)
+    try:
+        raw = json.loads(source.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise EvaluationGateError(f"{source}: invalid JSON") from exc
+    if not isinstance(raw, dict):
+        raise EvaluationGateError(f"{source}: gate must be an object")
+    minimums = raw.get("minimums") or {}
+    if minimums is not None and not isinstance(minimums, dict):
+        raise EvaluationGateError(f"{source}: minimums must be an object")
+    k = raw.get("k", 3)
+    try:
+        k_value = int(k)
+    except (TypeError, ValueError) as exc:
+        raise EvaluationGateError(f"{source}: k must be an integer") from exc
+    return {
+        "dataset": str(raw.get("dataset") or "").strip(),
+        "kb_id": str(raw.get("kb_id") or "").strip(),
+        "k": max(1, min(k_value, 100)),
+        "minimums": {
+            "recall_at_k": minimums.get("recall_at_k") if isinstance(minimums, dict) else None,
+            "mrr": minimums.get("mrr") if isinstance(minimums, dict) else None,
+            "ndcg_at_k": minimums.get("ndcg_at_k") if isinstance(minimums, dict) else None,
+            "citation_precision": minimums.get("citation_precision") if isinstance(minimums, dict) else None,
+        },
+        "baseline": raw.get("baseline") if isinstance(raw.get("baseline"), dict) else {},
+        "notes": str(raw.get("notes") or ""),
     }
 
 
