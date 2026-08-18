@@ -219,7 +219,7 @@ export function KbEvalSection({ kbId }: { kbId: string }) {
       icon={ClipboardList}
       title="测评"
       description="黄金集检索回归会查询当前索引；离线回放只重算分数；线上监控看真实对话里的检索健康。"
-      className="mt-8"
+      className="mt-0"
     >
       {loading || !config ? (
         <StateView title="正在加载测评配置" description="读取黄金集、历史运行和监控快照。" />

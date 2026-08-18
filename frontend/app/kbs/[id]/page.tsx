@@ -597,6 +597,12 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
         </section>
 
         <AdminSectionNav
+          value={`#${activeSection}`}
+          onValueChange={(value) => {
+            const next = value.replace(/^#/, "");
+            setActiveSection(next as KbSectionId);
+            window.location.hash = value;
+          }}
           items={[
             { label: kb.is_system ? "示例说明" : "文档", href: "#documents", icon: FileText },
             ...(!kb.is_system
@@ -624,7 +630,7 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
                 ? "内置示例库仅供对话演示，内容只读，不开放文档管理。"
                 : "上传、筛选、启停文档，并进入单篇文档的分块管理。"
             }
-            className="mt-6"
+            className="mt-0"
           >
         {kb.is_system ? (
           <StateView
@@ -960,7 +966,7 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
             icon={Users}
             title="成员"
             description="管理谁可以查看或维护这个知识库。"
-            className="mt-8"
+            className="mt-0"
           >
             <MembersSection kbId={kb.id} isOwner={isOwner} />
           </AdminSection>
@@ -975,7 +981,7 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
             icon={SlidersHorizontal}
             title="检索设置"
             description="统一管理 KB 默认分块参数、grouping search 和索引重建。"
-            className="mt-8"
+            className="mt-0"
           >
           <section className="admin-panel overflow-hidden">
             <div className="flex items-start gap-3 border-b border-surface-border/70 bg-surface-2/35 px-4 py-4">
@@ -1106,7 +1112,7 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
             icon={AlertCircle}
             title="危险操作"
             description="高风险操作集中在这里，避免和日常文档维护混在一起。"
-            className="mt-8"
+            className="mt-0"
           >
           <div className="rounded-lg border border-danger/30 bg-danger/5 p-4 shadow-sm">
             <div className="flex items-start gap-3">

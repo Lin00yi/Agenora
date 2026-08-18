@@ -1,10 +1,11 @@
 "use client";
 
-import Link from "next/link";
-import { ChevronRight } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/cn";
+import type { LucideIcon } from "lucide-react";
+import { ChevronRight } from "lucide-react";
+import Link from "next/link";
+import type { ReactNode } from "react";
 
 export type BreadcrumbItem = {
   label: string;
@@ -141,23 +142,35 @@ export function AdminPanel({
   );
 }
 
-export function AdminSectionNav({ items }: { items: AdminSectionNavItem[] }) {
+export function AdminSectionNav({
+  items,
+  value,
+  onValueChange,
+}: {
+  items: AdminSectionNavItem[];
+  value?: string;
+  onValueChange?: (value: string) => void;
+}) {
   return (
-    <nav className="admin-section-nav" aria-label="页面分区">
-      {items.map((item) => {
-        const Icon = item.icon;
-        return (
-          <a
-            key={item.href}
-            href={item.href}
-            className={cn("admin-section-nav-item", item.muted && "opacity-70")}
-          >
-            {Icon ? <Icon className="h-3.5 w-3.5" aria-hidden /> : null}
-            <span>{item.label}</span>
-          </a>
-        );
-      })}
-    </nav>
+    <Tabs value={value} onValueChange={onValueChange} className="gap-0" size="large">
+      <div className="mb-6 max-w-full overflow-x-auto pb-1">
+        <TabsList aria-label="页面分区">
+          {items.map((item) => {
+            const Icon = item.icon;
+            return (
+              <TabsTrigger
+                key={item.href}
+                value={item.href}
+                className={cn(item.muted && "opacity-70")}
+              >
+                {Icon ? <Icon className="h-3.5 w-3.5" aria-hidden /> : null}
+                {item.label}
+              </TabsTrigger>
+            );
+          })}
+        </TabsList>
+      </div>
+    </Tabs>
   );
 }
 
