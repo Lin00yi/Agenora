@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
 from src.rag_eval.metrics import EvaluationGateError, assert_quality_gate, evaluate, load_cases
+
+ROOGOO_GOLDEN = Path(__file__).resolve().parents[1] / "config" / "rag_eval_roogoo.jsonl"
 
 
 def test_golden_retrieval_and_citation_metrics_are_deterministic(tmp_path):
@@ -58,6 +61,7 @@ def test_retrieval_only_runs_leave_citation_metrics_unmeasured(tmp_path):
     assert report["metrics"]["citation_precision"] is None
     assert report["metrics"]["citation_recall"] is None
     assert report["per_case"][0]["citation_recall"] is None
+    assert report["per_case"][0]["query"] == "A"
 
 
 def test_golden_case_requires_real_expected_document_ids(tmp_path):
@@ -174,3 +178,22 @@ def test_load_gate_reads_minimums(tmp_path):
     assert loaded["dataset"] == "config/rag_eval_roogoo.jsonl"
     assert loaded["kb_id"] == "kb-1"
     assert loaded["minimums"]["recall_at_k"] == 0.8
+
+
+def test_roogoo_golden_set_keeps_canonical_citation_and_tight_retrieval():
+    cases = load_cases(ROOGOO_GOLDEN)
+    assert cases
+    by_id = {case.id: case for case in cases}
+    for case in cases:
+        assert len(case.expected_citation_document_ids) == 1
+        assert case.expected_citation_document_ids <= case.expected_document_ids
+        assert 1 <= len(case.expected_document_ids) <= 2
+    assert by_id["roogoo-card-decline"].expected_document_ids == frozenset(
+        {"30b3f929-7d04-41c4-b74b-4d328875228f", "eae3d2fc-52c3-4901-b6b0-5c7807347a26"}
+    )
+    assert by_id["roogoo-deposit-usdt-binance"].expected_document_ids == frozenset(
+        {"28bda0fa-9f63-4ca9-9852-d5158490f60d", "f6d6c2a3-9d6f-4a64-a9f8-bbed9749493e"}
+    )
+    assert by_id["roogoo-exchange-rate"].expected_document_ids == by_id[
+        "roogoo-exchange-rate"
+    ].expected_citation_document_ids

@@ -231,6 +231,7 @@ def evaluate(
         per_case.append(
             {
                 "id": case.id,
+                "query": case.query,
                 "tags": list(case.tags),
                 "retrieved_document_ids": retrieved,
                 "expected_document_ids": sorted(case.expected_document_ids),

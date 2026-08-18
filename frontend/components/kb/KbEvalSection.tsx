@@ -552,9 +552,14 @@ function EvalReportBlock({
     );
   }
   const metrics = report.metrics;
-  const allCases = report.per_case;
+  const allCases = [...report.per_case].sort((a, b) => {
+    const aFail = a.recall < 1 ? 0 : 1;
+    const bFail = b.recall < 1 ? 0 : 1;
+    if (aFail !== bFail) return aFail - bFail;
+    if (a.recall !== b.recall) return a.recall - b.recall;
+    return a.id.localeCompare(b.id);
+  });
   const passedCount = allCases.filter((row) => row.recall >= 1).length;
-  const failedCount = allCases.length - passedCount;
   return (
     <div className="space-y-4 p-4">
       <div className={cn("flex items-center gap-2 rounded-lg border p-3 text-sm", run.gate_passed ? "border-success/30 bg-success/10 text-success" : "border-danger/35 bg-danger/10 text-danger")}>
@@ -597,9 +602,14 @@ function CaseRow({ row }: { row: KbEvalPerCase }) {
   const hit = row.recall >= 1;
   return (
     <tr className={cn("border-t border-surface-border/60 align-top", hit ? "bg-success/5" : "bg-danger/5")}>
-      <td className="py-2 pr-3 font-mono">
-        <span className={cn("inline-block h-2 w-2 rounded-full mr-1.5", hit ? "bg-success" : "bg-danger")} />
-        {row.id}
+      <td className="py-2 pr-3">
+        <div className="flex items-start gap-1.5 font-mono">
+          <span className={cn("mt-1 inline-block h-2 w-2 shrink-0 rounded-full", hit ? "bg-success" : "bg-danger")} />
+          <span>
+            {row.id}
+            {row.query ? <span className="mt-0.5 block max-w-md font-sans font-normal text-muted">{row.query}</span> : null}
+          </span>
+        </div>
       </td>
       <td className={cn("py-2 pr-3 tabular-nums font-semibold", hit ? "text-success" : "text-danger")}>{metricPct(row.recall)}</td>
       <td className="py-2 pr-3 font-mono text-[11px]">{row.expected_document_ids.join(", ") || "—"}</td>

@@ -645,6 +645,7 @@ export type KbEvalConfig = {
 
 export type KbEvalPerCase = {
   id: string;
+  query?: string;
   tags: string[];
   retrieved_document_ids: string[];
   expected_document_ids: string[];

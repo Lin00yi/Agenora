@@ -7,11 +7,6 @@
     "mrr": 0.70,
     "ndcg_at_k": 0.63
   },
-  "baseline": {
-    "recall_at_k": 0.6666666666666667,
-    "mrr": 0.775,
-    "ndcg_at_k": 0.6811819439091161,
-    "precision_at_k": 0.41666666666666663
-  },
-  "notes": "2026-08-18: live service retrieval after URL-scraped help articles. Metrics are document-level (duplicate chunks collapsed). Card/crypto cases allow a small related-document set; expected_citation_document_ids stay on the canonical source_url article. Citation metrics remain unlabeled until answer traces exist. Remaining misses: binding, decline, prohibited-transactions, disable."
+  "baseline": {},
+  "notes": "2026-08-18: expected_citation_document_ids is the canonical source_url article. expected_document_ids is the retrieval set: same article, plus a second doc only when the query needs both (decline+prohibited, deposit+wrong-network). Same-topic extras do not count. Re-run live regression to fill baseline. Citation metrics remain unlabeled until answer traces exist."
 }

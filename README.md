@@ -96,7 +96,7 @@ cp config/rag_eval_cases.example.jsonl config/rag_eval_cases.jsonl
   --write-results artifacts/rag-retrieval.jsonl --report artifacts/rag-report.json
 ```
 
-每个生产知识库应将实际运行的基线和允许回退阈值保存为可审查的 JSON；Roogoo 见 `backend/config/rag_eval_roogoo_gate.json`。检索按 **文档 ID 去重** 后计算 Recall@K / MRR / nDCG，卡片类问题允许一组相关文档，而不是唯一一篇。CLI 可直接读门禁：
+每个生产知识库应将实际运行的基线和允许回退阈值保存为可审查的 JSON；Roogoo 见 `backend/config/rag_eval_roogoo_gate.json`。检索按 **文档 ID 去重** 后计算 Recall@K / MRR / nDCG；每条用例默认只标 canonical 一篇文档（与 `source_url` / `expected_citation_document_ids` 一致），不要把相关文章塞进召回分母。只有真正需要多篇才能答全的问题，才标多个 `expected_document_ids`。CLI 可直接读门禁：
 
 ```bash
 .venv/bin/python -m src.rag_eval.cli \
