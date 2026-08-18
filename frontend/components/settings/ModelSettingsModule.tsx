@@ -23,7 +23,7 @@ import Select from "@/components/Select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { LoadingState } from "@/components/ui/state-view";
+import { LoadingState, StateView } from "@/components/ui/state-view";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getToken } from "@/lib/auth";
@@ -1060,12 +1060,18 @@ function ModelProfilesManager({
         </div>
 
         {managedConnections.length === 0 ? (
-          <div className="mt-5 flex min-h-52 flex-col items-center justify-center rounded-lg border border-dashed border-surface-border/90 bg-surface-2/35 px-5 py-8 text-center">
-            <span className="admin-icon-tile admin-icon-tile-lg text-brand" aria-hidden><Cloud className="h-5 w-5" /></span>
-            <p className="mt-3 text-balance text-base font-semibold text-ink">还没有服务连接</p>
-            <p className="mt-1 max-w-lg text-pretty text-sm leading-6 text-muted">先添加并验证一个服务，再把它提供的模型加入可用列表。</p>
-            <Button type="button" size="sm" className="mt-4" onClick={() => setAddingService(true)}><Plus className="h-4 w-4" />添加服务</Button>
-          </div>
+          <StateView
+            className="mt-5"
+            icon={Cloud}
+            title="还没有服务连接"
+            description="先添加并验证一个服务，再把它提供的模型加入可用列表。"
+            action={
+              <Button type="button" size="sm" onClick={() => setAddingService(true)}>
+                <Plus className="h-4 w-4" />
+                添加服务
+              </Button>
+            }
+          />
         ) : (
           <div className="mt-5 divide-y divide-surface-border/70 border-y border-surface-border/70">
             {managedConnections.map((connection) => {
@@ -1200,14 +1206,22 @@ function ModelProfilesManager({
           <p className="mt-1 text-pretty text-sm leading-6 text-muted">模型配置只绑定已验证的服务。创建后，才能在会话中选择模型或在路由策略中指定其职责。</p>
           </div>
         </div>
-        <div className="mt-6 flex min-h-72 flex-col items-center justify-center rounded-lg border border-dashed border-surface-border/90 bg-surface-2/35 px-5 py-10 text-center">
-          <span className="admin-icon-tile admin-icon-tile-lg text-brand" aria-hidden><Plus className="h-5 w-5" /></span>
-          <p className="mt-4 text-balance text-base font-semibold text-ink">{profileConnectionOptions.length ? "从第一个模型配置开始" : "先添加一个服务连接"}</p>
-          <p className="mt-2 max-w-lg text-pretty text-sm leading-6 text-muted">{profileConnectionOptions.length ? "选择一个已验证服务，再把它提供的模型加入可用列表。默认模型和自动路由将在下一步单独配置。" : "服务连接保存协议、地址和密钥。验证连接成功后，就可以在模型配置中选择模型。"}</p>
-          <Button type="button" size="sm" className="mt-5" onClick={profileConnectionOptions.length ? () => setAdding(true) : onManageConnections}>
-            <Plus className="h-4 w-4" />{profileConnectionOptions.length ? "添加模型" : "添加服务"}
-          </Button>
-        </div>
+        <StateView
+          className="mt-6 min-h-72"
+          icon={Plus}
+          title={profileConnectionOptions.length ? "从第一个模型配置开始" : "先添加一个服务连接"}
+          description={
+            profileConnectionOptions.length
+              ? "选择一个已验证服务，再把它提供的模型加入可用列表。默认模型和自动路由将在下一步单独配置。"
+              : "服务连接保存协议、地址和密钥。验证连接成功后，就可以在模型配置中选择模型。"
+          }
+          action={
+            <Button type="button" size="sm" onClick={profileConnectionOptions.length ? () => setAdding(true) : onManageConnections}>
+              <Plus className="h-4 w-4" />
+              {profileConnectionOptions.length ? "添加模型" : "添加服务"}
+            </Button>
+          }
+        />
         <p className="mt-4 flex items-start gap-2 rounded-lg border border-surface-border/70 bg-surface-2/35 px-3 py-2.5 text-sm leading-5 text-muted"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand" aria-hidden />服务连接不会立即改变会话行为；路由策略将在模型配置创建后解锁。</p>
       </section>
     );

@@ -55,6 +55,7 @@ import {
 import { KbEvalSection } from "@/components/kb/KbEvalSection";
 import Select from "@/components/Select";
 import { Button } from "@/components/ui/button";
+import { Pagination } from "@/components/ui/pagination";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -491,10 +492,6 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
   const isOwner = myRole === "owner";
   const canWrite = (isOwner || myRole === "editor") && !kb.is_system;
 
-  const docTotalPages = Math.max(
-    1,
-    Math.ceil(filteredDocuments.length / docPageSize)
-  );
   const pagedDocuments = filteredDocuments.slice(
     (docPage - 1) * docPageSize,
     docPage * docPageSize
@@ -510,21 +507,9 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
       title="文档管理"
       subtitle={`${kb.name}（${kb.id.slice(0, 8)}…）`}
       actions={
-        <>
-          <Button asChild variant="outline">
-            <Link href="/kbs">返回知识库</Link>
-          </Button>
-          {canWrite && !kb.is_system && (
-            <Button
-              type="button"
-              disabled={uploadingFiles.length > 0 || submittingUrl}
-              onClick={() => setAddDocOpen(true)}
-            >
-              <Plus className="h-4 w-4" />
-              添加文档
-            </Button>
-          )}
-        </>
+        <Button asChild variant="outline">
+          <Link href="/kbs">返回知识库</Link>
+        </Button>
       }
     >
         {/* v2-M9: role banner for non-owner / non-system access */}
@@ -631,6 +616,18 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
                 : "上传、筛选、启停文档，并进入单篇文档的分块管理。"
             }
             className="mt-0"
+            actions={
+              canWrite && !kb.is_system ? (
+                <Button
+                  type="button"
+                  disabled={uploadingFiles.length > 0 || submittingUrl}
+                  onClick={() => setAddDocOpen(true)}
+                >
+                  <Plus className="h-4 w-4" />
+                  添加文档
+                </Button>
+              ) : undefined
+            }
           >
         {kb.is_system ? (
           <StateView
@@ -696,54 +693,30 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
             )
           }
           footer={
-            <div className="flex items-center justify-between text-xs text-muted">
-              <span>共 {filteredDocuments.length} 条</span>
-              {docTotalPages > 1 && (
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="xs"
-                    disabled={docPage <= 1}
-                    onClick={() => setDocPage((p) => Math.max(1, p - 1))}
-                  >
-                    上一页
-                  </Button>
-                  <span>
-                    {docPage} / {docTotalPages}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="xs"
-                    disabled={docPage >= docTotalPages}
-                    onClick={() => setDocPage((p) => p + 1)}
-                  >
-                    下一页
-                  </Button>
-                </div>
-              )}
-            </div>
+            <Pagination
+              total={filteredDocuments.length}
+              page={docPage}
+              pageSize={docPageSize}
+              onPageChange={setDocPage}
+            />
           }
         >
           {kb.documents.length === 0 ? (
-            <div className="px-4 py-6">
-              <StateView
-                density="compact"
-                title="还没有文档"
-                description="上传文档后，可在这里筛选、启停和进入分块管理。"
-                className="bg-surface/60"
-              />
-            </div>
+            <StateView
+              density="compact"
+              icon={FileText}
+              title="还没有文档"
+              description="上传文档后，可在这里筛选、启停和进入分块管理。"
+              className="m-4"
+            />
           ) : filteredDocuments.length === 0 ? (
-            <div className="px-4 py-6">
-              <StateView
-                density="compact"
-                title="没有匹配的文档"
-                description="调整搜索关键词或状态筛选后再试。"
-                className="bg-surface/60"
-              />
-            </div>
+            <StateView
+              density="compact"
+              icon={Search}
+              title="没有匹配的文档"
+              description="调整搜索关键词或状态筛选后再试。"
+              className="m-4"
+            />
           ) : (
             <>
             <div className="space-y-3 p-3 md:hidden">
@@ -1278,6 +1251,14 @@ function MembersSection({ kbId, isOwner }: { kbId: string; isOwner: boolean }) {
             />
           ))}
         </div>
+      ) : !data?.owner && (data?.members.length ?? 0) === 0 ? (
+        <StateView
+          density="compact"
+          icon={Users}
+          title="暂无成员"
+          description="所有者可以通过邮箱或邀请链接添加协作者。"
+          className="m-4"
+        />
       ) : (
         <ul className="space-y-2 p-4">
           {data?.owner && (
@@ -1362,11 +1343,6 @@ function MembersSection({ kbId, isOwner }: { kbId: string; isOwner: boolean }) {
               )}
             </li>
           ))}
-          {data?.members.length === 0 && !data?.owner && (
-            <li className="rounded-lg border border-dashed border-surface-border/80 bg-surface px-4 py-8 text-center text-sm text-muted">
-              暂无成员。所有者可以通过邮箱或邀请链接添加协作者。
-            </li>
-          )}
         </ul>
       )}
 

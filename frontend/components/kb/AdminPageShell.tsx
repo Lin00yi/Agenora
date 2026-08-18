@@ -179,6 +179,7 @@ export function AdminSection({
   icon: Icon,
   title,
   description,
+  actions,
   children,
   className,
 }: {
@@ -186,13 +187,14 @@ export function AdminSection({
   icon?: LucideIcon;
   title: string;
   description?: ReactNode;
+  actions?: ReactNode;
   children: ReactNode;
   className?: string;
 }) {
   return (
     <section id={id} className={cn("admin-section scroll-mt-24", className)}>
-      <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-        <div>
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm font-semibold text-ink">
             {Icon ? <Icon className="h-4 w-4 text-brand" aria-hidden /> : null}
             <h2>{title}</h2>
@@ -201,6 +203,9 @@ export function AdminSection({
             <p className="mt-1 text-xs leading-relaxed text-muted">{description}</p>
           ) : null}
         </div>
+        {actions ? (
+          <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
+        ) : null}
       </div>
       {children}
     </section>

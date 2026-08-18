@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Toaster } from "sonner";
+import { PreviewPanelProvider } from "@/components/preview/PreviewPanelProvider";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { fontVariables } from "@/lib/fonts";
 import "./globals.css";
@@ -26,29 +27,31 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
         <ThemeProvider>
-          {children}
-          <Toaster
-            position="top-center"
-            richColors
-            closeButton
-            containerAriaLabel="通知"
-            duration={5000}
-            gap={10}
-            visibleToasts={4}
-            pauseWhenPageIsHidden
-            className="agenora-toaster"
-            toastOptions={{
-              classNames: {
-                toast: "agenora-toast",
-                title: "agenora-toast-title",
-                description: "agenora-toast-description",
-                icon: "agenora-toast-icon",
-                closeButton: "agenora-toast-close",
-                actionButton: "agenora-toast-action",
-                cancelButton: "agenora-toast-cancel",
-              },
-            }}
-          />
+          <PreviewPanelProvider>
+            {children}
+            <Toaster
+              position="top-center"
+              richColors
+              closeButton
+              containerAriaLabel="通知"
+              duration={5000}
+              gap={10}
+              visibleToasts={4}
+              pauseWhenPageIsHidden
+              className="agenora-toaster"
+              toastOptions={{
+                classNames: {
+                  toast: "agenora-toast",
+                  title: "agenora-toast-title",
+                  description: "agenora-toast-description",
+                  icon: "agenora-toast-icon",
+                  closeButton: "agenora-toast-close",
+                  actionButton: "agenora-toast-action",
+                  cancelButton: "agenora-toast-cancel",
+                },
+              }}
+            />
+          </PreviewPanelProvider>
         </ThemeProvider>
         {process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN && (
           /* eslint-disable-next-line @next/next/no-sync-scripts */

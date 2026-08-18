@@ -1812,22 +1812,24 @@ body {
 
   .kf-state-view,
   .kf-loading-state {
-    @apply flex min-h-56 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-card px-6 py-10 text-center shadow-soft;
+    @apply flex min-h-56 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-surface-border bg-surface-2/50 px-6 py-10 text-center;
   }
   .kf-state-view-compact {
-    @apply min-h-0 flex-row items-start justify-start gap-3 rounded-lg px-4 py-4 text-left shadow-none;
+    @apply min-h-[8.5rem] px-4 py-6;
+  }
+  .kf-state-view-banner {
+    @apply min-h-0 flex-row items-start justify-start gap-3 rounded-xl px-4 py-3 text-left;
   }
   .kf-state-view-error { @apply border-danger/30 bg-danger/5; }
   .kf-state-view-notice { @apply border-warning/30 bg-warning/5; }
   .kf-state-icon {
-    @apply mb-1 inline-flex size-[var(--control-h)] items-center justify-center rounded-lg bg-muted text-muted-foreground;
+    @apply inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-surface-border/80 bg-surface text-ink shadow-none;
   }
-  .kf-state-view-compact .kf-state-icon { @apply mb-0 size-9 flex-none; }
-  .kf-state-view-error .kf-state-icon { @apply bg-danger/10 text-danger; }
-  .kf-state-view-notice .kf-state-icon { @apply bg-warning/10 text-warning; }
-  .kf-inline-loading { @apply inline-flex items-center gap-2 text-sm text-muted-foreground; }
-  .kf-loading-state { @apply border-solid border-border; }
-  .kf-loading-orbit { @apply relative mb-1 flex size-11 items-center justify-center rounded-lg bg-brand/10; }
+  .kf-state-view-error .kf-state-icon { @apply border-danger/20 bg-danger/10 text-danger; }
+  .kf-state-view-notice .kf-state-icon { @apply border-warning/20 bg-warning/10 text-warning; }
+  .kf-inline-loading { @apply inline-flex items-center gap-2 text-sm text-muted; }
+  .kf-loading-state { @apply border-solid; }
+  .kf-loading-orbit { @apply relative flex size-9 items-center justify-center rounded-lg border border-brand/20 bg-brand/10 text-brand; }
   .kf-skeleton,
   .kf-skeleton-lines span { @apply rounded-md bg-muted; }
   .kf-skeleton-lines { @apply mt-2 flex w-full max-w-sm flex-col gap-2; }

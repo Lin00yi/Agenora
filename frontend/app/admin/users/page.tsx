@@ -22,17 +22,13 @@ import {
   type AdminUser,
 } from "@/lib/admin-api";
 import { cn } from "@/lib/cn";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
+import { Pagination } from "@/components/ui/pagination";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import AppModal from "@/components/AppModal";
 import { PageSkeleton, StateView } from "@/components/ui/state-view";
 
 const PAGE_SIZE = 50;
-
-const paginationButtonClass = cn(
-  buttonVariants({ variant: "outline" }),
-  "shrink-0"
-);
 
 /**
  * /admin/users — user management table with inline actions (06-01).
@@ -276,30 +272,13 @@ function UsersTable() {
         </table>
       </div>
 
-      {/* Pagination */}
-      {total > PAGE_SIZE && (
-        <div className="flex items-center justify-end gap-2 text-sm">
-          <Button
-            type="button"
-            className={paginationButtonClass}
-            disabled={offset === 0 || refreshing}
-            onClick={() => load(Math.max(0, offset - PAGE_SIZE))}
-          >
-            上一页
-          </Button>
-          <span className="text-xs text-muted">
-            {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} / {total}
-          </span>
-          <Button
-            type="button"
-            className={paginationButtonClass}
-            disabled={offset + PAGE_SIZE >= total || refreshing}
-            onClick={() => load(offset + PAGE_SIZE)}
-          >
-            下一页
-          </Button>
-        </div>
-      )}
+      <Pagination
+        total={total}
+        offset={offset}
+        pageSize={PAGE_SIZE}
+        onOffsetChange={(next) => load(next)}
+        disabled={refreshing}
+      />
 
       <AppModal
         open={resetTarget != null}

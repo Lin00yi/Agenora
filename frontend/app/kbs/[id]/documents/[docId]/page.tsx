@@ -1,64 +1,34 @@
 "use client";
 
+import { toast } from "@/lib/toast";
 import {
+  Eye,
+  EyeOff,
+  Loader2,
+  Merge,
+  Pencil,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  Split,
+  Trash2,
+} from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import {
+  ChangeEvent,
+  FormEvent,
+  use,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
-  use,
-  FormEvent,
-  ChangeEvent,
 } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import {
-  RefreshCw,
-  RotateCcw,
-  Trash2,
-  Pencil,
-  Eye,
-  EyeOff,
-  Loader2,
-  Search,
-  Split,
-  Merge,
-} from "lucide-react";
-import { toast } from "@/lib/toast";
 
-import { getToken } from "@/lib/auth";
-import {
-  getKb,
-  getDocument,
-  listDocumentChunks,
-  patchDocument,
-  patchChunk,
-  deleteChunk,
-  batchPatchChunks,
-  batchPatchAllChunks,
-  reingestDocument,
-  splitChunk,
-  mergeChunks,
-  type KBDetail,
-  type DocumentDetail,
-  type Chunk,
-  type KbRole,
-  type ChunkStrategy,
-} from "@/lib/kb-api";
-import { toastApiError } from "@/lib/byok-toast";
-import { cn } from "@/lib/cn";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
 import AppModal from "@/components/AppModal";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import Select from "@/components/Select";
-import { StateView } from "@/components/ui/state-view";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   AdminPageShell,
   AdminPanel,
@@ -74,6 +44,37 @@ import {
   formatAdminDate,
   formatFileSize,
 } from "@/components/kb/admin-utils";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Pagination } from "@/components/ui/pagination";
+import { StateView } from "@/components/ui/state-view";
+import { getToken } from "@/lib/auth";
+import { toastApiError } from "@/lib/byok-toast";
+import { cn } from "@/lib/cn";
+import {
+  batchPatchAllChunks,
+  batchPatchChunks,
+  deleteChunk,
+  getDocument,
+  getKb,
+  listDocumentChunks,
+  mergeChunks,
+  patchChunk,
+  patchDocument,
+  reingestDocument,
+  splitChunk,
+  type Chunk,
+  type ChunkStrategy,
+  type DocumentDetail,
+  type KBDetail,
+  type KbRole,
+} from "@/lib/kb-api";
 
 const CHUNK_STRATEGY_OPTIONS: { value: ChunkStrategy; label: string }[] = [
   { value: "recursive", label: "递归文本切分" },
@@ -239,7 +240,6 @@ export default function DocumentDetailPage({
   const myRole: KbRole = kb?.my_role ?? (kb?.is_system ? "viewer" : "owner");
   const canWrite = (myRole === "owner" || myRole === "editor") && !kb?.is_system;
 
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const allPageSelected =
     chunks.length > 0 && chunks.every((c) => selected.includes(c.id));
 
@@ -717,32 +717,13 @@ export default function DocumentDetailPage({
           ) : null
         }
         footer={
-          <div className="flex items-center justify-between text-xs text-muted">
-            <span>共 {total} 条</span>
-            {totalPages > 1 && (
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                >
-                  上一页
-                </Button>
-                <span>
-                  {page} / {totalPages}
-                </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  下一页
-                </Button>
-              </div>
-            )}
-          </div>
+          <Pagination
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            disabled={tableLoading}
+          />
         }
       >
         {tableLoading && chunks.length === 0 ? (
@@ -750,7 +731,12 @@ export default function DocumentDetailPage({
             <Loader2 className="h-7 w-7 animate-spin text-brand" />
           </div>
         ) : chunks.length === 0 ? (
-          <div className="py-16 text-center text-sm text-muted">暂无数据</div>
+          <StateView
+            density="compact"
+            title="暂无分块"
+            description="ingest 完成后会在这里列出文档分块。"
+            className="m-4"
+          />
         ) : (
           <>
           <div className="space-y-3 p-3 md:hidden">

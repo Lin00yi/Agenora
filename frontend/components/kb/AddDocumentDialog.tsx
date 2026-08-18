@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { FileUp, Link2, Upload } from "lucide-react";
 
 import AppModal from "@/components/AppModal";
+import { FileUploadSurface } from "@/components/upload/FileUploadSurface";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 
@@ -26,7 +27,6 @@ export function AddDocumentDialog({
   onUploadFiles,
   onSubmitUrl,
 }: AddDocumentDialogProps) {
-  const fileInput = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<"file" | "url">("file");
   const [url, setUrl] = useState("");
   const [pendingNames, setPendingNames] = useState<string[]>([]);
@@ -36,28 +36,12 @@ export function AddDocumentDialog({
     setMode("file");
     setUrl("");
     setPendingNames([]);
-    if (fileInput.current) fileInput.current.value = "";
   };
 
   const handleOpenChange = (next: boolean) => {
     if (busy) return;
     if (!next) resetLocal();
     onOpenChange(next);
-  };
-
-  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
-    if (!files.length) return;
-    setPendingNames(files.map((f) => f.name));
-    try {
-      await onUploadFiles(files);
-      resetLocal();
-      onOpenChange(false);
-    } catch {
-      // Parent shows toast; keep dialog open for retry.
-    } finally {
-      if (fileInput.current) fileInput.current.value = "";
-    }
   };
 
   const handleUrlSubmit = async (e?: FormEvent) => {
@@ -159,42 +143,26 @@ export function AddDocumentDialog({
         </div>
 
         {mode === "file" ? (
-          <div>
-            <input
-              ref={fileInput}
-              type="file"
-              multiple
-              accept={ACCEPT}
-              onChange={(e) => void handleFileChange(e)}
-              className="hidden"
-            />
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => fileInput.current?.click()}
-              className={cn(
-                "flex min-h-[11rem] w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-surface-border/90 bg-surface-2/35 px-4 py-8 text-center transition",
-                busy
-                  ? "cursor-not-allowed opacity-60"
-                  : "hover:border-brand/40 hover:bg-surface-2/65"
-              )}
-            >
-              <span className="admin-icon-tile admin-icon-tile-brand shadow-none">
-                <FileUp className="h-4 w-4" />
-              </span>
-              <div className="text-sm font-medium">
-                {uploading ? "正在上传…" : "点击选择文件"}
-              </div>
-              <p className="max-w-sm text-xs leading-5 text-muted">
-                支持 .md / .txt / .pdf / .docx，可多选。上传后在后台 ingest。
-              </p>
-              {pendingNames.length > 0 && (
-                <p className="mt-1 max-w-full truncate px-2 text-xs text-muted">
-                  {pendingNames.join("、")}
-                </p>
-              )}
-            </button>
-          </div>
+          <FileUploadSurface
+            accept={ACCEPT}
+            multiple
+            busy={busy}
+            busyTitle="正在上传…"
+            title="点击选择文件"
+            description="支持 .md / .txt / .pdf / .docx，可多选。上传后在后台 ingest。"
+            selectedNames={pendingNames}
+            icon={<FileUp className="h-4 w-4" />}
+            onPick={async (files) => {
+              setPendingNames(files.map((file) => file.name));
+              try {
+                await onUploadFiles(files);
+                resetLocal();
+                onOpenChange(false);
+              } catch {
+                // Parent shows toast; keep dialog open for retry.
+              }
+            }}
+          />
         ) : (
           <form
             onSubmit={(e) => void handleUrlSubmit(e)}

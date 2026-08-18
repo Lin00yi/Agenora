@@ -290,7 +290,6 @@ export function MemorySystemModule({ embedded = false }: { embedded?: boolean })
               <StateView
                 title="没有匹配的记忆"
                 description="换一个筛选条件，或继续对话让系统在高置信度场景下自动保存。"
-                className="border-surface-border bg-surface"
               />
             ) : (
               <div className="space-y-2">

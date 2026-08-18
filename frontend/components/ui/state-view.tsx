@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { AlertCircle, FileQuestion, Info, LoaderCircle } from "lucide-react";
+import { AlertCircle, FileQuestion, Info, LoaderCircle, type LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/cn";
 
@@ -9,9 +9,11 @@ type StateViewProps = {
   action?: ReactNode;
   className?: string;
   density?: "normal" | "compact";
+  variant?: "empty" | "error" | "notice";
+  icon?: LucideIcon;
 };
 
-/** A single, calm visual language for page-level empty, loading, and error states. */
+/** Shared empty / error / notice surface used in pages and admin panels. */
 export function StateView({
   title,
   description,
@@ -19,8 +21,12 @@ export function StateView({
   className,
   density = "normal",
   variant = "empty",
-}: StateViewProps & { variant?: "empty" | "error" | "notice" }) {
-  const Icon = variant === "error" ? AlertCircle : variant === "notice" ? Info : FileQuestion;
+  icon,
+}: StateViewProps) {
+  const Icon =
+    icon ?? (variant === "error" ? AlertCircle : variant === "notice" ? Info : FileQuestion);
+  const isNoticeBanner = variant === "notice" && density === "compact";
+
   return (
     <section
       className={cn(
@@ -28,16 +34,30 @@ export function StateView({
         density === "compact" && "kf-state-view-compact",
         variant === "error" && "kf-state-view-error",
         variant === "notice" && "kf-state-view-notice",
+        isNoticeBanner && "kf-state-view-banner",
         className
       )}
       role={variant === "error" ? "alert" : undefined}
     >
       <span className="kf-state-icon" aria-hidden>
-        <Icon className="size-5" />
+        <Icon className="size-4" />
       </span>
-      {title && <h2 className="text-pretty text-sm font-semibold text-ink">{title}</h2>}
-      {description && <p className="max-w-md text-pretty text-sm leading-6 text-muted">{description}</p>}
-      {action && <div className="mt-1">{action}</div>}
+      <div className={cn("min-w-0", !isNoticeBanner && "flex flex-col items-center")}>
+        {title ? (
+          <h2 className="text-pretty text-sm font-semibold text-ink">{title}</h2>
+        ) : null}
+        {description ? (
+          <p
+            className={cn(
+              "max-w-md text-pretty text-muted",
+              density === "compact" ? "mt-1 text-xs leading-5" : "mt-1.5 text-sm leading-6"
+            )}
+          >
+            {description}
+          </p>
+        ) : null}
+        {action ? <div className="mt-3">{action}</div> : null}
+      </div>
     </section>
   );
 }
@@ -56,7 +76,7 @@ export function LoadingState({
   if (compact) {
     return (
       <div className={cn("kf-inline-loading", className)} role="status" aria-live="polite">
-        <LoaderCircle className="size-4 animate-spin text-primary" aria-hidden />
+        <LoaderCircle className="size-4 animate-spin text-brand" aria-hidden />
         <span>{label}…</span>
       </div>
     );
@@ -64,10 +84,10 @@ export function LoadingState({
   return (
     <section className={cn("kf-loading-state", className)} role="status" aria-live="polite" aria-busy="true">
       <div className="kf-loading-orbit" aria-hidden>
-        <LoaderCircle className="size-5 animate-spin text-primary" />
+        <LoaderCircle className="size-5 animate-spin text-brand" />
       </div>
       <h2 className="text-sm font-semibold text-ink">{label}</h2>
-      <p className="text-sm text-muted">{description}</p>
+      <p className="text-xs leading-5 text-muted">{description}</p>
       <div className="kf-skeleton-lines" aria-hidden>
         <span />
         <span />

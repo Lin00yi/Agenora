@@ -20,16 +20,13 @@ import {
   type AdminTraceSummary,
 } from "@/lib/admin-api";
 import { cn } from "@/lib/cn";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
+import { Pagination } from "@/components/ui/pagination";
 import { LoadingState, PageSkeleton, StateView } from "@/components/ui/state-view";
 import Select from "@/components/Select";
+import { usePreviewPanel } from "@/components/preview/PreviewPanelProvider";
 
 const PAGE_SIZE = 30;
-
-const paginationButtonClass = cn(
-  buttonVariants({ variant: "outline" }),
-  "shrink-0"
-);
 
 /**
  * /admin/traces — master/detail layout with duration waterfall.
@@ -282,29 +279,17 @@ function TracesPanel() {
                 );
               })}
             </div>
-            {total > PAGE_SIZE && (
-              <div className="flex items-center justify-between gap-2 border-t border-surface-border/70 px-3 py-2">
-                <button
-                  type="button"
-                  className={paginationButtonClass}
-                  disabled={offset <= 0 || refreshing}
-                  onClick={() => void load(Math.max(0, offset - PAGE_SIZE))}
-                >
-                  上一页
-                </button>
-                <span className="text-[11px] text-muted">
-                  {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} / {total}
-                </span>
-                <button
-                  type="button"
-                  className={paginationButtonClass}
-                  disabled={offset + PAGE_SIZE >= total || refreshing}
-                  onClick={() => void load(offset + PAGE_SIZE)}
-                >
-                  下一页
-                </button>
+            {total > 0 ? (
+              <div className="border-t border-surface-border/70 px-3 py-2">
+                <Pagination
+                  total={total}
+                  offset={offset}
+                  pageSize={PAGE_SIZE}
+                  onOffsetChange={(next) => void load(next)}
+                  disabled={refreshing}
+                />
               </div>
-            )}
+            ) : null}
           </div>
 
           <div className="admin-panel min-h-[24rem] overflow-hidden">
@@ -408,14 +393,12 @@ function TraceDetail({
 
       <div className="flex-1 space-y-4 overflow-y-auto p-5">
         {(detail.input_preview || detail.output_preview) && (
-          <div className="grid gap-3 md:grid-cols-2">
-            {detail.input_preview && (
-              <PreviewBlock title="输入" text={detail.input_preview} />
-            )}
-            {detail.output_preview && (
-              <PreviewBlock title="输出" text={detail.output_preview} />
-            )}
-          </div>
+          <TraceIoPreviewButton
+            title={`Trace ${shortId(detail.id)}`}
+            subtitle="会话级输入 / 输出"
+            input={detail.input_preview}
+            output={detail.output_preview}
+          />
         )}
 
         {filteredChunks.length > 0 && (
@@ -608,19 +591,12 @@ function ObservationRow({
               <p className="mt-1 text-xs text-danger">{node.error}</p>
             )}
             {(node.input_preview || node.output_preview) && (
-              <details className="mt-1.5 text-xs text-muted">
-                <summary className="cursor-pointer select-none hover:text-ink">
-                  预览 IO
-                </summary>
-                <div className="mt-2 grid gap-2 md:grid-cols-2">
-                  {node.input_preview && (
-                    <PreviewBlock title="输入" text={node.input_preview} compact />
-                  )}
-                  {node.output_preview && (
-                    <PreviewBlock title="输出" text={node.output_preview} compact />
-                  )}
-                </div>
-              </details>
+              <TraceIoPreviewButton
+                title={node.name}
+                subtitle={`${node.type} · ${formatDuration(node.duration_ms)}`}
+                input={node.input_preview}
+                output={node.output_preview}
+              />
             )}
           </div>
         </div>
@@ -643,36 +619,36 @@ function ObservationRow({
   );
 }
 
-function PreviewBlock({
+function TraceIoPreviewButton({
   title,
-  text,
-  compact,
+  subtitle,
+  input,
+  output,
 }: {
   title: string;
-  text: string;
-  compact?: boolean;
+  subtitle?: string;
+  input?: string | null;
+  output?: string | null;
 }) {
+  const { openPreview } = usePreviewPanel();
   return (
-    <div
-      className={cn(
-        "rounded-lg border border-surface-border/80 bg-surface",
-        compact ? "p-2" : "p-3"
-      )}
+    <Button
+      type="button"
+      variant="outline"
+      size="xs"
+      className="mt-1.5"
+      onClick={() =>
+        openPreview({
+          kind: "trace-io",
+          title,
+          subtitle,
+          input,
+          output,
+        })
+      }
     >
-      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted">
-        {title}
-      </div>
-      <pre
-        className={cn(
-          "whitespace-pre-wrap break-words font-mono text-ink",
-          compact
-            ? "max-h-40 overflow-auto text-[11px] leading-relaxed"
-            : "max-h-56 overflow-auto text-xs leading-relaxed"
-        )}
-      >
-        {text}
-      </pre>
-    </div>
+      预览 IO
+    </Button>
   );
 }
 

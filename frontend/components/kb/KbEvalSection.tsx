@@ -13,14 +13,16 @@ import {
   Upload,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import Select from "@/components/Select";
 import { AdminPanel, AdminSection } from "@/components/kb/AdminPageShell";
 import { formatAdminDate } from "@/components/kb/admin-utils";
+import { usePreviewPanel } from "@/components/preview/PreviewPanelProvider";
 import { Button } from "@/components/ui/button";
-import { StateView } from "@/components/ui/state-view";
+import { LoadingState, StateView } from "@/components/ui/state-view";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FileUploadSurface } from "@/components/upload/FileUploadSurface";
 import { toastApiError } from "@/lib/byok-toast";
 import { cn } from "@/lib/cn";
 import {
@@ -53,6 +55,7 @@ function percent(value: number): string {
 export function KbEvalSection({ kbId }: { kbId: string }) {
   const router = useRouter();
   const push = (path: string) => router.push(path);
+  const { openPreview } = usePreviewPanel();
   const [config, setConfig] = useState<KbEvalConfig | null>(null);
   const [templates, setTemplates] = useState<KbEvalTemplate[]>([]);
   const [runs, setRuns] = useState<KbEvalRun[]>([]);
@@ -65,9 +68,9 @@ export function KbEvalSection({ kbId }: { kbId: string }) {
   const [replaying, setReplaying] = useState(false);
   const [monitorBusy, setMonitorBusy] = useState(false);
   const [replayRunId, setReplayRunId] = useState("");
-  const goldenInput = useRef<HTMLInputElement>(null);
-  const gateInput = useRef<HTMLInputElement>(null);
-  const replayInput = useRef<HTMLInputElement>(null);
+  const [goldenFile, setGoldenFile] = useState<File | null>(null);
+  const [gateFile, setGateFile] = useState<File | null>(null);
+  const [replayFile, setReplayFile] = useState<File | null>(null);
 
   type EvalTab = "config" | "regression" | "replay" | "monitor";
   const [activeTab, setActiveTab] = useState<EvalTab>("config");
@@ -144,7 +147,6 @@ export function KbEvalSection({ kbId }: { kbId: string }) {
   }
 
   async function onUploadConfig() {
-    const goldenFile = goldenInput.current?.files?.[0];
     if (!goldenFile) {
       toast.error("请先选择黄金集 JSONL 文件");
       return;
@@ -152,11 +154,12 @@ export function KbEvalSection({ kbId }: { kbId: string }) {
     setSaving(true);
     try {
       const golden_set_jsonl = await goldenFile.text();
-      const gateFile = gateInput.current?.files?.[0];
       const body: { golden_set_jsonl: string; gate_json?: string } = { golden_set_jsonl };
       if (gateFile) body.gate_json = await gateFile.text();
       const next = await putKbEvalConfig(kbId, body);
       setConfig(next);
+      setGoldenFile(null);
+      setGateFile(null);
       toast.success("黄金集已更新");
     } catch (error) {
       toastApiError(error, push);
@@ -206,8 +209,18 @@ export function KbEvalSection({ kbId }: { kbId: string }) {
       toastApiError(error, push);
     } finally {
       setReplaying(false);
-      if (replayInput.current) replayInput.current.value = "";
     }
+  }
+
+  async function previewEvalFile(file: File, title: string, language: "json" | "jsonl") {
+    const content = await file.text();
+    openPreview({
+      kind: "text",
+      title,
+      subtitle: file.name,
+      language,
+      content,
+    });
   }
 
   const report = latest?.report;
@@ -222,7 +235,7 @@ export function KbEvalSection({ kbId }: { kbId: string }) {
       className="mt-0"
     >
       {loading || !config ? (
-        <StateView title="正在加载测评配置" description="读取黄金集、历史运行和监控快照。" />
+        <LoadingState label="正在加载测评配置" description="读取黄金集、历史运行和监控快照。" />
       ) : (
         <Tabs
           value={activeTab}
@@ -273,15 +286,37 @@ export function KbEvalSection({ kbId }: { kbId: string }) {
                     <MetricChip label="nDCG@K 门禁" value={metricPct(config.minimums.ndcg_at_k ?? null)} />
                   </dl>
                 )}
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <label className="text-xs text-muted">
-                    黄金集 JSONL
-                    <input ref={goldenInput} type="file" accept=".jsonl,.json,text/plain" className="mt-1 block text-xs" />
-                  </label>
-                  <label className="text-xs text-muted">
-                    门禁 JSON（可选）
-                    <input ref={gateInput} type="file" accept=".json,text/plain" className="mt-1 block text-xs" />
-                  </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FileUploadSurface
+                    accept=".jsonl,.json,text/plain"
+                    busy={saving}
+                    label="黄金集 JSONL"
+                    title="点击选择文件"
+                    description="支持 .jsonl / .json"
+                    selectedNames={goldenFile ? [goldenFile.name] : []}
+                    onPick={(files) => setGoldenFile(files[0] ?? null)}
+                    onPreview={
+                      goldenFile
+                        ? () => void previewEvalFile(goldenFile, "黄金集 JSONL", "jsonl")
+                        : undefined
+                    }
+                  />
+                  <FileUploadSurface
+                    accept=".json,text/plain"
+                    busy={saving}
+                    label="门禁 JSON（可选）"
+                    title="点击选择文件"
+                    description="支持 .json"
+                    selectedNames={gateFile ? [gateFile.name] : []}
+                    onPick={(files) => setGateFile(files[0] ?? null)}
+                    onPreview={
+                      gateFile
+                        ? () => void previewEvalFile(gateFile, "门禁 JSON", "json")
+                        : undefined
+                    }
+                  />
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-2">
                   <Button type="button" variant="outline" disabled={saving} onClick={() => void onUploadConfig()}>
                     <Upload className="h-4 w-4" />
                     保存配置
@@ -338,24 +373,31 @@ export function KbEvalSection({ kbId }: { kbId: string }) {
                   <Button type="button" variant="outline" disabled={!configured || replaying || !replayRunId} onClick={() => void onReplayHistory()}>
                     回放选中运行
                   </Button>
-                  <Button type="button" variant="outline" disabled={!configured || replaying} onClick={() => replayInput.current?.click()}>
-                    <Upload className="h-4 w-4" />
-                    上传 retrieval.jsonl
-                  </Button>
-                  <input
-                    ref={replayInput}
-                    type="file"
-                    accept=".jsonl,.json,text/plain"
-                    className="hidden"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      if (file) void onReplayUpload(file);
-                    }}
-                  />
                 </div>
               }
             >
               <div className="space-y-3 p-4">
+                <FileUploadSurface
+                  accept=".jsonl,.json,text/plain"
+                  busy={replaying}
+                  disabled={!configured}
+                  label="retrieval.jsonl"
+                  title="点击选择文件"
+                  busyTitle="正在回放…"
+                  description="按当前黄金集对齐并立即回放"
+                  selectedNames={replayFile ? [replayFile.name] : []}
+                  onPick={(files) => {
+                    const file = files[0];
+                    if (!file) return;
+                    setReplayFile(file);
+                    void onReplayUpload(file);
+                  }}
+                  onPreview={
+                    replayFile
+                      ? () => void previewEvalFile(replayFile, "retrieval.jsonl", "jsonl")
+                      : undefined
+                  }
+                />
                 {report?.missing_prediction_ids?.length ? (
                   <StateView
                     variant="notice"
@@ -398,7 +440,16 @@ export function KbEvalSection({ kbId }: { kbId: string }) {
                 </div>
               }
             >
-              {monitor ? <MonitorBlock snapshot={monitor} /> : <p className="p-4 text-sm text-muted">暂无监控数据。</p>}
+              {monitor ? (
+                <MonitorBlock snapshot={monitor} />
+              ) : (
+                <StateView
+                  density="compact"
+                  title="暂无监控数据"
+                  description="完成对话后，这里会显示检索健康指标。"
+                  className="m-4"
+                />
+              )}
             </AdminPanel>
             </TabsContent>
           ) : null}
@@ -430,9 +481,12 @@ function EvalReportBlock({
 }) {
   if (!run || !report) {
     return (
-      <div className="p-4">
-        <StateView variant="notice" density="compact" title={emptyTitle} description={emptyDescription} />
-      </div>
+      <StateView
+        density="compact"
+        title={emptyTitle}
+        description={emptyDescription}
+        className="m-4"
+      />
     );
   }
   const metrics = report.metrics;
