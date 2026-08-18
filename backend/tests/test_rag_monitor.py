@@ -171,6 +171,7 @@ async def test_real_kb_tool_span_emits_privacy_safe_rag_metrics(db, monkeypatch)
                 latency_ms=17,
                 raw={
                     "hits": 1,
+                    "kb_id": "kb-private",
                     "candidate_hits": 4,
                     "max_score": 0.88,
                     "results": [{"doc_id": "private-doc", "score": 0.88}],
@@ -195,6 +196,7 @@ async def test_real_kb_tool_span_emits_privacy_safe_rag_metrics(db, monkeypatch)
             "candidate_count": 4,
             "max_score": 0.88,
             "truncated": False,
+            "kb_id": "kb-private",
         }
         assert "private document text" not in json.dumps(rag)
         snapshot = await build_rag_monitor_snapshot(
@@ -202,3 +204,51 @@ async def test_real_kb_tool_span_emits_privacy_safe_rag_metrics(db, monkeypatch)
         )
     assert snapshot["metrics"]["avg_top_score"] == pytest.approx(0.88)
     assert snapshot["metrics"]["empty_rate"] == pytest.approx(0.0)
+
+
+@pytest.mark.asyncio
+async def test_rag_monitor_filters_observations_by_kb_id(db):
+    from datetime import datetime, timezone
+
+    from src.infra.database import get_session_factory
+    from src.observability.models import Observation, Trace
+    from src.observability.rag_metrics import build_rag_monitor_snapshot
+    from src.settings import Settings
+
+    now = datetime.now(timezone.utc)
+    factory = get_session_factory()
+    async with factory() as session:
+        ids = [uuid.uuid4().hex for _ in range(2)]
+        session.add_all([Trace(id=trace_id, name="chat", started_at=now) for trace_id in ids])
+        session.add_all(
+            [
+                Observation(
+                    id=uuid.uuid4().hex,
+                    trace_id=ids[0],
+                    name="search_kb",
+                    type="tool",
+                    started_at=now,
+                    duration_ms=50,
+                    status="ok",
+                    metadata_json=json.dumps({"rag": {"kb_id": "kb-keep", "result_count": 2, "max_score": 0.7}}),
+                ),
+                Observation(
+                    id=uuid.uuid4().hex,
+                    trace_id=ids[1],
+                    name="search_kb",
+                    type="tool",
+                    started_at=now,
+                    duration_ms=80,
+                    status="error",
+                    metadata_json=json.dumps({"rag": {"kb_id": "kb-other", "result_count": 0, "max_score": 0.1}}),
+                ),
+            ]
+        )
+        await session.commit()
+        snapshot = await build_rag_monitor_snapshot(
+            session, kb_id="kb-keep", settings=Settings(rag_monitor_min_calls=1)
+        )
+
+    assert snapshot["metrics"]["retrieval_calls"] == 1
+    assert snapshot["metrics"]["error_rate"] == pytest.approx(0.0)
+    assert snapshot["metrics"]["avg_top_score"] == pytest.approx(0.7)

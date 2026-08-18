@@ -62,6 +62,7 @@ async def build_rag_monitor_snapshot(
     session: AsyncSession,
     *,
     hours: int | None = None,
+    kb_id: str | None = None,
     settings: Settings | None = None,
 ) -> dict[str, Any]:
     """Return bounded-window operational RAG metrics and deterministic alerts.
@@ -97,8 +98,15 @@ async def build_rag_monitor_snapshot(
     error_calls = 0
     empty_calls = 0
     measurable_empty_calls = 0
+    wanted_kb = str(kb_id).strip() if kb_id else ""
+    included = 0
 
     for row in rows:
+        metadata = row.metadata_dict()
+        rag = metadata.get("rag") if isinstance(metadata.get("rag"), dict) else {}
+        if wanted_kb and str(rag.get("kb_id") or "") != wanted_kb:
+            continue
+        included += 1
         source = _RAG_TOOLS[row.name]
         source_calls[source] += 1
         retrieval_trace_ids.add(row.trace_id)
@@ -106,8 +114,6 @@ async def build_rag_monitor_snapshot(
             latencies.append(max(0, int(row.duration_ms)))
         if row.status != "ok":
             error_calls += 1
-        metadata = row.metadata_dict()
-        rag = metadata.get("rag") if isinstance(metadata.get("rag"), dict) else {}
         result_count = _number(rag.get("result_count"))
         if result_count is not None:
             measurable_empty_calls += 1
@@ -117,7 +123,7 @@ async def build_rag_monitor_snapshot(
         if score is not None:
             top_scores.append(score)
 
-    total = len(rows)
+    total = included
     error_rate = error_calls / total if total else 0.0
     empty_rate = empty_calls / measurable_empty_calls if measurable_empty_calls else None
     avg_top_score = sum(top_scores) / len(top_scores) if top_scores else None

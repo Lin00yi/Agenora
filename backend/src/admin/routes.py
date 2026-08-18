@@ -178,44 +178,12 @@ async def evaluate_rag_retrieval(
     This endpoint returns only citation-safe result metadata. It deliberately
     does not return chunk text or the raw user-owned source document body.
     """
-    from src.rag_eval.metrics import collapse_retrieved_to_documents, search_overfetch_limit
-    from src.settings_user.kb_resolvers import resolve_kb_embedding, resolve_kb_reranker
-    from src.tools.kb_search import KBSearchTool
+    from src.kb.eval_service import retrieve_predictions
 
     kb = await session.get(KB, req.kb_id)
     if kb is None:
         raise HTTPException(status_code=404, detail="knowledge base not found")
-    owner = await session.get(User, kb.user_id)
-    tool = KBSearchTool(
-        kb=kb,
-        embedding_cfg=resolve_kb_embedding(kb, owner),
-        reranker_cfg=resolve_kb_reranker(kb, owner),
-    )
-    fetch_limit = search_overfetch_limit(req.limit)
-    predictions: list[dict] = []
-    for case in req.cases:
-        result = await tool.execute(case.query, limit=fetch_limit)
-        raw = result.raw if isinstance(result.raw, dict) else {}
-        rows = raw.get("results") if isinstance(raw.get("results"), list) else []
-        retrieved = collapse_retrieved_to_documents(
-            [
-                {
-                    "document_id": item.get("doc_id"),
-                    "filename": item.get("filename"),
-                    "score": item.get("score"),
-                }
-                for item in rows
-                if isinstance(item, dict) and item.get("doc_id")
-            ],
-            k=req.limit,
-        )
-        predictions.append(
-            {
-                "id": case.id,
-                "retrieved": retrieved,
-                "error": result.error,
-            }
-        )
+    predictions = await retrieve_predictions(session, kb, req.cases, k=req.limit)
     return {"kb_id": kb.id, "limit": req.limit, "predictions": predictions}
 
 

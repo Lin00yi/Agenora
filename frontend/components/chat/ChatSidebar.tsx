@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  BookOpen,
   ChevronDown,
   LoaderCircle,
   LogOut,
@@ -215,6 +216,14 @@ export function ChatSidebar({
       <div ref={userMenuRef} className="relative mt-3 shrink-0">
         {userMenuOpen && (
           <div className="kf-popover kf-user-popover absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-lg border">
+            <Link
+              className="kf-user-menu-item flex min-h-[var(--control-h)] items-center gap-2 px-3 py-2.5 text-sm transition"
+              href="/kbs"
+              onClick={() => setUserMenuOpen(false)}
+            >
+              <BookOpen className="kf-user-menu-icon h-4 w-4" />
+              知识库
+            </Link>
             <button
               className="kf-user-menu-item flex min-h-[var(--control-h)] w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left text-sm transition"
               onClick={() => {

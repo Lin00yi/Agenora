@@ -1,14 +1,13 @@
 "use client";
 
 /**
- * The single settings workspace owns personal, model, knowledge-base and memory
- * configuration. The direct routes remain available for bookmarks.
+ * The settings workspace owns personal, model and memory configuration.
+ * Knowledge bases live on /kbs as a first-class destination.
  */
 
 import { toast } from "@/lib/toast";
 import {
   AlertTriangle,
-  BookOpen,
   BrainCircuit,
   Download,
   Info,
@@ -41,22 +40,17 @@ const ModelSettingsModule = dynamic(
   () => import("@/components/settings/ModelSettingsModule").then((module) => module.ModelSettingsModule),
   { ssr: false }
 );
-const KnowledgeBaseModule = dynamic(
-  () => import("@/components/settings/KnowledgeBaseModule").then((module) => module.KnowledgeBaseModule),
-  { ssr: false }
-);
 const MemorySystemModule = dynamic(
   () => import("@/components/settings/MemorySystemModule").then((module) => module.MemorySystemModule),
   { ssr: false }
 );
 
-type SettingsModule = "personal" | "model" | "knowledge" | "memory" | "about";
+type SettingsModule = "personal" | "model" | "memory" | "about";
 type PersonalTab = "general" | "appearance" | "account" | "data";
 
 const MODULES: { key: SettingsModule; label: string; Icon: typeof UserIcon }[] = [
   { key: "personal", label: "个人", Icon: UserIcon },
   { key: "model", label: "模型", Icon: SlidersHorizontal },
-  { key: "knowledge", label: "知识库", Icon: BookOpen },
   { key: "memory", label: "记忆系统", Icon: BrainCircuit },
   { key: "about", label: "关于", Icon: Info },
 ];
@@ -173,7 +167,6 @@ export default function SystemSettingsDialog({
                 />
               )}
               {module === "model" && <ModelSettingsModule embedded />}
-              {module === "knowledge" && <KnowledgeBaseModule embedded />}
               {module === "memory" && <MemorySystemModule embedded />}
               {module === "about" && (
                 <div className="px-5 py-5 sm:px-6">

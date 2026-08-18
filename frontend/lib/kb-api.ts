@@ -599,3 +599,192 @@ export async function acceptInvitation(
     await authFetch(`/api/invitations/${token}/accept`, { method: "POST" })
   );
 }
+
+// ---------------------------------------------------------------------------
+// Per-KB golden-set evaluation
+// ---------------------------------------------------------------------------
+export type KbEvalTemplate = {
+  id: string;
+  name: string;
+  case_count: number;
+  k: number;
+};
+
+export type KbEvalCaseSummary = {
+  id: string;
+  query: string;
+  tags: string[];
+  expected_document_ids: string[];
+};
+
+export type KbEvalMetrics = {
+  recall_at_k: number | null;
+  precision_at_k: number | null;
+  mrr: number | null;
+  ndcg_at_k: number | null;
+  citation_precision: number | null;
+  citation_recall: number | null;
+};
+
+export type KbEvalConfig = {
+  configured: boolean;
+  case_count: number;
+  k: number;
+  golden_set_hash: string | null;
+  minimums: {
+    recall_at_k?: number | null;
+    mrr?: number | null;
+    ndcg_at_k?: number | null;
+    citation_precision?: number | null;
+  };
+  baseline: Record<string, number>;
+  notes: string;
+  cases: KbEvalCaseSummary[];
+  updated_at: string | null;
+};
+
+export type KbEvalPerCase = {
+  id: string;
+  tags: string[];
+  retrieved_document_ids: string[];
+  expected_document_ids: string[];
+  citation_document_ids: string[];
+  expected_citation_document_ids: string[];
+  recall: number;
+  mrr: number;
+  ndcg: number;
+  citation_recall: number | null;
+  citation_precision: number | null;
+};
+
+export type KbEvalReport = {
+  schema_version: number;
+  case_count: number;
+  prediction_count: number;
+  missing_prediction_ids: string[];
+  k: number;
+  metrics: KbEvalMetrics;
+  per_case: KbEvalPerCase[];
+  gate_passed?: boolean;
+  gate_error?: string;
+};
+
+export type KbEvalRun = {
+  id: string;
+  kb_id: string;
+  run_type: "regression" | "replay" | string;
+  golden_set_hash: string;
+  k: number;
+  gate_passed: boolean;
+  metrics: KbEvalMetrics;
+  case_count: number | null;
+  missing_count: number;
+  created_by: string | null;
+  created_at: string | null;
+  report?: KbEvalReport;
+};
+
+export type KbEvalRunList = {
+  total: number;
+  limit: number;
+  offset: number;
+  runs: KbEvalRun[];
+};
+
+export type KbEvalMonitorSnapshot = {
+  kb_id?: string;
+  window_hours: number;
+  generated_at: string;
+  sample_sufficient: boolean;
+  min_calls: number;
+  status: "healthy" | "alert";
+  alerts: Array<{
+    code: string;
+    severity: "warning" | "critical";
+    message: string;
+    value: number;
+    threshold: number;
+  }>;
+  metrics: {
+    retrieval_calls: number;
+    retrieval_traces: number;
+    kb_calls: number;
+    kg_calls: number;
+    error_calls: number;
+    error_rate: number;
+    measurable_empty_calls: number;
+    empty_calls: number;
+    empty_rate: number | null;
+    p95_latency_ms: number | null;
+    avg_top_score: number | null;
+  };
+  scope_note?: string;
+};
+
+export async function listKbEvalTemplates(
+  kbId: string
+): Promise<{ templates: KbEvalTemplate[] }> {
+  return unwrap(await authFetch(`/api/kbs/${kbId}/eval/templates`));
+}
+
+export async function getKbEvalConfig(kbId: string): Promise<KbEvalConfig> {
+  return unwrap(await authFetch(`/api/kbs/${kbId}/eval/config`));
+}
+
+export async function putKbEvalConfig(
+  kbId: string,
+  body: { golden_set_jsonl?: string; gate_json?: string; template?: "roogoo" }
+): Promise<KbEvalConfig> {
+  return unwrap(
+    await authFetch(`/api/kbs/${kbId}/eval/config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+  );
+}
+
+export async function runKbEvalRegression(kbId: string): Promise<KbEvalRun> {
+  return unwrap(
+    await authFetch(`/api/kbs/${kbId}/eval/run`, { method: "POST" })
+  );
+}
+
+export async function listKbEvalRuns(
+  kbId: string,
+  limit = 20,
+  offset = 0
+): Promise<KbEvalRunList> {
+  return unwrap(
+    await authFetch(`/api/kbs/${kbId}/eval/runs?limit=${limit}&offset=${offset}`)
+  );
+}
+
+export async function getKbEvalRun(kbId: string, runId: string): Promise<KbEvalRun> {
+  return unwrap(await authFetch(`/api/kbs/${kbId}/eval/runs/${runId}`));
+}
+
+export async function replayKbEval(
+  kbId: string,
+  source: { runId: string } | { file: File }
+): Promise<KbEvalRun> {
+  if ("runId" in source) {
+    return unwrap(
+      await authFetch(`/api/kbs/${kbId}/eval/replay?run_id=${encodeURIComponent(source.runId)}`, {
+        method: "POST",
+      })
+    );
+  }
+  const fd = new FormData();
+  fd.append("retrieval_jsonl", source.file);
+  return unwrap(
+    await authFetch(`/api/kbs/${kbId}/eval/replay`, { method: "POST", body: fd })
+  );
+}
+
+export async function getKbEvalMonitor(
+  kbId: string,
+  hours = 24
+): Promise<KbEvalMonitorSnapshot> {
+  return unwrap(await authFetch(`/api/kbs/${kbId}/eval/monitor?hours=${hours}`));
+}

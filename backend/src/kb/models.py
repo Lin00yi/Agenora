@@ -22,6 +22,7 @@ Schema decisions:
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from typing import Literal, Optional
 
@@ -145,6 +146,17 @@ class KB(Base):
         back_populates="kb",
         cascade="all, delete-orphan",
         lazy="selectin",
+    )
+
+    eval_config: Mapped[Optional["KbEvalConfig"]] = relationship(
+        back_populates="kb",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+
+    eval_runs: Mapped[list["KbEvalRun"]] = relationship(
+        back_populates="kb",
+        cascade="all, delete-orphan",
     )
 
     @property
@@ -466,3 +478,77 @@ class KBInvitation(Base):
             "revoked": bool(self.revoked),
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
+
+
+class KbEvalConfig(Base):
+    """Per-KB golden set + quality gate for retrieval regression."""
+
+    __tablename__ = "kb_eval_configs"
+
+    kb_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("kbs.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    golden_set_jsonl: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    gate_json: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    golden_set_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+
+    kb: Mapped[KB] = relationship(back_populates="eval_config")
+
+
+class KbEvalRun(Base):
+    """One retrieval-regression or offline-replay evaluation against a KB."""
+
+    __tablename__ = "kb_eval_runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    kb_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("kbs.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    run_type: Mapped[str] = mapped_column(String(16), nullable=False)  # regression | replay
+    golden_set_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    k: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    report_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    gate_passed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    retrieval_jsonl_path: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    created_by: Mapped[str] = mapped_column(String(36), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+    kb: Mapped[KB] = relationship(back_populates="eval_runs")
+
+    def to_public_dict(self, *, include_report: bool = False) -> dict:
+        report: dict = {}
+        if self.report_json:
+            try:
+                parsed = json.loads(self.report_json)
+            except json.JSONDecodeError:
+                parsed = {}
+            if isinstance(parsed, dict):
+                report = parsed
+        metrics = report.get("metrics") if isinstance(report.get("metrics"), dict) else {}
+        out = {
+            "id": self.id,
+            "kb_id": self.kb_id,
+            "run_type": self.run_type,
+            "golden_set_hash": self.golden_set_hash,
+            "k": self.k,
+            "gate_passed": bool(self.gate_passed),
+            "metrics": metrics,
+            "case_count": report.get("case_count"),
+            "missing_count": len(report.get("missing_prediction_ids") or []),
+            "created_by": self.created_by or None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+        if include_report:
+            out["report"] = report
+            out["retrieval_jsonl_path"] = self.retrieval_jsonl_path or None
+        return out

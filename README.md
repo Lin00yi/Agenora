@@ -105,6 +105,8 @@ cp config/rag_eval_cases.example.jsonl config/rag_eval_cases.jsonl
   --write-results artifacts/rag-retrieval.jsonl --report artifacts/rag-report.json
 ```
 
+知识库详情页的「测评」分区把同一套能力交给 owner / editor：可为每个 KB 上传黄金集 JSONL 与门禁、对当前索引跑检索回归、回放已保存或上传的 `retrieval.jsonl`，并查看该 KB 的线上检索健康。回归产物写在 `backend/data/eval_runs/`（已由 `data/` gitignore 排除）。
+
 上线后，`search_kb` / `search_kg` 的结果数、最高相关度、延迟和失败状态会写入 Trace。Docker 自动运行 `rag-monitor`，按 `RAG_MONITOR_*` 阈值输出结构化告警日志；管理员可在 `/admin/rag` 查看过去 24 小时的空检索率、错误率、P95 延迟和相关度。没有 Docker 时可手动运行一次（加 `--fail-on-alert` 会在告警时以退出码 2 结束，适合 cron/CI）：
 
 ```bash

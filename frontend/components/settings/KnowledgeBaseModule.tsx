@@ -47,8 +47,8 @@ export default function KbsPage() {
   return <KnowledgeBaseModule />;
 }
 
-/** Reused by the settings workspace as well as the legacy direct route. */
-export function KnowledgeBaseModule({ embedded = false }: { embedded?: boolean }) {
+/** Standalone knowledge-base workspace at /kbs. */
+export function KnowledgeBaseModule() {
   const router = useRouter();
   const [kbs, setKbs] = useState<KB[]>([]);
   const [kbOptions, setKbOptions] = useState<MyKbOptions | undefined>();
@@ -94,8 +94,8 @@ export function KnowledgeBaseModule({ embedded = false }: { embedded?: boolean }
   };
 
   return (
-    <div className={cn("text-ink", !embedded && "app-page min-h-dvh")}>
-      {!embedded && <header className="app-page-header border-b">
+    <div className="app-page min-h-dvh text-ink">
+      <header className="app-page-header border-b">
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4 sm:px-6">
           <Link
             href="/"
@@ -105,9 +105,9 @@ export function KnowledgeBaseModule({ embedded = false }: { embedded?: boolean }
             <span>返回对话</span>
           </Link>
         </div>
-      </header>}
+      </header>
 
-      <main className={cn("mx-auto max-w-5xl", embedded ? "px-4 py-5 sm:px-6" : "app-page-content px-4 py-7 sm:px-6 sm:py-10")}>
+      <main className="app-page-content mx-auto max-w-5xl px-4 py-7 sm:px-6 sm:py-10">
         <div className="mb-6 flex flex-col gap-3 border-b border-surface-border/70 pb-5 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
             <h2 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-ink">

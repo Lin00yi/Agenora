@@ -62,6 +62,7 @@ from src.kb.models import (
     IngestionJob,
     KBInvitation,
     KBMember,
+    KbEvalRun,
 )
 from src.kb.parsers import SUPPORTED_EXTS
 from src.settings_user import require_user_embedding, resolve_user_embedding
@@ -169,6 +170,12 @@ class CreateInvitationRequest(BaseModel):
     max_uses: Optional[int] = Field(default=None, ge=1, le=1000)
 
 
+class PutEvalConfigRequest(BaseModel):
+    golden_set_jsonl: Optional[str] = Field(default=None, max_length=2_000_000)
+    gate_json: Optional[str] = Field(default=None, max_length=100_000)
+    template: Optional[Literal["roogoo"]] = None
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -214,6 +221,14 @@ async def _load_owner_kb(session: AsyncSession, kb_id: str, user_id: str) -> KB:
     if role != "owner":
         raise HTTPException(status_code=403, detail="owner role required")
     return kb
+
+
+def _eval_http_error(exc: Exception) -> HTTPException:
+    from src.rag_eval.metrics import EvaluationGateError
+
+    if isinstance(exc, EvaluationGateError):
+        return HTTPException(status_code=400, detail=str(exc))
+    raise exc
 
 
 async def _load_document(
@@ -531,6 +546,9 @@ async def purge_kb(session: AsyncSession, kb: KB) -> None:
 
     # Clean up uploaded files on disk.
     delete_kb_uploads(kb_id)
+    from src.kb.eval_service import delete_eval_run_files
+
+    delete_eval_run_files(kb_id)
 
 
 @router.delete("/{kb_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
@@ -674,6 +692,184 @@ async def rebuild_kb(
         "doc_count": len(doc_ids),
         "collection": collection_name,
     }
+
+
+# ---------------------------------------------------------------------------
+# Per-KB golden-set evaluation
+# ---------------------------------------------------------------------------
+@router.get("/{kb_id}/eval/templates")
+async def list_kb_eval_templates(
+    kb_id: str,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    await _load_writable_kb(session, kb_id, user.id)
+    from src.kb.eval_service import list_eval_templates
+
+    return {"templates": list_eval_templates()}
+
+
+@router.get("/{kb_id}/eval/config")
+async def get_kb_eval_config(
+    kb_id: str,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    kb = await _load_writable_kb(session, kb_id, user.id)
+    from src.kb.eval_service import config_public_dict, get_eval_config
+
+    try:
+        return config_public_dict(await get_eval_config(session, kb.id))
+    except Exception as exc:
+        raise _eval_http_error(exc) from exc
+
+
+@router.put("/{kb_id}/eval/config")
+async def put_kb_eval_config(
+    kb_id: str,
+    body: PutEvalConfigRequest,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    kb = await _load_writable_kb(session, kb_id, user.id)
+    from src.kb.eval_service import (
+        config_public_dict,
+        get_eval_config,
+        load_template,
+        upsert_eval_config,
+    )
+
+    try:
+        if body.template:
+            golden_set_jsonl, gate_json = load_template(body.template)
+        else:
+            existing = await get_eval_config(session, kb.id)
+            golden_set_jsonl = body.golden_set_jsonl
+            if golden_set_jsonl is None:
+                golden_set_jsonl = existing.golden_set_jsonl if existing else ""
+            gate_json = body.gate_json
+            if gate_json is None:
+                gate_json = existing.gate_json if existing else ""
+            if not (golden_set_jsonl or "").strip():
+                raise HTTPException(status_code=400, detail="golden_set_jsonl or template is required")
+        config = await upsert_eval_config(
+            session, kb, golden_set_jsonl=golden_set_jsonl, gate_json=gate_json or ""
+        )
+        return config_public_dict(config)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _eval_http_error(exc) from exc
+
+
+@router.post("/{kb_id}/eval/run")
+async def run_kb_eval_regression(
+    kb_id: str,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    kb = await _load_writable_kb(session, kb_id, user.id)
+    from src.kb.eval_service import run_regression
+
+    try:
+        run = await run_regression(session, kb, created_by=user.id)
+    except Exception as exc:
+        raise _eval_http_error(exc) from exc
+    return run.to_public_dict(include_report=True)
+
+
+@router.get("/{kb_id}/eval/runs")
+async def list_kb_eval_runs(
+    kb_id: str,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+) -> dict:
+    kb = await _load_writable_kb(session, kb_id, user.id)
+    from src.kb.eval_service import list_eval_runs
+
+    rows, total = await list_eval_runs(session, kb.id, limit=limit, offset=offset)
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "runs": [row.to_public_dict() for row in rows],
+    }
+
+
+@router.get("/{kb_id}/eval/runs/{run_id}")
+async def get_kb_eval_run(
+    kb_id: str,
+    run_id: str,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    kb = await _load_writable_kb(session, kb_id, user.id)
+    run = await session.get(KbEvalRun, run_id)
+    if run is None or run.kb_id != kb.id:
+        raise HTTPException(status_code=404, detail="eval run not found")
+    return run.to_public_dict(include_report=True)
+
+
+@router.post("/{kb_id}/eval/replay")
+async def replay_kb_eval(
+    kb_id: str,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+    run_id: str | None = Query(default=None),
+    retrieval_jsonl: UploadFile | None = File(default=None),
+) -> dict:
+    kb = await _load_writable_kb(session, kb_id, user.id)
+    from src.kb.eval_service import (
+        MAX_RETRIEVAL_JSONL_BYTES,
+        load_run_predictions,
+        parse_predictions_jsonl,
+        replay_predictions,
+    )
+
+    has_file = retrieval_jsonl is not None and bool(retrieval_jsonl.filename)
+    if bool(run_id) == has_file:
+        raise HTTPException(
+            status_code=400,
+            detail="provide either run_id or retrieval_jsonl, not both",
+        )
+    try:
+        if run_id:
+            source = await session.get(KbEvalRun, run_id)
+            if source is None or source.kb_id != kb.id:
+                raise HTTPException(status_code=404, detail="eval run not found")
+            predictions = load_run_predictions(source)
+        else:
+            assert retrieval_jsonl is not None
+            raw = await retrieval_jsonl.read()
+            if len(raw) > MAX_RETRIEVAL_JSONL_BYTES:
+                raise HTTPException(status_code=400, detail="retrieval.jsonl is too large")
+            predictions = parse_predictions_jsonl(
+                raw.decode("utf-8"), source="retrieval.jsonl"
+            )
+        run = await replay_predictions(session, kb, predictions, created_by=user.id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _eval_http_error(exc) from exc
+    return run.to_public_dict(include_report=True)
+
+
+@router.get("/{kb_id}/eval/monitor")
+async def get_kb_eval_monitor(
+    kb_id: str,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+    hours: int | None = Query(None, ge=1, le=24 * 31),
+) -> dict:
+    kb = await _load_readable_kb(session, kb_id, user.id)
+    from src.observability.rag_metrics import build_rag_monitor_snapshot
+
+    snapshot = await build_rag_monitor_snapshot(session, hours=hours, kb_id=kb.id)
+    snapshot["kb_id"] = kb.id
+    snapshot["scope_note"] = "仅统计含 kb_id 的近期 Trace；升级前的历史检索不会出现在本页。"
+    return snapshot
 
 
 # ---------------------------------------------------------------------------

@@ -28,6 +28,7 @@ import {
   Search,
   Plus,
   Play,
+  ClipboardList,
 } from "lucide-react";
 import { toast } from "@/lib/toast";
 
@@ -64,6 +65,7 @@ import { cn } from "@/lib/cn";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import AppModal from "@/components/AppModal";
 import { AddDocumentDialog } from "@/components/kb/AddDocumentDialog";
+import { KbEvalSection } from "@/components/kb/KbEvalSection";
 import Select from "@/components/Select";
 import { LoadingState, StateView } from "@/components/ui/state-view";
 import { Button } from "@/components/ui/button";
@@ -556,6 +558,9 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
             ...(!kb.is_system
               ? [{ label: "成员", href: "#members", icon: Users }]
               : []),
+            ...(canWrite
+              ? [{ label: "测评", href: "#evaluation", icon: ClipboardList }]
+              : []),
             ...(isOwner && !kb.is_system
               ? [
                   { label: "检索设置", href: "#retrieval", icon: SlidersHorizontal },
@@ -914,6 +919,8 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
             <MembersSection kbId={kb.id} isOwner={isOwner} />
           </AdminSection>
         )}
+
+        {canWrite && <KbEvalSection kbId={kb.id} />}
 
         {/* v3-M3: owner-only advanced settings - grouping toggle + hybrid rebuild. */}
         {isOwner && !kb.is_system && (

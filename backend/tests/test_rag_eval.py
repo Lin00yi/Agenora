@@ -130,6 +130,31 @@ def test_recall_at_k_is_normalized_by_cutoff_when_more_docs_are_relevant(tmp_pat
     assert report["metrics"]["recall_at_k"] == pytest.approx(2 / 3)
 
 
+def test_evaluate_ignores_extra_predictions_and_records_missing_cases(tmp_path):
+    dataset = tmp_path / "golden.jsonl"
+    dataset.write_text(
+        "\n".join(
+            [
+                json.dumps({"id": "keep", "query": "K", "expected_document_ids": ["doc-a"]}),
+                json.dumps({"id": "missing", "query": "M", "expected_document_ids": ["doc-b"]}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    report = evaluate(
+        load_cases(dataset),
+        {
+            "keep": {"id": "keep", "retrieved": [{"document_id": "doc-a"}]},
+            "extra": {"id": "extra", "retrieved": [{"document_id": "doc-z"}]},
+        },
+        k=3,
+    )
+    assert report["missing_prediction_ids"] == ["missing"]
+    assert report["metrics"]["recall_at_k"] == pytest.approx(0.5)
+    assert report["per_case"][1]["retrieved_document_ids"] == []
+
+
 def test_load_gate_reads_minimums(tmp_path):
     from src.rag_eval.metrics import load_gate
 

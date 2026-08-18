@@ -115,6 +115,9 @@ class ToolRegistry:
                         "max_score": max_score,
                         "truncated": bool(raw.get("truncated", False)),
                     }
+                    kb_id = raw.get("kb_id")
+                    if kb_id:
+                        metadata["rag"]["kb_id"] = str(kb_id)
                 span.end(
                     status="error" if result.error else "ok",
                     error=result.error,

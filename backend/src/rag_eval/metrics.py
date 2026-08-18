@@ -35,12 +35,11 @@ def _string_set(value: object, *, field: str, case_id: str) -> frozenset[str]:
     return values
 
 
-def load_cases(path: str | Path) -> list[RAGGoldenCase]:
-    """Load a checked-in JSONL golden set and reject ambiguous fixtures."""
-    source = Path(path)
+def parse_cases_jsonl(text: str, *, source: str = "golden-set") -> list[RAGGoldenCase]:
+    """Parse a JSONL golden set from text and reject ambiguous fixtures."""
     cases: list[RAGGoldenCase] = []
     seen: set[str] = set()
-    for number, line in enumerate(source.read_text(encoding="utf-8").splitlines(), start=1):
+    for number, line in enumerate(text.splitlines(), start=1):
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         try:
@@ -78,11 +77,16 @@ def load_cases(path: str | Path) -> list[RAGGoldenCase]:
     return cases
 
 
-def load_predictions(path: str | Path) -> dict[str, dict[str, Any]]:
-    """Load evaluator output JSONL keyed by golden case id."""
+def load_cases(path: str | Path) -> list[RAGGoldenCase]:
+    """Load a checked-in JSONL golden set and reject ambiguous fixtures."""
     source = Path(path)
+    return parse_cases_jsonl(source.read_text(encoding="utf-8"), source=str(source))
+
+
+def parse_predictions_jsonl(text: str, *, source: str = "retrieval") -> dict[str, dict[str, Any]]:
+    """Parse evaluator output JSONL keyed by golden case id."""
     rows: dict[str, dict[str, Any]] = {}
-    for number, line in enumerate(source.read_text(encoding="utf-8").splitlines(), start=1):
+    for number, line in enumerate(text.splitlines(), start=1):
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         try:
@@ -96,6 +100,12 @@ def load_predictions(path: str | Path) -> dict[str, dict[str, Any]]:
             raise EvaluationGateError(f"{source}:{number}: duplicate prediction id {case_id}")
         rows[case_id] = raw
     return rows
+
+
+def load_predictions(path: str | Path) -> dict[str, dict[str, Any]]:
+    """Load evaluator output JSONL keyed by golden case id."""
+    source = Path(path)
+    return parse_predictions_jsonl(source.read_text(encoding="utf-8"), source=str(source))
 
 
 def unique_ids(ids: Iterable[str], *, limit: int | None = None) -> list[str]:
@@ -252,15 +262,8 @@ def evaluate(
     }
 
 
-def load_gate(path: str | Path) -> dict[str, Any]:
-    """Load a checked-in retrieval gate: dataset, kb, k, and minimums."""
-    source = Path(path)
-    try:
-        raw = json.loads(source.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise EvaluationGateError(f"{source}: invalid JSON") from exc
-    if not isinstance(raw, dict):
-        raise EvaluationGateError(f"{source}: gate must be an object")
+def parse_gate(raw: dict[str, Any], *, source: str = "gate") -> dict[str, Any]:
+    """Normalize a retrieval gate: dataset, kb, k, and minimums."""
     minimums = raw.get("minimums") or {}
     if minimums is not None and not isinstance(minimums, dict):
         raise EvaluationGateError(f"{source}: minimums must be an object")
@@ -282,6 +285,23 @@ def load_gate(path: str | Path) -> dict[str, Any]:
         "baseline": raw.get("baseline") if isinstance(raw.get("baseline"), dict) else {},
         "notes": str(raw.get("notes") or ""),
     }
+
+
+def parse_gate_json(text: str, *, source: str = "gate") -> dict[str, Any]:
+    """Parse a retrieval gate from a JSON string."""
+    try:
+        raw = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise EvaluationGateError(f"{source}: invalid JSON") from exc
+    if not isinstance(raw, dict):
+        raise EvaluationGateError(f"{source}: gate must be an object")
+    return parse_gate(raw, source=source)
+
+
+def load_gate(path: str | Path) -> dict[str, Any]:
+    """Load a checked-in retrieval gate: dataset, kb, k, and minimums."""
+    source = Path(path)
+    return parse_gate_json(source.read_text(encoding="utf-8"), source=str(source))
 
 
 def assert_quality_gate(
