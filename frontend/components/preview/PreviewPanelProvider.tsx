@@ -1,6 +1,6 @@
 "use client";
 
-import { Braces, X } from "lucide-react";
+import { Braces, XIcon } from "lucide-react";
 import {
   createContext,
   useCallback,
@@ -185,13 +185,14 @@ function PreviewHeader({
       {extra}
       <Button
         type="button"
-        variant="outline"
-        size="sm"
-        className="shrink-0"
+        variant="ghost"
+        size="icon-sm"
+        className="app-dialog-close shrink-0 rounded-full text-muted hover:bg-surface-2 hover:text-ink"
+        aria-label="关闭"
         onClick={onClose}
       >
-        <X className="h-4 w-4" />
-        关闭
+        <XIcon />
+        <span className="sr-only">关闭</span>
       </Button>
     </header>
   );

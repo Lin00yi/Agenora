@@ -3,6 +3,7 @@
 import {
   AlertTriangle,
   CheckCircle2,
+  CircleHelp,
   ClipboardList,
   Database,
   Gauge,
@@ -22,6 +23,12 @@ import { usePreviewPanel } from "@/components/preview/PreviewPanelProvider";
 import { Button } from "@/components/ui/button";
 import { StateView } from "@/components/ui/state-view";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { FileUploadSurface } from "@/components/upload/FileUploadSurface";
 import { toastApiError } from "@/lib/byok-toast";
 import { cn } from "@/lib/cn";
@@ -51,6 +58,17 @@ function metricPct(value: number | null | undefined): string {
 function percent(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
 }
+
+const EVAL_METRIC_HINTS = {
+  recall_at_k:
+    "Recall@K：Top-K 结果里找回了多少期望文档。分母取「期望文档数」和 K 的较小值，所以 K=3 时最多按 3 篇计。1 表示能找回的期望文档都出现在前 K 条。",
+  mrr:
+    "MRR（Mean Reciprocal Rank）：第一条命中的期望文档所在名次的倒数，再对全部用例取平均。排在第 1 名为 1，第 2 名为 0.5；没有命中则为 0。",
+  ndcg_at_k:
+    "nDCG@K：把命中按名次打折后累加，再除以理想排序的满分。既看有没有找回，也看排得靠不靠前。1 表示前 K 名的排序与理想结果一致。",
+  precision_at_k:
+    "Precision@K：前 K 条结果里，真正属于期望文档的比例。K=3 时命中 1 篇即为 0.333。反映检索结果里有多少是相关的。",
+} as const;
 
 export function KbEvalSection({ kbId }: { kbId: string }) {
   const router = useRouter();
@@ -285,9 +303,21 @@ export function KbEvalSection({ kbId }: { kbId: string }) {
                 )}
                 {configured && (
                   <dl className="grid gap-2 sm:grid-cols-3">
-                    <MetricChip label="Recall@K 门禁" value={metricPct(config.minimums.recall_at_k ?? null)} />
-                    <MetricChip label="MRR 门禁" value={metricPct(config.minimums.mrr ?? null)} />
-                    <MetricChip label="nDCG@K 门禁" value={metricPct(config.minimums.ndcg_at_k ?? null)} />
+                    <MetricChip
+                      label="Recall@K 门禁"
+                      value={metricPct(config.minimums.recall_at_k ?? null)}
+                      hint={EVAL_METRIC_HINTS.recall_at_k}
+                    />
+                    <MetricChip
+                      label="MRR 门禁"
+                      value={metricPct(config.minimums.mrr ?? null)}
+                      hint={EVAL_METRIC_HINTS.mrr}
+                    />
+                    <MetricChip
+                      label="nDCG@K 门禁"
+                      value={metricPct(config.minimums.ndcg_at_k ?? null)}
+                      hint={EVAL_METRIC_HINTS.ndcg_at_k}
+                    />
                   </dl>
                 )}
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -465,10 +495,36 @@ export function KbEvalSection({ kbId }: { kbId: string }) {
   );
 }
 
-function MetricChip({ label, value }: { label: string; value: string }) {
+function MetricChip({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+}) {
   return (
     <div className="rounded-md border border-surface-border/80 bg-surface px-3 py-2">
-      <div className="text-[11px] text-muted">{label}</div>
+      <div className="flex items-center justify-between gap-1">
+        <span className="min-w-0 truncate text-[11px] text-muted">{label}</span>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label={`${label} 说明`}
+                className="inline-flex size-4 shrink-0 items-center justify-center rounded text-muted transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+              >
+                <CircleHelp className="size-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-xs px-3 py-2 text-xs leading-5 text-muted">
+              {hint}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
       <div className="mt-1 font-mono text-sm font-semibold tabular-nums">{value}</div>
     </div>
   );
@@ -509,10 +565,10 @@ function EvalReportBlock({
         </span>
       </div>
       <div className="grid gap-2 sm:grid-cols-4">
-        <MetricChip label="Recall@K" value={metricPct(metrics.recall_at_k)} />
-        <MetricChip label="MRR" value={metricPct(metrics.mrr)} />
-        <MetricChip label="nDCG@K" value={metricPct(metrics.ndcg_at_k)} />
-        <MetricChip label="Precision@K" value={metricPct(metrics.precision_at_k)} />
+        <MetricChip label="Recall@K" value={metricPct(metrics.recall_at_k)} hint={EVAL_METRIC_HINTS.recall_at_k} />
+        <MetricChip label="MRR" value={metricPct(metrics.mrr)} hint={EVAL_METRIC_HINTS.mrr} />
+        <MetricChip label="nDCG@K" value={metricPct(metrics.ndcg_at_k)} hint={EVAL_METRIC_HINTS.ndcg_at_k} />
+        <MetricChip label="Precision@K" value={metricPct(metrics.precision_at_k)} hint={EVAL_METRIC_HINTS.precision_at_k} />
       </div>
       {allCases.length > 0 && (
         <div className="overflow-x-auto">

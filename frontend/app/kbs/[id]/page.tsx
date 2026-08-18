@@ -595,17 +595,17 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
           }}
           items={[
             { label: kb.is_system ? "示例说明" : "文档", href: "#documents", icon: FileText },
-            ...(!kb.is_system
-              ? [{ label: "成员", href: "#members", icon: Users }]
+            ...(isOwner && !kb.is_system
+              ? [{ label: "检索设置", href: "#retrieval", icon: SlidersHorizontal }]
               : []),
             ...(canWrite
               ? [{ label: "测评", href: "#evaluation", icon: ClipboardList }]
               : []),
+            ...(!kb.is_system
+              ? [{ label: "成员", href: "#members", icon: Users }]
+              : []),
             ...(isOwner && !kb.is_system
-              ? [
-                  { label: "检索设置", href: "#retrieval", icon: SlidersHorizontal },
-                  { label: "危险操作", href: "#danger", icon: AlertCircle, muted: true },
-                ]
+              ? [{ label: "危险操作", href: "#danger", icon: AlertCircle, muted: true }]
               : []),
           ]}
         />
