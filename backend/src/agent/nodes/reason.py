@@ -389,8 +389,6 @@ async def reason_node(
     registry: ToolRegistry,
     cost: CostTracker,
     system_prompt: str = SYSTEM_PROMPT,
-    include_travel_skill: bool = True,
-    include_kb_skill: bool = False,
     excluded_tool_names: set[str] | None = None,
     llm_cfg: "UserLLMConfig | None" = None,
     complex_llm_cfg: "UserLLMConfig | None" = None,
@@ -399,10 +397,10 @@ async def reason_node(
 ) -> AgentState:
     """LLM decides next action: call tools, call skill, or finish.
 
-    The agent's prompt and the schema for the optional "skill" tools are
-    injected by build_graph. KB-mode conversations get a different
-    system_prompt + the generic `generate_kb_report` skill (v2-M8); travel
-    KB gets `generate_travel_report`. Unbound chat mounts neither.
+    The agent's prompt is injected by build_graph. KB-mode conversations get a
+    different system_prompt; travel KB gets the travel prompt. Unbound chat uses
+    the general assistant prompt. Report generators are first-class registry
+    tools, so the active tool surface is derived from the registry only.
 
     When the model streams text, tokens are pushed live via ``emit``. If it then
     chooses tools, a ``segment_seal`` keeps that prose on the timeline above the
@@ -440,10 +438,6 @@ async def reason_node(
     kb_context = (state.get("kb_context") or "").strip()
     retrieved_evidence = list(state.get("retrieved_evidence") or [])
     rag_injection_mode = get_settings().rag_injection_mode
-    # Skill-backed report generators are now first-class registry tools. The
-    # include_* flags remain in the signature for older tests/callers, but the
-    # active tool surface is derived from the registry only.
-    _ = (include_travel_skill, include_kb_skill)
     excluded_tool_names = set(excluded_tool_names or set())
     if prompt_risk == "high":
         excluded_tool_names.add("web_search")

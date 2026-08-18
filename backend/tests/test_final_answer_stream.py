@@ -149,7 +149,6 @@ async def test_reason_node_streams_final_tokens(
         registry=registry,
         cost=CostTracker(),
         system_prompt="sys",
-        include_travel_skill=False,
         llm_cfg=_llm_cfg(),
         emit=emit,
     )
@@ -195,7 +194,6 @@ async def test_reason_node_tools_do_not_stream_tokens(
         registry=registry,
         cost=CostTracker(),
         system_prompt="sys",
-        include_travel_skill=False,
         llm_cfg=_llm_cfg(),
         emit=emit,
     )
@@ -244,7 +242,6 @@ async def test_reason_node_streams_text_then_seals_for_tools(
         registry=registry,
         cost=CostTracker(),
         system_prompt="sys",
-        include_travel_skill=False,
         llm_cfg=_llm_cfg(),
         emit=emit,
     )
@@ -288,7 +285,6 @@ async def test_reason_node_no_tools_streams_tokens_directly(
         registry=registry,
         cost=CostTracker(),
         system_prompt="sys",
-        include_travel_skill=False,
         llm_cfg=_llm_cfg(),
         emit=emit,
     )
@@ -336,7 +332,6 @@ async def test_reason_node_recovers_empty_completion(
         registry=registry,
         cost=CostTracker(),
         system_prompt="sys",
-        include_travel_skill=False,
         llm_cfg=_llm_cfg(),
         emit=emit,
     )
@@ -380,7 +375,6 @@ async def test_reason_node_empty_completion_falls_back_copy(
         registry=registry,
         cost=CostTracker(),
         system_prompt="sys",
-        include_travel_skill=False,
         llm_cfg=_llm_cfg(),
         emit=emit,
     )
@@ -434,7 +428,6 @@ async def test_reason_node_escalates_to_complex_model_after_empty(
         registry=registry,
         cost=CostTracker(),
         system_prompt="sys",
-        include_travel_skill=False,
         llm_cfg=cfg,
         emit=emit,
     )

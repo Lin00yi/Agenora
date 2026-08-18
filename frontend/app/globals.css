@@ -213,8 +213,7 @@
     box-shadow: 0 8px 18px color-mix(in srgb, var(--chat-accent) 9%, transparent);
   }
 
-  .kf-chat .kf-mobile-sidebar-action,
-  .kf-chat .kf-small-action {
+  .kf-chat .kf-mobile-sidebar-action {
     border-color: var(--chat-line);
     background: color-mix(in srgb, var(--chat-surface) 82%, transparent);
     color: var(--chat-muted);
@@ -226,19 +225,11 @@
       color var(--duration-press) var(--ease-out);
   }
 
-  .kf-chat .kf-mobile-sidebar-action:hover,
-  .kf-chat .kf-small-action:hover {
+  .kf-chat .kf-mobile-sidebar-action:hover {
     border-color: color-mix(in srgb, var(--chat-accent) 36%, var(--chat-line));
     background: color-mix(in srgb, var(--chat-accent) 8%, var(--chat-surface));
     color: var(--chat-ink);
     box-shadow: 0 8px 18px color-mix(in srgb, var(--chat-accent) 10%, transparent);
-  }
-
-  .kf-chat .kf-small-action:disabled {
-    border-color: var(--chat-line);
-    background: color-mix(in srgb, var(--chat-soft) 74%, transparent);
-    color: var(--chat-muted);
-    box-shadow: none;
   }
 
   .kf-chat .kf-sidebar-shell {
@@ -309,7 +300,6 @@
   .kf-chat .kf-sidebar-row-action:focus-visible,
   .kf-chat .kf-sidebar-load-more:focus-visible,
   .kf-chat .kf-header-help:focus-visible,
-  .kf-chat .kf-small-action:focus-visible,
   .kf-chat .kf-context-usage:focus-visible,
   .kf-chat .kf-control:focus-visible,
   .kf-chat .kf-user-trigger:focus-visible,
@@ -800,7 +790,6 @@
     border: 0;
   }
 
-  .kf-chat .kf-workspace .kf-empty-stat,
   .kf-chat .kf-workspace .kf-empty-prompt,
   .kf-chat .kf-workspace .kf-source-strip,
   .kf-chat .kf-workspace .kf-source-row {
@@ -809,18 +798,11 @@
     color: var(--chat-muted);
   }
 
-  .kf-chat .kf-workspace .kf-empty-stat {
-    box-shadow: 0 1px 2px rgb(15 23 42 / 0.035);
-  }
-
-  .kf-chat .kf-workspace .kf-empty-stat-icon,
-  .kf-chat .kf-workspace .kf-empty-stat-value,
   .kf-chat .kf-workspace .kf-source-strip-title,
   .kf-chat .kf-workspace .kf-source-title {
     color: var(--chat-ink);
   }
 
-  .kf-chat .kf-workspace .kf-empty-stat-icon,
   .kf-chat .kf-workspace .kf-source-strip-title {
     color: var(--chat-accent);
   }

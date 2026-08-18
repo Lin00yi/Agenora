@@ -1,52 +1,7 @@
 import type { ToolEvent } from "@/components/ThinkingChain";
 import type { Conversation, Message } from "@/lib/conversationStore";
-import type { KB } from "@/lib/kb-api";
 import type { ChatEvent, Citation, MemoryTrace, MemoryTraceItem } from "@/lib/sseClient";
 import type { SourceRow } from "./types";
-
-export function getKbStatusView(kb: KB) {
-  const counts = kb.document_status_counts;
-  const failed = counts?.failed ?? 0;
-  const running = (counts?.pending ?? 0) + (counts?.ingesting ?? 0);
-  if (failed > 0) {
-    return {
-      label: "\u9700\u5904\u7406",
-      detail: `${failed} \u4e2a\u6587\u6863\u5f02\u5e38`,
-      dot: "bg-red-400",
-      tone: "text-red-300",
-    };
-  }
-  if (running > 0) {
-    return {
-      label: "\u5904\u7406\u4e2d",
-      detail: `${running} \u4e2a\u6587\u6863\u6392\u961f/\u89e3\u6790`,
-      dot: "bg-amber-300",
-      tone: "text-amber-200",
-    };
-  }
-  if (kb.documents_count === 0) {
-    return {
-      label: "\u7a7a\u5e93",
-      detail: "\u7b49\u5f85\u4e0a\u4f20\u8d44\u6599",
-      dot: "kf-status-dot-muted",
-      tone: "kf-status-text-muted",
-    };
-  }
-  if (kb.chunks_count > 0) {
-    return {
-      label: "\u53ef\u68c0\u7d22",
-      detail: `${kb.chunks_count.toLocaleString()} 分块`,
-      dot: "kf-status-dot-accent",
-      tone: "kf-status-text-accent",
-    };
-  }
-  return {
-    label: "\u5f85\u7d22\u5f15",
-    detail: `${kb.documents_count.toLocaleString()} \u4e2a\u6587\u6863`,
-    dot: "kf-status-dot-accent",
-    tone: "kf-status-text-accent",
-  };
-}
 
 export function formatConversationTime(value?: number | null) {
   if (!value) return "";

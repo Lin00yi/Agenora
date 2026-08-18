@@ -206,7 +206,6 @@ async def test_reason_node_adds_guard_and_hides_web_search(
         registry=registry,
         cost=CostTracker(),
         system_prompt="safe assistant",
-        include_travel_skill=False,
         llm_cfg=_llm_cfg(),
     )
 

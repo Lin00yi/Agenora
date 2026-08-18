@@ -80,14 +80,10 @@ def build_graph(
 
     if kb is None:
         system_prompt = SYSTEM_PROMPT_GENERAL
-        include_travel_skill = False
-        include_kb_skill = False
         user_kb_mode = False
         web_search_policy = resolve_web_search_policy("general")
     elif kb.id == SYSTEM_TRAVEL_KB_ID:
         system_prompt = build_travel_system_prompt()
-        include_travel_skill = True
-        include_kb_skill = False
         user_kb_mode = False
         web_search_policy = resolve_web_search_policy("disabled")
     else:
@@ -96,8 +92,6 @@ def build_graph(
             kb.description or "",
             with_web_search=kb_web_search_enabled,
         )
-        include_travel_skill = False
-        include_kb_skill = True
         user_kb_mode = True
         web_search_policy = resolve_web_search_policy(
             "kb" if kb_web_search_enabled else "disabled"
@@ -137,8 +131,6 @@ def build_graph(
             registry=registry,
             cost=cost,
             system_prompt=system_prompt,
-            include_travel_skill=include_travel_skill,
-            include_kb_skill=include_kb_skill,
             excluded_tool_names={"search_kb", "search_kg"} if user_kb_mode else set(),
             llm_cfg=llm_cfg,
             complex_llm_cfg=complex_llm_cfg,

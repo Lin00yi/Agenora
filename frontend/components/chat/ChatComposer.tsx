@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode, RefObject } from "react";
+import type { RefObject } from "react";
 import {
   ArrowUp,
-  Circle,
   Database,
   LockKeyhole,
   Paperclip,
@@ -28,35 +27,6 @@ import { formatContextUsagePercent, resolveContextUsagePercent } from "./utils";
 
 const MANAGE_MODELS_VALUE = "__manage_models__";
 const modelIdCollator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
-
-export function SmallAction({
-  label,
-  icon,
-  disabled = false,
-  onClick,
-}: {
-  label: string;
-  icon?: ReactNode;
-  disabled?: boolean;
-  onClick?: () => void;
-}) {
-  return (
-    <button
-      className={cn(
-        "kf-small-action inline-flex size-[var(--control-h)] cursor-pointer items-center justify-center rounded-md border px-2 text-xs transition",
-        disabled
-          ? "cursor-not-allowed opacity-45"
-          : ""
-      )}
-      disabled={disabled}
-      onClick={onClick}
-      title={disabled ? `${label}\u6682\u672a\u63a5\u5165` : label}
-      type="button"
-    >
-      {icon ?? <Circle className="h-3.5 w-3.5" />}
-    </button>
-  );
-}
 
 export function Composer({
   value,

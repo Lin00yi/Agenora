@@ -32,7 +32,6 @@
     "@types/node": "20.14.10",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
-    "@vitest/ui": "1.6.0",
     "autoprefixer": "10.4.19",
     "eslint": "9.39.1",
     "eslint-config-next": "16.3.1",
@@ -44,8 +43,5 @@
     "tailwindcss-animate": "^1.0.7",
     "typescript": "5.5.3",
     "vitest": "1.6.0"
-  },
-  "optionalDependencies": {
-    "@next/swc-win32-x64-msvc": "14.2.35"
   }
 }

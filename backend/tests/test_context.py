@@ -193,7 +193,6 @@ async def test_openai_request_attaches_saved_context_to_latest_user_turn(monkeyp
         registry=ToolRegistry(),
         cost=CostTracker(),
         system_prompt="基础规则",
-        include_travel_skill=False,
         llm_cfg=cfg,
     )
 
@@ -239,7 +238,6 @@ async def test_anthropic_request_keeps_system_content_out_of_messages(monkeypatc
         registry=ToolRegistry(),
         cost=CostTracker(),
         system_prompt="基础规则",
-        include_travel_skill=False,
         llm_cfg=cfg,
     )
 

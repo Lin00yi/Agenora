@@ -10,7 +10,6 @@ import pytest
 from src.agent.nodes import (
     kb_search_node,
     query_policy_node,
-    query_rewrite_node,
     reason_node,
     should_search_kb,
 )
@@ -238,70 +237,6 @@ async def test_query_policy_model_override_respects_provider(
 
 
 @pytest.mark.asyncio
-async def test_query_rewrite_node_caps_queries(monkeypatch: pytest.MonkeyPatch) -> None:
-    class FakeCompletions:
-        async def create(self, **kwargs: Any) -> Any:  # noqa: ARG002
-            return SimpleNamespace(
-                usage=None,
-                choices=[
-                    SimpleNamespace(
-                        message=SimpleNamespace(
-                            content=(
-                                '{"queries":['
-                                '{"query":"Agenora 数据安全","limit":5},'
-                                '{"query":"Agenora 本地部署 私有化","limit":5},'
-                                '{"query":"Agenora 数据加密 隐私","limit":5},'
-                                '{"query":"Agenora 企业版","limit":5}'
-                                "]}"
-                            )
-                        )
-                    )
-                ],
-            )
-
-    fake_client = SimpleNamespace(
-        chat=SimpleNamespace(completions=FakeCompletions())
-    )
-    monkeypatch.setattr("src.agent.nodes.get_client", lambda cfg=None: fake_client)
-
-    state = {"messages": [{"role": "user", "content": "Agenora 如何保证数据安全？"}]}
-    next_state = await query_rewrite_node(
-        state,
-        cost=CostTracker(),
-        kb_name="Agenora",
-        llm_cfg=_llm_cfg(),
-    )
-
-    assert [item["query"] for item in next_state["kb_queries"]] == [
-        "Agenora 数据安全",
-        "Agenora 本地部署 私有化",
-        "Agenora 数据加密 隐私",
-    ]
-    assert next_state["kb_search_done"] is False
-
-
-@pytest.mark.asyncio
-async def test_query_rewrite_node_falls_back_to_user_query(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class FakeCompletions:
-        async def create(self, **kwargs: Any) -> Any:  # noqa: ARG002
-            raise RuntimeError("llm unavailable")
-
-    fake_client = SimpleNamespace(
-        chat=SimpleNamespace(completions=FakeCompletions())
-    )
-    monkeypatch.setattr("src.agent.nodes.get_client", lambda cfg=None: fake_client)
-
-    state = {"messages": [{"role": "user", "content": "Agenora 支持私有化吗？"}]}
-    next_state = await query_rewrite_node(state, cost=CostTracker(), llm_cfg=_llm_cfg())
-
-    assert next_state["kb_queries"] == [
-        {"query": "Agenora 支持私有化吗？", "limit": 3}
-    ]
-
-
-@pytest.mark.asyncio
 async def test_kb_search_node_runs_rewritten_queries_in_parallel() -> None:
     tool = RecordingKBSearchTool(delay=0.05)
     registry = ToolRegistry()
@@ -503,7 +438,6 @@ async def test_reason_node_can_hide_search_kb_schema(
         registry=registry,
         cost=CostTracker(),
         system_prompt="answer from KB",
-        include_travel_skill=False,
         excluded_tool_names={"search_kb"},
         llm_cfg=_llm_cfg(),
     )
@@ -549,7 +483,6 @@ async def test_reason_node_auto_continues_truncated_final_answer(
         registry=ToolRegistry(),
         cost=CostTracker(),
         system_prompt="answer fully",
-        include_travel_skill=False,
         llm_cfg=_llm_cfg(),
     )
 

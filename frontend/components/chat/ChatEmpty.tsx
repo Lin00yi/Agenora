@@ -1,6 +1,5 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { EMPTY_PROMPTS } from "./constants";
 
@@ -44,20 +43,6 @@ export function EmptyWorkbench({
           </div>
         )}
       </section>
-    </div>
-  );
-}
-
-export function EmptyStat({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
-  return (
-    <div className="kf-empty-stat rounded-lg border px-3 py-3">
-      <div className="flex items-center gap-2 text-xs">
-        <span className="kf-empty-stat-icon">{icon}</span>
-        {label}
-      </div>
-      <div className="kf-empty-stat-value mt-2 truncate text-sm font-medium" title={value}>
-        {value}
-      </div>
     </div>
   );
 }
