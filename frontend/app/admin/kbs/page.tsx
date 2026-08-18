@@ -95,7 +95,10 @@ function KbsTable() {
         </Button>
       </div>
 
-      <div className="admin-panel overflow-x-auto">
+      <div className="admin-panel relative overflow-x-auto">
+        {refreshing ? (
+          <StateView variant="loading" overlay density="compact" title="正在刷新知识库" />
+        ) : null}
         <table className="admin-table admin-table-kbs">
           <thead>
             <tr>

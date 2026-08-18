@@ -4,7 +4,6 @@ import { toast } from "@/lib/toast";
 import {
   Eye,
   EyeOff,
-  Loader2,
   Merge,
   Pencil,
   RefreshCw,
@@ -431,8 +430,13 @@ export default function DocumentDetailPage({
 
   if (loading) {
     return (
-      <div className="admin-page flex min-h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-brand" />
+      <div className="flex min-h-dvh items-center justify-center px-4">
+        <StateView
+          variant="loading"
+          title="正在打开文档"
+          description="正在读取分块和入库状态。"
+          className="w-full max-w-md"
+        />
       </div>
     );
   }
@@ -630,6 +634,8 @@ export default function DocumentDetailPage({
         title="Chunk 列表"
         subtitle={`当前页 ${chunks.length} 条，启用 ${enabledOnPage} 条`}
         toolbarClassName="w-full sm:w-auto"
+        busy={tableLoading && chunks.length > 0}
+        busyTitle="正在刷新分块"
         toolbar={
           <>
             <div className="input-shell flex h-[var(--control-h)] min-w-0 flex-1 items-center gap-2 px-3 sm:w-72 sm:flex-none">
@@ -727,9 +733,13 @@ export default function DocumentDetailPage({
         }
       >
         {tableLoading && chunks.length === 0 ? (
-          <div className="flex justify-center py-16">
-            <Loader2 className="h-7 w-7 animate-spin text-brand" />
-          </div>
+          <StateView
+            variant="loading"
+            density="compact"
+            title="正在加载分块"
+            description="正在读取当前文档的切片。"
+            className="m-4"
+          />
         ) : chunks.length === 0 ? (
           <StateView
             density="compact"

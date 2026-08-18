@@ -22,7 +22,7 @@ import {
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { Pagination } from "@/components/ui/pagination";
-import { LoadingState, PageSkeleton, StateView } from "@/components/ui/state-view";
+import { PageSkeleton, StateView } from "@/components/ui/state-view";
 import Select from "@/components/Select";
 import { usePreviewPanel } from "@/components/preview/PreviewPanelProvider";
 
@@ -219,7 +219,7 @@ function TracesPanel() {
         />
       ) : (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
-          <div className="admin-panel flex max-h-[min(70dvh,52rem)] flex-col overflow-hidden" aria-busy={refreshing}>
+          <div className="admin-panel relative flex max-h-[min(70dvh,52rem)] flex-col overflow-hidden" aria-busy={refreshing}>
             <div className="border-b border-surface-border/70 px-4 py-3 text-xs font-semibold text-muted">
               请求列表
             </div>
@@ -290,19 +290,28 @@ function TracesPanel() {
                 />
               </div>
             ) : null}
+            {refreshing ? (
+              <StateView variant="loading" overlay density="compact" title="正在刷新 Trace" />
+            ) : null}
           </div>
 
-          <div className="admin-panel min-h-[24rem] overflow-hidden">
+          <div className="admin-panel relative min-h-[24rem] overflow-hidden">
             {detailLoading && !detail ? (
               <div className="flex min-h-[24rem] items-center justify-center p-6">
-                <LoadingState
-                  label="加载 Trace"
+                <StateView
+                  variant="loading"
+                  title="加载 Trace"
                   description="正在拉取 span 树与耗时。"
                   className="w-full max-w-sm"
                 />
               </div>
             ) : detail ? (
-              <TraceDetail detail={detail} loading={detailLoading} />
+              <>
+                <TraceDetail detail={detail} loading={detailLoading} />
+                {detailLoading ? (
+                  <StateView variant="loading" overlay density="compact" title="正在刷新 Trace 详情" />
+                ) : null}
+              </>
             ) : (
               <div className="flex min-h-[24rem] items-center justify-center p-6">
                 <StateView

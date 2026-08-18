@@ -1,6 +1,7 @@
 "use client";
 
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { StateView } from "@/components/ui/state-view";
 import { cn } from "@/lib/cn";
 import type { LucideIcon } from "lucide-react";
 import { ChevronRight } from "lucide-react";
@@ -95,6 +96,9 @@ export function AdminPanel({
   headerClassName,
   toolbarClassName,
   bodyClassName,
+  busy = false,
+  busyTitle,
+  busyDescription,
 }: {
   title: string;
   subtitle?: string;
@@ -106,9 +110,12 @@ export function AdminPanel({
   headerClassName?: string;
   toolbarClassName?: string;
   bodyClassName?: string;
+  busy?: boolean;
+  busyTitle?: string;
+  busyDescription?: string;
 }) {
   return (
-    <section className={cn("admin-panel overflow-hidden", className)}>
+    <section className={cn("admin-panel overflow-hidden", className)} aria-busy={busy || undefined}>
       <div
         className={cn(
           "flex flex-col gap-3 border-b border-surface-border/70 bg-surface-2/35 px-5 py-4 sm:flex-row sm:items-center sm:justify-between",
@@ -132,7 +139,18 @@ export function AdminPanel({
           {selectionBar}
         </div>
       )}
-      <div className={cn("overflow-x-auto", bodyClassName)}>{children}</div>
+      <div className={cn("relative overflow-x-auto", bodyClassName)}>
+        {children}
+        {busy ? (
+          <StateView
+            variant="loading"
+            overlay
+            density="compact"
+            title={busyTitle}
+            description={busyDescription}
+          />
+        ) : null}
+      </div>
       {footer && (
         <div className="border-t border-surface-border/60 px-5 py-3">
           {footer}

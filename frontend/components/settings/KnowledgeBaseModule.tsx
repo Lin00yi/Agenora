@@ -41,7 +41,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import AppModal from "@/components/AppModal";
 import Select from "@/components/Select";
 import { KbRetrievalPreferences } from "@/components/KbRetrievalPreferences";
-import { LoadingState, StateView } from "@/components/ui/state-view";
+import { StateView } from "@/components/ui/state-view";
 
 export default function KbsPage() {
   return <KnowledgeBaseModule />;
@@ -135,7 +135,11 @@ export function KnowledgeBaseModule() {
         </div>
 
         {loading ? (
-          <LoadingState label="正在读取知识库" description="正在同步文档、分块和成员信息。" />
+          <StateView
+            variant="loading"
+            title="正在读取知识库"
+            description="正在同步文档、分块和成员信息。"
+          />
         ) : kbs.length === 0 ? (
           <StateView
             title="还没有知识库"

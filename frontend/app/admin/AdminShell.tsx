@@ -14,7 +14,7 @@ import {
 
 import { getToken, getUser, refreshMe } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
-import { LoadingState, StateView } from "@/components/ui/state-view";
+import { StateView } from "@/components/ui/state-view";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const TABS = [
@@ -98,8 +98,9 @@ export default function AdminShell({ children }: { children: ReactNode }) {
   if (!ready) {
     return (
       <div className="flex min-h-dvh items-center justify-center px-4">
-        <LoadingState
-          label="正在验证访问权限"
+        <StateView
+          variant="loading"
+          title="正在验证访问权限"
           description="正在确认你的后台管理权限。"
           className="w-full max-w-md"
         />

@@ -153,7 +153,10 @@ function UsersTable() {
         </Button>
       </div>
 
-      <div className="admin-panel overflow-x-auto">
+      <div className="admin-panel relative overflow-x-auto">
+        {refreshing ? (
+          <StateView variant="loading" overlay density="compact" title="正在刷新用户" />
+        ) : null}
         <table className="admin-table admin-table-users">
           <thead>
             <tr>

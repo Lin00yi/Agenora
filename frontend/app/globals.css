@@ -1810,8 +1810,7 @@ body {
     @apply space-y-3;
   }
 
-  .kf-state-view,
-  .kf-loading-state {
+  .kf-state-view {
     @apply flex min-h-56 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-surface-border bg-surface-2/50 px-6 py-10 text-center;
   }
   .kf-state-view-compact {
@@ -1822,20 +1821,16 @@ body {
   }
   .kf-state-view-error { @apply border-danger/30 bg-danger/5; }
   .kf-state-view-notice { @apply border-warning/30 bg-warning/5; }
+  .kf-state-view-loading .kf-state-icon { @apply border-brand/20 bg-brand/10 text-brand; }
+  .kf-state-view-overlay {
+    @apply absolute inset-0 z-10 min-h-0 rounded-none border-0 bg-surface/75 px-4 py-6 backdrop-blur-[1px];
+  }
   .kf-state-icon {
     @apply inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-surface-border/80 bg-surface text-ink shadow-none;
   }
   .kf-state-view-error .kf-state-icon { @apply border-danger/20 bg-danger/10 text-danger; }
   .kf-state-view-notice .kf-state-icon { @apply border-warning/20 bg-warning/10 text-warning; }
-  .kf-inline-loading { @apply inline-flex items-center gap-2 text-sm text-muted; }
-  .kf-loading-state { @apply border-solid; }
-  .kf-loading-orbit { @apply relative flex size-9 items-center justify-center rounded-lg border border-brand/20 bg-brand/10 text-brand; }
-  .kf-skeleton,
-  .kf-skeleton-lines span { @apply rounded-md bg-muted; }
-  .kf-skeleton-lines { @apply mt-2 flex w-full max-w-sm flex-col gap-2; }
-  .kf-skeleton-lines span { @apply h-2.5 w-full; }
-  .kf-skeleton-lines span:nth-child(2) { @apply w-4/5; }
-  .kf-skeleton-lines span:nth-child(3) { @apply w-3/5; }
+  .kf-skeleton { @apply rounded-md bg-muted; }
   .kf-page-skeleton { @apply space-y-4; }
 }
 

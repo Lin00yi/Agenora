@@ -23,7 +23,7 @@ import Select from "@/components/Select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { LoadingState, StateView } from "@/components/ui/state-view";
+import { StateView } from "@/components/ui/state-view";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getToken } from "@/lib/auth";
@@ -142,8 +142,9 @@ export function ModelSettingsModule({ embedded = false }: { embedded?: boolean }
   if (loading) {
     return (
       <div className={cn("flex items-center justify-center px-4", embedded ? "min-h-64 py-8" : "min-h-dvh")}>
-        <LoadingState
-          label="正在读取模型设置"
+        <StateView
+          variant="loading"
+          title="正在读取模型设置"
           description="正在检查当前生效的模型与个人配置。"
           className="w-full max-w-md"
         />

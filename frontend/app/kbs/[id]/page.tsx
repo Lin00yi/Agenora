@@ -63,7 +63,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LoadingState, StateView } from "@/components/ui/state-view";
+import { StateView } from "@/components/ui/state-view";
 import { Switch } from "@/components/ui/switch";
 import { getToken } from "@/lib/auth";
 import { toastApiError } from "@/lib/byok-toast";
@@ -464,7 +464,12 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
   if (loading) {
     return (
       <div className="flex min-h-dvh items-center justify-center px-4">
-        <LoadingState label="正在打开知识库" description="正在读取文档、处理状态和成员权限。" className="w-full max-w-md" />
+        <StateView
+          variant="loading"
+          title="正在打开知识库"
+          description="正在读取文档、处理状态和成员权限。"
+          className="w-full max-w-md"
+        />
       </div>
     );
   }
@@ -647,6 +652,8 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
         <AdminPanel
           title={kb.is_system ? "示例文档" : "文档列表"}
           subtitle={kb.is_system ? "只读浏览，不可上传或删除" : "支持筛选与分块管理"}
+          busy={listRefreshing}
+          busyTitle="正在刷新文档"
           toolbar={
             kb.is_system ? (
               <AdminToolbarButton

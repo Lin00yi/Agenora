@@ -22,7 +22,7 @@ import Select from "@/components/Select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { LoadingState, StateView } from "@/components/ui/state-view";
+import { StateView } from "@/components/ui/state-view";
 import { getToken } from "@/lib/auth";
 import {
   deleteMemory,
@@ -172,8 +172,9 @@ export function MemorySystemModule({ embedded = false }: { embedded?: boolean })
   if (loading) {
     return (
       <div className={cn("flex items-center justify-center px-4", embedded ? "min-h-64 py-8" : "min-h-dvh")}>
-        <LoadingState
-          label="正在读取长期记忆"
+        <StateView
+          variant="loading"
+          title="正在读取长期记忆"
           description="正在整理已保存的偏好、约束和显式记忆。"
           className="w-full max-w-md"
         />
@@ -285,7 +286,7 @@ export function MemorySystemModule({ embedded = false }: { embedded?: boolean })
             </div>
           </section>
 
-          <section className="bg-surface-2/35 p-3 sm:p-4">
+          <section className="relative bg-surface-2/35 p-3 sm:p-4">
             {filtered.length === 0 ? (
               <StateView
                 title="没有匹配的记忆"
@@ -304,6 +305,9 @@ export function MemorySystemModule({ embedded = false }: { embedded?: boolean })
                 ))}
               </div>
             )}
+            {refreshing ? (
+              <StateView variant="loading" overlay density="compact" title="正在刷新记忆" />
+            ) : null}
           </section>
         </div>
       </main>

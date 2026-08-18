@@ -14,7 +14,7 @@ import {
   peekInvitation,
   type InvitationPreview,
 } from "@/lib/kb-api";
-import { LoadingState, StateView } from "@/components/ui/state-view";
+import { StateView } from "@/components/ui/state-view";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -99,10 +99,11 @@ export default function InvitePage({
           </div>
           <div className="bg-surface px-5 py-6 sm:px-6">
             {loading ? (
-              <LoadingState
-                label="正在验证邀请"
+              <StateView
+                variant="loading"
+                title="正在验证邀请"
                 description="正在确认知识库和权限信息。"
-                className="min-h-56 border-0 bg-surface shadow-none"
+                className="min-h-56 border-0 bg-surface"
               />
             ) : error ? (
               <StateView

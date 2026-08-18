@@ -20,7 +20,7 @@ import { AdminPanel, AdminSection } from "@/components/kb/AdminPageShell";
 import { formatAdminDate } from "@/components/kb/admin-utils";
 import { usePreviewPanel } from "@/components/preview/PreviewPanelProvider";
 import { Button } from "@/components/ui/button";
-import { LoadingState, StateView } from "@/components/ui/state-view";
+import { StateView } from "@/components/ui/state-view";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileUploadSurface } from "@/components/upload/FileUploadSurface";
 import { toastApiError } from "@/lib/byok-toast";
@@ -235,7 +235,11 @@ export function KbEvalSection({ kbId }: { kbId: string }) {
       className="mt-0"
     >
       {loading || !config ? (
-        <LoadingState label="正在加载测评配置" description="读取黄金集、历史运行和监控快照。" />
+        <StateView
+          variant="loading"
+          title="正在加载测评配置"
+          description="读取黄金集、历史运行和监控快照。"
+        />
       ) : (
         <Tabs
           value={activeTab}
@@ -417,6 +421,8 @@ export function KbEvalSection({ kbId }: { kbId: string }) {
             <AdminPanel
               title="线上监控"
               subtitle="真实对话中的检索健康，不是黄金集分数。"
+              busy={monitorBusy}
+              busyTitle="正在刷新监控"
               toolbar={
                 <div className="flex items-center gap-2">
                   <Select

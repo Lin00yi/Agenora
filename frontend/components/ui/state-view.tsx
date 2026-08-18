@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
 import { AlertCircle, FileQuestion, Info, LoaderCircle, type LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
 
@@ -9,11 +9,12 @@ type StateViewProps = {
   action?: ReactNode;
   className?: string;
   density?: "normal" | "compact";
-  variant?: "empty" | "error" | "notice";
+  variant?: "empty" | "error" | "notice" | "loading";
   icon?: LucideIcon;
+  overlay?: boolean;
 };
 
-/** Shared empty / error / notice surface used in pages and admin panels. */
+/** Shared empty / loading / error / notice surface used in pages and admin panels. */
 export function StateView({
   title,
   description,
@@ -22,10 +23,17 @@ export function StateView({
   density = "normal",
   variant = "empty",
   icon,
+  overlay = false,
 }: StateViewProps) {
+  const isLoading = variant === "loading";
+  const isNoticeBanner = variant === "notice" && density === "compact" && !overlay;
   const Icon =
-    icon ?? (variant === "error" ? AlertCircle : variant === "notice" ? Info : FileQuestion);
-  const isNoticeBanner = variant === "notice" && density === "compact";
+    icon ??
+    (isLoading ? LoaderCircle : variant === "error" ? AlertCircle : variant === "notice" ? Info : FileQuestion);
+  const resolvedTitle =
+    title ?? (isLoading ? (overlay ? "正在刷新" : "正在加载") : undefined);
+  const resolvedDescription =
+    description ?? (isLoading && !overlay ? "正在准备内容，请稍候。" : undefined);
 
   return (
     <section
@@ -34,64 +42,33 @@ export function StateView({
         density === "compact" && "kf-state-view-compact",
         variant === "error" && "kf-state-view-error",
         variant === "notice" && "kf-state-view-notice",
+        isLoading && "kf-state-view-loading",
         isNoticeBanner && "kf-state-view-banner",
+        overlay && "kf-state-view-overlay",
         className
       )}
-      role={variant === "error" ? "alert" : undefined}
+      role={variant === "error" ? "alert" : isLoading ? "status" : undefined}
+      aria-live={isLoading ? "polite" : undefined}
+      aria-busy={isLoading || undefined}
     >
       <span className="kf-state-icon" aria-hidden>
-        <Icon className="size-4" />
+        <Icon className={cn("size-4", isLoading && "animate-spin")} />
       </span>
       <div className={cn("min-w-0", !isNoticeBanner && "flex flex-col items-center")}>
-        {title ? (
-          <h2 className="text-pretty text-sm font-semibold text-ink">{title}</h2>
+        {resolvedTitle ? (
+          <h2 className="text-pretty text-sm font-semibold text-ink">{resolvedTitle}</h2>
         ) : null}
-        {description ? (
+        {resolvedDescription ? (
           <p
             className={cn(
               "max-w-md text-pretty text-muted",
-              density === "compact" ? "mt-1 text-xs leading-5" : "mt-1.5 text-sm leading-6"
+              density === "compact" || overlay ? "mt-1 text-xs leading-5" : "mt-1.5 text-sm leading-6"
             )}
           >
-            {description}
+            {resolvedDescription}
           </p>
         ) : null}
         {action ? <div className="mt-3">{action}</div> : null}
-      </div>
-    </section>
-  );
-}
-
-export function LoadingState({
-  label = "正在加载",
-  description = "正在准备内容，请稍候。",
-  className,
-  compact = false,
-}: {
-  label?: string;
-  description?: string;
-  className?: string;
-  compact?: boolean;
-}) {
-  if (compact) {
-    return (
-      <div className={cn("kf-inline-loading", className)} role="status" aria-live="polite">
-        <LoaderCircle className="size-4 animate-spin text-brand" aria-hidden />
-        <span>{label}…</span>
-      </div>
-    );
-  }
-  return (
-    <section className={cn("kf-loading-state", className)} role="status" aria-live="polite" aria-busy="true">
-      <div className="kf-loading-orbit" aria-hidden>
-        <LoaderCircle className="size-5 animate-spin text-brand" />
-      </div>
-      <h2 className="text-sm font-semibold text-ink">{label}</h2>
-      <p className="text-xs leading-5 text-muted">{description}</p>
-      <div className="kf-skeleton-lines" aria-hidden>
-        <span />
-        <span />
-        <span />
       </div>
     </section>
   );

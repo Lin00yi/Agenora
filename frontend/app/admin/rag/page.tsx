@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Database, Gauge, RefreshCw, Timer, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { LoadingState, StateView } from "@/components/ui/state-view";
+import { StateView } from "@/components/ui/state-view";
 import { toast } from "@/lib/toast";
 import { getRagMonitor, type RagMonitorSnapshot } from "@/lib/admin-api";
 
@@ -30,12 +30,20 @@ export default function RagMonitorPage() {
     void load(true);
   }, [load]);
 
-  if (loading) return <LoadingState label="正在汇总 RAG 指标" />;
+  if (loading) {
+    return (
+      <StateView
+        variant="loading"
+        title="正在汇总 RAG 指标"
+        description="正在读取检索调用与健康阈值。"
+      />
+    );
+  }
   if (!snapshot) return <StateView title="暂时无法读取 RAG 监控" description="请稍后刷新，确认 Trace 已开启且已有知识库检索请求。" />;
 
   const { metrics } = snapshot;
   return (
-    <div className="space-y-6" aria-busy={refreshing}>
+    <div className="relative space-y-6" aria-busy={refreshing}>
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-surface-border/70 pb-6">
         <div>
           <p className="text-xs font-semibold tracking-[0.16em] text-brand">RAG 监控</p>
@@ -77,6 +85,9 @@ export default function RagMonitorPage() {
         <h3 className="text-sm font-semibold">使用说明</h3>
         <p className="mt-2 text-sm leading-6 text-muted">线上健康指标用于发现异常；准确率、MRR 和引用正确率的发布门禁请使用仓库中的版本化黄金评测集运行离线评测。</p>
       </section>
+      {refreshing ? (
+        <StateView variant="loading" overlay density="compact" title="正在刷新监控" />
+      ) : null}
     </div>
   );
 }

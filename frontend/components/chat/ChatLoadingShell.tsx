@@ -1,7 +1,7 @@
 "use client";
 
 import Brand from "@/components/Brand";
-import { LoadingState } from "@/components/ui/state-view";
+import { StateView } from "@/components/ui/state-view";
 import { cn } from "@/lib/cn";
 import { ChatTopBar, DEFAULT_TITLE } from "./ChatTopBar";
 
@@ -46,8 +46,9 @@ export function ChatLoadingShell({
             <div className="kf-thread relative min-h-0 flex-1">
               <div className="kf-thread-scroll absolute inset-0 overflow-y-auto">
                 <div className="kf-thread-inner mx-auto flex min-h-full w-full max-w-[860px] items-center justify-center px-5 pt-5">
-                  <LoadingState
-                    label={label}
+                  <StateView
+                    variant="loading"
+                    title={label}
                     description={description}
                     className="w-full max-w-md"
                   />
