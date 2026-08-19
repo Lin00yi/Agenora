@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/** Allow long RAG / web_search SSE turns through the Next proxy. */
+export const maxDuration = 300;
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 

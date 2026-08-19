@@ -36,6 +36,7 @@ async def test_system_model_override_forces_default_and_complex(monkeypatch: pyt
             context_window=1_000_000,
         ),
     )
+    monkeypatch.setattr(app_module, "build_supervisor_graph", fake_build_graph)
     monkeypatch.setattr(app_module, "build_graph", fake_build_graph)
 
     app_module._run_chat_session(
@@ -74,6 +75,9 @@ async def test_chat_stream_emits_safe_context_before_agent_events(
             context_window=1_000_000,
         ),
     )
+    monkeypatch.setattr(
+        app_module, "build_supervisor_graph", lambda **_kwargs: (DummyGraph(), object())
+    )
     monkeypatch.setattr(app_module, "build_graph", lambda **_kwargs: (DummyGraph(), object()))
 
     response = app_module._run_chat_session(
@@ -87,7 +91,11 @@ async def test_chat_stream_emits_safe_context_before_agent_events(
         "event": "context_ready",
         "memory_trace": {
             "recent_message_count": 1,
-            "runtime": {"mode": "general", "safety": "standard"},
+            "runtime": {
+                "mode": "general",
+                "agent_runtime": "supervisor",
+                "safety": "standard",
+            },
         },
     }
     assert events[1]["event"] == "report_start"

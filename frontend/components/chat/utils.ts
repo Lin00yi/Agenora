@@ -116,6 +116,7 @@ export function findToolEventIndex(tools: ToolEvent[], evt: ChatEvent): number {
 export function aggregateToolSources(tools: ToolEvent[], maxRows: number): SourceRow[] {
   const groups = new Map<string, ToolEvent[]>();
   for (const tool of tools) {
+    if (tool.name === "agent_route" || tool.name === "agent_handoff") continue;
     groups.set(tool.name, [...(groups.get(tool.name) ?? []), tool]);
   }
   return Array.from(groups.entries())

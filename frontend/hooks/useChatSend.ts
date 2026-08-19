@@ -357,6 +357,63 @@ export function useChatSend({
               });
               break;
             }
+            case "agent_route":
+            case "agent_handoff": {
+              flushTokenPaint();
+              const newTool: ToolEvent = {
+                id: evt.id ?? `${evt.event}-${Date.now()}`,
+                name: evt.event,
+                status: "ok",
+                t0: Date.now(),
+                latency_ms: 0,
+                agent: evt.agent ?? (typeof evt.to === "string" ? evt.to : undefined),
+                input:
+                  evt.event === "agent_route"
+                    ? {
+                        agent: evt.agent,
+                        reason: evt.reason,
+                        source: (evt as { source?: string }).source,
+                        confidence: (evt as { confidence?: string }).confidence,
+                      }
+                    : { from: evt.from, to: evt.to, reason: evt.reason },
+                reason: evt.reason,
+              };
+              if (streamingRef.current) {
+                const snap = streamingRef.current;
+                if (snap.content.trim()) {
+                  snap.parts = [...snap.parts, { type: "text", text: snap.content }];
+                  snap.content = "";
+                }
+                const last = snap.parts[snap.parts.length - 1];
+                if (last?.type === "tools") {
+                  last.tools = [...last.tools, newTool];
+                  snap.parts = [...snap.parts.slice(0, -1), last];
+                } else {
+                  snap.parts = [...snap.parts, { type: "tools", tools: [newTool] }];
+                }
+                snap.tools = [...snap.tools, newTool];
+              }
+              updateLastAssistant((m) => {
+                if (m.role !== "assistant") return m;
+                let parts = [...(m.parts ?? [])];
+                let content = m.content;
+                if (content.trim()) {
+                  parts = [...parts, { type: "text", text: content }];
+                  content = "";
+                }
+                const last = parts[parts.length - 1];
+                if (last?.type === "tools") {
+                  parts = [
+                    ...parts.slice(0, -1),
+                    { type: "tools", tools: [...last.tools, newTool] },
+                  ];
+                } else {
+                  parts = [...parts, { type: "tools", tools: [newTool] }];
+                }
+                return { ...m, content, parts, tools: [...m.tools, newTool] };
+              });
+              break;
+            }
             case "tool_start": {
               flushTokenPaint();
               const newTool: ToolEvent = {
@@ -365,6 +422,7 @@ export function useChatSend({
                 input: evt.input,
                 status: "running",
                 t0: Date.now(),
+                agent: evt.agent,
               };
               if (streamingRef.current) {
                 const snap = streamingRef.current;
@@ -467,6 +525,7 @@ export function useChatSend({
                 input: evt.input,
                 status: "blocked",
                 reason: evt.reason ?? "",
+                agent: evt.agent,
               };
               if (streamingRef.current) {
                 const snap = streamingRef.current;

@@ -26,7 +26,11 @@ cleanup() {
 
 (
   cd "$ROOT_DIR/backend"
-  exec "$BACKEND_PYTHON" -m uvicorn src.app:app --host 0.0.0.0 --port 8000 --reload
+  # No --reload: file watches restart the process mid-SSE and drop chat streams.
+  # Restart manually via ./scripts/dev.sh after backend code changes.
+  exec "$BACKEND_PYTHON" -m uvicorn src.app:app \
+    --host 0.0.0.0 \
+    --port 8000
 ) &
 BACKEND_PID=$!
 

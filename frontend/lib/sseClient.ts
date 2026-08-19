@@ -15,6 +15,7 @@ export type MemoryTrace = {
   /** Safe runtime metadata; raw prompts, schemas, and guard reasons stay server-only. */
   runtime?: {
     mode?: "general" | "knowledge_base";
+    agent_runtime?: string;
     safety?: "standard" | "heightened";
   };
   profile?: {
@@ -92,6 +93,8 @@ export type Citation = {
 export type ChatEvent = {
   event:
     | "context_ready"
+    | "agent_route"
+    | "agent_handoff"
     | "tool_start"
     | "tool_end"
     | "tool_blocked"
@@ -108,6 +111,13 @@ export type ChatEvent = {
   ok?: boolean;
   error?: string;
   reason?: string;
+  /** Sub-agent that emitted this tool event (chat | rag | …). */
+  agent?: string;
+  /** agent_route / agent_handoff targets */
+  from?: string;
+  to?: string;
+  source?: string;
+  confidence?: string;
   cost_usd?: number;
   memory_trace?: MemoryTrace | null;
   citations?: Citation[] | null;
@@ -170,7 +180,15 @@ export function connectChat(
       });
     } catch (err: unknown) {
       if ((err as { name?: string })?.name !== "AbortError") {
-        onEvent({ event: "error", message: (err as Error)?.message ?? "network failed" });
+        const raw = (err as Error)?.message ?? "network failed";
+        const lower = raw.toLowerCase();
+        const message =
+          lower.includes("network error") ||
+          lower.includes("failed to fetch") ||
+          lower.includes("load failed")
+            ? "连接中断：后端可能正在热重载或网络超时，请重试。"
+            : raw;
+        onEvent({ event: "error", message });
       }
       return;
     }
@@ -247,12 +265,37 @@ export function connectChat(
           }
         }
       }
+      // Upstream closed without a terminal SSE event (proxy drop /
+      // uvicorn --reload). Surface a recoverable error instead of hanging busy.
+      if (!controller.signal.aborted) {
+        onEvent({
+          event: "error",
+          message: "连接中断：流式响应未正常结束。若正在改后端代码，请重试一次。",
+        });
+      }
     } catch (err: unknown) {
       if ((err as { name?: string })?.name !== "AbortError") {
-        onEvent({ event: "error", message: (err as Error)?.message ?? "stream interrupted" });
+        onEvent({
+          event: "error",
+          message: friendlyStreamError(err),
+        });
       }
     }
   })();
 
   return () => controller.abort();
+}
+
+function friendlyStreamError(err: unknown): string {
+  const raw = (err as Error)?.message ?? "stream interrupted";
+  const lower = raw.toLowerCase();
+  if (
+    lower.includes("network error") ||
+    lower.includes("failed to fetch") ||
+    lower.includes("load failed") ||
+    lower.includes("connection")
+  ) {
+    return "连接中断：后端可能正在热重载或网络超时，请重试。";
+  }
+  return raw;
 }

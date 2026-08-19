@@ -91,6 +91,14 @@ class Settings(BaseSettings):
     # rollout rollback; new deployments should keep ``user_evidence``.
     rag_injection_mode: str = "user_evidence"  # user_evidence | legacy_system
 
+    # ===== Multi-agent runtime =====
+    # supervisor: pluggable chat/rag (default). legacy: single build_graph(kb?).
+    agent_runtime_mode: str = "supervisor"  # supervisor | legacy
+    # When True, empty RAG evidence may hand off once to chat (web_search tool).
+    agent_allow_rag_chat_handoff: bool = False
+    # rule_only | rule_triage | layered (rule → triage → complex)
+    agent_route_mode: str = "layered"
+
     # ===== Tools =====
     web_search_provider: str = "duckduckgo"  # duckduckgo | brave | bing | tavily
     brave_search_api_key: str = ""

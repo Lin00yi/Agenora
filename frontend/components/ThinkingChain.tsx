@@ -6,6 +6,7 @@ import {
   ChevronRight,
   LoaderCircle,
   Search,
+  Shuffle,
   Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,8 @@ export type ToolEvent = {
   t0?: number;
   error?: string | null;
   reason?: string;
+  /** Sub-agent that owns this step (chat | rag | …). */
+  agent?: string;
 };
 
 type Props = {
@@ -33,12 +36,19 @@ const NAME_LABEL: Record<string, string> = {
   web_search: "搜索网络",
   generate_kb_report: "生成知识库报告",
   get_current_time: "获取当前时间",
+  agent_route: "选择处理方式",
+  agent_handoff: "切换处理方式",
+};
+
+const AGENT_LABEL: Record<string, string> = {
+  chat: "通用对话",
+  rag: "知识库问答",
 };
 
 /**
- * A compact, GPT-style processing record. It intentionally avoids the old
- * nested-card treatment: the answer remains the visual focus, while users can
- * expand a truthful, chronological account of the visible tool actions.
+ * Compact processing record for end users.
+ * Route/source/confidence stay out of the visible line; agent identity lives
+ * in the collapsed summary so expanded rows are not repeated badges.
  */
 export default function ThinkingChain({ events, intro }: Props) {
   const hasRunning = events.some((event) => event.status === "running");
@@ -50,6 +60,7 @@ export default function ThinkingChain({ events, intro }: Props) {
     () => getTraceSummary(events, hasRunning, elapsedMs),
     [events, hasRunning, elapsedMs]
   );
+  const visibleEvents = useMemo(() => compactEvents(events), [events]);
 
   useEffect(() => {
     if (hasRunning) {
@@ -100,7 +111,7 @@ export default function ThinkingChain({ events, intro }: Props) {
               <p className="mb-4 whitespace-pre-wrap text-pretty leading-7 text-ink/85">{intro}</p>
             ) : null}
             <ol className="space-y-2.5" aria-label="处理步骤">
-              {events.map((event, index) => (
+              {visibleEvents.map((event, index) => (
                 <ProcessEvent event={event} key={event.id ?? `${event.name}-${index}`} now={now} />
               ))}
             </ol>
@@ -112,10 +123,10 @@ export default function ThinkingChain({ events, intro }: Props) {
 }
 
 function ProcessEvent({ event, now }: { event: ToolEvent; now: number }) {
-  const Icon = isSearchTool(event.name) ? Search : Wrench;
+  const Icon = isRouteEvent(event.name) ? Shuffle : isSearchTool(event.name) ? Search : Wrench;
   const detail = formatToolDetail(event);
   const duration = formatEventDuration(event, now);
-  const issue = event.error || event.reason;
+  const issue = event.error || (isRouteEvent(event.name) ? null : event.reason);
 
   return (
     <li className="flex items-start gap-2.5 text-sm">
@@ -140,17 +151,63 @@ function ProcessEvent({ event, now }: { event: ToolEvent; now: number }) {
   );
 }
 
+/** Drop consecutive identical route rows; keep handoff + tools. */
+function compactEvents(events: ToolEvent[]): ToolEvent[] {
+  const out: ToolEvent[] = [];
+  for (const event of events) {
+    const prev = out[out.length - 1];
+    if (
+      event.name === "agent_route" &&
+      prev?.name === "agent_route" &&
+      String(prev.input?.agent ?? "") === String(event.input?.agent ?? "")
+    ) {
+      out[out.length - 1] = event;
+      continue;
+    }
+    out.push(event);
+  }
+  return out;
+}
+
 function getTraceSummary(events: ToolEvent[], hasRunning: boolean, elapsedMs: number | null): string {
+  const agentHint = latestAgentLabel(events);
   if (hasRunning) {
-    const active = events.filter((event) => event.status === "running");
+    const active = events.filter((event) => event.status === "running" && !isRouteEvent(event.name));
+    if (active.length === 0) {
+      const routing = [...events].reverse().find((event) => event.name === "agent_route");
+      if (routing) {
+        const target = AGENT_LABEL[String(routing.input?.agent ?? "")] ?? "处理";
+        return `正在使用${target}`;
+      }
+      return agentHint ? `${agentHint} · 处理中` : "正在处理";
+    }
     const labels = new Set(active.map((event) => NAME_LABEL[event.name] ?? "处理信息"));
-    if (labels.size === 1) return `正在${Array.from(labels)[0]}`;
-    return `正在处理 · ${active.length} 项`;
+    const action =
+      labels.size === 1 ? `正在${Array.from(labels)[0]}` : `正在处理 · ${active.length} 项`;
+    return agentHint ? `${agentHint} · ${action}` : action;
   }
   if (events.some((event) => event.status === "error" || event.status === "blocked")) {
-    return elapsedMs == null ? "部分步骤未完成" : `部分步骤未完成 · ${formatElapsed(elapsedMs)}`;
+    const base = elapsedMs == null ? "部分步骤未完成" : `部分步骤未完成 · ${formatElapsed(elapsedMs)}`;
+    return agentHint ? `${agentHint} · ${base}` : base;
   }
-  return elapsedMs == null ? "已处理" : `已处理 ${formatElapsed(elapsedMs)}`;
+  const base = elapsedMs == null ? "已处理" : `已处理 ${formatElapsed(elapsedMs)}`;
+  return agentHint ? `${agentHint} · ${base}` : base;
+}
+
+function latestAgentLabel(events: ToolEvent[]): string | null {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const event = events[i];
+    if (event.name === "agent_handoff") {
+      const to = String(event.input?.to ?? "");
+      if (AGENT_LABEL[to]) return AGENT_LABEL[to];
+    }
+    if (event.name === "agent_route") {
+      const agent = String(event.input?.agent ?? "");
+      if (AGENT_LABEL[agent]) return AGENT_LABEL[agent];
+    }
+    if (event.agent && AGENT_LABEL[event.agent]) return AGENT_LABEL[event.agent];
+  }
+  return null;
 }
 
 function useTraceElapsed(events: ToolEvent[], now: number): number | null {
@@ -166,6 +223,17 @@ function useTraceElapsed(events: ToolEvent[], now: number): number | null {
 }
 
 function formatToolAction(event: ToolEvent): string {
+  if (event.name === "agent_route") {
+    const agent = String(event.input?.agent ?? "");
+    const label = (AGENT_LABEL[agent] ?? agent) || "处理";
+    return `使用${label}`;
+  }
+  if (event.name === "agent_handoff") {
+    const from = AGENT_LABEL[String(event.input?.from ?? "")] ?? String(event.input?.from ?? "");
+    const to = AGENT_LABEL[String(event.input?.to ?? "")] ?? String(event.input?.to ?? "");
+    if (from && to) return `从${from}转到${to}`;
+    return "切换处理方式";
+  }
   const base = NAME_LABEL[event.name] ?? "处理信息";
   if (event.status === "running") return `正在${base}`;
   if (event.status === "ok") return `已${base}`;
@@ -174,6 +242,14 @@ function formatToolAction(event: ToolEvent): string {
 }
 
 function formatToolDetail(event: ToolEvent): string {
+  if (event.name === "agent_route") {
+    const reason = typeof event.input?.reason === "string" ? event.input.reason : event.reason;
+    return typeof reason === "string" ? formatRouteReason(reason.trim()) : "";
+  }
+  if (event.name === "agent_handoff") {
+    const reason = typeof event.input?.reason === "string" ? event.input.reason : event.reason;
+    return typeof reason === "string" ? formatRouteReason(reason.trim()) : "";
+  }
   const input = event.input;
   if (!input) return "";
   for (const key of ["query", "city", "date", "timezone"] as const) {
@@ -183,7 +259,46 @@ function formatToolDetail(event: ToolEvent): string {
   return "";
 }
 
+/** Map machine / LLM snake reasons to short Chinese; hide opaque tokens. */
+export function formatRouteReason(reason: string): string {
+  if (!reason) return "";
+  const exact: Record<string, string> = {
+    kb_bound_default: "已绑定知识库",
+    unbound_default: "未绑定知识库",
+    kb_bound_non_kb_intent: "闲聊或非检索问题",
+    kb_bound_chitchat: "闲聊",
+    rag_empty_evidence: "知识库暂无相关内容",
+    rag_missing_kb_fallback: "知识库暂不可用",
+    empty_query_kb_bound: "空问题",
+    single_available: "仅一条可用通路",
+    first_available: "默认通路",
+    needs_kb_fact: "需要查阅知识库",
+    needs_kb: "需要查阅知识库",
+    kb_fact: "知识库事实问题",
+    chitchat: "闲聊",
+    general_chat: "通用对话即可",
+    web_needed: "需要联网核实",
+    multi_intent: "问题含多个意图",
+  };
+  if (exact[reason]) return exact[reason];
+
+  const lower = reason.toLowerCase();
+  if (lower.includes("query_about") || lower.includes("about_")) return "需要查阅知识库";
+  if (lower.includes("chitchat") || lower.includes("greeting")) return "闲聊";
+  if (lower.includes("non_kb") || lower.includes("not_kb")) return "非知识库问题";
+  if (lower.includes("web") || lower.includes("search")) return "需要联网";
+  if (lower.includes("kb") || lower.includes("rag") || lower.includes("fact")) {
+    return "需要查阅知识库";
+  }
+  // Opaque model tokens (snake_case / truncated) stay hidden for end users.
+  if (/^[a-z0-9_]+$/i.test(reason) || reason.includes("_") || reason.includes("[")) {
+    return "";
+  }
+  return reason.length > 24 ? `${reason.slice(0, 24)}…` : reason;
+}
+
 function formatEventDuration(event: ToolEvent, now: number): string | null {
+  if (isRouteEvent(event.name)) return null;
   if (event.status === "running" && event.t0 != null) return formatElapsed(now - event.t0);
   if (event.latency_ms != null) return formatElapsed(event.latency_ms);
   return null;
@@ -195,6 +310,10 @@ function formatElapsed(ms: number): string {
 
 function isSearchTool(name: string): boolean {
   return name === "search_kb" || name === "search_kg" || name === "web_search";
+}
+
+function isRouteEvent(name: string): boolean {
+  return name === "agent_route" || name === "agent_handoff";
 }
 
 function normalizeIssue(issue: string): string {

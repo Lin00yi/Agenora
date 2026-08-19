@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
 from src.agent.graph import build_graph
+from src.agent.main_agent import build_supervisor_graph
 from src.agent.nodes import EMPTY_ANSWER_FALLBACK
 from src.auth.middleware import CurrentUser
 from src.auth.models import User
@@ -210,17 +211,32 @@ def _run_chat_session(
             complex_model=llm_cfg.triage_model,
             complex_enabled=False,
         )
-    graph, cost = build_graph(
-        emit=emit,
-        kb=kb,
-        llm_cfg=llm_cfg,
-        complex_llm_cfg=complex_llm_cfg_override,
-        fallback_llm_cfg=fallback_llm_cfg_override,
-        triage_llm_cfg=triage_llm_cfg,
-        embedding_cfg=embedding_cfg,
-        reranker_cfg=reranker_cfg,
-        kb_web_search_enabled=kb_web_search_enabled,
-    )
+    runtime_mode = (settings.agent_runtime_mode or "supervisor").strip().lower()
+    if runtime_mode == "legacy":
+        graph, cost = build_graph(
+            emit=emit,
+            kb=kb,
+            llm_cfg=llm_cfg,
+            complex_llm_cfg=complex_llm_cfg_override,
+            fallback_llm_cfg=fallback_llm_cfg_override,
+            triage_llm_cfg=triage_llm_cfg,
+            embedding_cfg=embedding_cfg,
+            reranker_cfg=reranker_cfg,
+            kb_web_search_enabled=kb_web_search_enabled,
+        )
+    else:
+        graph, cost = build_supervisor_graph(
+            emit=emit,
+            kb=kb,
+            llm_cfg=llm_cfg,
+            complex_llm_cfg=complex_llm_cfg_override,
+            fallback_llm_cfg=fallback_llm_cfg_override,
+            triage_llm_cfg=triage_llm_cfg,
+            embedding_cfg=embedding_cfg,
+            reranker_cfg=reranker_cfg,
+            kb_web_search_enabled=kb_web_search_enabled,
+            allow_rag_chat_handoff=bool(settings.agent_allow_rag_chat_handoff),
+        )
 
     # The browser gets this safe, user-owned snapshot before the agent begins.
     # Never place raw system prompts, tool schemas, credentials, or prompt-guard
@@ -231,6 +247,7 @@ def _run_chat_session(
             **memory_trace,
             "runtime": {
                 "mode": mode,
+                "agent_runtime": runtime_mode,
                 "safety": "heightened" if prompt_guard.level != "low" else "standard",
             },
         }
@@ -272,6 +289,7 @@ def _run_chat_session(
                 )
             initial_state: dict[str, Any] = {
                 "messages": full_messages,
+                "base_messages": list(full_messages),
                 "iterations": 0,
                 "tool_call_log": [],
                 "citations": [],
@@ -279,6 +297,10 @@ def _run_chat_session(
                 "prompt_injection_reasons": prompt_guard.reasons,
                 "rag_suspicious_chunks": 0,
                 "rag_filtered_chunks": [],
+                "kb_id": kb.id if kb else None,
+                "agent_results": {},
+                "handoff_count": 0,
+                "supervisor_trace": [],
             }
             final_state = await graph.ainvoke(initial_state)
             prompt_trace = final_state.get("prompt_trace")

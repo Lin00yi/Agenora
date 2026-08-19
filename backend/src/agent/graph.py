@@ -1,38 +1,27 @@
-"""LangGraph graph construction."""
+"""Compatibility facade for single-agent graph builders.
+
+Prefer:
+  ``from src.agent.sub_agents.chat_agent import build_chat_graph``
+  ``from src.agent.sub_agents.rag_agent import build_rag_graph``
+  ``from src.agent.main_agent import build_supervisor_graph``
+"""
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
-from langgraph.graph import END, StateGraph
-
-from src.agent.nodes import (
-    call_tools_node,
-    kb_search_node,
-    query_policy_node,
-    reason_node,
-    should_continue,
-    should_search_kb,
-)
-from src.agent.prompts import (
-    SYSTEM_PROMPT_GENERAL,
-    build_kb_reason_system_prompt,
-)
-from src.agent.state import AgentState
-from src.infra.llm import CostTracker
-from src.infra.web_search_policy import resolve_web_search_policy
-from src.tools.base import ToolRegistry, build_default_registry
+from src.agent.sub_agents.chat_agent import build_chat_graph
+from src.agent.sub_agents.rag_agent import build_rag_graph
+from src.tools.base import ToolRegistry
 
 if TYPE_CHECKING:
     from src.settings_user import UserEmbeddingConfig, UserLLMConfig, UserRerankerConfig
 
-Emitter = Callable[[dict[str, Any]], Awaitable[None]]
-
 
 def build_graph(
     registry: ToolRegistry | None = None,
-    emit: Emitter | None = None,
+    emit=None,
     *,
-    kb=None,  # KB row from src.kb.models, or None for general chat mode
+    kb=None,
     llm_cfg: "UserLLMConfig | None" = None,
     complex_llm_cfg: "UserLLMConfig | None" = None,
     triage_llm_cfg: "UserLLMConfig | None" = None,
@@ -41,115 +30,27 @@ def build_graph(
     reranker_cfg: "UserRerankerConfig | None" = None,
     kb_web_search_enabled: bool = False,
 ):
-    """Wire up plan → call_tools loop, parameterized by KB context.
-
-    Two modes:
-      - kb=None: general chat — web_search + current time, neutral assistant prompt.
-      - kb=<user KB>: KB-bound mode (search_kb + optional web_search per
-        v2-M6, KB-specific prompt with optional score-tutorial section).
-
-    v2-M1: `llm_cfg` and `embedding_cfg` are per-user overrides; None falls back
-    to env-scoped defaults (so existing alice/bob keep working without
-    visiting the settings page).
-
-    v2-M6: `kb_web_search_enabled` is a per-user opt-in. When True AND a user
-    KB is selected, also mount a tighter `WebSearchTool(default=3, cap=3)` and
-    extend the KB prompt with score-interpretation + fallback guidance.
-
-    v3-M4: `reranker_cfg` is a per-user opt-in cross-encoder reranker (default
-    None = disabled). When set AND a user KB is selected, search_kb over-fetches
-    candidates and reorders them via the configured /rerank endpoint. System
-    KBs ignore reranker regardless. Hit `score` stays cosine so v2-M6 prompt
-    threshold logic is preserved.
-    """
-    if registry is None:
-        registry = build_default_registry(
-            kb=kb,
-            embedding_cfg=embedding_cfg,
-            reranker_cfg=reranker_cfg,
-            llm_cfg=llm_cfg,
-            user_kb_web_search_enabled=kb_web_search_enabled,
-        )
-
+    """Legacy wrapper — kb=None → chat, else → rag."""
     if kb is None:
-        system_prompt = SYSTEM_PROMPT_GENERAL
-        user_kb_mode = False
-        web_search_policy = resolve_web_search_policy("general")
-    else:
-        system_prompt = build_kb_reason_system_prompt(
-            kb.name,
-            kb.description or "",
-            with_web_search=kb_web_search_enabled,
-        )
-        user_kb_mode = True
-        web_search_policy = resolve_web_search_policy(
-            "kb" if kb_web_search_enabled else "disabled"
-        )
-
-    cost = CostTracker()
-
-    async def _noop_emit(_evt: dict[str, Any]) -> None:
-        return None
-
-    em = emit or _noop_emit
-
-    # Use functools.partial instead of lambda to avoid coroutine issues
-    from functools import partial
-
-    g = StateGraph(AgentState)
-    if user_kb_mode:
-        g.add_node(
-            "query_policy",
-            partial(
-                query_policy_node,
-                cost=cost,
-                kb_name=kb.name,
-                kb_description=kb.description or "",
-                llm_cfg=triage_llm_cfg or llm_cfg,
-            ),
-        )
-        g.add_node(
-            "kb_search",
-            partial(kb_search_node, registry=registry, emit=em),
-        )
-
-    g.add_node(
-        "reason",
-        partial(
-            reason_node,
-            registry=registry,
-            cost=cost,
-            system_prompt=system_prompt,
-            excluded_tool_names={"search_kb", "search_kg"} if user_kb_mode else set(),
+        return build_chat_graph(
+            registry,
+            emit,
             llm_cfg=llm_cfg,
             complex_llm_cfg=complex_llm_cfg,
             fallback_llm_cfg=fallback_llm_cfg,
-            emit=em,
-        ),
-    )
-    g.add_node(
-        "call_tools",
-        partial(
-            call_tools_node,
-            registry=registry,
-            emit=em,
-            llm_cfg=llm_cfg,
-            web_search_max_calls=web_search_policy.max_calls,
-            web_search_evidence_limit=web_search_policy.evidence_limit,
-        ),
-    )
-
-    if user_kb_mode:
-        g.set_entry_point("query_policy")
-        g.add_conditional_edges(
-            "query_policy",
-            should_search_kb,
-            {"kb_search": "kb_search", "reason": "reason"},
         )
-        g.add_edge("kb_search", "reason")
-    else:
-        g.set_entry_point("reason")
+    return build_rag_graph(
+        registry,
+        emit,
+        kb=kb,
+        llm_cfg=llm_cfg,
+        complex_llm_cfg=complex_llm_cfg,
+        triage_llm_cfg=triage_llm_cfg,
+        fallback_llm_cfg=fallback_llm_cfg,
+        embedding_cfg=embedding_cfg,
+        reranker_cfg=reranker_cfg,
+        kb_web_search_enabled=kb_web_search_enabled,
+    )
 
-    g.add_conditional_edges("reason", should_continue, {"tools": "call_tools", "end": END})
-    g.add_edge("call_tools", "reason")
-    return g.compile(), cost
+
+__all__ = ["build_chat_graph", "build_rag_graph", "build_graph"]
