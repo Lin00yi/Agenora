@@ -32,10 +32,10 @@ MAX_PROFILE_MEMORY_ROWS = 40
 PREPARE_SUMMARY_RATIO = 0.60
 SUMMARY_TRIGGER_RATIO = 0.72
 FORCE_SUMMARY_RATIO = 0.85
-# Keep a predictable amount of verbatim dialogue before token budgeting takes
-# over: the latest 20 completed user/assistant turns plus the current user
-# message.  A small model can still retain fewer messages when this window does
-# not fit, but older rows must first be represented by the rolling summary.
+# When writing a rolling summary, keep this many completed user/assistant
+# turns as verbatim dialogue plus the current user message. Prompt assembly
+# still injects every uncovered turn and only then trims by token budget;
+# this constant must not drop rows that are not yet in the summary.
 RECENT_TURNS = 20
 MIN_RECENT_TURNS_ON_PRESSURE = 10
 # Stable response preferences that belong in the always-on profile block.

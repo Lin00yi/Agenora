@@ -91,27 +91,125 @@ def test_provider_request_keeps_context_data_out_of_system_and_history_trace() -
     )
 
 
-def test_recent_raw_history_keeps_twenty_turns_plus_active_user_message() -> None:
-    from src.conversations.context.assemble import _recent_turn_window
+@pytest.mark.asyncio
+async def test_unsummarized_history_keeps_turns_beyond_the_recent_window(
+    db, create_user, monkeypatch
+):
+    """Below 72%, early turns stay in the prompt instead of being silently dropped."""
+    import src.conversations.context.assemble as assemble_module
+    from src.infra.database import get_session_factory
 
-    messages = [
+    user = await create_user("uncapped-history@example.com")
+    conv = Conversation(id=str(uuid.uuid4()), user_id=user.id, title="uncapped history")
+    rows = [
         Message(
-            id=str(index),
-            conversation_id="conversation",
+            id=str(uuid.uuid4()),
+            conversation_id=conv.id,
             role="user" if index % 2 == 0 else "assistant",
-            content=f"message {index}",
+            content=f"raw-{index}",
         )
-        for index in range(42)
+        for index in range(80)
     ]
-    messages.append(
-        Message(id="current", conversation_id="conversation", role="user", content="current question")
+    rows.append(
+        Message(
+            id=str(uuid.uuid4()),
+            conversation_id=conv.id,
+            role="user",
+            content="current-question",
+        )
     )
 
-    kept = _recent_turn_window(messages)
+    async def fake_profile(*_args, **_kwargs):
+        return {"memory_ids": set(), "counts": {}, "items": []}
 
-    assert len(kept) == 41
-    assert kept[0].id == "2"
-    assert kept[-1].id == "current"
+    async def fake_memories(*_args, **_kwargs):
+        return []
+
+    monkeypatch.setattr(assemble_module, "build_user_memory_profile", fake_profile)
+    monkeypatch.setattr(assemble_module, "retrieve_user_memories", fake_memories)
+
+    factory = get_session_factory()
+    async with factory() as session:
+        session.add(conv)
+        session.add_all(rows)
+        await session.commit()
+        built = await build_context_for_conversation(
+            session,
+            conversation_id=conv.id,
+            user_id=user.id,
+            model="large-window",
+            context_window=128_000,
+        )
+
+    history = [message["content"] for message in built.messages if not message.get("_context_source")]
+    assert built.summary is None
+    assert built.budget.should_summarize is False
+    assert history[0] == "raw-0"
+    assert history[-1] == "current-question"
+    assert len(history) == len(rows)
+
+
+@pytest.mark.asyncio
+async def test_uncovered_history_after_a_stale_summary_is_not_hard_capped(
+    db, create_user, monkeypatch
+):
+    """A lagged summary must not drop uncovered turns that still fit the budget."""
+    import src.conversations.context.assemble as assemble_module
+    from src.infra.database import get_session_factory
+
+    user = await create_user("stale-summary-history@example.com")
+    conv = Conversation(id=str(uuid.uuid4()), user_id=user.id, title="stale summary")
+    rows = [
+        Message(
+            id=str(uuid.uuid4()),
+            conversation_id=conv.id,
+            role="user" if index % 2 == 0 else "assistant",
+            content=f"raw-{index}",
+        )
+        for index in range(80)
+    ]
+    summary = ConversationSummary(
+        id=str(uuid.uuid4()),
+        conversation_id=conv.id,
+        summary="已压缩早期上下文",
+        covered_message_id=rows[3].id,
+        covered_message_count=4,
+        token_count=10,
+        source_model="local-small",
+        source_context_window=4_096,
+    )
+
+    async def fake_summary(*_args, **_kwargs):
+        return summary
+
+    async def fake_profile(*_args, **_kwargs):
+        return {"memory_ids": set(), "counts": {}, "items": []}
+
+    async def fake_memories(*_args, **_kwargs):
+        return []
+
+    monkeypatch.setattr(assemble_module, "ensure_summary_if_needed", fake_summary)
+    monkeypatch.setattr(assemble_module, "build_user_memory_profile", fake_profile)
+    monkeypatch.setattr(assemble_module, "retrieve_user_memories", fake_memories)
+
+    factory = get_session_factory()
+    async with factory() as session:
+        session.add(conv)
+        session.add_all(rows)
+        await session.commit()
+        built = await build_context_for_conversation(
+            session,
+            conversation_id=conv.id,
+            user_id=user.id,
+            model="large-window",
+            context_window=128_000,
+        )
+
+    history = [message["content"] for message in built.messages if not message.get("_context_source")]
+    assert "raw-0" in history
+    assert "raw-4" in history
+    assert history[-1] == "raw-79"
+    assert built.memory_trace["recent_message_count"] == 76
 
 
 def test_openai_tool_history_uses_valid_json_arguments() -> None:
