@@ -102,3 +102,34 @@ def test_web_search_provider_defaults_to_duckduckgo(monkeypatch):
         assert isinstance(get_search_provider(), DuckDuckGoSearchProvider)
     finally:
         get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_production_init_db_never_bootstraps_schema(tmp_path, monkeypatch):
+    """Production API/worker startup must leave DDL to the migrate job."""
+    db_file = tmp_path / "production.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{db_file.as_posix()}")
+    monkeypatch.setenv("APP_ENV", "prod")
+    monkeypatch.setenv("SCHEMA_BOOTSTRAP", "true")
+
+    from sqlalchemy import inspect
+
+    from src.settings import get_settings
+    import src.storage.database as database
+
+    get_settings.cache_clear()
+    database._engine = None
+    database._session_factory = None
+    try:
+        await database.init_db()
+        async with database.get_engine().connect() as connection:
+            tables = await connection.run_sync(
+                lambda sync_conn: inspect(sync_conn).get_table_names()
+            )
+        assert tables == []
+    finally:
+        if database._engine is not None:
+            await database._engine.dispose()
+        database._engine = None
+        database._session_factory = None
+        get_settings.cache_clear()

@@ -1,13 +1,13 @@
 """KB + Document SQLAlchemy models.
 
-A KB owns a Qdrant collection named `kb_{kb.id}` and any number of Document
-rows describing the upload sources. Vectors themselves live in Qdrant, not
+Each KB owns a vector collection named `kb_{kb.id}` and any number of Document
+rows describing the upload sources. Vectors live in the configured vector backend, not
 SQL — these tables are just metadata + ingest bookkeeping.
 
 Schema decisions:
 - `KB.user_id` is a soft FK (string UUID) — we don't add ON DELETE CASCADE
   because we never expose a "delete user" path, and accidentally deleting all
-  of a user's KBs via SQL would be very expensive (Qdrant collections leak).
+  of a user's KBs via SQL would be very expensive (vector collections leak).
   Use the explicit DELETE /api/kbs/{id} route which handles both sides.
 - `KB.embedding_model` records the model used at create-time so a future model
   swap doesn't silently corrupt search (we re-create the collection then).

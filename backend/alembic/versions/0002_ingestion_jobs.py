@@ -1,9 +1,7 @@
 """Add durable document-ingestion jobs.
 
-The running application still calls ``Base.metadata.create_all()`` for legacy
-personal deployments.  The conditional DDL therefore also supports databases
-where a rolling application startup already created this table before the
-operator executes ``alembic upgrade head``.
+Conditional DDL also supports legacy databases that were created before
+Alembic became the production schema authority.
 """
 
 from typing import Sequence, Union

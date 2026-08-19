@@ -21,8 +21,9 @@ services:
   neo4j:
     image: neo4j:5.26-community
     restart: unless-stopped
+    profiles: ["kg"]
     environment:
-      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-neo4jlightrag}
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:?set NEO4J_PASSWORD in .env}
       NEO4J_PLUGINS: '["apoc"]'
       NEO4J_server_memory_heap_initial__size: 512m
       NEO4J_server_memory_heap_max__size: 1G
@@ -33,7 +34,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "cypher-shell -u neo4j -p '${NEO4J_PASSWORD:-neo4jlightrag}' 'RETURN 1' || exit 1",
+          "cypher-shell -u neo4j -p '$${NEO4J_PASSWORD}' 'RETURN 1' || exit 1",
         ]
       interval: 10s
       timeout: 10s
@@ -44,6 +45,7 @@ services:
   lightrag:
     image: ghcr.io/hkuds/lightrag:latest
     restart: unless-stopped
+    profiles: ["kg"]
     depends_on:
       neo4j:
         condition: service_healthy
@@ -52,11 +54,11 @@ services:
       PORT: "9621"
       WORKING_DIR: /app/data/rag_storage
       INPUT_DIR: /app/data/inputs
-      LIGHTRAG_API_KEY: ${LIGHTRAG_API_KEY:-}
+      LIGHTRAG_API_KEY: ${LIGHTRAG_API_KEY:?set LIGHTRAG_API_KEY in .env}
       LIGHTRAG_GRAPH_STORAGE: Neo4JStorage
       NEO4J_URI: bolt://neo4j:7687
       NEO4J_USERNAME: ${NEO4J_USER:-neo4j}
-      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-neo4jlightrag}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:?set NEO4J_PASSWORD in .env}
       NEO4J_DATABASE: ${NEO4J_DATABASE:-neo4j}
       # LLM / embedding for entity extraction (LightRAG Server side).
       LLM_BINDING: ${LIGHTRAG_LLM_BINDING:-openai}
@@ -90,8 +92,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      lightrag:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       # --- App DB ---
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-agenora}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-agenora}
@@ -102,8 +104,8 @@ services:
       MILVUS_TOKEN: ""
 
       # --- LightRAG Server (graph recall) ---
-      LIGHTRAG_ENABLED: ${LIGHTRAG_ENABLED:-true}
-      LIGHTRAG_BASE_URL: ${LIGHTRAG_BASE_URL:-http://lightrag:9621}
+      LIGHTRAG_ENABLED: ${LIGHTRAG_ENABLED:-false}
+      LIGHTRAG_BASE_URL: ${LIGHTRAG_BASE_URL:-}
       LIGHTRAG_API_KEY: ${LIGHTRAG_API_KEY:-}
       LIGHTRAG_QUERY_MODE: ${LIGHTRAG_QUERY_MODE:-local}
       LIGHTRAG_TIMEOUT_S: ${LIGHTRAG_TIMEOUT_S:-20}
@@ -133,6 +135,7 @@ services:
 
       # --- Server ---
       APP_ENV: prod
+      SCHEMA_BOOTSTRAP: "false"
       LOG_LEVEL: INFO
       CORS_ORIGINS: ${PUBLIC_URL:-http://localhost}
       RATE_LIMIT_PER_HOUR: ${RATE_LIMIT_PER_HOUR:-60}
@@ -146,8 +149,8 @@ services:
 
       # --- Observability ---
       TRACE_ENABLED: ${TRACE_ENABLED:-true}
-      TRACE_STORE_IO: ${TRACE_STORE_IO:-true}
-      LANGFUSE_ENABLED: ${LANGFUSE_ENABLED:-true}
+      TRACE_STORE_IO: ${TRACE_STORE_IO:-false}
+      LANGFUSE_ENABLED: ${LANGFUSE_ENABLED:-false}
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_HOST: ${LANGFUSE_HOST:-https://cloud.langfuse.com}
@@ -157,6 +160,20 @@ services:
       - backend-data:/app/data
     expose:
       - "8000"
+
+  # The only production schema writer. API and worker containers start only
+  # after this one-shot Alembic job reaches the declared revision.
+  migrate:
+    build: ./backend
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-agenora}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-agenora}
+      APP_ENV: prod
+      SCHEMA_BOOTSTRAP: "false"
 
   # Durable document-ingest worker. It inherits the exact database, vector,
   # provider and LightRAG configuration from backend; health checks are
@@ -177,7 +194,7 @@ services:
     healthcheck:
       disable: true
 
-  # ===== Frontend (Next.js 14 standalone build) =====
+  # ===== Frontend (Next.js standalone build) =====
   frontend:
     build: ./frontend
     restart: unless-stopped

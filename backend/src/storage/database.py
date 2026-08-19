@@ -1,7 +1,7 @@
 """App database (SQLAlchemy async + SQLite).
 
 Hosts user accounts, knowledge-base metadata, and other relational data that
-isn't vectors. The vector data still lives in Qdrant (see vector_store.py).
+isn't vectors. The vector data lives in the configured vector backend.
 
 DATABASE_URL examples:
     sqlite+aiosqlite:///./data/app.db   # local file (default)
@@ -60,18 +60,19 @@ async def get_session() -> AsyncIterator[AsyncSession]:
 
 
 async def init_db() -> None:
-    """Create all tables. Called once on app startup.
+    """Bootstrap a local development/test schema when explicitly allowed.
 
-    Schema bootstrap still uses create_all + additive ALTER helpers so personal
-    / Docker deploys upgrade in place without a manual migration step.
-
-    For *new* schema changes prefer Alembic (``backend/alembic``):
-
-        alembic revision --autogenerate -m "..."
-        alembic upgrade head
-
-    Existing databases that already match models: ``alembic stamp head``.
+    Production schema ownership belongs exclusively to Alembic.  API and
+    worker processes must never race to run DDL there.  The retained bootstrap
+    path keeps disposable SQLite development databases and the test harness
+    convenient; it is disabled whenever ``APP_ENV`` is prod/production.
     """
+    settings = get_settings()
+    if (
+        not settings.schema_bootstrap
+        or settings.app_env.strip().lower() in {"prod", "production"}
+    ):
+        return
     # Import models so they register with Base.metadata before create_all.
     from src.auth import models as _auth_models  # noqa: F401
     from src.conversations import models as _conv_models  # noqa: F401
@@ -86,20 +87,16 @@ async def init_db() -> None:
 
 
 def _migrate_additive_columns(sync_conn) -> None:
-    """Add missing columns and drop retired tables after create_all.
+    """Add missing columns to local development/test schemas after create_all.
 
-    Idempotent — each ALTER only runs if the column is missing, and retired
-    tables are dropped only when still present. Keeps existing dev DBs working
-    without needing to drop+recreate.
+    Idempotent — each ALTER only runs if the column is missing. Keeps existing
+    development databases working without needing to drop+recreate. Production
+    upgrades must instead arrive through a forward Alembic revision.
     """
     from sqlalchemy import inspect, text
 
     insp = inspect(sync_conn)
     tables = set(insp.get_table_names())
-
-    if "kb_invitations" in tables:
-        sync_conn.execute(text("DROP TABLE IF EXISTS kb_invitations"))
-        tables.discard("kb_invitations")
 
     # M4: kbs.is_system (bool, default 0)
     if "kbs" in tables:

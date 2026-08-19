@@ -31,3 +31,10 @@ async def test_generation_lock_concurrent_contenders() -> None:
 
     results = await asyncio.gather(*[contender() for _ in range(20)])
     assert sum(1 for ok in results if ok) == 1
+
+
+def test_generation_lock_advisory_key_is_stable_and_signed() -> None:
+    first = generation_lock._advisory_key("conversation-1")
+    assert first == generation_lock._advisory_key("conversation-1")
+    assert first != generation_lock._advisory_key("conversation-2")
+    assert -(2**63) <= first < 2**63

@@ -16,7 +16,7 @@
 
 | 层 | 技术 |
 |---|---|
-| 前端 | Next.js 14 · React 18 · Tailwind |
+| 前端 | Next.js 16 · React 18 · Tailwind |
 | 后端 | FastAPI · LangGraph · SQLAlchemy |
 | 存储 | SQLite / PostgreSQL · Milvus Lite（可换 Qdrant）· 可选 LightRAG/Neo4j |
 
@@ -114,22 +114,35 @@ cd backend
 .venv/bin/python -m src.observability.rag_monitor --once --fail-on-alert
 ```
 
-### 方式二：Docker 本地调试（完整依赖）
+### 方式二：Docker 本地调试（基础 RAG）
 
 需要 Docker Desktop / Docker Compose。根目录 `.env` 由 Compose 读取，和 `backend/.env`、`frontend/.env` 的本地开发配置相互独立。
 
 ```bash
 cp env.docker.example .env
-# 填写 POSTGRES_PASSWORD、JWT_SECRET、PUBLIC_URL，以及需要的模型/Embedding Key
+# 填写 POSTGRES_PASSWORD、JWT_SECRET、NEO4J_PASSWORD、LIGHTRAG_API_KEY、PUBLIC_URL，
+# 以及需要的模型/Embedding Key（后两个 KG 密钥只在启用 kg profile 时使用）
 ./scripts/deploy.sh
 ```
 
-此模式自动合并 `docker-compose.override.yml`：
+此模式自动合并 `docker-compose.override.yml`，启动 PostgreSQL、API、持久化入库
+worker、RAG 监控与前端；首次启动时 `migrate` 一次性执行 Alembic。默认不启动
+Neo4j/LightRAG：普通向量 RAG 不依赖图谱服务。
 
 - 前端：<http://localhost:3000>
 - 后端：<http://localhost:8000/health>
-- Neo4j Browser：<http://localhost:7474>
-- LightRAG：<http://localhost:9621>
+
+若某个部署需要图谱检索，在填写 `NEO4J_PASSWORD` 和 `LIGHTRAG_API_KEY` 后显式启用
+`kg` profile：
+
+```bash
+docker compose --profile kg up -d --build
+```
+
+这会额外启动 Neo4j 与 LightRAG。同步设置 `LIGHTRAG_ENABLED=true`、
+`LIGHTRAG_BASE_URL=http://lightrag:9621`，并在需要图谱的知识库上开启 KG。
+本地 override 启用时，Neo4j Browser 位于 <http://localhost:7474>，LightRAG 位于
+<http://localhost:9621>。
 
 ### 方式三：HTTPS 生产部署
 
@@ -137,7 +150,7 @@ cp env.docker.example .env
 
 ```bash
 cp env.docker.example .env
-# 填写真实 DOMAIN、PUBLIC_URL=https://<你的域名>、密钥与模型配置
+# 填写真实 DOMAIN、PUBLIC_URL=https://<你的域名>、所需密钥与模型配置
 docker compose -f docker-compose.yml --profile production up -d --build
 ```
 
@@ -158,9 +171,12 @@ curl -fsS https://<你的域名>/health
 | `AGENORA_BACKUP_ALLOW_NEO4J_DOWNTIME=1 ./scripts/backup.sh [目录]` | 创建 PostgreSQL 逻辑备份、后端/LightRAG 数据归档与 Neo4j 离线 dump。 |
 | `AGENORA_RESTORE_CONFIRM=RESTORE_AGENORA ./scripts/restore.sh <备份目录>` | 校验并恢复完整备份；会覆盖所有持久数据。 |
 
-Schema 演进可用 Alembic（`backend/alembic`）；现有库可 `alembic stamp head`。
+Schema 演进只由 Alembic 管理。Compose 的 `migrate` 一次性服务会在 backend / worker
+启动前执行 `alembic upgrade head`；应用进程不会在生产环境创建、修改或删除表。
 
-容器升级前，在只运行一个维护副本时执行 `docker compose run --rm backend alembic upgrade head`；应用启动的兼容性建表仍会保护旧版个人部署，但生产变更以 Alembic 版本为准。
+从旧版“应用启动自动建表”部署升级前，请先备份并在维护窗口核对 schema。若现有库已经
+与旧版模型一致，可执行 `alembic stamp 0003_kb_eval`，再执行 `alembic upgrade head`，将其
+纳入受管版本；不要对未核对的数据库直接 stamp。
 
 ### 备份与恢复
 

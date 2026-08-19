@@ -39,6 +39,8 @@ dependencies = [
   "langfuse>=3.0",
   # Prompt-injection rules YAML (backend/config/prompt_injection_rules.yaml)
   "pyyaml>=6.0",
+  # Production schema ownership is Alembic (Compose runs a one-shot migrate job).
+  "alembic>=1.13",
 ]
 
 [project.optional-dependencies]
@@ -47,7 +49,6 @@ dev = [
   "pytest-asyncio>=0.23",
   "ruff>=0.5",
   "mypy>=1.10",
-  "alembic>=1.13",
 ]
 ollama = ["ollama>=0.3"]
 openai = ["openai>=1.30"]

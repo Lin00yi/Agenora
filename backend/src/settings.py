@@ -140,6 +140,11 @@ class Settings(BaseSettings):
     # ===== App database (users / KBs / etc., SQLite by default) =====
     # Absolute path anchored to backend/ — survives systemd / Docker WorkingDirectory.
     database_url: str = _DEFAULT_DB_URL
+    # Local development and tests may create a disposable schema automatically.
+    # Production never uses this path: its schema is owned by Alembic and the
+    # Compose ``migrate`` job. Keeping this explicit avoids API/worker startup
+    # races that run DDL during a rollout.
+    schema_bootstrap: bool = True
 
     # ===== Auth (M1) =====
     jwt_secret: str = "dev-only-change-me-in-production"
@@ -164,9 +169,12 @@ class Settings(BaseSettings):
     # Internal span trees persist to the app DB when True (default on).
     trace_enabled: bool = True
     # Store truncated input/output previews on traces/observations.
-    trace_store_io: bool = True
-    # External Langfuse export. Switch defaults on; without keys it no-ops.
-    langfuse_enabled: bool = True
+    # I/O previews may contain user prompts, retrieved private documents and
+    # model output. Keep them opt-in; metadata-only traces remain available.
+    trace_store_io: bool = False
+    # External trace export is opt-in. A self-hosted Langfuse deployment can
+    # still be enabled explicitly without changing the tracing architecture.
+    langfuse_enabled: bool = False
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
     langfuse_host: str = "https://cloud.langfuse.com"
@@ -189,7 +197,7 @@ class Settings(BaseSettings):
     # ===== LightRAG Server (knowledge-graph recall) =====
     # When lightrag_enabled and LIGHTRAG_BASE_URL are set, KBs with kg_enabled
     # sync documents to the server and search_kg runs in parallel with search_kb.
-    lightrag_enabled: bool = True
+    lightrag_enabled: bool = False
     lightrag_base_url: str = ""  # e.g. http://localhost:9621 or http://lightrag:9621
     lightrag_api_key: str = ""
     # ``local`` is much cheaper than ``hybrid`` (less LLM + graph work).

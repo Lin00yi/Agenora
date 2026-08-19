@@ -1,7 +1,8 @@
 """Alembic async environment for Agenora.
 
-Existing deployments still run ``init_db()`` (create_all + additive ALTER
-helpers) on startup. Use Alembic for *new* schema changes going forward:
+Production schema ownership belongs to Alembic. Fresh databases are created by
+the ``0000_schema_bootstrap`` revision; existing databases should be verified
+and stamped before they receive later forward-only revisions:
 
     cd backend
     alembic revision --autogenerate -m "describe change"
@@ -29,6 +30,7 @@ from src.auth import models as _auth_models  # noqa: F401
 from src.conversations import models as _conv_models  # noqa: F401
 from src.kb import models as _kb_models  # noqa: F401
 from src.observability import models as _obs_models  # noqa: F401
+from src.settings_user import models as _settings_user_models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

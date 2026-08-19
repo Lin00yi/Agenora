@@ -157,6 +157,9 @@ async def test_real_kb_tool_span_emits_privacy_safe_rag_metrics(db, monkeypatch)
     from src.tools.base import Tool, ToolRegistry, ToolResult
 
     monkeypatch.setenv("TRACE_ENABLED", "true")
+    # This case verifies metric redaction when optional I/O capture is on.
+    # Production defaults to metadata-only traces.
+    monkeypatch.setenv("TRACE_STORE_IO", "true")
     monkeypatch.setenv("LANGFUSE_ENABLED", "false")
     get_settings.cache_clear()
 

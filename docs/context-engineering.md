@@ -193,14 +193,14 @@ Token 计量优先使用当前模型范围内的 tokenizer；不可用时回退 
 
 | 责任 | 位置 |
 |---|---|
-| 上下文预算、裁剪和窗口解析 | `backend/src/conversations/context/budget.py` |
-| Profile/Memory/Summary/Recent 组装 | `backend/src/conversations/context/assemble.py` |
-| 摘要预热、激活与增量摘要 | `backend/src/conversations/context/summary.py` |
-| Memory 提取、写入、并发保护与整合 | `backend/src/conversations/context/memory_store.py` |
-| Memory 混合检索与向量回填 | `backend/src/conversations/context/memory_retrieve.py` |
-| 多查询 RAG 聚合上限 | `backend/src/agents/loop/kb_search.py` |
-| Provider 安全提示词、最终预算与 Trace | `backend/src/agents/loop/prompts_budget.py`、`backend/src/agents/loop/reason.py` |
-| SSE、持久化与观测 Trace 回写 | `backend/src/api/chat/session.py` |
-| 写后后台任务调度 | `backend/src/conversations/routes.py` |
-| 历史数据修复与 active 唯一索引 | `backend/src/infra/database.py` |
+| 上下文预算、裁剪和窗口解析 | `backend/src/context/token_budget.py` |
+| Profile/Memory/Summary/Recent 组装 | `backend/src/context/builder.py` |
+| 摘要预热、激活与增量摘要 | `backend/src/context/compression.py` |
+| Memory 提取、写入、并发保护与整合 | `backend/src/memory/extract.py`、`long_term.py` |
+| Memory 混合检索与向量回填 | `backend/src/memory/retrieval.py` |
+| 多查询 RAG 聚合上限 | `backend/src/runtime/agent_loop/kb_search.py` |
+| Provider 安全系统提示词和最终 token 分配 | `backend/src/runtime/agent_loop/prompts_budget.py`、`reason.py` |
+| SSE、持久化与观测 Trace 回写 | `backend/src/api/streaming/session.py` |
+| 写后后台任务调度 | `backend/src/api/routes/conversations.py` |
+| 生产 schema 迁移 | `backend/alembic/` |
 | 前端 Trace 类型与渲染 | `frontend/lib/sseClient.ts`、`frontend/components/chat/ChatMessages.tsx` |

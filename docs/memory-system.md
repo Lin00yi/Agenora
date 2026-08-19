@@ -313,13 +313,13 @@ Token 计量使用 **tiktoken**（按模型族选择 `o200k_base` / `cl100k_base
 
 | 模块 | 文件 |
 |---|---|
-| 记忆候选、检索、会话摘要、上下文预算 | `backend/src/conversations/context/` |
+| 记忆候选、检索、会话摘要、上下文预算 | `backend/src/memory/`、`backend/src/context/` |
 | Memory 数据模型 | `backend/src/conversations/models.py` |
-| 消息写入与 Memory 管理接口 | `backend/src/conversations/routes.py` |
-| 定时维护（闲置 finalize / 整合 / 向量回填） | `backend/src/infra/memory_maintenance.py` |
-| 既有数据库的增量迁移 | `backend/src/infra/database.py` |
-| 对话请求中构建上下文 | `backend/src/api/chat/routes.py` |
-| Provider 安全系统提示词和最终 token 分配 | `backend/src/agents/loop/reason.py`、`prompts_budget.py` |
+| 消息写入与 Memory 管理接口 | `backend/src/api/routes/conversations.py` |
+| 定时维护（闲置 finalize / 整合 / 向量回填） | `backend/src/storage/jobs/memory.py` |
+| 生产 schema 迁移 | `backend/alembic/` |
+| 对话请求中构建上下文 | `backend/src/api/routes/chat.py` |
+| Provider 安全系统提示词和最终 token 分配 | `backend/src/runtime/agent_loop/reason.py`、`prompts_budget.py` |
 | 前端 SSE Trace 类型与渲染 | `frontend/lib/sseClient.ts`、`frontend/components/chat/ChatMessages.tsx` |
 | 记忆管理页 | `frontend/app/memories/page.tsx` |
 | 设计评审（已落地） | Memory Profile/Memory 去重、mode-based RAG reserve 等见本文件 §10 与代码实现 |

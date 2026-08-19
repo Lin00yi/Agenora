@@ -11,7 +11,7 @@ Lifecycle:
     failed   ─ `error` column populated
 
 The function uses two short DB sessions (one to claim, one to finalize) and
-does the heavy work (HTTP fetch, parsing, embedding, Qdrant upsert) in between
+does the heavy work (HTTP fetch, parsing, embedding, vector-store upsert) in between
 so it doesn't hold a SQLite write lock for minutes.
 """
 from __future__ import annotations
