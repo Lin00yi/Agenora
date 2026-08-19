@@ -95,6 +95,7 @@ export type ChatEvent = {
     | "context_ready"
     | "agent_route"
     | "agent_handoff"
+    | "dag_ready"
     | "tool_start"
     | "tool_end"
     | "tool_blocked"
@@ -118,6 +119,12 @@ export type ChatEvent = {
   to?: string;
   source?: string;
   confidence?: string;
+  tasks?: Array<{
+    id?: string;
+    type?: string;
+    agent?: string;
+    depends_on?: string[];
+  }>;
   cost_usd?: number;
   memory_trace?: MemoryTrace | null;
   citations?: Citation[] | null;

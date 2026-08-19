@@ -20,6 +20,8 @@ def test_default_registry_has_chat_and_rag() -> None:
     assert reg.get("chat").requires_kb is False
     assert reg.get("rag").requires_kb is True
     assert "chat" in reg.get("rag").handoff_targets
+    assert set(reg.get("chat").provides) == {"chat", "web_search"}
+    assert set(reg.get("rag").provides) == {"kb_read"}
 
 
 def test_registry_available_filters_kb() -> None:
@@ -215,3 +217,104 @@ async def test_supervisor_handoff_rag_to_chat(monkeypatch: pytest.MonkeyPatch) -
     assert out["last_agent"] == "chat"
     assert out["handoff_count"] == 1
     assert out.get("cost_usd") == pytest.approx(0.03)
+
+
+@pytest.mark.asyncio
+async def test_supervisor_planned_rag_then_chat(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Planner DAG qa_kb → qa_chat runs sequentially without the empty-RAG flag."""
+    calls: list[str] = []
+
+    class TrackingGraph:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        async def ainvoke(self, state: dict[str, Any]) -> dict[str, Any]:
+            calls.append(self.name)
+            if self.name == "rag":
+                return {
+                    **state,
+                    "final_report": "kb answer",
+                    "retrieved_evidence": [{"id": "1", "text": "hit"}],
+                    "query_policy_action": "direct",
+                    "cost_usd": 0.01,
+                    "citations": [],
+                    "report_streamed": False,
+                }
+            return {
+                **state,
+                "final_report": "chat follow-up",
+                "cost_usd": 0.02,
+                "citations": [],
+                "report_streamed": False,
+            }
+
+    reg = build_default_agent_registry()
+
+    def build_named(name: str):
+        def _builder(deps: RuntimeDeps, *, emit=None):  # noqa: ANN001
+            return TrackingGraph(name), object()
+
+        return _builder
+
+    reg._builders["rag"] = build_named("rag")  # noqa: SLF001
+    reg._builders["chat"] = build_named("chat")  # noqa: SLF001
+
+    async def fake_resolve(**_kwargs: Any) -> dict[str, Any]:
+        return {
+            "tasks": [
+                {
+                    "id": "task_1",
+                    "type": "qa_kb",
+                    "capabilities": ["kb_read"],
+                    "depends_on": [],
+                    "agent": "rag",
+                    "on_fail": "abort",
+                },
+                {
+                    "id": "task_2",
+                    "type": "qa_chat",
+                    "capabilities": ["chat", "web_search"],
+                    "depends_on": ["task_1"],
+                    "agent": "chat",
+                    "on_fail": "skip",
+                },
+            ],
+            "target": "rag",
+            "reason": "needs_kb_then_web",
+            "source": "complex",
+            "confidence": "high",
+            "latency_ms": 10,
+        }
+
+    monkeypatch.setattr("src.agent.main_agent.supervisor.resolve_agent_route", fake_resolve)
+
+    class FakeKB:
+        id = "kb-1"
+        name = "Demo"
+        description = ""
+
+    graph, _ = build_supervisor_graph(
+        registry=reg,
+        allow_rag_chat_handoff=False,
+        kb=FakeKB(),
+    )
+    out = await graph.ainvoke(
+        {
+            "messages": [{"role": "user", "content": "查库再联网"}],
+            "base_messages": [{"role": "user", "content": "查库再联网"}],
+            "kb_id": "kb-1",
+            "iterations": 0,
+            "tool_call_log": [],
+            "citations": [],
+            "agent_results": {},
+            "handoff_count": 0,
+            "supervisor_trace": [],
+        }
+    )
+    assert calls == ["rag", "chat"]
+    assert out["final_report"] == "chat follow-up"
+    assert out["handoff_count"] == 0
+    assert [t["id"] for t in (out.get("task_dag") or {}).get("tasks") or []] == [
+        "task_1",
+        "task_2",
+    ]

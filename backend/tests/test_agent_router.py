@@ -22,6 +22,8 @@ def test_rule_route_unbound_is_chat() -> None:
     assert decision is not None
     assert decision["target"] == "chat"
     assert decision["source"] == "rule"
+    assert decision["tasks"][0]["type"] == "qa_chat"
+    assert decision["tasks"][0]["agent"] == "chat"
 
 
 def test_rule_route_chitchat_with_kb() -> None:
@@ -177,3 +179,49 @@ async def test_resolve_complex_query_skips_triage(
     )
     assert decision["source"] == "complex"
     assert calls == ["complex"]
+    assert decision["tasks"][0]["type"] == "qa_kb"
+    assert decision["tasks"][0]["agent"] == "rag"
+
+
+@pytest.mark.asyncio
+async def test_resolve_coerces_task_dag_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reg = build_default_agent_registry()
+    cost = CostTracker()
+
+    async def fake_llm_route(**kwargs: Any):
+        return {
+            "tasks": [
+                {
+                    "id": "task_1",
+                    "type": "qa_kb",
+                    "capabilities": ["kb_read"],
+                    "depends_on": [],
+                },
+                {
+                    "id": "task_2",
+                    "type": "qa_chat",
+                    "capabilities": ["chat", "web_search"],
+                    "depends_on": ["task_1"],
+                },
+            ],
+            "reason": "needs_kb_then_web",
+            "source": kwargs["source"],
+            "confidence": "high",
+            "latency_ms": 9,
+        }
+
+    monkeypatch.setattr("src.agent.main_agent.router.llm_route", fake_llm_route)
+    decision = await resolve_agent_route(
+        has_kb=True,
+        registry=reg,
+        user_query="查知识库，不够再联网",
+        cost=cost,
+        triage_llm_cfg=SimpleNamespace(provider="openai-compat", default_model="t"),
+        complex_llm_cfg=SimpleNamespace(provider="openai-compat", default_model="c"),
+        mode="layered",
+    )
+    assert decision["target"] == "rag"
+    assert [t["agent"] for t in decision["tasks"]] == ["rag", "chat"]
+    assert decision["tasks"][1]["depends_on"] == ["task_1"]

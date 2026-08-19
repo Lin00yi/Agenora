@@ -328,6 +328,9 @@ export function useChatSend({
         messagesForBackend,
         (evt: ChatEvent) => {
           switch (evt.event) {
+            case "dag_ready":
+              // Planner topology; ThinkingChain still uses per-task agent_route.
+              break;
             case "context_ready": {
               const trace = evt.memory_trace;
               if (!trace) break;

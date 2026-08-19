@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { cn } from "@/lib/utils";
 import {
   ChevronDown,
   ChevronRight,
@@ -9,7 +9,7 @@ import {
   Shuffle,
   Wrench,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export type ToolEvent = {
   id?: string;

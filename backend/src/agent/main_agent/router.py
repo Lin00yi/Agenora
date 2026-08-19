@@ -1,9 +1,7 @@
 """Three-layer supervisor router: rule → triage → complex.
 
-Layer 1 (rule): high-confidence deterministic intents only.
-Layer 2 (triage): small/fast model for ordinary ambiguous queries.
-Layer 3 (complex): larger model when triage is low-confidence or the query
-looks multi-intent / long / structurally complex.
+Output is a validated task DAG (capabilities + depends_on). A single
+``target`` is derived from the first bound agent for compatibility.
 """
 from __future__ import annotations
 
@@ -11,8 +9,14 @@ import json
 import time
 from typing import Any, Literal, TypedDict, TYPE_CHECKING
 
+from src.agent.main_agent.dag import (
+    TaskDag,
+    dag_kb_then_chat,
+    dag_single,
+    primary_agent,
+)
+from src.agent.main_agent.validate import DagValidationError, validate_and_bind
 from src.agent.nodes.constants import (
-    _RULE_INFORMATION_SEEKING_HINTS,
     _RULE_MULTI_INTENT_KEYWORDS,
     _RULE_SKIP_KEYWORDS,
 )
@@ -32,9 +36,11 @@ RouteMode = Literal["rule_only", "rule_triage", "layered"]
 _ROUTE_TARGETS = frozenset({"chat", "rag"})
 _ROUTE_CONFIDENCE = frozenset({"high", "medium", "low"})
 _ROUTE_MODES = frozenset({"rule_only", "rule_triage", "layered"})
+_TASK_TYPES_FROM_TARGET = {"chat": "qa_chat", "rag": "qa_kb"}
 
 
 class RouteDecision(TypedDict):
+    tasks: list[dict[str, Any]]
     target: str
     reason: str
     source: RouteSource
@@ -68,32 +74,52 @@ def looks_complex_query(query: str) -> bool:
     return False
 
 
+def _decision_from_dag(dag: TaskDag, *, registry: AgentRegistry, has_kb: bool) -> RouteDecision:
+    bound = validate_and_bind(dag, registry=registry, has_kb=has_kb)
+    target = primary_agent(bound)
+    confidence_raw = str(bound.get("confidence") or "medium")
+    confidence: RouteConfidence = (
+        confidence_raw if confidence_raw in _ROUTE_CONFIDENCE else "medium"  # type: ignore[assignment]
+    )
+    source_raw = str(bound.get("source") or "fallback")
+    source: RouteSource = source_raw if source_raw in {"rule", "triage", "complex", "fallback"} else "fallback"  # type: ignore[assignment]
+    return {
+        "tasks": list(bound.get("tasks") or []),
+        "target": target,
+        "reason": str(bound.get("reason") or "planned"),
+        "source": source,
+        "confidence": confidence,
+        "latency_ms": int(bound.get("latency_ms") or 0),
+    }
+
+
 def fallback_route(*, has_kb: bool, registry: AgentRegistry) -> RouteDecision:
     available = registry.available(has_kb=has_kb)
     if has_kb and "rag" in available:
-        return {
-            "target": "rag",
-            "reason": "kb_bound_default",
-            "source": "fallback",
-            "confidence": "medium",
-            "latency_ms": 0,
-        }
+        return _decision_from_dag(
+            dag_single(task_type="qa_kb", reason="kb_bound_default", source="fallback", confidence="medium"),
+            registry=registry,
+            has_kb=has_kb,
+        )
     if "chat" in available:
-        return {
-            "target": "chat",
-            "reason": "unbound_default",
-            "source": "fallback",
-            "confidence": "high",
-            "latency_ms": 0,
-        }
+        return _decision_from_dag(
+            dag_single(
+                task_type="qa_chat",
+                reason="unbound_default",
+                source="fallback",
+                confidence="high",
+            ),
+            registry=registry,
+            has_kb=has_kb,
+        )
     if available:
-        return {
-            "target": available[0],
-            "reason": "first_available",
-            "source": "fallback",
-            "confidence": "low",
-            "latency_ms": 0,
-        }
+        agent = available[0]
+        task_type = "qa_kb" if agent == "rag" else "qa_chat"
+        return _decision_from_dag(
+            dag_single(task_type=task_type, reason="first_available", source="fallback", confidence="low"),
+            registry=registry,
+            has_kb=has_kb,
+        )
     raise RuntimeError("agent registry is empty")
 
 
@@ -109,55 +135,62 @@ def rule_route(
 
     if not has_kb:
         if "chat" in available:
-            return {
-                "target": "chat",
-                "reason": "unbound_default",
-                "source": "rule",
-                "confidence": "high",
-                "latency_ms": 0,
-            }
+            return _decision_from_dag(
+                dag_single(
+                    task_type="qa_chat",
+                    reason="unbound_default",
+                    source="rule",
+                    confidence="high",
+                ),
+                registry=registry,
+                has_kb=has_kb,
+            )
         return None
 
     if "chat" not in available and "rag" not in available:
         return None
 
     if not text:
-        # Empty after sanitize — stay on rag when KB is bound so empty handling
-        # remains inside the KB subgraph.
         if "rag" in available:
-            return {
-                "target": "rag",
-                "reason": "empty_query_kb_bound",
-                "source": "rule",
-                "confidence": "high",
-                "latency_ms": 0,
-            }
+            return _decision_from_dag(
+                dag_single(
+                    task_type="qa_kb",
+                    reason="empty_query_kb_bound",
+                    source="rule",
+                    confidence="high",
+                ),
+                registry=registry,
+                has_kb=has_kb,
+            )
         return None
 
     if "chat" in available:
         if any(keyword in text for keyword in _RULE_SKIP_KEYWORDS):
-            return {
-                "target": "chat",
-                "reason": "kb_bound_non_kb_intent",
-                "source": "rule",
-                "confidence": "high",
-                "latency_ms": 0,
-            }
+            return _decision_from_dag(
+                dag_single(
+                    task_type="qa_chat",
+                    reason="kb_bound_non_kb_intent",
+                    source="rule",
+                    confidence="high",
+                ),
+                registry=registry,
+                has_kb=has_kb,
+            )
         if len(text) <= 8 and not any(
             mark in text for mark in ("?", "？", "吗", "么", "如何", "怎么")
         ):
             if text in {"你好", "您好", "在吗", "早上好", "晚安", "谢谢", "多谢"}:
-                return {
-                    "target": "chat",
-                    "reason": "kb_bound_chitchat",
-                    "source": "rule",
-                    "confidence": "high",
-                    "latency_ms": 0,
-                }
+                return _decision_from_dag(
+                    dag_single(
+                        task_type="qa_chat",
+                        reason="kb_bound_chitchat",
+                        source="rule",
+                        confidence="high",
+                    ),
+                    registry=registry,
+                    has_kb=has_kb,
+                )
 
-    # Clear private-KB fact seeking: still escalate — product names alone are
-    # ambiguous, and triage/complex own the grey zone. Rules stay conservative.
-    _ = _RULE_INFORMATION_SEEKING_HINTS
     return None
 
 
@@ -195,51 +228,84 @@ def _extract_json_object(text: str) -> Any:
 def _coerce_route_decision(
     payload: Any,
     *,
-    available: list[str],
+    registry: AgentRegistry,
+    has_kb: bool,
     source: RouteSource,
     latency_ms: int,
 ) -> RouteDecision:
     if not isinstance(payload, dict):
         raise ValueError("router payload must be an object")
-    target = str(payload.get("target") or "").strip().lower()
-    if target not in _ROUTE_TARGETS or target not in available:
-        raise ValueError(f"invalid target: {target}")
     confidence_raw = str(payload.get("confidence") or "medium").strip().lower()
     confidence: RouteConfidence = (
         confidence_raw if confidence_raw in _ROUTE_CONFIDENCE else "medium"  # type: ignore[assignment]
     )
     reason = str(payload.get("reason") or f"{source}_route").strip() or f"{source}_route"
-    return {
-        "target": target,
-        "reason": reason[:80],
-        "source": source,
-        "confidence": confidence,
-        "latency_ms": latency_ms,
-    }
+
+    raw_tasks = payload.get("tasks")
+    if isinstance(raw_tasks, list) and raw_tasks:
+        dag: TaskDag = {
+            "tasks": raw_tasks,  # type: ignore[typeddict-item]
+            "reason": reason[:80],
+            "source": source,
+            "confidence": confidence,
+            "latency_ms": latency_ms,
+        }
+        try:
+            return _decision_from_dag(dag, registry=registry, has_kb=has_kb)
+        except DagValidationError as exc:
+            raise ValueError(str(exc)) from exc
+
+    target = str(payload.get("target") or "").strip().lower()
+    if target not in _ROUTE_TARGETS:
+        raise ValueError(f"invalid target: {target}")
+    available = registry.available(has_kb=has_kb)
+    if target not in available:
+        raise ValueError(f"invalid target: {target}")
+    task_type = _TASK_TYPES_FROM_TARGET[target]
+    if target == "rag" and payload.get("follow_chat") is True:
+        dag = dag_kb_then_chat(reason=reason[:80], source=source, confidence=confidence, latency_ms=latency_ms)
+    else:
+        dag = dag_single(
+            task_type=task_type,
+            reason=reason[:80],
+            source=source,
+            confidence=confidence,
+            latency_ms=latency_ms,
+        )
+    return _decision_from_dag(dag, registry=registry, has_kb=has_kb)
 
 
 def _router_system_prompt(*, has_kb: bool, available: list[str], layer: RouteSource) -> str:
-    targets = ", ".join(available)
     kb_line = (
-        "当前会话已绑定私有知识库。涉及产品事实、流程、政策、费用、故障排查时优先 rag；"
-        "闲聊、翻译、润色、总结刚才回答、与 KB 无关的通用写作走 chat。"
+        "当前会话已绑定私有知识库。"
         if has_kb
-        else "当前未绑定知识库，只能选择 chat。"
+        else "当前未绑定知识库，只能安排 qa_chat。"
     )
     depth = (
         "你是快速意图分流器（triage）。只做粗分，拿不准时把 confidence 设为 low。"
         if layer == "triage"
-        else "你是复杂意图路由器。仔细区分多意图、含糊指代与是否需要私有知识库。"
+        else "你是复杂意图路由器。可安排 qa_kb 后接 qa_chat（知识库不够再通用/联网）。"
+    )
+    hybrid = (
+        "绑定 KB 时允许 tasks 为 [qa_kb] 或 [qa_kb → qa_chat]。不要输出并行任务。"
+        if has_kb
+        else "只能输出一个 qa_chat 任务。"
     )
     return (
         f"{depth}\n"
         f"{kb_line}\n"
-        f"只能从这些 target 中选择：{targets}\n"
+        f"{hybrid}\n"
         "只输出 JSON，不要解释。\n"
-        '格式：{"target":"chat"|"rag","confidence":"high"|"medium"|"low","reason":"short_snake"}\n'
-        "reason 必须是短 snake_case，优先使用："
-        "needs_kb_fact / chitchat / general_chat / web_needed / multi_intent / non_kb。"
-        "不要写长句，不要写 query_about_xxx。\n"
+        "任务格式：\n"
+        '{"tasks":[{"id":"task_1","type":"qa_kb","capabilities":["kb_read"],"depends_on":[]}],'
+        '"confidence":"high","reason":"needs_kb_fact"}\n'
+        "type 只能是 qa_kb 或 qa_chat。\n"
+        "capabilities 只能来自 kb_read / chat / web_search。\n"
+        "qa_chat 默认 capabilities 为 [chat, web_search]；qa_kb 为 [kb_read]。\n"
+        "reason 必须是短 snake_case：needs_kb_fact / chitchat / general_chat / "
+        "web_needed / multi_intent / non_kb / needs_kb_then_web。\n"
+        "不要写长句，不要写 query_about_xxx。不要发明 Agent 名。\n"
+        f"可用 agent 仅供对照：{', '.join(available)}。\n"
         "confidence=low 表示应升级到更强模型或保守回退。\n"
     )
 
@@ -254,19 +320,25 @@ async def llm_route(
     cost: CostTracker,
     source: RouteSource,
 ) -> RouteDecision:
-    """Ask one model layer for a structured route decision."""
+    """Ask one model layer for a structured route / DAG decision."""
     start = time.perf_counter()
     available = registry.available(has_kb=has_kb)
     if not available:
         raise RuntimeError("agent registry is empty")
     if len(available) == 1:
-        return {
-            "target": available[0],
-            "reason": "single_available",
-            "source": source,
-            "confidence": "high",
-            "latency_ms": int((time.perf_counter() - start) * 1000),
-        }
+        only = available[0]
+        task_type = "qa_kb" if only == "rag" else "qa_chat"
+        return _decision_from_dag(
+            dag_single(
+                task_type=task_type,
+                reason="single_available",
+                source=source,
+                confidence="high",
+                latency_ms=int((time.perf_counter() - start) * 1000),
+            ),
+            registry=registry,
+            has_kb=has_kb,
+        )
 
     client = get_client(llm_cfg)
     model = pick_model([{"role": "user", "content": user_query}], [], llm_cfg)
@@ -289,7 +361,7 @@ async def llm_route(
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_query},
                 ],
-                max_tokens=256,
+                max_tokens=512,
             )
             cost.add(model, getattr(resp, "usage", None), cfg=llm_cfg)
             text = resp.choices[0].message.content or ""
@@ -298,7 +370,7 @@ async def llm_route(
         else:
             resp = await client.messages.create(
                 model=model,
-                max_tokens=256,
+                max_tokens=512,
                 system=with_cache_control([{"type": "text", "text": system_prompt}], llm_cfg),
                 messages=[{"role": "user", "content": user_query}],
             )
@@ -312,10 +384,48 @@ async def llm_route(
     parsed = _extract_json_object(text)
     return _coerce_route_decision(
         parsed,
-        available=available,
+        registry=registry,
+        has_kb=has_kb,
         source=source,
         latency_ms=int((time.perf_counter() - start) * 1000),
     )
+
+
+def _normalize_llm_decision(
+    decision: RouteDecision,
+    *,
+    registry: AgentRegistry,
+    has_kb: bool,
+) -> RouteDecision:
+    """Accept mocked legacy {target:...} or a full DAG decision."""
+    if decision.get("tasks"):
+        try:
+            return _decision_from_dag(
+                {
+                    "tasks": decision["tasks"],  # type: ignore[typeddict-item]
+                    "reason": decision.get("reason") or "planned",
+                    "source": decision.get("source") or "fallback",
+                    "confidence": decision.get("confidence") or "medium",
+                    "latency_ms": int(decision.get("latency_ms") or 0),
+                },
+                registry=registry,
+                has_kb=has_kb,
+            )
+        except DagValidationError:
+            return fallback_route(has_kb=has_kb, registry=registry)
+    target = str(decision.get("target") or "")
+    if target in _ROUTE_TARGETS:
+        try:
+            return _coerce_route_decision(
+                decision,
+                registry=registry,
+                has_kb=has_kb,
+                source=decision.get("source") or "fallback",  # type: ignore[arg-type]
+                latency_ms=int(decision.get("latency_ms") or 0),
+            )
+        except ValueError:
+            return fallback_route(has_kb=has_kb, registry=registry)
+    return fallback_route(has_kb=has_kb, registry=registry)
 
 
 @traced("supervisor_resolve_route")
@@ -330,7 +440,7 @@ async def resolve_agent_route(
     default_llm_cfg: "UserLLMConfig | None" = None,
     mode: str | None = None,
 ) -> RouteDecision:
-    """Cascade: rule → triage → complex → fallback."""
+    """Cascade: rule → triage → complex → fallback. Always a validated DAG."""
     settings = get_settings()
     route_mode = normalize_route_mode(mode or getattr(settings, "agent_route_mode", "layered"))
 
@@ -343,75 +453,44 @@ async def resolve_agent_route(
 
     complex_query = looks_complex_query(user_query)
     triage_cfg = triage_llm_cfg or default_llm_cfg
-    # Complex layer prefers an explicit complex profile; otherwise reuse default.
     complex_cfg = complex_llm_cfg or (
         default_llm_cfg if complex_llm_cfg is None and complex_query else None
     )
 
-    # Clearly complex: escalate to layer 3 after rules (skip weak triage).
-    if (
-        route_mode == "layered"
-        and complex_query
-        and complex_cfg is not None
-    ):
+    async def _run(source: RouteSource, cfg: "UserLLMConfig | None") -> RouteDecision | None:
+        if cfg is None:
+            return None
         try:
-            return await llm_route(
+            raw = await llm_route(
                 user_query=user_query,
                 has_kb=has_kb,
                 registry=registry,
-                llm_cfg=complex_cfg,
+                llm_cfg=cfg,
                 cost=cost,
-                source="complex",
+                source=source,
             )
+            return _normalize_llm_decision(raw, registry=registry, has_kb=has_kb)
         except Exception:  # noqa: BLE001
-            return fallback_route(has_kb=has_kb, registry=registry)
+            return None
+
+    if route_mode == "layered" and complex_query and complex_cfg is not None:
+        planned = await _run("complex", complex_cfg)
+        return planned or fallback_route(has_kb=has_kb, registry=registry)
 
     if route_mode in {"rule_triage", "layered"} and triage_cfg is not None:
-        try:
-            triage = await llm_route(
-                user_query=user_query,
-                has_kb=has_kb,
-                registry=registry,
-                llm_cfg=triage_cfg,
-                cost=cost,
-                source="triage",
-            )
-        except Exception:  # noqa: BLE001
-            triage = None
-
+        triage = await _run("triage", triage_cfg)
         if triage is not None and triage["confidence"] in {"high", "medium"}:
             return triage
-
-        if route_mode == "layered" and (complex_llm_cfg or default_llm_cfg) is not None:
-            escalate_cfg = complex_llm_cfg or default_llm_cfg
-            try:
-                return await llm_route(
-                    user_query=user_query,
-                    has_kb=has_kb,
-                    registry=registry,
-                    llm_cfg=escalate_cfg,
-                    cost=cost,
-                    source="complex",
-                )
-            except Exception:  # noqa: BLE001
-                if triage is not None:
-                    return triage
-                return fallback_route(has_kb=has_kb, registry=registry)
-
+        if route_mode == "layered":
+            planned = await _run("complex", complex_llm_cfg or default_llm_cfg)
+            if planned is not None:
+                return planned
         if triage is not None:
             return triage
 
-    if route_mode == "layered" and (complex_llm_cfg or default_llm_cfg) is not None:
-        try:
-            return await llm_route(
-                user_query=user_query,
-                has_kb=has_kb,
-                registry=registry,
-                llm_cfg=complex_llm_cfg or default_llm_cfg,
-                cost=cost,
-                source="complex",
-            )
-        except Exception:  # noqa: BLE001
-            pass
+    if route_mode == "layered":
+        planned = await _run("complex", complex_llm_cfg or default_llm_cfg)
+        if planned is not None:
+            return planned
 
     return fallback_route(has_kb=has_kb, registry=registry)

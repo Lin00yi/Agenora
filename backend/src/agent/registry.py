@@ -29,6 +29,8 @@ class AgentSpec:
     accept_handoff: bool = True
     # Closed set of agents this capability may hand off to after it runs.
     handoff_targets: tuple[str, ...] = ()
+    # Capabilities this agent can satisfy on a task node.
+    provides: tuple[str, ...] = ()
 
 
 @dataclass
@@ -125,6 +127,7 @@ def build_default_agent_registry() -> AgentRegistry:
             side_effect="none",
             requires_kb=False,
             handoff_targets=(),
+            provides=("chat", "web_search"),
         ),
         _build_chat,
     )
@@ -136,6 +139,7 @@ def build_default_agent_registry() -> AgentRegistry:
             requires_kb=True,
             # Hybrid: empty / weak retrieval can continue as general chat (+ web tool).
             handoff_targets=("chat",),
+            provides=("kb_read",),
         ),
         _build_rag,
     )

@@ -1,7 +1,8 @@
-"""Supervisor runtime — routes among pluggable sub-agents.
+"""Supervisor runtime — plans a task DAG and dispatches bound sub-agents.
 
 Routing uses a three-layer cascade (rule → triage → complex). Optional
-rag→chat handoff when retrieval is empty. web_search stays a chat tool.
+rag→chat follow-up when retrieval is empty and chat was not already planned.
+web_search stays a chat tool.
 """
 from __future__ import annotations
 
@@ -9,7 +10,9 @@ from typing import Any, Awaitable, Callable, Literal, TypedDict
 
 from langgraph.graph import END, StateGraph
 
+from src.agent.main_agent.dag import TaskDag, append_chat_followup
 from src.agent.main_agent.router import resolve_agent_route
+from src.agent.main_agent.validate import ready_tasks, validate_and_bind
 from src.agent.registry import AgentRegistry, RuntimeDeps, build_default_agent_registry
 from src.infra.llm import CostTracker
 from src.observability import traced
@@ -60,9 +63,7 @@ class SupervisorState(TypedDict, total=False):
     report_streamed: bool
     cost_usd: float | None
     prompt_trace: dict[str, Any]
-    # Supervisor control plane
     kb_id: str | None
-    # Conversation seed before any subgraph mutates the tool loop.
     base_messages: list[dict[str, Any]]
     active_agent: str | None
     last_agent: str | None
@@ -73,6 +74,9 @@ class SupervisorState(TypedDict, total=False):
     handoff_count: int
     supervisor_trace: list[dict[str, Any]]
     supervisor_decision: SupervisorDecision
+    task_dag: TaskDag
+    task_status: dict[str, str]
+    active_task_id: str | None
 
 
 def _latest_user_text(messages: list[dict[str, Any]] | None) -> str:
@@ -93,19 +97,28 @@ def _latest_user_text(messages: list[dict[str, Any]] | None) -> str:
     return ""
 
 
+def _has_chat_task(dag: TaskDag | None) -> bool:
+    for task in (dag or {}).get("tasks") or []:
+        if task.get("type") == "qa_chat" or task.get("agent") == "chat":
+            return True
+    return False
+
+
 def should_handoff_to_chat(
     state: SupervisorState,
     *,
     allow_rag_chat_handoff: bool,
     registry: AgentRegistry,
 ) -> tuple[bool, str]:
-    """Allow one rag→chat handoff when retrieval produced no evidence."""
+    """Allow one rag→chat follow-up when retrieval produced no evidence."""
     if not allow_rag_chat_handoff:
         return False, "handoff_disabled"
     if int(state.get("handoff_count") or 0) >= 1:
         return False, "handoff_budget_exhausted"
     if state.get("last_agent") != "rag":
         return False, "not_rag"
+    if _has_chat_task(state.get("task_dag")):
+        return False, "chat_already_planned"
     if "chat" not in registry.available(has_kb=False):
         return False, "chat_unavailable"
     spec = registry.get("rag")
@@ -131,7 +144,6 @@ def _subgraph_input(state: SupervisorState) -> dict[str, Any]:
     for key in _SUBGRAPH_INPUT_KEYS:
         if key in state:
             out[key] = state[key]
-    # Fresh loop counters per agent instance.
     out.setdefault("messages", list(state.get("messages") or []))
     out["iterations"] = 0
     out.setdefault("tool_call_log", [])
@@ -208,6 +220,14 @@ def build_supervisor_graph(
             default_llm_cfg=runtime.llm_cfg,
             mode=getattr(settings, "agent_route_mode", "layered"),
         )
+        dag: TaskDag = {
+            "tasks": list(decision.get("tasks") or []),
+            "reason": decision["reason"],
+            "source": decision["source"],
+            "confidence": decision["confidence"],
+            "latency_ms": decision["latency_ms"],
+        }
+        status = {str(t.get("id")): "pending" for t in dag.get("tasks") or [] if t.get("id")}
         agent_id = decision["target"]
         reason = decision["reason"]
         trace = list(state.get("supervisor_trace") or [])
@@ -219,6 +239,27 @@ def build_supervisor_graph(
                 "source": decision["source"],
                 "confidence": decision["confidence"],
                 "latency_ms": decision["latency_ms"],
+                "tasks": [
+                    {"id": t.get("id"), "type": t.get("type"), "agent": t.get("agent")}
+                    for t in dag.get("tasks") or []
+                ],
+            }
+        )
+        await em(
+            {
+                "event": "dag_ready",
+                "reason": reason,
+                "source": decision["source"],
+                "confidence": decision["confidence"],
+                "tasks": [
+                    {
+                        "id": t.get("id"),
+                        "type": t.get("type"),
+                        "agent": t.get("agent"),
+                        "depends_on": t.get("depends_on") or [],
+                    }
+                    for t in dag.get("tasks") or []
+                ],
             }
         )
         await em(
@@ -234,7 +275,10 @@ def build_supervisor_graph(
         return {
             **state,
             "base_messages": base_messages,
-            "active_agent": agent_id,
+            "task_dag": dag,
+            "task_status": status,
+            "active_task_id": None,
+            "active_agent": None,
             "route_reason": reason,
             "route_source": decision["source"],
             "route_confidence": decision["confidence"],
@@ -249,17 +293,25 @@ def build_supervisor_graph(
             ),
         }
 
+    @traced("supervisor_schedule")
+    async def schedule_node(state: SupervisorState) -> SupervisorState:
+        dag = state.get("task_dag") or {"tasks": []}
+        status = dict(state.get("task_status") or {})
+        ready = ready_tasks(dag, status)
+        if not ready:
+            return {
+                **state,
+                "supervisor_decision": "finish",
+                "active_task_id": None,
+                "active_agent": None,
+            }
 
-    @traced("supervisor_dispatch")
-    async def dispatch_node(state: SupervisorState) -> SupervisorState:
-        agent_id = state.get("active_agent")
-        if not agent_id:
-            raise RuntimeError("supervisor dispatch without active_agent")
-        spec = reg.get(agent_id)
-        if spec.requires_kb and runtime.kb is None:
-            # Soft fallback keeps the turn alive if registry/route drifted.
+        task = ready[0]
+        task_id = str(task.get("id") or "")
+        agent_id = str(task.get("agent") or "")
+        spec = reg.get(agent_id) if agent_id else None
+        if spec is not None and spec.requires_kb and runtime.kb is None:
             agent_id = "chat"
-            spec = reg.get(agent_id)
             await em(
                 {
                     "event": "agent_route",
@@ -267,6 +319,55 @@ def build_supervisor_graph(
                     "reason": "rag_missing_kb_fallback",
                 }
             )
+
+        last = state.get("last_agent")
+        switching = bool(last) and last != agent_id
+        if switching:
+            await em(
+                {
+                    "event": "agent_route",
+                    "agent": agent_id,
+                    "reason": state.get("route_reason") or "next_task",
+                    "task_id": task_id,
+                    "source": state.get("route_source") or "rule",
+                }
+            )
+
+        trace = list(state.get("supervisor_trace") or [])
+        trace.append(
+            {
+                "event": "schedule",
+                "task_id": task_id,
+                "agent": agent_id,
+                "type": task.get("type"),
+            }
+        )
+        updates: SupervisorState = {
+            **state,
+            "active_task_id": task_id,
+            "active_agent": agent_id,
+            "supervisor_decision": "dispatch",
+            "supervisor_trace": trace,
+            "task_status": status,
+        }
+        if switching:
+            seed = list(state.get("base_messages") or state.get("messages") or [])
+            updates["messages"] = seed
+            updates["report_streamed"] = False
+            updates["final_report"] = None
+            updates["retrieved_evidence"] = []
+            updates["kb_context"] = ""
+            updates["kb_queries"] = []
+            updates["kb_search_done"] = False
+            updates["pending_tool_calls"] = []  # type: ignore[typeddict-unknown-key]
+        return updates
+
+    @traced("supervisor_dispatch")
+    async def dispatch_node(state: SupervisorState) -> SupervisorState:
+        agent_id = state.get("active_agent")
+        task_id = state.get("active_task_id")
+        if not agent_id:
+            raise RuntimeError("supervisor dispatch without active_agent")
 
         async def tagged_emit(evt: dict[str, Any]) -> None:
             await em({**evt, "agent": agent_id})
@@ -284,19 +385,28 @@ def build_supervisor_graph(
         next_cost = _merge_cost(prev_cost, sub_cost) if already_ran else sub_cost
 
         results = dict(state.get("agent_results") or {})
-        results[agent_id] = {
+        result_payload = {
             "final_report": sub_out.get("final_report"),
             "citations": list(sub_out.get("citations") or []),
             "retrieved_evidence_count": len(sub_out.get("retrieved_evidence") or []),
             "query_policy_action": sub_out.get("query_policy_action"),
             "cost_usd": sub_out.get("cost_usd"),
         }
+        results[agent_id] = result_payload
+        if task_id:
+            results[task_id] = result_payload
+
+        status = dict(state.get("task_status") or {})
+        if task_id:
+            status[task_id] = "done"
+
         trace = list(state.get("supervisor_trace") or [])
         trace.append(
             {
                 "event": "completed",
                 "agent": agent_id,
-                "evidence": results[agent_id]["retrieved_evidence_count"],
+                "task_id": task_id,
+                "evidence": result_payload["retrieved_evidence_count"],
             }
         )
 
@@ -355,6 +465,7 @@ def build_supervisor_graph(
             "active_agent": agent_id,
             "agent_results": results,
             "supervisor_trace": trace,
+            "task_status": status,
         }
 
     @traced("supervisor_review")
@@ -365,7 +476,16 @@ def build_supervisor_graph(
             registry=reg,
         )
         trace = list(state.get("supervisor_trace") or [])
+        dag = state.get("task_dag") or {"tasks": []}
+        status = dict(state.get("task_status") or {})
+        has_kb = runtime.kb is not None or bool(state.get("kb_id"))
+
         if do_handoff:
+            extended = append_chat_followup(dag, reason=reason)
+            bound = validate_and_bind(extended, registry=reg, has_kb=has_kb)
+            for task in bound.get("tasks") or []:
+                tid = str(task.get("id") or "")
+                status.setdefault(tid, "pending")
             await em(
                 {
                     "event": "agent_handoff",
@@ -382,23 +502,22 @@ def build_supervisor_graph(
                     "reason": reason,
                 }
             )
-            seed = list(state.get("base_messages") or state.get("messages") or [])
             return {
                 **state,
-                "active_agent": "chat",
+                "task_dag": bound,
+                "task_status": status,
                 "handoff_count": int(state.get("handoff_count") or 0) + 1,
                 "route_reason": reason,
                 "supervisor_decision": "dispatch",
                 "supervisor_trace": trace,
-                # Fresh chat instance from the original turn; keep prior citations.
-                "messages": seed,
-                "report_streamed": False,
-                "final_report": None,
-                "retrieved_evidence": [],
-                "kb_context": "",
-                "kb_queries": [],
-                "kb_search_done": False,
-                "pending_tool_calls": [],
+            }
+
+        if ready_tasks(dag, status):
+            trace.append({"event": "continue", "reason": "pending_tasks"})
+            return {
+                **state,
+                "supervisor_decision": "dispatch",
+                "supervisor_trace": trace,
             }
 
         trace.append({"event": "finish", "agent": state.get("last_agent"), "reason": reason})
@@ -408,27 +527,38 @@ def build_supervisor_graph(
             "supervisor_trace": trace,
         }
 
-    def after_route(state: SupervisorState) -> str:
-        return "dispatch"
+    def after_route(_state: SupervisorState) -> str:
+        return "schedule"
 
-    def after_dispatch(state: SupervisorState) -> str:
+    def after_schedule(state: SupervisorState) -> str:
+        if state.get("supervisor_decision") == "dispatch" and state.get("active_agent"):
+            return "dispatch"
+        return "end"
+
+    def after_dispatch(_state: SupervisorState) -> str:
         return "review"
 
     def after_review(state: SupervisorState) -> str:
         if state.get("supervisor_decision") == "dispatch":
-            return "dispatch"
+            return "schedule"
         return "end"
 
     g = StateGraph(SupervisorState)
     g.add_node("route", route_node)
+    g.add_node("schedule", schedule_node)
     g.add_node("dispatch", dispatch_node)
     g.add_node("review", review_node)
     g.set_entry_point("route")
-    g.add_conditional_edges("route", after_route, {"dispatch": "dispatch"})
+    g.add_conditional_edges("route", after_route, {"schedule": "schedule"})
+    g.add_conditional_edges(
+        "schedule",
+        after_schedule,
+        {"dispatch": "dispatch", "end": END},
+    )
     g.add_conditional_edges("dispatch", after_dispatch, {"review": "review"})
     g.add_conditional_edges(
         "review",
         after_review,
-        {"dispatch": "dispatch", "end": END},
+        {"schedule": "schedule", "end": END},
     )
     return g.compile(), parent_cost
