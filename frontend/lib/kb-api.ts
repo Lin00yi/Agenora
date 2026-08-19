@@ -135,29 +135,6 @@ export type KbMemberListResponse = {
   }[];
 };
 
-/** v2-M9: share-link invitation row. id IS the URL token. */
-export type KbInvitation = {
-  id: string;
-  kb_id: string;
-  role: MemberRole;
-  created_by: string;
-  expires_at: string | null;
-  max_uses: number | null;
-  uses_count: number;
-  revoked: boolean;
-  created_at: string | null;
-};
-
-/** v2-M9: GET /api/invitations/{token} preview shape (before accept). */
-export type InvitationPreview = {
-  kb_id: string;
-  kb_name: string;
-  role: MemberRole;
-  expires_at: string | null;
-  max_uses: number | null;
-  uses_count: number;
-};
-
 /** Structured error from KB endpoints. v2-M2 BYOK gate surfaces `detail.code`
  *  (e.g. "embedding_not_configured") so the page can route to /settings. */
 export class KbApiError extends Error {
@@ -180,18 +157,6 @@ export class KbApiError extends Error {
 function localizeKbApiMessage(message: string): string {
   const text = message.trim();
   const lower = text.toLowerCase();
-  if (lower.includes("invitation invalid") || lower.includes("revoked")) {
-    return "邀请链接无效或已被撤销。";
-  }
-  if (lower.includes("invitation expired")) {
-    return "邀请链接已过期。";
-  }
-  if (lower.includes("invitation exhausted")) {
-    return "邀请链接已达到使用次数上限。";
-  }
-  if (lower.includes("kb no longer exists")) {
-    return "对应的知识库已不存在。";
-  }
   if (lower === "kb not found") {
     return "未找到知识库。";
   }
@@ -552,51 +517,6 @@ export async function patchMember(
 export async function removeMember(kbId: string, userId: string): Promise<void> {
   await unwrap(
     await authFetch(`/api/kbs/${kbId}/members/${userId}`, { method: "DELETE" })
-  );
-}
-
-// ---------------------------------------------------------------------------
-// v2-M9: Share-link invitations
-// ---------------------------------------------------------------------------
-export async function listInvitations(kbId: string): Promise<KbInvitation[]> {
-  return unwrap(await authFetch(`/api/kbs/${kbId}/invitations`));
-}
-
-export async function createInvitation(
-  kbId: string,
-  body: { role: MemberRole; expires_at?: string | null; max_uses?: number | null }
-): Promise<KbInvitation> {
-  return unwrap(
-    await authFetch(`/api/kbs/${kbId}/invitations`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    })
-  );
-}
-
-export async function deleteInvitation(
-  kbId: string,
-  invitationId: string
-): Promise<void> {
-  await unwrap(
-    await authFetch(`/api/kbs/${kbId}/invitations/${invitationId}`, {
-      method: "DELETE",
-    })
-  );
-}
-
-/** Public preview before user clicks "accept". Returns 404 / 410 if invalid. */
-export async function peekInvitation(token: string): Promise<InvitationPreview> {
-  return unwrap(await authFetch(`/api/invitations/${token}`));
-}
-
-/** Accepts the invitation; idempotent. Returns the kb_id + role granted. */
-export async function acceptInvitation(
-  token: string
-): Promise<{ kb_id: string; role: KbRole }> {
-  return unwrap(
-    await authFetch(`/api/invitations/${token}/accept`, { method: "POST" })
   );
 }
 

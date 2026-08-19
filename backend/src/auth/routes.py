@@ -141,7 +141,7 @@ async def purge_user(session: AsyncSession, user: User) -> None:
     remaining metadata stay in place and the same DELETE can be retried.
     """
     from src.conversations.models import Conversation, ConversationSummary, Message, UserMemory
-    from src.kb.models import KB, KBInvitation, KBMember
+    from src.kb.models import KB, KBMember
     from src.kb.routes import purge_kb
     from src.observability.models import Observation, Trace
     from src.settings_user.models import LLMConnection, LLMModelProfile
@@ -170,10 +170,9 @@ async def purge_user(session: AsyncSession, user: User) -> None:
         await session.execute(delete(UserMemory).where(UserMemory.user_id == user_id))
         await session.execute(delete(LLMModelProfile).where(LLMModelProfile.user_id == user_id))
         await session.execute(delete(LLMConnection).where(LLMConnection.user_id == user_id))
-        # Remove the user as a collaborator or invitation creator on KBs owned
-        # by other accounts too; those rows otherwise retain a deleted identity.
+        # Remove the user as a collaborator on KBs owned by other accounts too;
+        # those rows otherwise retain a deleted identity.
         await session.execute(delete(KBMember).where(KBMember.user_id == user_id))
-        await session.execute(delete(KBInvitation).where(KBInvitation.created_by == user_id))
         await session.delete(user)
         await session.commit()
         log.info("user_purge_completed", user_id=user_id, owned_kb_count=len(owned_kbs))

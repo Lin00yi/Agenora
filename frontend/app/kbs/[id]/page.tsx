@@ -5,11 +5,9 @@ import {
   AlertCircle,
   BookOpen,
   ClipboardList,
-  Copy,
   Eye,
   FileText,
   Layers,
-  Link2,
   Lock,
   Play,
   Plus,
@@ -69,14 +67,11 @@ import { getToken } from "@/lib/auth";
 import { toastApiError } from "@/lib/byok-toast";
 import { cn } from "@/lib/cn";
 import {
-  createInvitation,
   deleteDocument,
-  deleteInvitation,
   deleteKb,
   formatKbRole,
   getKb,
   inviteMember,
-  listInvitations,
   listMembers,
   patchDocument,
   patchKb,
@@ -90,7 +85,6 @@ import {
   type DocStatus,
   type Document,
   type KBDetail,
-  type KbInvitation,
   type KbMemberListResponse,
   type KbRole,
   type MemberRole,
@@ -262,7 +256,7 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
     }
   };
 
-  // v3-M1: KB-level deletion (owner only). Backend cascades members + invitations.
+  // v3-M1: KB-level deletion (owner only). Backend cascades members.
   const confirmDeleteKb = async () => {
     setDeletingKb(true);
     try {
@@ -1263,7 +1257,7 @@ function MembersSection({ kbId, isOwner }: { kbId: string; isOwner: boolean }) {
           density="compact"
           icon={Users}
           title="暂无成员"
-          description="所有者可以通过邮箱或邀请链接添加协作者。"
+          description="所有者可以通过邮箱添加协作者。"
           className="m-4"
         />
       ) : (
@@ -1376,9 +1370,6 @@ function MembersSection({ kbId, isOwner }: { kbId: string; isOwner: boolean }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// v2-M9: Invite dialog - two tabs (by email, by link)
-// ---------------------------------------------------------------------------
 function InviteDialog({
   kbId,
   open,
@@ -1390,37 +1381,16 @@ function InviteDialog({
   onClose: () => void;
   onInvited: () => void;
 }) {
-  const [tab, setTab] = useState<"email" | "link">("email");
   const [email, setEmail] = useState("");
   const [emailRole, setEmailRole] = useState<MemberRole>("editor");
   const [emailBusy, setEmailBusy] = useState(false);
 
-  const [linkRole, setLinkRole] = useState<MemberRole>("viewer");
-  const [linkExpiresHours, setLinkExpiresHours] = useState<string>("");
-  const [linkMaxUses, setLinkMaxUses] = useState<string>("");
-  const [linkBusy, setLinkBusy] = useState(false);
-  const [invitations, setInvitations] = useState<KbInvitation[]>([]);
-
-  const reload = useCallback(async () => {
-    try {
-      const list = await listInvitations(kbId);
-      setInvitations(list);
-    } catch (e) {
-      console.warn("listInvitations failed (non-fatal)", e);
-    }
-  }, [kbId]);
-
   useEffect(() => {
     if (open) {
-      setTab("email");
       setEmail("");
       setEmailRole("editor");
-      setLinkRole("viewer");
-      setLinkExpiresHours("");
-      setLinkMaxUses("");
-      void reload();
     }
-  }, [open, reload]);
+  }, [open]);
 
   const onInviteEmail = async (e: FormEvent) => {
     e.preventDefault();
@@ -1438,53 +1408,6 @@ function InviteDialog({
     }
   };
 
-  const onCreateLink = async () => {
-    setLinkBusy(true);
-    try {
-      const hours = linkExpiresHours.trim() ? Number(linkExpiresHours) : null;
-      const maxUses = linkMaxUses.trim() ? Number(linkMaxUses) : null;
-      const expires_at =
-        hours && hours > 0
-          ? new Date(Date.now() + hours * 3600 * 1000).toISOString()
-          : null;
-      await createInvitation(kbId, {
-        role: linkRole,
-        expires_at,
-        max_uses: maxUses,
-      });
-      toast.success("已生成分享链接");
-      await reload();
-    } catch (err) {
-      toast.error((err as Error).message);
-    } finally {
-      setLinkBusy(false);
-    }
-  };
-
-  const onRevoke = async (invId: string) => {
-    try {
-      await deleteInvitation(kbId, invId);
-      toast.success("已撤销链接");
-      await reload();
-    } catch (err) {
-      toast.error((err as Error).message);
-    }
-  };
-
-  const buildUrl = (token: string) => {
-    if (typeof window === "undefined") return `/invite/${token}`;
-    return `${window.location.origin}/invite/${token}`;
-  };
-
-  const copy = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.success("已复制");
-    } catch {
-      toast.error("复制失败");
-    }
-  };
-
   return (
     <AppModal
       open={open}
@@ -1492,194 +1415,51 @@ function InviteDialog({
         if (!next) onClose();
       }}
       title="邀请协作者"
-      description="通过邮箱添加成员，或生成可撤销的分享邀请链接。"
+      description="通过已注册账号的邮箱添加成员。"
       icon={
         <span className="admin-icon-tile admin-icon-tile-brand">
           <UserPlus className="h-4 w-4" />
         </span>
       }
       size="lg"
-      bodyClassName="p-0"
     >
-      <div className="grid grid-cols-2 gap-1 border-b border-surface-border/70 bg-surface-2/45 p-1">
-        <button
-          type="button"
-          onClick={() => setTab("email")}
-          className={cn(
-            "inline-flex h-[var(--control-h)] cursor-pointer items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-[background-color,color,box-shadow]",
-            tab === "email"
-              ? "bg-surface text-ink shadow-sm"
-              : "text-muted hover:bg-surface/70 hover:text-ink"
-          )}
+      <form onSubmit={onInviteEmail} className="space-y-4">
+        <div className="rounded-lg border border-surface-border/70 bg-surface-2/45 px-3 py-2 text-xs leading-5 text-muted">
+          被邀请者必须先在 Agenora 注册一个账号，再用该邮箱邀请。
+        </div>
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
+          <label className="space-y-1.5 text-xs font-medium text-muted">
+            <span>邮箱地址</span>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="bob@example.com"
+              className={inviteInputClass}
+            />
+          </label>
+          <label className="space-y-1.5 text-xs font-medium text-muted">
+            <span>角色</span>
+            <Select
+              value={emailRole}
+              onChange={(e) => setEmailRole(e.target.value as MemberRole)}
+              options={[
+                { value: "editor", label: `${formatKbRole("editor")}（读+写文档）` },
+                { value: "viewer", label: formatKbRole("viewer") },
+              ]}
+              className="h-[var(--control-h)] w-full admin-select-trigger"
+            />
+          </label>
+        </div>
+        <Button
+          type="submit"
+          disabled={emailBusy || !email.trim()}
+          className="w-full"
         >
-          <UserPlus className="h-3.5 w-3.5" />
-          按邮箱邀请
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("link")}
-          className={cn(
-            "inline-flex h-[var(--control-h)] cursor-pointer items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-[background-color,color,box-shadow]",
-            tab === "link"
-              ? "bg-surface text-ink shadow-sm"
-              : "text-muted hover:bg-surface/70 hover:text-ink"
-          )}
-        >
-          <Link2 className="h-3.5 w-3.5" />
-          生成分享链接
-        </button>
-      </div>
-
-      <div className="p-5">
-        {tab === "email" ? (
-          <form onSubmit={onInviteEmail} className="space-y-4">
-            <div className="rounded-lg border border-surface-border/70 bg-surface-2/45 px-3 py-2 text-xs leading-5 text-muted">
-              被邀请者必须先在 Agenora 注册一个账号，再用该邮箱邀请。
-            </div>
-            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
-              <label className="space-y-1.5 text-xs font-medium text-muted">
-                <span>邮箱地址</span>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="bob@example.com"
-                  className={inviteInputClass}
-                />
-              </label>
-              <label className="space-y-1.5 text-xs font-medium text-muted">
-                <span>角色</span>
-                <Select
-                  value={emailRole}
-                  onChange={(e) => setEmailRole(e.target.value as MemberRole)}
-                  options={[
-                    { value: "editor", label: `${formatKbRole("editor")}（读+写文档）` },
-                    { value: "viewer", label: formatKbRole("viewer") },
-                  ]}
-                  className="h-[var(--control-h)] w-full admin-select-trigger"
-                />
-              </label>
-            </div>
-            <Button
-              type="submit"
-              disabled={emailBusy || !email.trim()}
-              className="w-full"
-            >
-              {emailBusy ? "邀请中..." : "发送邀请"}
-            </Button>
-          </form>
-        ) : (
-          <div className="space-y-5">
-            <div className="grid gap-3 rounded-lg border border-surface-border/70 bg-surface-2/35 p-4">
-              <label className="space-y-1.5 text-xs font-medium text-muted">
-                <span>角色</span>
-                <Select
-                  value={linkRole}
-                  onChange={(e) => setLinkRole(e.target.value as MemberRole)}
-                  options={[
-                    { value: "viewer", label: formatKbRole("viewer") },
-                    { value: "editor", label: `${formatKbRole("editor")}（读+写）` },
-                  ]}
-                  className="h-[var(--control-h)] w-full admin-select-trigger"
-                />
-              </label>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="space-y-1.5 text-xs font-medium text-muted">
-                  <span>有效期（小时）</span>
-                  <input
-                    type="number"
-                    min="0"
-                    value={linkExpiresHours}
-                    onChange={(e) => setLinkExpiresHours(e.target.value)}
-                    placeholder="留空 = 永不过期"
-                    className={inviteInputClass}
-                  />
-                </label>
-                <label className="space-y-1.5 text-xs font-medium text-muted">
-                  <span>最大使用次数</span>
-                  <input
-                    type="number"
-                    min="1"
-                    value={linkMaxUses}
-                    onChange={(e) => setLinkMaxUses(e.target.value)}
-                    placeholder="留空 = 不限"
-                    className={inviteInputClass}
-                  />
-                </label>
-              </div>
-              <Button
-                onClick={onCreateLink}
-                disabled={linkBusy}
-                className="w-full"
-                type="button"
-              >
-                {linkBusy ? "生成中..." : "生成新链接"}
-              </Button>
-            </div>
-
-            {invitations.length > 0 && (
-              <div className="border-t border-surface-border/70 pt-4">
-                <div className="mb-2 text-xs font-medium text-muted">现有链接</div>
-                <ul className="space-y-2">
-                  {invitations.map((inv) => (
-                    <li
-                      key={inv.id}
-                      className={cn(
-                        "rounded-lg border border-surface-border/75 bg-surface px-3 py-2.5 text-xs shadow-sm transition",
-                        inv.revoked && "opacity-55"
-                      )}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="chip chip-brand">{formatKbRole(inv.role)}</span>
-                        {inv.max_uses != null && (
-                          <span className="text-muted">
-                            {inv.uses_count}/{inv.max_uses} 次
-                          </span>
-                        )}
-                        {inv.expires_at && (
-                          <span className="text-muted">
-                            到期 {new Date(inv.expires_at).toLocaleString()}
-                          </span>
-                        )}
-                        {inv.revoked && <span className="text-danger">已撤销</span>}
-                        <div className="flex-1" />
-                        {!inv.revoked && (
-                          <>
-                            <button
-                              onClick={() => copy(buildUrl(inv.id))}
-                              className="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg border border-transparent text-muted transition hover:border-brand/20 hover:bg-brand/10 hover:text-brand"
-                              title="复制链接"
-                              aria-label="复制邀请链接"
-                              type="button"
-                            >
-                              <Copy className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              onClick={() => onRevoke(inv.id)}
-                              className="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg border border-transparent text-muted transition hover:border-danger/20 hover:bg-danger/10 hover:text-danger"
-                              title="撤销"
-                              aria-label="撤销邀请链接"
-                              type="button"
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                      {!inv.revoked && (
-                        <div className="mt-2 break-all rounded-md border border-surface-border/60 bg-surface-2/55 px-2 py-1.5 font-mono text-[11px] leading-5 text-muted">
-                          {buildUrl(inv.id)}
-                        </div>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+          {emailBusy ? "邀请中..." : "发送邀请"}
+        </Button>
+      </form>
     </AppModal>
   );
 }

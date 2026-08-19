@@ -60,7 +60,6 @@ from src.kb.models import (
     ChunkStrategy,
     Document,
     IngestionJob,
-    KBInvitation,
     KBMember,
     KbEvalRun,
 )
@@ -69,10 +68,6 @@ from src.settings_user import require_user_embedding, resolve_user_embedding
 from src.settings_user.kb_resolvers import resolve_kb_embedding
 
 router = APIRouter(prefix="/api/kbs", tags=["kbs"])
-
-# v2-M9: invitations live under their own top-level prefix because the
-# accept endpoint identifies the KB via token, not via kb_id in the path.
-invitations_router = APIRouter(prefix="/api/invitations", tags=["invitations"])
 
 
 # Max single-upload size: 50 MB. Bigger files should be split or moved to a
@@ -164,12 +159,6 @@ class PatchMemberRequest(BaseModel):
     role: str = Field(pattern="^(editor|viewer)$")
 
 
-class CreateInvitationRequest(BaseModel):
-    role: str = Field(pattern="^(editor|viewer)$")
-    expires_at: Optional[datetime] = None
-    max_uses: Optional[int] = Field(default=None, ge=1, le=1000)
-
-
 class PutEvalConfigRequest(BaseModel):
     golden_set_jsonl: Optional[str] = Field(default=None, max_length=2_000_000)
     gate_json: Optional[str] = Field(default=None, max_length=100_000)
@@ -216,7 +205,7 @@ async def _load_writable_kb(session: AsyncSession, kb_id: str, user_id: str) -> 
 
 
 async def _load_owner_kb(session: AsyncSession, kb_id: str, user_id: str) -> KB:
-    """For owner-only paths (delete KB, manage members, manage invitations)."""
+    """For owner-only paths (delete KB, manage members)."""
     kb, role = await _resolve_role(session, kb_id, user_id)
     if role != "owner":
         raise HTTPException(status_code=403, detail="owner role required")
@@ -503,7 +492,7 @@ async def get_kb(
 
 async def purge_kb(session: AsyncSession, kb: KB) -> None:
     """Drop a KB's vector collection, delete its row (cascades documents /
-    members / invitations) and remove uploaded files from disk.
+    members) and remove uploaded files from disk.
 
     Shared by the owner delete route (DELETE /api/kbs/{id}) and the admin
     delete endpoint (DELETE /api/admin/kbs/{id}); callers authorize first.
@@ -541,7 +530,7 @@ async def purge_kb(session: AsyncSession, kb: KB) -> None:
     if hasattr(store, "delete_collection"):
         await store.delete_collection(collection_name)
 
-    await session.delete(kb)  # cascade deletes Document / member / invitation rows
+    await session.delete(kb)  # cascade deletes Document / member rows
     await session.commit()
 
     # Clean up uploaded files on disk.
@@ -1521,148 +1510,3 @@ async def remove_member(
     await session.delete(m)
     await session.commit()
 
-
-# ---------------------------------------------------------------------------
-# v2-M9: Share-link invitations management
-# ---------------------------------------------------------------------------
-@router.get("/{kb_id}/invitations")
-async def list_invitations(
-    kb_id: str,
-    user: CurrentUser,
-    session: AsyncSession = Depends(get_session),
-) -> list[dict]:
-    """List all share-link invitations for a KB. Owner only."""
-    kb = await _load_owner_kb(session, kb_id, user.id)
-    invs = list(kb.invitations) if kb.invitations is not None else []
-    invs.sort(key=lambda i: i.created_at, reverse=True)
-    return [i.to_public_dict() for i in invs]
-
-
-@router.post("/{kb_id}/invitations", status_code=status.HTTP_201_CREATED)
-async def create_invitation(
-    kb_id: str,
-    req: CreateInvitationRequest,
-    user: CurrentUser,
-    session: AsyncSession = Depends(get_session),
-) -> dict:
-    """Create a share-link invitation token. Owner only."""
-    kb = await _load_owner_kb(session, kb_id, user.id)
-    inv = KBInvitation(
-        id=str(uuid.uuid4()),
-        kb_id=kb.id,
-        role=req.role,
-        created_by=user.id,
-        expires_at=req.expires_at,
-        max_uses=req.max_uses,
-    )
-    session.add(inv)
-    await session.commit()
-    await session.refresh(inv)
-    return inv.to_public_dict()
-
-
-@router.delete(
-    "/{kb_id}/invitations/{invitation_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    response_model=None,
-)
-async def revoke_invitation(
-    kb_id: str,
-    invitation_id: str,
-    user: CurrentUser,
-    session: AsyncSession = Depends(get_session),
-) -> None:
-    """Revoke (soft-delete) a share-link invitation. Owner only.
-
-    Sets `revoked=True` rather than DELETE so accept attempts get 404 (not
-    confused with 'never existed'). Old rows can be GC'd separately if needed.
-    """
-    kb = await _load_owner_kb(session, kb_id, user.id)
-    inv = await session.get(KBInvitation, invitation_id)
-    if inv is None or inv.kb_id != kb.id:
-        raise HTTPException(status_code=404, detail="invitation not found")
-    inv.revoked = True
-    await session.commit()
-
-
-# ---------------------------------------------------------------------------
-# v2-M9: Accept invitation (independent router — no kb_id in path)
-# ---------------------------------------------------------------------------
-@invitations_router.get("/{token}")
-async def peek_invitation(
-    token: str,
-    user: CurrentUser,
-    session: AsyncSession = Depends(get_session),
-) -> dict:
-    """Preview an invitation without accepting (for the /invite/[token] page
-    to show KB name + role before the user clicks confirm)."""
-    inv = await session.get(KBInvitation, token)
-    if inv is None or inv.revoked:
-        raise HTTPException(status_code=404, detail="invitation invalid or revoked")
-    if inv.expires_at and inv.expires_at < _utcnow():
-        raise HTTPException(status_code=410, detail="invitation expired")
-    if inv.max_uses is not None and inv.uses_count >= inv.max_uses:
-        raise HTTPException(status_code=410, detail="invitation exhausted")
-    kb = await session.get(KB, inv.kb_id)
-    if kb is None:
-        raise HTTPException(status_code=404, detail="kb no longer exists")
-    return {
-        "kb_id": kb.id,
-        "kb_name": kb.name,
-        "role": inv.role,
-        "expires_at": inv.expires_at.isoformat() if inv.expires_at else None,
-        "max_uses": inv.max_uses,
-        "uses_count": inv.uses_count,
-    }
-
-
-@invitations_router.post("/{token}/accept")
-async def accept_invitation(
-    token: str,
-    user: CurrentUser,
-    session: AsyncSession = Depends(get_session),
-) -> dict:
-    """Accept a share-link invitation. Any authenticated user can call.
-
-    Returns `{kb_id, role}`. Idempotent: if already a member, returns the
-    existing role without incrementing uses_count. Owner calling on their
-    own KB is a no-op returning role='owner'.
-    """
-    inv = await session.get(KBInvitation, token)
-    if inv is None or inv.revoked:
-        raise HTTPException(status_code=404, detail="invitation invalid or revoked")
-    if inv.expires_at and inv.expires_at < _utcnow():
-        raise HTTPException(status_code=410, detail="invitation expired")
-    if inv.max_uses is not None and inv.uses_count >= inv.max_uses:
-        raise HTTPException(status_code=410, detail="invitation exhausted")
-
-    kb = await session.get(KB, inv.kb_id)
-    if kb is None:
-        raise HTTPException(status_code=404, detail="kb no longer exists")
-
-    # Owner accepting own KB's invitation is a no-op.
-    if kb.user_id == user.id:
-        return {"kb_id": kb.id, "role": "owner"}
-
-    # Idempotent on existing membership.
-    existing = (
-        await session.execute(
-            select(KBMember).where(
-                KBMember.kb_id == kb.id, KBMember.user_id == user.id
-            )
-        )
-    ).scalar_one_or_none()
-    if existing is not None:
-        return {"kb_id": kb.id, "role": existing.role}
-
-    session.add(
-        KBMember(
-            kb_id=kb.id,
-            user_id=user.id,
-            role=inv.role,
-            invited_by=inv.created_by,
-        )
-    )
-    inv.uses_count += 1
-    await session.commit()
-    return {"kb_id": kb.id, "role": inv.role}

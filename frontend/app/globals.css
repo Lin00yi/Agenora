@@ -1230,22 +1230,6 @@
     color: rgb(var(--danger));
   }
 
-  .app-share-card-brandbar {
-    /* Share images are self-contained, so keep their brand bar stable instead
-       of using --brand, which intentionally inverts to white in dark mode. */
-    background: rgb(23 23 23);
-    color: rgb(255 255 255);
-  }
-
-  .app-share-card-brandmark {
-    border-color: rgb(255 255 255 / 0.25);
-    background: rgb(255 255 255 / 0.18);
-  }
-
-  .app-share-card-muted {
-    color: rgb(255 255 255 / 0.8);
-  }
-
   .app-theme-toggle-item {
     border-color: transparent;
     color: rgb(var(--text-subtle));

@@ -15,10 +15,8 @@ Schema decisions:
   don't use SQL ENUM to keep migrations painless on SQLite.
 - `KB.is_system` (M4) marks built-in read-only KBs that all users can read
   but only the seeder can write. The travel demo KB lives here.
-- `KBMember` / `KBInvitation` (v2-M9) carry collaboration state:
-    * KBMember = established (kb_id, user_id) → role
-    * KBInvitation = pending share-link tokens (n→m link)
-  Both cascade-delete with the parent KB.
+- `KBMember` (v2-M9) carries collaboration state:
+    established (kb_id, user_id) → role. Rows cascade-delete with the parent KB.
 """
 from __future__ import annotations
 
@@ -137,12 +135,6 @@ class KB(Base):
     )
 
     members: Mapped[list["KBMember"]] = relationship(
-        back_populates="kb",
-        cascade="all, delete-orphan",
-        lazy="selectin",
-    )
-
-    invitations: Mapped[list["KBInvitation"]] = relationship(
         back_populates="kb",
         cascade="all, delete-orphan",
         lazy="selectin",
@@ -429,53 +421,6 @@ class KBMember(Base):
             "user_id": self.user_id,
             "role": self.role,
             "invited_by": self.invited_by or None,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-        }
-
-
-class KBInvitation(Base):
-    """Pending share-link token. v2-M9.
-
-    `id` is also the URL token (UUID4). The link can be:
-      - bounded in time (expires_at)
-      - bounded in uses (max_uses + uses_count)
-      - manually revoked (revoked=True)
-
-    On accept, a KBMember row is created and uses_count incremented. If the
-    user is already a member, accept is idempotent (no bump).
-    """
-
-    __tablename__ = "kb_invitations"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    kb_id: Mapped[str] = mapped_column(
-        String(36),
-        ForeignKey("kbs.id", ondelete="CASCADE"),
-        index=True,
-        nullable=False,
-    )
-    role: Mapped[str] = mapped_column(String(16), nullable=False)  # "editor" | "viewer"
-    created_by: Mapped[str] = mapped_column(String(36), nullable=False)
-    expires_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    max_uses: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    uses_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    revoked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
-
-    kb: Mapped[KB] = relationship(back_populates="invitations")
-
-    def to_public_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "kb_id": self.kb_id,
-            "role": self.role,
-            "created_by": self.created_by,
-            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
-            "max_uses": self.max_uses,
-            "uses_count": self.uses_count,
-            "revoked": bool(self.revoked),
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 

@@ -33,7 +33,6 @@ from src.infra.llm import normalize_model_name
 from src.infra.rate_limit import check as rate_check
 from src.infra import generation_lock
 from src.kb.models import KB
-from src.kb.routes import invitations_router
 from src.kb.routes import router as kb_router
 from src.safety.input_filter import sanitize_user_input
 from src.safety.output_filter import redact_sensitive_output
@@ -88,7 +87,6 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(kb_router)
-app.include_router(invitations_router)
 app.include_router(conversations_router)
 
 from src.settings_user.routes import router as settings_router  # noqa: E402

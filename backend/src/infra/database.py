@@ -86,15 +86,20 @@ async def init_db() -> None:
 
 
 def _migrate_additive_columns(sync_conn) -> None:
-    """Add columns that were introduced after the initial table creation.
+    """Add missing columns and drop retired tables after create_all.
 
-    Idempotent — each ALTER only runs if the column is missing. Keeps existing
-    dev DBs working without needing to drop+recreate.
+    Idempotent — each ALTER only runs if the column is missing, and retired
+    tables are dropped only when still present. Keeps existing dev DBs working
+    without needing to drop+recreate.
     """
     from sqlalchemy import inspect, text
 
     insp = inspect(sync_conn)
     tables = set(insp.get_table_names())
+
+    if "kb_invitations" in tables:
+        sync_conn.execute(text("DROP TABLE IF EXISTS kb_invitations"))
+        tables.discard("kb_invitations")
 
     # M4: kbs.is_system (bool, default 0)
     if "kbs" in tables:
