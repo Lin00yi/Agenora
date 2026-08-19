@@ -282,23 +282,35 @@ def _router_system_prompt(*, has_kb: bool, available: list[str], layer: RouteSou
         else "当前未绑定知识库，只能安排 qa_chat。"
     )
     depth = (
-        "你是快速意图分流器（triage）。只做粗分，拿不准时把 confidence 设为 low。"
+        "你是快速意图分流器（triage）。只输出单个任务，拿不准时把 confidence 设为 low。"
+        "需要「先知识库再联网/通用」时不要自己排两步，把 confidence 设为 low。"
         if layer == "triage"
-        else "你是复杂意图路由器。可安排 qa_kb 后接 qa_chat（知识库不够再通用/联网）。"
+        else (
+            "你是复杂意图路由器。绑定 KB 时：纯知识库事实用 [qa_kb]；"
+            "知识库可能不够、还要通用回答或联网时用 [qa_kb → qa_chat]。"
+            "不要把每道 KB 题都排成两步。"
+        )
     )
     hybrid = (
         "绑定 KB 时允许 tasks 为 [qa_kb] 或 [qa_kb → qa_chat]。不要输出并行任务。"
         if has_kb
         else "只能输出一个 qa_chat 任务。"
     )
+    two_step_example = (
+        '{"tasks":['
+        '{"id":"task_1","type":"qa_kb","capabilities":["kb_read"],"depends_on":[]},'
+        '{"id":"task_2","type":"qa_chat","capabilities":["chat","web_search"],'
+        '"depends_on":["task_1"]}],"confidence":"high","reason":"needs_kb_then_web"}'
+        if layer == "complex" and has_kb
+        else '{"tasks":[{"id":"task_1","type":"qa_kb","capabilities":["kb_read"],"depends_on":[]}],'
+        '"confidence":"high","reason":"needs_kb_fact"}'
+    )
     return (
         f"{depth}\n"
         f"{kb_line}\n"
         f"{hybrid}\n"
         "只输出 JSON，不要解释。\n"
-        "任务格式：\n"
-        '{"tasks":[{"id":"task_1","type":"qa_kb","capabilities":["kb_read"],"depends_on":[]}],'
-        '"confidence":"high","reason":"needs_kb_fact"}\n'
+        f"任务格式：\n{two_step_example}\n"
         "type 只能是 qa_kb 或 qa_chat。\n"
         "capabilities 只能来自 kb_read / chat / web_search。\n"
         "qa_chat 默认 capabilities 为 [chat, web_search]；qa_kb 为 [kb_read]。\n"

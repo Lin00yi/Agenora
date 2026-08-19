@@ -151,6 +151,28 @@ def _subgraph_input(state: SupervisorState) -> dict[str, Any]:
     return out
 
 
+def _dag_event_tasks(dag: TaskDag) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": t.get("id"),
+            "type": t.get("type"),
+            "agent": t.get("agent"),
+            "depends_on": t.get("depends_on") or [],
+        }
+        for t in dag.get("tasks") or []
+    ]
+
+
+def _dag_ready_event(dag: TaskDag) -> dict[str, Any]:
+    return {
+        "event": "dag_ready",
+        "reason": dag.get("reason") or "planned",
+        "source": dag.get("source") or "fallback",
+        "confidence": dag.get("confidence") or "medium",
+        "tasks": _dag_event_tasks(dag),
+    }
+
+
 def _merge_tool_logs(*groups: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
     merged: list[dict[str, Any]] = []
     for group in groups:
@@ -201,7 +223,7 @@ def build_supervisor_graph(
     settings = get_settings()
     if allow_rag_chat_handoff is None:
         allow_rag_chat_handoff = bool(
-            getattr(settings, "agent_allow_rag_chat_handoff", False)
+            getattr(settings, "agent_allow_rag_chat_handoff", True)
         )
 
     parent_cost = CostTracker()
@@ -245,32 +267,7 @@ def build_supervisor_graph(
                 ],
             }
         )
-        await em(
-            {
-                "event": "dag_ready",
-                "reason": reason,
-                "source": decision["source"],
-                "confidence": decision["confidence"],
-                "tasks": [
-                    {
-                        "id": t.get("id"),
-                        "type": t.get("type"),
-                        "agent": t.get("agent"),
-                        "depends_on": t.get("depends_on") or [],
-                    }
-                    for t in dag.get("tasks") or []
-                ],
-            }
-        )
-        await em(
-            {
-                "event": "agent_route",
-                "agent": agent_id,
-                "reason": reason,
-                "source": decision["source"],
-                "confidence": decision["confidence"],
-            }
-        )
+        await em(_dag_ready_event(dag))
         base_messages = list(state.get("base_messages") or state.get("messages") or [])
         return {
             **state,
@@ -494,6 +491,7 @@ def build_supervisor_graph(
                     "reason": reason,
                 }
             )
+            await em(_dag_ready_event(bound))
             trace.append(
                 {
                     "event": "handoff",

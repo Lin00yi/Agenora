@@ -36,6 +36,7 @@ const NAME_LABEL: Record<string, string> = {
   web_search: "搜索网络",
   generate_kb_report: "生成知识库报告",
   get_current_time: "获取当前时间",
+  dag_ready: "处理计划",
   agent_route: "选择处理方式",
   agent_handoff: "切换处理方式",
 };
@@ -44,6 +45,30 @@ const AGENT_LABEL: Record<string, string> = {
   chat: "通用对话",
   rag: "知识库问答",
 };
+
+const TASK_LABEL: Record<string, string> = {
+  qa_kb: "查阅知识库",
+  qa_chat: "通用对话",
+};
+
+type DagTask = {
+  id?: string;
+  type?: string;
+  agent?: string;
+  depends_on?: string[];
+};
+
+export function formatDagPlan(tasks: unknown): string {
+  if (!Array.isArray(tasks) || tasks.length === 0) return "";
+  const labels = tasks.map((raw) => {
+    const task = raw as DagTask;
+    if (task.type && TASK_LABEL[task.type]) return TASK_LABEL[task.type];
+    if (task.agent === "rag") return TASK_LABEL.qa_kb;
+    if (task.agent === "chat") return TASK_LABEL.qa_chat;
+    return AGENT_LABEL[String(task.agent ?? "")] || "处理";
+  });
+  return labels.join(" → ");
+}
 
 /**
  * Compact processing record for end users.
@@ -151,10 +176,19 @@ function ProcessEvent({ event, now }: { event: ToolEvent; now: number }) {
   );
 }
 
-/** Drop consecutive identical route rows; keep handoff + tools. */
-function compactEvents(events: ToolEvent[]): ToolEvent[] {
+/** Keep the latest plan; hide internal agent_route once a DAG is shown. */
+export function compactEvents(events: ToolEvent[]): ToolEvent[] {
+  const latestPlan = [...events].reverse().find((event) => event.name === "dag_ready");
   const out: ToolEvent[] = [];
+  let planEmitted = false;
   for (const event of events) {
+    if (latestPlan && event.name === "agent_route") continue;
+    if (event.name === "dag_ready") {
+      if (planEmitted || !latestPlan) continue;
+      out.push(latestPlan);
+      planEmitted = true;
+      continue;
+    }
     const prev = out[out.length - 1];
     if (
       event.name === "agent_route" &&
@@ -170,15 +204,10 @@ function compactEvents(events: ToolEvent[]): ToolEvent[] {
 }
 
 function getTraceSummary(events: ToolEvent[], hasRunning: boolean, elapsedMs: number | null): string {
-  const agentHint = latestAgentLabel(events);
+  const agentHint = latestPlanOrAgentLabel(events);
   if (hasRunning) {
     const active = events.filter((event) => event.status === "running" && !isRouteEvent(event.name));
     if (active.length === 0) {
-      const routing = [...events].reverse().find((event) => event.name === "agent_route");
-      if (routing) {
-        const target = AGENT_LABEL[String(routing.input?.agent ?? "")] ?? "处理";
-        return `正在使用${target}`;
-      }
       return agentHint ? `${agentHint} · 处理中` : "正在处理";
     }
     const labels = new Set(active.map((event) => NAME_LABEL[event.name] ?? "处理信息"));
@@ -192,6 +221,15 @@ function getTraceSummary(events: ToolEvent[], hasRunning: boolean, elapsedMs: nu
   }
   const base = elapsedMs == null ? "已处理" : `已处理 ${formatElapsed(elapsedMs)}`;
   return agentHint ? `${agentHint} · ${base}` : base;
+}
+
+function latestPlanOrAgentLabel(events: ToolEvent[]): string | null {
+  const plan = [...events].reverse().find((event) => event.name === "dag_ready");
+  if (plan) {
+    const label = formatDagPlan(plan.input?.tasks);
+    if (label) return label;
+  }
+  return latestAgentLabel(events);
 }
 
 function latestAgentLabel(events: ToolEvent[]): string | null {
@@ -223,6 +261,10 @@ function useTraceElapsed(events: ToolEvent[], now: number): number | null {
 }
 
 function formatToolAction(event: ToolEvent): string {
+  if (event.name === "dag_ready") {
+    const plan = formatDagPlan(event.input?.tasks);
+    return plan || "处理计划";
+  }
   if (event.name === "agent_route") {
     const agent = String(event.input?.agent ?? "");
     const label = (AGENT_LABEL[agent] ?? agent) || "处理";
@@ -242,11 +284,7 @@ function formatToolAction(event: ToolEvent): string {
 }
 
 function formatToolDetail(event: ToolEvent): string {
-  if (event.name === "agent_route") {
-    const reason = typeof event.input?.reason === "string" ? event.input.reason : event.reason;
-    return typeof reason === "string" ? formatRouteReason(reason.trim()) : "";
-  }
-  if (event.name === "agent_handoff") {
+  if (event.name === "dag_ready" || event.name === "agent_route" || event.name === "agent_handoff") {
     const reason = typeof event.input?.reason === "string" ? event.input.reason : event.reason;
     return typeof reason === "string" ? formatRouteReason(reason.trim()) : "";
   }
@@ -278,6 +316,7 @@ export function formatRouteReason(reason: string): string {
     chitchat: "闲聊",
     general_chat: "通用对话即可",
     web_needed: "需要联网核实",
+    needs_kb_then_web: "先查知识库，不够再联网",
     multi_intent: "问题含多个意图",
   };
   if (exact[reason]) return exact[reason];
@@ -313,7 +352,7 @@ function isSearchTool(name: string): boolean {
 }
 
 function isRouteEvent(name: string): boolean {
-  return name === "agent_route" || name === "agent_handoff";
+  return name === "dag_ready" || name === "agent_route" || name === "agent_handoff";
 }
 
 function normalizeIssue(issue: string): string {

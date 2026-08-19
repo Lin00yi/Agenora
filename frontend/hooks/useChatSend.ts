@@ -328,9 +328,6 @@ export function useChatSend({
         messagesForBackend,
         (evt: ChatEvent) => {
           switch (evt.event) {
-            case "dag_ready":
-              // Planner topology; ThinkingChain still uses per-task agent_route.
-              break;
             case "context_ready": {
               const trace = evt.memory_trace;
               if (!trace) break;
@@ -360,6 +357,7 @@ export function useChatSend({
               });
               break;
             }
+            case "dag_ready":
             case "agent_route":
             case "agent_handoff": {
               flushTokenPaint();
@@ -371,14 +369,21 @@ export function useChatSend({
                 latency_ms: 0,
                 agent: evt.agent ?? (typeof evt.to === "string" ? evt.to : undefined),
                 input:
-                  evt.event === "agent_route"
+                  evt.event === "dag_ready"
                     ? {
-                        agent: evt.agent,
+                        tasks: evt.tasks ?? [],
                         reason: evt.reason,
-                        source: (evt as { source?: string }).source,
-                        confidence: (evt as { confidence?: string }).confidence,
+                        source: evt.source,
+                        confidence: evt.confidence,
                       }
-                    : { from: evt.from, to: evt.to, reason: evt.reason },
+                    : evt.event === "agent_route"
+                      ? {
+                          agent: evt.agent,
+                          reason: evt.reason,
+                          source: evt.source,
+                          confidence: evt.confidence,
+                        }
+                      : { from: evt.from, to: evt.to, reason: evt.reason },
                 reason: evt.reason,
               };
               if (streamingRef.current) {

@@ -94,8 +94,9 @@ class Settings(BaseSettings):
     # ===== Multi-agent runtime =====
     # supervisor: pluggable chat/rag (default). legacy: single build_graph(kb?).
     agent_runtime_mode: str = "supervisor"  # supervisor | legacy
-    # When True, empty RAG evidence may hand off once to chat (web_search tool).
-    agent_allow_rag_chat_handoff: bool = False
+    # Empty RAG evidence may append a chat follow-up once (web_search stays a chat tool).
+    # Planned qa_kb → qa_chat does not need this flag.
+    agent_allow_rag_chat_handoff: bool = True
     # rule_only | rule_triage | layered (rule → triage → complex)
     agent_route_mode: str = "layered"
 

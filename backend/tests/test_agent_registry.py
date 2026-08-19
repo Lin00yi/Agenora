@@ -147,7 +147,11 @@ async def test_supervisor_routes_unbound_to_chat(monkeypatch: pytest.MonkeyPatch
     )
     assert out["final_report"] == "hello from chat"
     assert out["last_agent"] == "chat"
-    assert any(e.get("event") == "agent_route" and e.get("agent") == "chat" for e in events)
+    assert any(
+        e.get("event") == "dag_ready"
+        and (e.get("tasks") or [{}])[0].get("agent") == "chat"
+        for e in events
+    )
 
 
 @pytest.mark.asyncio
@@ -189,12 +193,18 @@ async def test_supervisor_handoff_rag_to_chat(monkeypatch: pytest.MonkeyPatch) -
     reg._builders["rag"] = build_named("rag")  # noqa: SLF001
     reg._builders["chat"] = build_named("chat")  # noqa: SLF001
 
+    events: list[dict[str, Any]] = []
+
+    async def emit(evt: dict[str, Any]) -> None:
+        events.append(evt)
+
     class FakeKB:
         id = "kb-1"
         name = "Demo"
         description = ""
 
     graph, _ = build_supervisor_graph(
+        emit=emit,
         registry=reg,
         allow_rag_chat_handoff=True,
         kb=FakeKB(),
@@ -217,6 +227,9 @@ async def test_supervisor_handoff_rag_to_chat(monkeypatch: pytest.MonkeyPatch) -
     assert out["last_agent"] == "chat"
     assert out["handoff_count"] == 1
     assert out.get("cost_usd") == pytest.approx(0.03)
+    dag_events = [e for e in events if e.get("event") == "dag_ready"]
+    assert dag_events
+    assert [t.get("agent") for t in dag_events[-1].get("tasks") or []] == ["rag", "chat"]
 
 
 @pytest.mark.asyncio
