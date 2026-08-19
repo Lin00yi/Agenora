@@ -16,7 +16,6 @@ from src.agent.nodes import (
 from src.agent.prompts import (
     SYSTEM_PROMPT_GENERAL,
     build_kb_reason_system_prompt,
-    build_travel_system_prompt,
 )
 from src.agent.state import AgentState
 from src.infra.llm import CostTracker
@@ -44,12 +43,8 @@ def build_graph(
 ):
     """Wire up plan → call_tools loop, parameterized by KB context.
 
-    Three modes (v2-M4):
-      - kb=None: general chat — web_search-only toolset (v2-M5), neutral
-        assistant prompt. No travel fallback (that was v1, fixed in v2-M4).
-      - kb=<system travel demo KB>: travel agent (weather + restaurant_kb +
-        amap + generate_travel_report skill, travel prompt). Reachable only
-        by explicitly selecting "旅行演示库（可选）".
+    Two modes:
+      - kb=None: general chat — web_search + current time, neutral assistant prompt.
       - kb=<user KB>: KB-bound mode (search_kb + optional web_search per
         v2-M6, KB-specific prompt with optional score-tutorial section).
 
@@ -67,8 +62,6 @@ def build_graph(
     KBs ignore reranker regardless. Hit `score` stays cosine so v2-M6 prompt
     threshold logic is preserved.
     """
-    from src.kb.models import SYSTEM_TRAVEL_KB_ID
-
     if registry is None:
         registry = build_default_registry(
             kb=kb,
@@ -82,10 +75,6 @@ def build_graph(
         system_prompt = SYSTEM_PROMPT_GENERAL
         user_kb_mode = False
         web_search_policy = resolve_web_search_policy("general")
-    elif kb.id == SYSTEM_TRAVEL_KB_ID:
-        system_prompt = build_travel_system_prompt()
-        user_kb_mode = False
-        web_search_policy = resolve_web_search_policy("disabled")
     else:
         system_prompt = build_kb_reason_system_prompt(
             kb.name,

@@ -1,83 +1,56 @@
-"""Seed built-in system KBs on app startup.
+"""Startup housekeeping for built-in KBs.
 
-Idempotent: if a system KB row already exists (matched by its fixed UUID),
-we leave it alone. The vector data lives in pre-existing Qdrant collections
-(populated by `data/ingest.py` for the travel demo) — we don't touch Qdrant
-from here.
-
-To add a new built-in KB:
-  1. Pick a stable UUID (constants in src.kb.models)
-  2. If it should override the default `kb_{uuid}` collection name, add a
-     branch to `KB.collection_name`
-  3. Add an `await _seed_one(...)` call in `seed_system_kbs()` below
+The travel demo KB has been removed. On every boot we delete any leftover
+row, unbind conversations that still point at it, and drop the legacy
+``restaurants`` vector collection so existing installs stop listing it.
 """
 from __future__ import annotations
 
 import structlog
+from sqlalchemy import update
 
 from src.infra.database import get_session_factory
-from src.kb.models import KB, SYSTEM_TRAVEL_KB_ID, SYSTEM_USER_ID
+from src.kb.models import KB
 
 log = structlog.get_logger()
 
+# Retired travel demo. Kept only so leftover rows can be identified and purged.
+LEGACY_TRAVEL_KB_ID = "00000000-0000-4000-8000-000000000001"
+LEGACY_TRAVEL_COLLECTION = "restaurants"
+
 
 async def seed_system_kbs() -> None:
-    """Ensure built-in read-only KBs exist. Safe to call on every startup."""
+    """No built-in KBs are seeded. Purge the retired travel demo if present."""
+    await purge_legacy_travel_kb()
+
+
+async def purge_legacy_travel_kb() -> None:
+    """Idempotent removal of the retired travel demo KB and its vectors."""
+    from src.conversations.models import Conversation
+    from src.infra.vector_store import get_store
+    from src.kb.routes import purge_kb
+
     factory = get_session_factory()
     async with factory() as session:
-        await _seed_one(
-            session,
-            kb_id=SYSTEM_TRAVEL_KB_ID,
-            name="旅行演示库（可选）",
-            description=(
-                "Agenora 附带的可选演示知识库：上海 / 北京 / 成都 / 杭州本地餐厅策展数据。"
-                "仅在主动选择时启用天气、高德 POI 与旅行报告等演示工具；"
-                "默认「通用对话」不绑定此库。"
-            ),
-            embedding_model="BAAI/bge-m3",
-            vector_size=1024,
+        unbound = await session.execute(
+            update(Conversation)
+            .where(Conversation.kb_id == LEGACY_TRAVEL_KB_ID)
+            .values(kb_id=None)
         )
+        if unbound.rowcount:
+            log.info("legacy_travel_conversations_unbound", count=unbound.rowcount)
 
-
-async def _seed_one(
-    session,
-    *,
-    kb_id: str,
-    name: str,
-    description: str,
-    embedding_model: str,
-    vector_size: int,
-) -> None:
-    existing = await session.get(KB, kb_id)
-    if existing is not None:
-        # Refresh metadata so updates to name/description here flow through
-        # without requiring a manual DB edit.
-        changed = False
-        if existing.name != name:
-            existing.name = name
-            changed = True
-        if existing.description != description:
-            existing.description = description
-            changed = True
-        if not existing.is_system:
-            existing.is_system = True
-            changed = True
-        if changed:
-            await session.commit()
-            log.info("system_kb_seed_updated", kb_id=kb_id)
+        kb = await session.get(KB, LEGACY_TRAVEL_KB_ID)
+        if kb is not None:
+            await purge_kb(session, kb)
+            log.info("legacy_travel_kb_purged", kb_id=LEGACY_TRAVEL_KB_ID)
         else:
-            log.info("system_kb_seed_skip", kb_id=kb_id)
-        return
+            await session.commit()
+            log.info("legacy_travel_kb_absent")
 
-    kb = KB(
-        id=kb_id,
-        user_id=SYSTEM_USER_ID,
-        name=name,
-        description=description,
-        embedding_model=embedding_model,
-        vector_size=vector_size,
-        is_system=True,
-    )
-    session.add(kb)
-    await session.commit()
-    log.info("system_kb_seed_created", kb_id=kb_id, name=name)
+    store = get_store()
+    if hasattr(store, "delete_collection"):
+        try:
+            await store.delete_collection(LEGACY_TRAVEL_COLLECTION)
+        except Exception:  # noqa: BLE001
+            log.warning("legacy_travel_collection_drop_failed", collection=LEGACY_TRAVEL_COLLECTION)

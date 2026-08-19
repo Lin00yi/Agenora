@@ -149,13 +149,10 @@ def build_default_registry(
 ) -> ToolRegistry:
     """Build the agent's tool set based on which KB (if any) is active.
 
-    Three cases (v2-M4):
+    Two cases:
       1. kb=None — general chat mode. Current time + web search tools so the LLM
          can answer date/time deterministically and pull real-time facts.
-      2. kb=<system travel demo KB> — travel four-tool kit (weather + restaurant_kb
-         + amap + the `generate_travel_report` skill that's wired in `graph.py`).
-         Travel behavior is reachable only via this explicit selection.
-      3. kb=<user KB> — KB-bound mode: `search_kb`, plus optionally a tighter
+      2. kb=<user KB> — KB-bound mode: `search_kb`, plus optionally a tighter
          `web_search` fallback (v2-M6, gated by `user_kb_web_search_enabled`).
 
     `embedding_cfg` (v2-M1): per-user embedding override, threaded through to
@@ -171,13 +168,12 @@ def build_default_registry(
     tighter than the unbound-chat mount because KB chunks should remain the
     primary source.
     """
-    from src.kb.models import SYSTEM_TRAVEL_KB_ID
     from src.infra.web_search_policy import resolve_web_search_policy
 
     reg = ToolRegistry()
 
     # General chat mode. Keep the toolset minimal so the agent doesn't drift
-    # toward travel / KB tools when no KB is selected.
+    # toward KB tools when no KB is selected.
     if kb is None:
         from src.tools.current_time import CurrentTimeTool
         from src.tools.web_search import WebSearchTool
@@ -190,19 +186,6 @@ def build_default_registry(
                 max_results_cap=web_policy.results_per_call,
             )
         )
-        return reg
-
-    # Built-in travel demo KB — keep v1 four-tool kit.
-    if kb.id == SYSTEM_TRAVEL_KB_ID:
-        from src.tools.amap_fallback import AmapFallbackTool
-        from src.tools.restaurant_rag import RestaurantRagTool
-        from src.tools.skill_report import make_travel_report_tool
-        from src.tools.weather import WeatherTool
-
-        reg.register(WeatherTool())
-        reg.register(RestaurantRagTool())
-        reg.register(AmapFallbackTool())
-        reg.register(make_travel_report_tool(llm_cfg=llm_cfg))
         return reg
 
     # User-created KB — search_kb plus optional tighter web_search fallback.

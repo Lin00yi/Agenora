@@ -14,7 +14,7 @@ Schema decisions:
 - `Document.status` is a string enum maintained at the application layer; we
   don't use SQL ENUM to keep migrations painless on SQLite.
 - `KB.is_system` (M4) marks built-in read-only KBs that all users can read
-  but only the seeder can write. The travel demo KB lives here.
+  but only the seeder can write. No system KB is shipped by default.
 - `KBMember` (v2-M9) carries collaboration state:
     established (kb_id, user_id) → role. Rows cascade-delete with the parent KB.
 """
@@ -48,15 +48,8 @@ ChunkStrategy = Literal[
     "parent_child",
 ]
 
-# ---------------------------------------------------------------------------
-# System KBs — well-known UUIDs that map to pre-existing Qdrant collections.
-# Adding a new built-in KB = add a constant here + register in system_seed.py.
-# ---------------------------------------------------------------------------
-SYSTEM_TRAVEL_KB_ID = "00000000-0000-4000-8000-000000000001"
-SYSTEM_TRAVEL_COLLECTION = "restaurants"  # legacy curated 4-city dataset
-
-# user_id for any system KB. Sentinel value that no real user can have
-# (real users get random uuid4 ids).
+# Sentinel user_id reserved for built-in system KBs, if any are added later.
+# Real users get random uuid4 ids.
 SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000"
 
 
@@ -77,14 +70,13 @@ class KB(Base):
     # Denormalized count maintained by ingest pipeline (Σ over docs.chunks_count).
     chunks_count: Mapped[int] = mapped_column(Integer, default=0)
 
-    # Built-in / read-only flag. M4 seeds the travel demo KB with this true.
+    # Built-in / read-only flag for optional system KBs. No system KB is seeded.
     is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # v3-M3: owner-controlled toggle for Milvus grouping_search.
     # When True, KBSearchTool passes group_by_field="doc_id" so each document
     # contributes at most one chunk to top-k results. Helps when one long
-    # document otherwise dominates retrieval. Only affects user KBs (system
-    # travel KB has its own MMR diversity path).
+    # document otherwise dominates retrieval. Only affects user KBs.
     grouping_enabled: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
     )
@@ -153,14 +145,7 @@ class KB(Base):
 
     @property
     def collection_name(self) -> str:
-        """Qdrant collection name for this KB.
-
-        System KBs may point at a pre-existing collection that wasn't created
-        via `kb_{uuid}` convention (e.g., the travel demo KB reuses the legacy
-        `restaurants` collection so we don't have to re-ingest 20 curated rows).
-        """
-        if self.id == SYSTEM_TRAVEL_KB_ID:
-            return SYSTEM_TRAVEL_COLLECTION
+        """Vector collection name for this KB (`kb_{uuid without dashes}`)."""
         return f"kb_{self.id.replace('-', '')}"
 
     async def role_for(

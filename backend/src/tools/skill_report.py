@@ -47,46 +47,6 @@ class SkillTool(Tool):
         )
 
 
-def _normalize_travel_report_args(args: dict[str, Any]) -> dict[str, Any]:
-    if "date" not in args:
-        return args
-    from src.tools.weather import normalize_weather_date
-
-    return {**args, "date": normalize_weather_date(str(args.get("date") or ""))}
-
-
-def make_travel_report_tool(
-    *, llm_cfg: "UserLLMConfig | None" = None
-) -> SkillTool:
-    return SkillTool(
-        name="generate_travel_report",
-        skill_name="travel_report",
-        llm_cfg=llm_cfg,
-        argument_transform=_normalize_travel_report_args,
-        description=(
-            "调用 travel_report skill 生成结构化 Markdown 旅行报告。"
-            "数据齐全后调用此工具，传入收集到的所有信息。"
-        ),
-        input_schema={
-            "type": "object",
-            "properties": {
-                "city": {"type": "string"},
-                "date": {"type": "string"},
-                "weather": {"type": "string"},
-                "restaurants": {
-                    "type": "array",
-                    "items": {"type": "object"},
-                    "description": (
-                        "餐厅列表，每项含 name/addr/signature_dishes/why_recommended"
-                    ),
-                },
-                "user_intent": {"type": "string", "description": "用户原始诉求摘要"},
-            },
-            "required": ["city", "date"],
-        },
-    )
-
-
 def make_kb_report_tool(*, llm_cfg: "UserLLMConfig | None" = None) -> SkillTool:
     return SkillTool(
         name="generate_kb_report",

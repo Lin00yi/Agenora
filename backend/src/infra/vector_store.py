@@ -8,7 +8,7 @@ This module is the single switch-point for "where do vectors live":
 Adding another backend (Chroma, pgvector, …) is a single new class plus
 one branch in get_store(). The RAG tool and ingest script call only the factory.
 
-All stores implement the same minimal interface used by tools/restaurant_rag.py:
+All stores implement the same minimal interface used by KB search:
 
     async ensure_collection(vector_size: int) -> None
     async upsert(points: list[dict]) -> None
@@ -58,7 +58,7 @@ class QdrantStore:
     ) -> None:
         """Ensure the (default or named) collection exists with city payload index.
 
-        Used by the legacy restaurant_rag path. For KB collections use
+        Used by the default single-collection path. For KB collections use
         create_collection() which is dedicated and doesn't add city indexing.
         """
         target = collection_name or self._collection
@@ -414,7 +414,7 @@ class MilvusStore:
             uri=s.milvus_uri,
             token=s.milvus_token or None,
         )
-        self._collection = s.qdrant_collection  # reuse default for travel demo
+        self._collection = s.qdrant_collection
         self._uri = s.milvus_uri
         self._hybrid_support_cache: dict[str, bool] = {}
 
@@ -482,9 +482,9 @@ class MilvusStore:
         # v3-M3: explicit schema enabling hybrid search (dense COSINE +
         # server-side BM25 over `text`). The BM25 Function auto-derives the
         # sparse vectors from the text column at write time — no client-side
-        # sparse embedding needed. Existing dense-only collections (legacy
-        # `restaurants` travel KB and pre-v3-M3 user KBs) keep their
-        # simple-mode schema; callers gate on `collection_supports_hybrid()`.
+        # sparse embedding needed. Existing dense-only collections
+        # (pre-v3-M3 user KBs) keep their simple-mode schema; callers gate
+        # on `collection_supports_hybrid()`.
         from pymilvus import DataType, Function, FunctionType
         schema = self._client.create_schema(
             auto_id=False, enable_dynamic_field=True
@@ -773,7 +773,7 @@ class MilvusStore:
         """True iff the collection was created with the v3-M3 hybrid schema
         (contains a `text_bm25` sparse vector field). Used by callers to gate
         between hybrid_search() and search() — old dense-only collections
-        (legacy `restaurants`, pre-v3-M3 user KBs) keep working unchanged.
+        (pre-v3-M3 user KBs) keep working unchanged.
         """
         cached = self._hybrid_support_cache.get(collection_name)
         if cached is not None:

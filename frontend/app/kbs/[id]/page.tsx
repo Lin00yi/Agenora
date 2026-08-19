@@ -635,8 +635,8 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
             title="系统内置示例库"
             description={
               kb.documents.length === 0
-                ? "这是 Agenora 内置的旅行演示知识库，可在对话中直接选用。文档清单不在此页开放管理；下方无文档列表属预期表现。"
-                : "这是 Agenora 内置的旅行演示知识库。所有用户都能在对话中选中它；内容只读，不能上传或删除。"
+                ? "内置示例库仅供对话使用，内容只读，不开放文档管理。"
+                : "所有用户都能在对话中选中它；内容只读，不能上传或删除。"
             }
             className="mb-4"
           />

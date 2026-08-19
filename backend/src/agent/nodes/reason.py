@@ -398,9 +398,9 @@ async def reason_node(
     """LLM decides next action: call tools, call skill, or finish.
 
     The agent's prompt is injected by build_graph. KB-mode conversations get a
-    different system_prompt; travel KB gets the travel prompt. Unbound chat uses
-    the general assistant prompt. Report generators are first-class registry
-    tools, so the active tool surface is derived from the registry only.
+    different system_prompt. Unbound chat uses the general assistant prompt.
+    Report generators are first-class registry tools, so the active tool
+    surface is derived from the registry only.
 
     When the model streams text, tokens are pushed live via ``emit``. If it then
     chooses tools, a ``segment_seal`` keeps that prose on the timeline above the

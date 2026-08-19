@@ -92,8 +92,6 @@ class Settings(BaseSettings):
     rag_injection_mode: str = "user_evidence"  # user_evidence | legacy_system
 
     # ===== Tools =====
-    qweather_api_key: str = ""
-    amap_api_key: str = ""
     web_search_provider: str = "duckduckgo"  # duckduckgo | brave | bing | tavily
     brave_search_api_key: str = ""
     bing_search_api_key: str = ""
@@ -105,7 +103,7 @@ class Settings(BaseSettings):
     # Qdrant — same env vars cover local, self-hosted-server, and Qdrant Cloud
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str = ""
-    qdrant_collection: str = "restaurants"
+    qdrant_collection: str = "default"
 
     # Milvus — Milvus Lite (本地 .db 文件，pure-Python embedded engine)
     # 或 Standalone / Zilliz Cloud (http://host:19530，需配 milvus_token)

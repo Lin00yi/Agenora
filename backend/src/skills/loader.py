@@ -39,8 +39,8 @@ async def invoke_skill(
 ) -> str:
     """Invoke skill by sending SKILL.md + args to LLM (no tools, text only).
 
-    v2-M8: prompt is generic (no longer travel-specific). Templates carry
-    their own heading conventions in SKILL.md so the LLM picks them up.
+    v2-M8: prompt is generic. Templates carry their own heading conventions
+    in SKILL.md so the LLM picks them up.
     v2-M8: also accepts `llm_cfg` so per-user LLM (v2-M1) routes through
     the skill call too, not just the planner step.
     """

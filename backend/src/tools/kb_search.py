@@ -9,8 +9,8 @@ Construction:
     user's configured provider (None = env fallback). reranker_cfg (v3-M4) opts
     the user into a second-stage cross-encoder rerank pass — when set, search
     over-fetches 4x candidates and the reranker picks the final top-K. System
-    KBs (the curated travel demo) always bypass the reranker regardless of
-    user setting, to keep demo behavior stable.
+    KBs always bypass the reranker regardless of user setting, to keep
+    built-in behavior stable.
 
 Returned text format is one chunk per block, separated by `---`, with filename
 and similarity score inline so the agent can cite sources.
@@ -105,9 +105,7 @@ class KBSearchTool(Tool):
         self.kb_description = kb.description or ""
         self.collection_name = kb.collection_name
         self.embedding_cfg = embedding_cfg
-        # v3-M4: System KBs (curated travel demo) bypass reranker — their
-        # 20-chunk dataset has been hand-tuned via MMR + city filter in v2-M7
-        # and we want demo behavior stable regardless of user reranker setting.
+        # System KBs skip the optional reranker so built-in ranking stays stable.
         self.reranker_cfg = None if bool(getattr(kb, "is_system", False)) else reranker_cfg
         # v3-M3: owner-controlled. Passed through to hybrid_search as
         # group_by_field="doc_id" so each document contributes at most one

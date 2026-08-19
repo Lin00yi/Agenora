@@ -8,8 +8,8 @@ app DB + authenticated requests, so this conftest provides:
                temp DATABASE_URL actually takes effect, and disposes on teardown).
   - `client` : an httpx AsyncClient bound to the FastAPI app via ASGITransport.
                NOTE: httpx does not run ASGI lifespan, so `db` does init_db()
-               explicitly — startup seeds (system KB / admins) are invoked
-               directly by the tests that need them.
+               explicitly — startup housekeeping (legacy system KB purge /
+               admins) is invoked directly by the tests that need them.
   - `create_user` : factory to insert a user (with is_admin / is_active) directly.
 
 Local SQLite mirrors prod PostgreSQL closely enough for these paths; the one

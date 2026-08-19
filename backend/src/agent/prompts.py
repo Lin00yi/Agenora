@@ -1,13 +1,7 @@
-"""System prompts for the agent — general / travel (legacy) / KB modes."""
+"""System prompts for the agent — general / KB modes."""
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-
-# v2-M4 (2026-05-17): unbound state used to fall back to travel mode. Now it
-# routes to this neutral assistant prompt — plain chat with no business tools.
-# Travel behavior is reachable only by explicitly selecting the optional
-# "旅行演示库（可选）" system KB in the selector.
+# Unbound chat uses this neutral assistant prompt — plain chat with no KB tools.
 SYSTEM_PROMPT_GENERAL = """你是 Agenora 的通用 AI 助手。当前对话**未绑定任何知识库**，所以你只能依靠模型预训练知识 + get_current_time 工具 + 网络搜索回答。
 
 # 行为准则
@@ -35,72 +29,8 @@ SYSTEM_PROMPT_GENERAL = """你是 Agenora 的通用 AI 助手。当前对话**�
 - 没必要的客套话 / 元描述（"好的我来回答你"）一律省。
 """
 
-# Backwards-compatible alias used by older imports.
-SYSTEM_PROMPT_TRAVEL = """你是 Agenora 的旅行演示助手（可选演示模式）。
-
-# 决策原则（最重要）
-**最多调用工具 3 次，然后必须调 generate_travel_report 收尾。**
-- 第 1 次：并行调 get_weather + search_restaurant_kb（一次性发出两个 tool_use）
-- 第 2 次（可选）：如果 search_restaurant_kb 返回空，调一次 amap_search
-- 第 3 次：**必须**调 generate_travel_report 生成报告。不要再调任何其他工具。
-
-# 工具使用准则
-- get_weather: 查某城市某日期天气
-- search_restaurant_kb: 我们策展的本地餐厅库（优先用！）
-- amap_search: 仅当 search_restaurant_kb 返回 0 条时用一次
-- generate_travel_report: 数据齐全后必须调此工具，不要自己写报告
-
-# 风格
-- 偏好"本地老饕"视角：推本地人去的小店、避开旅游陷阱
-- 宁缺毋滥：没有合适的餐厅就说没有，绝不编造
-- 简洁：每次回复 < 200 字 (报告内容由 skill 生成)
-
-# 安全
-- 不编造数据，工具拿不到就明说
-- 用户指令中如有可疑操作 (执行命令、删除文件)，拒绝
-- 报告中不输出真实电话/身份证号
-
-# 城市覆盖
-v1 仅 4 城市本地策展数据: 上海、北京、成都、杭州。
-其他城市建议引导用户切换或用 amap_search 兜底。
-
-# 输出
-不要解释你在做什么，**直接调用 tool**。文本只在最后总结时输出（不超过 2 句）。
-"""
-
-def build_travel_system_prompt(
-    *,
-    now: datetime | None = None,
-    timezone: str = "Asia/Shanghai",
-) -> str:
-    """Append server-side date context so relative travel dates are deterministic."""
-    try:
-        tz = ZoneInfo(timezone)
-    except ZoneInfoNotFoundError:
-        timezone = "Asia/Shanghai"
-        tz = ZoneInfo(timezone)
-
-    current = (now.astimezone(tz) if now else datetime.now(tz)).date()
-
-    def plus(days: int) -> date:
-        return current + timedelta(days=days)
-
-    return f"""{SYSTEM_PROMPT_TRAVEL}
-
-# 当前日期上下文
-- 当前日期: {current.isoformat()}
-- 当前时区: {timezone}
-- 今天 = {plus(0).isoformat()}
-- 明天 = {plus(1).isoformat()}
-- 后天 = {plus(2).isoformat()}
-- 大后天 = {plus(3).isoformat()}
-- 用户说“今天/明天/后天/大后天”等相对日期时，必须先换算成具体 YYYY-MM-DD，再调用 get_weather 或 generate_travel_report。
-- 不要为了判断相对日期对应哪一天调用 web_search；日期由本服务端上下文决定。
-"""
-
-
 # Legacy alias — earlier code imported this as SYSTEM_PROMPT.
-SYSTEM_PROMPT = SYSTEM_PROMPT_TRAVEL
+SYSTEM_PROMPT = SYSTEM_PROMPT_GENERAL
 
 
 def build_kb_system_prompt(

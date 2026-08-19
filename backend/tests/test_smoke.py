@@ -1,6 +1,6 @@
 """Non-network smoke tests."""
 
-from datetime import date, datetime
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -38,7 +38,7 @@ def test_tool_guard_allows_registered():
 
 
 def test_tool_guard_blocks_unknown():
-    ok, reason = is_tool_allowed("execute_shell", ["get_weather"])
+    ok, reason = is_tool_allowed("execute_shell", ["web_search"])
     assert not ok
     assert reason
 
@@ -76,18 +76,6 @@ async def test_current_time_tool_honors_requested_timezone():
     assert result.raw["timezone_source"] == "requested"
 
 
-def test_travel_kb_registry_has_travel_tools():
-    from types import SimpleNamespace
-
-    from src.kb.models import SYSTEM_TRAVEL_KB_ID
-
-    names = build_default_registry(SimpleNamespace(id=SYSTEM_TRAVEL_KB_ID)).names()
-    assert "get_weather" in names
-    assert "search_restaurant_kb" in names
-    assert "amap_search" in names
-    assert "generate_travel_report" in names
-
-
 def test_user_kb_registry_has_kb_report_tool():
     from types import SimpleNamespace
 
@@ -114,26 +102,3 @@ def test_web_search_provider_defaults_to_duckduckgo(monkeypatch):
         assert isinstance(get_search_provider(), DuckDuckGoSearchProvider)
     finally:
         get_settings.cache_clear()
-
-
-def test_weather_date_normalization_handles_relative_dates():
-    from src.tools.weather import normalize_weather_date
-
-    today = date(2026, 8, 1)
-    assert normalize_weather_date("2026-08-03", today=today) == "2026-08-03"
-    assert normalize_weather_date("2026/8/3", today=today) == "2026-08-03"
-    assert normalize_weather_date("明天", today=today) == "2026-08-02"
-    assert normalize_weather_date("后天", today=today) == "2026-08-03"
-    assert normalize_weather_date("大后天", today=today) == "2026-08-04"
-
-
-def test_travel_prompt_injects_current_date_context():
-    from src.agent.prompts import build_travel_system_prompt
-
-    prompt = build_travel_system_prompt(
-        now=datetime(2026, 8, 1, 12, 0, tzinfo=ZoneInfo("UTC")),
-        timezone="Asia/Shanghai",
-    )
-    assert "当前日期: 2026-08-01" in prompt
-    assert "明天 = 2026-08-02" in prompt
-    assert "不要为了判断相对日期对应哪一天调用 web_search" in prompt

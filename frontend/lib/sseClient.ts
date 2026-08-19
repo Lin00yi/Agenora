@@ -14,7 +14,7 @@ export type MemoryTraceItem = {
 export type MemoryTrace = {
   /** Safe runtime metadata; raw prompts, schemas, and guard reasons stay server-only. */
   runtime?: {
-    mode?: "general" | "knowledge_base" | "travel";
+    mode?: "general" | "knowledge_base";
     safety?: "standard" | "heightened";
   };
   profile?: {
@@ -133,9 +133,8 @@ import { getToken, handleSessionExpired } from "@/lib/auth";
  * Browsers can't use EventSource for POST (GET-only), so we use fetch() with
  * ReadableStream and parse SSE wire format manually.
  *
- * opts.kbId — if set, the backend runs in KB-bound mode (search_kb only).
- * If null/undefined, the agent runs in unbound mode (system travel demo
- * fallback or multi-tool when no kb_id is passed).
+ * opts.kbId — if set, the backend runs in KB-bound mode (search_kb).
+ * If null/undefined, the agent runs in unbound general-chat mode.
  *
  * Returns a cancel function that aborts the in-flight request.
  */

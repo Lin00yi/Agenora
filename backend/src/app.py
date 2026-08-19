@@ -2,7 +2,7 @@
 
 POST /api/chat takes conversation_id or full message history (multi-turn).
 Auth: /api/auth/{register,login,me}; chat requires Bearer JWT when enabled.
-Optional kb_id binds the agent to KB search (no travel tools).
+Optional kb_id binds the agent to KB search.
 """
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     from src.kb.system_seed import seed_system_kbs
 
     await seed_system_kbs()
-    log.info("system_kbs_seeded")
+    log.info("system_kbs_ready")
 
     from src.auth.admin_seed import seed_admins
 
@@ -226,15 +226,7 @@ def _run_chat_session(
     # Never place raw system prompts, tool schemas, credentials, or prompt-guard
     # reasons here: those remain server-only / admin-trace data.
     if memory_trace is not None:
-        from src.kb.models import SYSTEM_TRAVEL_KB_ID
-
-        mode = (
-            "general"
-            if kb is None
-            else "travel"
-            if kb.id == SYSTEM_TRAVEL_KB_ID
-            else "knowledge_base"
-        )
+        mode = "general" if kb is None else "knowledge_base"
         memory_trace = {
             **memory_trace,
             "runtime": {

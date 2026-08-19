@@ -33,10 +33,6 @@ const NAME_LABEL: Record<string, string> = {
   web_search: "搜索网络",
   generate_kb_report: "生成知识库报告",
   get_current_time: "获取当前时间",
-  get_weather: "查询天气",
-  search_restaurant_kb: "查找本地餐厅",
-  amap_search: "搜索地图",
-  generate_travel_report: "生成旅行报告",
 };
 
 /**
@@ -198,7 +194,7 @@ function formatElapsed(ms: number): string {
 }
 
 function isSearchTool(name: string): boolean {
-  return name === "search_kb" || name === "search_kg" || name === "web_search" || name === "search_restaurant_kb" || name === "amap_search";
+  return name === "search_kb" || name === "search_kg" || name === "web_search";
 }
 
 function normalizeIssue(issue: string): string {
