@@ -21,7 +21,7 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from src.infra.database import Base
+from src.storage.database import Base
 from src.settings import get_settings
 
 # Import models so Base.metadata is complete for autogenerate.

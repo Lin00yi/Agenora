@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from src.conversations.context import estimate_tokens, truncate_text_to_token_budget
+from src.context import estimate_tokens, truncate_text_to_token_budget
 from src.kg.lightrag_client import get_lightrag_client
 from src.settings import get_settings
 from src.tools.base import Tool, ToolResult

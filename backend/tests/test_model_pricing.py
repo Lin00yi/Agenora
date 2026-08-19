@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
-from src.infra.llm import CostTracker
-from src.infra.model_catalog import resolve_model_pricing
+from src.models.gateway import CostTracker
+from src.models.catalog import resolve_model_pricing
 from src.settings_user.models import UserLLMConfig
 
 

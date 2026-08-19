@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from src.infra.embedding import MODEL_DIMS
+from src.storage.vector.embedding import MODEL_DIMS
 
 ANTHROPIC_VERSION = "2023-06-01"
 _TIMEOUT = httpx.Timeout(15.0, connect=8.0)

@@ -225,7 +225,7 @@ user_id + scope + scope_id + type + memory_key
 
 ```bash
 cd backend
-python -m src.infra.memory_maintenance
+python -m src.storage.jobs.memory
 ```
 
 该命令会按用户提交处理结果，并输出 `users_scanned`、过期、覆盖、去重、向量回填及失败数量。部署时只应调度一个实例；管理员也可以调用 `POST /api/admin/memory-maintenance` 进行有界的手动执行。

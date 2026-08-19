@@ -5,12 +5,12 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from src.conversations.context import (
+from src.context import (
     MAX_OUTPUT_TOKENS,
     estimate_tokens,
     resolve_output_token_budget,
 )
-from src.infra.llm import get_client, pick_model, with_cache_control
+from src.models.gateway import get_client, pick_model, with_cache_control
 from src.settings import get_settings
 
 if TYPE_CHECKING:

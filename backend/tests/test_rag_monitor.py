@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 @pytest.mark.asyncio
 async def test_rag_monitor_aggregates_trace_metadata_and_raises_threshold_alerts(db):
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
     from src.observability.models import Observation, Trace
     from src.observability.rag_metrics import build_rag_monitor_snapshot
     from src.settings import Settings
@@ -149,7 +149,7 @@ async def test_admin_rag_evaluation_endpoint_returns_metadata_only(
 
 @pytest.mark.asyncio
 async def test_real_kb_tool_span_emits_privacy_safe_rag_metrics(db, monkeypatch):
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
     from src.observability import start_trace
     from src.observability.models import Observation
     from src.observability.rag_metrics import build_rag_monitor_snapshot
@@ -210,7 +210,7 @@ async def test_real_kb_tool_span_emits_privacy_safe_rag_metrics(db, monkeypatch)
 async def test_rag_monitor_filters_observations_by_kb_id(db):
     from datetime import datetime, timezone
 
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
     from src.observability.models import Observation, Trace
     from src.observability.rag_metrics import build_rag_monitor_snapshot
     from src.settings import Settings

@@ -12,8 +12,9 @@ from src.conversations.models import Conversation, UserMemory
 
 @pytest.mark.asyncio
 async def test_maintenance_expires_and_backfills_memories(db, create_user, monkeypatch):
-    from src.infra import embedding, memory_maintenance
-    from src.infra.database import get_session_factory
+    from src.storage.vector import embedding
+    from src.storage.jobs import memory as memory_maintenance
+    from src.storage.database import get_session_factory
 
     user = await create_user("memory-worker@example.com")
 
@@ -61,8 +62,8 @@ async def test_maintenance_expires_and_backfills_memories(db, create_user, monke
 
 @pytest.mark.asyncio
 async def test_maintenance_finalizes_idle_conversations(db, create_user, monkeypatch):
-    from src.infra import memory_maintenance
-    from src.infra.database import get_session_factory
+    from src.storage.jobs import memory as memory_maintenance
+    from src.storage.database import get_session_factory
 
     user = await create_user("idle-memory-worker@example.com")
     conv_id = str(uuid.uuid4())

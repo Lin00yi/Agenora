@@ -10,10 +10,10 @@ from sqlalchemy import text
 @pytest.mark.asyncio
 async def test_context_status_remains_available_without_summary_table(db, create_user):
     """A pre-summary database must not make the composer show an error state."""
-    from src.conversations.context import compute_budget
+    from src.context import compute_budget
     from src.conversations.models import Conversation, Message
-    from src.conversations.routes import _build_context_status
-    from src.infra.database import get_engine, get_session_factory
+    from src.api.routes.conversations import _build_context_status
+    from src.storage.database import get_engine, get_session_factory
 
     user = await create_user("legacy-context-status@example.com")
     conversation = Conversation(id=str(uuid.uuid4()), user_id=user.id, title="旧会话")
@@ -42,7 +42,7 @@ async def test_context_status_remains_available_without_summary_table(db, create
 
 
 def test_completed_response_trace_is_synchronized_to_current_history() -> None:
-    from src.conversations.routes import _synchronize_memory_trace_after_completion
+    from src.api.routes.conversations import _synchronize_memory_trace_after_completion
 
     trace = {
         "recent_message_count": 1,
@@ -70,7 +70,7 @@ def test_completed_response_trace_is_synchronized_to_current_history() -> None:
 
 
 def test_completed_response_trace_does_not_double_count_summary() -> None:
-    from src.conversations.routes import _synchronize_memory_trace_after_completion
+    from src.api.routes.conversations import _synchronize_memory_trace_after_completion
 
     trace = {
         "prompt": {"tokens": {"history": 10, "summary": 30, "total_input": 100}}
@@ -92,8 +92,8 @@ async def test_context_status_uses_system_context_window_for_auto_model(
     monkeypatch: pytest.MonkeyPatch,
 ):
     from src.conversations.models import Conversation
-    from src.conversations import routes
-    from src.infra.database import get_session_factory
+    from src.api.routes import conversations as routes
+    from src.storage.database import get_session_factory
     from src.settings_user.models import UserLLMConfig
 
     user = await create_user("system-window@example.com")
@@ -130,9 +130,9 @@ async def test_model_selection_patch_returns_status_for_the_target_window(
     monkeypatch: pytest.MonkeyPatch,
 ):
     """The composer can refresh before the next message is sent."""
-    from src.conversations import routes
+    from src.api.routes import conversations as routes
     from src.conversations.models import Conversation, Message
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
     from src.settings_user.models import UserLLMConfig
 
     user = await create_user("model-switch-status@example.com")

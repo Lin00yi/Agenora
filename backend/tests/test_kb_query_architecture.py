@@ -7,15 +7,15 @@ from typing import Any
 
 import pytest
 
-from src.agents.loop import (
+from src.runtime.agent_loop import (
     kb_search_node,
     query_policy_node,
     reason_node,
     should_search_kb,
 )
-from src.agents.loop.kb_search import _bound_aggregated_rag_context
-from src.conversations.context import RAG_RESERVE, estimate_tokens
-from src.infra.llm import CostTracker
+from src.runtime.agent_loop.kb_search import _bound_aggregated_rag_context
+from src.context import RAG_RESERVE, estimate_tokens
+from src.models.gateway import CostTracker
 from src.settings_user.models import UserLLMConfig
 from src.tools.base import Tool, ToolRegistry, ToolResult
 
@@ -101,7 +101,7 @@ async def test_query_policy_direct_rule_does_not_call_llm(
     def fail_client(cfg: Any = None) -> Any:  # noqa: ARG001
         raise AssertionError("LLM policy should not be called for clear direct queries")
 
-    monkeypatch.setattr("src.agents.loop.get_client", fail_client)
+    monkeypatch.setattr("src.runtime.agent_loop.get_client", fail_client)
 
     state = {"messages": [{"role": "user", "content": "Agenora 支持私有化吗？"}]}
     next_state = await query_policy_node(state, cost=CostTracker(), llm_cfg=_llm_cfg())
@@ -141,7 +141,7 @@ async def test_query_policy_complex_query_uses_llm_and_caps_queries(
             )
 
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
-    monkeypatch.setattr("src.agents.loop.get_client", lambda cfg=None: fake_client)
+    monkeypatch.setattr("src.runtime.agent_loop.get_client", lambda cfg=None: fake_client)
 
     state = {
         "messages": [
@@ -210,7 +210,7 @@ async def test_query_policy_model_override_respects_provider(
             )
 
     fake_client = SimpleNamespace(messages=FakeMessages())
-    monkeypatch.setattr("src.agents.loop.get_client", lambda cfg=None: fake_client)
+    monkeypatch.setattr("src.runtime.agent_loop.get_client", lambda cfg=None: fake_client)
 
     state = {"messages": [{"role": "user", "content": "Agenora 支持私有化吗？"}]}
     await query_policy_node(state, cost=CostTracker(), llm_cfg=_anthropic_llm_cfg())
@@ -318,14 +318,14 @@ async def test_kb_search_node_skips_kg_for_listing_when_kb_strong(
 
 
 def test_rule_query_policy_defers_multi_intent_to_llm() -> None:
-    from src.agents.loop import _rule_query_policy
+    from src.runtime.agent_loop import _rule_query_policy
 
     # Multi-intent / multi-clause should return None so query_policy LLM can decide.
     assert _rule_query_policy("目前有哪些卡片，以及卡组涉及哪些？", max_queries=2) is None
 
 
 def test_rule_query_policy_defers_ambiguous_abuse_to_semantic_classifier() -> None:
-    from src.agents.loop import _rule_query_policy
+    from src.runtime.agent_loop import _rule_query_policy
 
     decision = _rule_query_policy("去死吧 Roogoo", max_queries=2)
 
@@ -353,7 +353,7 @@ async def test_query_policy_semantically_skips_non_informational_abuse(
             )
 
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
-    monkeypatch.setattr("src.agents.loop.get_client", lambda cfg=None: fake_client)
+    monkeypatch.setattr("src.runtime.agent_loop.get_client", lambda cfg=None: fake_client)
 
     state = {"messages": [{"role": "user", "content": "去死吧 Roogoo"}]}
     next_state = await query_policy_node(state, cost=CostTracker(), llm_cfg=_llm_cfg())
@@ -374,7 +374,7 @@ async def test_query_policy_fails_closed_for_ambiguous_abuse_when_classifier_fai
             raise RuntimeError("classifier unavailable")
 
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FailingCompletions()))
-    monkeypatch.setattr("src.agents.loop.get_client", lambda cfg=None: fake_client)
+    monkeypatch.setattr("src.runtime.agent_loop.get_client", lambda cfg=None: fake_client)
 
     state = {"messages": [{"role": "user", "content": "去死吧 Roogoo"}]}
     next_state = await query_policy_node(state, cost=CostTracker(), llm_cfg=_llm_cfg())
@@ -405,7 +405,7 @@ async def test_reason_node_can_hide_search_kb_schema(
     fake_client = SimpleNamespace(
         chat=SimpleNamespace(completions=FakeCompletions())
     )
-    monkeypatch.setattr("src.infra.llm_adapters.get_client", lambda cfg=None: fake_client)
+    monkeypatch.setattr("src.models.adapters.get_client", lambda cfg=None: fake_client)
 
     registry = ToolRegistry()
     registry.register(RecordingKBSearchTool())
@@ -458,7 +458,7 @@ async def test_reason_node_auto_continues_truncated_final_answer(
             )
 
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
-    monkeypatch.setattr("src.infra.llm_adapters.get_client", lambda cfg=None: fake_client)
+    monkeypatch.setattr("src.models.adapters.get_client", lambda cfg=None: fake_client)
 
     next_state = await reason_node(
         {"messages": [{"role": "user", "content": "请输出完整报告"}]},

@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import pytest
 
-from src.runtime.dag import dag_kb_then_chat, dag_single
-from src.runtime.validate import DagValidationError, match_agent, validate_and_bind
-from src.runtime.registry import build_default_agent_registry
+from src.planning.dag import dag_kb_then_chat, dag_single
+from src.planning.validate import DagValidationError, match_agent, validate_and_bind
+from src.agents.registry import build_default_agent_registry
 
 
 def test_validate_single_chat() -> None:

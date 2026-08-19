@@ -25,7 +25,7 @@ def _golden_line(case_id: str, query: str, doc_id: str) -> str:
 
 @pytest.mark.asyncio
 async def test_eval_config_crud_and_viewer_forbidden(client, create_user, create_kb, tmp_path, monkeypatch):
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
     from src.kb.models import KBMember
 
     monkeypatch.setattr("src.kb.eval_service.EVAL_RUNS_BASE", tmp_path / "eval_runs")
@@ -158,7 +158,7 @@ async def test_eval_roogoo_template_import(client, create_user, create_kb):
 async def test_eval_monitor_filters_by_kb_id(client, create_user, create_kb, db):
     from datetime import datetime, timezone
 
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
     from src.observability.models import Observation, Trace
 
     owner = await create_user("eval-monitor@example.test")

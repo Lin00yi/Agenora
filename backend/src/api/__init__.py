@@ -1,4 +1,4 @@
-"""HTTP adapters — FastAPI routers only.
+"""HTTP adapters: routes, schemas, and streaming.
 
-Runtime, agents, and retrieval live outside this package.
+Domain logic lives in runtime, agents, planning, context, and tools.
 """

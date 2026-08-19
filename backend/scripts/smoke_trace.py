@@ -19,7 +19,7 @@ async def main() -> None:
 
     get_settings.cache_clear()
 
-    from src.infra.database import init_db, get_session_factory
+    from src.storage.database import init_db, get_session_factory
     from src.observability import start_trace, get_current_trace_id
     from src.observability.models import Trace, Observation
     from sqlalchemy import select, func

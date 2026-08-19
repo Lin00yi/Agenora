@@ -8,7 +8,7 @@ import pytest
 
 
 async def _make_document(create_user, create_kb):
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
     from src.kb.models import Document
 
     user = await create_user("ingest-jobs@example.test")
@@ -23,8 +23,8 @@ async def _make_document(create_user, create_kb):
 
 @pytest.mark.asyncio
 async def test_ingestion_job_marks_done_after_worker_completes(db, create_user, create_kb, monkeypatch):
-    from src.infra.database import get_session_factory
-    from src.infra.ingestion_jobs import enqueue_ingestion, run_ingestion_job
+    from src.storage.database import get_session_factory
+    from src.storage.jobs.ingestion import enqueue_ingestion, run_ingestion_job
     from src.kb.models import Document, IngestionJob
     import src.kb.ingest as ingest
 
@@ -56,8 +56,8 @@ async def test_ingestion_job_marks_done_after_worker_completes(db, create_user, 
 async def test_ingestion_job_retries_then_records_terminal_failure(
     db, create_user, create_kb, monkeypatch
 ):
-    from src.infra.database import get_session_factory
-    from src.infra.ingestion_jobs import enqueue_ingestion, run_ingestion_job
+    from src.storage.database import get_session_factory
+    from src.storage.jobs.ingestion import enqueue_ingestion, run_ingestion_job
     from src.kb.models import Document, IngestionJob
     import src.kb.ingest as ingest
 

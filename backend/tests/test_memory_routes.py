@@ -14,7 +14,7 @@ def _bearer(user):
 @pytest.mark.asyncio
 async def test_memory_list_status_filter_defaults_to_active(client, create_user):
     from src.conversations.models import UserMemory
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
 
     user = await create_user("memory-routes@example.com")
     factory = get_session_factory()
@@ -57,8 +57,8 @@ async def test_finalize_conversation_runs_memory_extraction_once(
     from sqlalchemy import select
 
     from src.conversations.models import Conversation, Message
-    from src.conversations import routes
-    from src.infra.database import get_session_factory
+    from src.api.routes import conversations as routes
+    from src.storage.database import get_session_factory
 
     user = await create_user("finalize-memory@example.com")
     conv_id = str(uuid.uuid4())
@@ -106,7 +106,7 @@ async def test_patch_memory_expires_at_and_export(client, create_user):
     from datetime import datetime, timedelta, timezone
 
     from src.conversations.models import UserMemory
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
 
     user = await create_user("memory-expiry-export@example.com")
     memory_id = str(uuid.uuid4())

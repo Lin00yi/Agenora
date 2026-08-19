@@ -20,7 +20,7 @@ def test_migration_adds_admin_columns_and_is_idempotent(tmp_path):
     """
     from sqlalchemy import create_engine, inspect, text
 
-    from src.infra.database import _migrate_additive_columns
+    from src.storage.database import _migrate_additive_columns
 
     engine = create_engine(f"sqlite:///{(tmp_path / 'legacy.db').as_posix()}")
     # Simulate an old DB: users table predating every additive column.
@@ -53,7 +53,7 @@ def test_migration_replaces_retired_deepseek_chat_model(tmp_path):
     """Existing user and conversation selections are upgraded on startup."""
     from sqlalchemy import create_engine, text
 
-    from src.infra.database import _migrate_additive_columns
+    from src.storage.database import _migrate_additive_columns
 
     engine = create_engine(f"sqlite:///{(tmp_path / 'legacy-models.db').as_posix()}")
     with engine.begin() as conn:
@@ -178,7 +178,7 @@ async def test_seed_admins_promotes_only_listed_registered_emails(
 
     from src.auth.admin_seed import seed_admins
     from src.auth.models import User
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
     from src.settings import get_settings
 
     await create_user("boss@x.com")

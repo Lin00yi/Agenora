@@ -11,9 +11,9 @@ async def test_create_kb_rolls_back_when_vector_store_initialization_fails(
     client, create_user, db, monkeypatch
 ):
     """A missing optional vector dependency must not leave a KB row behind."""
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
     from src.kb.models import KB
-    import src.kb.routes as kb_routes
+    import src.api.routes.kb as kb_routes
 
     user = await create_user("kb-create-failure@example.com")
     login = await client.post(

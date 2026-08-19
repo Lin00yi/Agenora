@@ -18,7 +18,7 @@ import structlog
 from sqlalchemy import select
 
 from src.auth.models import User
-from src.infra.database import get_session_factory
+from src.storage.database import get_session_factory
 from src.settings import get_settings
 
 log = structlog.get_logger()

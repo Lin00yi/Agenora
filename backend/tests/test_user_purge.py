@@ -19,11 +19,11 @@ async def test_admin_user_delete_removes_owned_external_and_relational_data(
 ):
     """A delete must not leave a vector collection, trace, memory, or BYOK key behind."""
     from src.conversations.models import Conversation, ConversationSummary, Message, UserMemory
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
     from src.kb.models import Document, IngestionJob, KBMember
     from src.observability.models import Observation, Trace
     from src.settings_user.models import LLMConnection, LLMModelProfile
-    import src.kb.routes as kb_routes
+    import src.api.routes.kb as kb_routes
 
     class RecordingStore:
         def __init__(self):
@@ -123,9 +123,9 @@ async def test_admin_user_delete_removes_owned_external_and_relational_data(
 @pytest.mark.asyncio
 async def test_kb_purge_keeps_metadata_when_graph_cleanup_fails(db, create_user, create_kb, monkeypatch):
     """A strict external delete failure must leave identifiers available for retry."""
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
     from src.kb.models import Document, KB
-    from src.kb.routes import purge_kb
+    from src.api.routes.kb import purge_kb
     import src.kg.sync as kg_sync
 
     owner = await create_user("graph-owner@purge.test")

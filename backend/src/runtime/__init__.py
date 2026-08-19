@@ -1,20 +1,20 @@
-"""Supervisor control plane — DAG, registry, routing, scheduling."""
+"""Runtime facade — harness, agent loop, and re-exports from planning/agents."""
 
-from src.runtime.dag import TaskDag, TaskNode
-from src.runtime.registry import AgentRegistry, AgentSpec, RuntimeDeps, build_default_agent_registry
-from src.runtime.router import (
+from src.planning.dag import TaskDag, TaskNode
+from src.agents.registry import AgentRegistry, AgentSpec, RuntimeDeps, build_default_agent_registry
+from src.planning.planner import (
     RouteDecision,
     choose_initial_agent,
     looks_complex_query,
     resolve_agent_route,
     rule_route,
 )
-from src.runtime.supervisor import (
+from src.agents.supervisor import (
     SupervisorState,
     build_supervisor_graph,
     should_handoff_to_chat,
 )
-from src.runtime.validate import DagValidationError, validate_and_bind
+from src.planning.validate import DagValidationError, validate_and_bind
 
 __all__ = [
     "AgentRegistry",

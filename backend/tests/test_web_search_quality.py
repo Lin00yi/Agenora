@@ -33,7 +33,7 @@ async def test_web_search_filters_blank_and_irrelevant_results(
 
 
 def test_web_search_policy_has_mode_specific_defaults() -> None:
-    from src.infra.web_search_policy import resolve_web_search_policy
+    from src.context.rag.policy import resolve_web_search_policy
 
     general = resolve_web_search_policy("general")
     kb = resolve_web_search_policy("kb")

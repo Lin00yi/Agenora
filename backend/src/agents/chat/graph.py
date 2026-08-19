@@ -6,11 +6,11 @@ from typing import Any, Awaitable, Callable, TYPE_CHECKING
 
 from langgraph.graph import END, StateGraph
 
-from src.agents.loop import call_tools_node, reason_node, should_continue
-from src.agents.prompts import SYSTEM_PROMPT_GENERAL
-from src.agents.state import AgentState
-from src.infra.llm import CostTracker
-from src.retrieval.policy import resolve_web_search_policy
+from src.runtime.agent_loop import call_tools_node, reason_node, should_continue
+from src.prompts.system import SYSTEM_PROMPT_GENERAL
+from src.runtime.state import AgentState
+from src.models.gateway import CostTracker
+from src.context.rag.policy import resolve_web_search_policy
 from src.tools.base import ToolRegistry, build_default_registry
 
 if TYPE_CHECKING:

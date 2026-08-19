@@ -12,7 +12,7 @@ import structlog
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.infra.embedding import embed, embed_batch
+from src.storage.vector.embedding import embed, embed_batch
 from src.kb.chunker import chunk_text_by_strategy, normalize_chunk_strategy
 from src.kb.models import Chunk, Document, KB
 

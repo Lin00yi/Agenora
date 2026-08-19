@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from src.infra.database import get_session_factory
+from src.storage.database import get_session_factory
 from src.observability.models import Observation, Trace
 from src.observability.tracer import TraceHandle, dump_trace_metadata
 

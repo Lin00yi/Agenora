@@ -21,8 +21,8 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from src.infra.database import get_session_factory
-from src.infra.vector_store import get_store
+from src.storage.database import get_session_factory
+from src.storage.vector import get_store
 from src.kb.chunk_service import chunk_document_text, clear_document_chunks, persist_ingested_chunks
 from src.kb.models import KB, Document
 from src.kb.parsers import dispatch, parse_url
@@ -228,7 +228,7 @@ async def ingest_document(
 
 async def delete_document_chunks(collection_name: str, doc_id: str) -> None:
     """Drop a document's chunks from vector store + SQL. Idempotent."""
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
 
     store = get_store()
     factory = get_session_factory()

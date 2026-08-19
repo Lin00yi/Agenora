@@ -10,7 +10,7 @@ from src.settings_user.models import UserLLMConfig
 
 @pytest.mark.asyncio
 async def test_system_model_override_forces_default_and_complex(monkeypatch: pytest.MonkeyPatch) -> None:
-    from src.api.chat import session as chat_session
+    from src.api.streaming import session as chat_session
 
     captured: dict[str, UserLLMConfig | None] = {}
 
@@ -54,7 +54,7 @@ async def test_chat_stream_emits_safe_context_before_agent_events(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The chat timeline must receive its context entry before agent activity."""
-    from src.api.chat import session as chat_session
+    from src.api.streaming import session as chat_session
 
     class DummyGraph:
         async def ainvoke(self, state: dict[str, Any]) -> dict[str, Any]:

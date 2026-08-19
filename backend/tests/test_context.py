@@ -7,8 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.agents.loop import allocate_provider_context, build_effective_system_prompt, reason_node
-from src.conversations.context import (
+from src.runtime.agent_loop import allocate_provider_context, build_effective_system_prompt, reason_node
+from src.context import (
     MAX_MEMORY_CONTEXT_TOKENS,
     allocate_context_blocks,
     build_context_for_conversation,
@@ -28,8 +28,8 @@ from src.conversations.context import (
     trim_messages_to_token_budget,
 )
 from src.conversations.models import Conversation, ConversationSummary, Message, UserMemory
-from src.infra.llm import CostTracker, normalize_model_name
-from src.infra.llm_adapters import convert_to_openai_format
+from src.models.gateway import CostTracker, normalize_model_name
+from src.models.adapters import convert_to_openai_format
 
 
 def test_retired_deepseek_chat_alias_is_normalized_before_a_request() -> None:
@@ -56,7 +56,7 @@ def test_context_blocks_stay_out_of_the_system_prompt() -> None:
 
 
 def test_provider_request_keeps_context_data_out_of_system_and_history_trace() -> None:
-    from src.agents.loop.reason import _prepare_provider_request
+    from src.runtime.agent_loop.reason import _prepare_provider_request
 
     prompt, messages, _, trace = _prepare_provider_request(
         model="custom-small-model",
@@ -96,8 +96,8 @@ async def test_unsummarized_history_keeps_turns_beyond_the_recent_window(
     db, create_user, monkeypatch
 ):
     """Below 72%, early turns stay in the prompt instead of being silently dropped."""
-    import src.conversations.context.assemble as assemble_module
-    from src.infra.database import get_session_factory
+    import src.context.builder as assemble_module
+    from src.storage.database import get_session_factory
 
     user = await create_user("uncapped-history@example.com")
     conv = Conversation(id=str(uuid.uuid4()), user_id=user.id, title="uncapped history")
@@ -154,8 +154,8 @@ async def test_uncovered_history_after_a_stale_summary_is_not_hard_capped(
     db, create_user, monkeypatch
 ):
     """A lagged summary must not drop uncovered turns that still fit the budget."""
-    import src.conversations.context.assemble as assemble_module
-    from src.infra.database import get_session_factory
+    import src.context.builder as assemble_module
+    from src.storage.database import get_session_factory
 
     user = await create_user("stale-summary-history@example.com")
     conv = Conversation(id=str(uuid.uuid4()), user_id=user.id, title="stale summary")
@@ -260,7 +260,7 @@ def test_client_supplied_system_message_is_not_promoted_to_system_prompt() -> No
 @pytest.mark.asyncio
 async def test_openai_request_attaches_saved_context_to_latest_user_turn(monkeypatch) -> None:
     """OpenAI-compatible requests keep saved context out of system authority."""
-    from src.infra import llm_adapters
+    from src.models import adapters as llm_adapters
     from src.tools.base import ToolRegistry
 
     captured: dict = {}
@@ -305,7 +305,7 @@ async def test_openai_request_attaches_saved_context_to_latest_user_turn(monkeyp
 @pytest.mark.asyncio
 async def test_anthropic_request_keeps_system_content_out_of_messages(monkeypatch) -> None:
     """Anthropic receives one top-level system block and user/assistant turns only."""
-    from src.infra import llm_adapters
+    from src.models import adapters as llm_adapters
     from src.tools.base import ToolRegistry
 
     captured: dict = {}
@@ -375,7 +375,7 @@ def test_auto_memories_receive_a_finite_lifecycle() -> None:
 
 
 def test_constraint_extraction_uses_topic_keys() -> None:
-    from src.conversations.context import normalize_constraint_key
+    from src.context import normalize_constraint_key
 
     candidates = extract_memory_candidates("项目必须统一使用 PostgreSQL。")
     assert len(candidates) == 1
@@ -403,7 +403,7 @@ def test_explicit_project_constraint_is_promoted_to_topic_key() -> None:
 async def test_constraint_topic_conflict_supersedes_previous_value(db, create_user):
     from sqlalchemy import select
 
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
 
     user = await create_user("constraint-topic@example.com")
     factory = get_session_factory()
@@ -451,11 +451,11 @@ async def test_store_user_memories_heavy_false_skips_embedding_until_finalize(
     db, create_user, monkeypatch
 ):
     """Realtime append writes the row immediately; embedding runs in the heavy pass."""
-    import src.infra.embedding as embedding
+    import src.storage.vector.embedding as embedding
     from sqlalchemy import select
 
-    from src.conversations.context import finalize_memory_rows_heavy
-    from src.infra.database import get_session_factory
+    from src.context import finalize_memory_rows_heavy
+    from src.storage.database import get_session_factory
 
     user = await create_user("light-memory-write@example.com")
     monkeypatch.setattr(embedding, "embed", lambda _text, cfg=None: _async_value([1.0, 0.0]))
@@ -497,8 +497,8 @@ async def test_store_user_memories_heavy_false_skips_embedding_until_finalize(
 async def test_consolidation_rewrites_legacy_hash_constraint_keys(db, create_user):
     from sqlalchemy import select
 
-    from src.conversations.context import consolidate_user_memories
-    from src.infra.database import get_session_factory
+    from src.context import consolidate_user_memories
+    from src.storage.database import get_session_factory
 
     user = await create_user("legacy-constraint@example.com")
     now = datetime.now(timezone.utc)
@@ -553,8 +553,8 @@ async def test_consolidation_rewrites_legacy_hash_constraint_keys(db, create_use
 
 
 def test_unknown_models_use_a_conservative_context_window() -> None:
-    from src.conversations.context import context_window_for_model, resolve_context_window
-    from src.infra.model_catalog import resolve_model_catalog_entry
+    from src.context import context_window_for_model, resolve_context_window
+    from src.models.catalog import resolve_model_catalog_entry
 
     assert context_window_for_model("custom-small-model") == 16_000
     assert context_window_for_model("custom-small-model", configured_window=8_192) == 8_192
@@ -581,7 +581,7 @@ async def test_new_preference_silently_supersedes_previous_value(db, create_user
     """A newer durable preference replaces a conflicting active memory."""
     from sqlalchemy import select
 
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
 
     user = await create_user("memory@example.com")
     factory = get_session_factory()
@@ -622,7 +622,7 @@ async def test_new_preference_silently_supersedes_previous_value(db, create_user
 
 @pytest.mark.asyncio
 async def test_global_preferences_are_injected_via_profile_not_retrieval(db, create_user):
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
 
     user = await create_user("global-preference@example.com")
     conv_id = str(uuid.uuid4())
@@ -665,7 +665,7 @@ async def test_global_preferences_are_injected_via_profile_not_retrieval(db, cre
 
 @pytest.mark.asyncio
 async def test_user_profile_is_injected_and_traced(db, create_user):
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
 
     user = await create_user("profile-trace@example.com")
     conv_id = str(uuid.uuid4())
@@ -713,7 +713,7 @@ async def test_user_profile_is_injected_and_traced(db, create_user):
 
 @pytest.mark.asyncio
 async def test_profile_and_retrieved_memory_do_not_double_inject(db, create_user):
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
 
     user = await create_user("dedup-memory@example.com")
     conv_id = str(uuid.uuid4())
@@ -808,8 +808,8 @@ async def test_context_assembly_hard_caps_all_blocks_for_a_small_selected_model(
     db, create_user, monkeypatch
 ):
     """Summary/profile/raw turns share one target-window budget, not separate caps."""
-    import src.conversations.context.assemble as assemble_module
-    from src.infra.database import get_session_factory
+    import src.context.builder as assemble_module
+    from src.storage.database import get_session_factory
 
     user = await create_user("small-window-context@example.com")
     conv = Conversation(id=str(uuid.uuid4()), user_id=user.id, title="small window")
@@ -873,8 +873,8 @@ async def test_larger_model_rehydrates_bounded_detail_after_a_small_window_summa
     db, create_user, monkeypatch
 ):
     """A larger selected model recovers covered raw detail only from spare capacity."""
-    import src.conversations.context.assemble as assemble_module
-    from src.infra.database import get_session_factory
+    import src.context.builder as assemble_module
+    from src.storage.database import get_session_factory
 
     user = await create_user("expanded-window-context@example.com")
     conv = Conversation(id=str(uuid.uuid4()), user_id=user.id, title="expand window")
@@ -931,7 +931,7 @@ async def test_larger_model_rehydrates_bounded_detail_after_a_small_window_summa
 
 
 def test_context_status_uses_effective_tokens_after_summary() -> None:
-    from src.conversations.context import context_status_payload, estimate_effective_context_tokens
+    from src.context import context_status_payload, estimate_effective_context_tokens
 
     messages = [
         Message(id=str(i), conversation_id="c", role="user" if i % 2 == 0 else "assistant", content="内容" * 40)
@@ -958,7 +958,7 @@ def test_context_status_uses_effective_tokens_after_summary() -> None:
 
 @pytest.mark.asyncio
 async def test_expired_memories_are_not_retrieved(db, create_user):
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
 
     user = await create_user("expired-memory@example.com")
     factory = get_session_factory()
@@ -988,8 +988,8 @@ async def test_memory_retrieval_hybridly_recalls_semantic_match_without_keyword_
     db, create_user, monkeypatch
 ):
     """A semantic match remains eligible even when lexical terms do not overlap."""
-    import src.infra.embedding as embedding
-    from src.infra.database import get_session_factory
+    import src.storage.vector.embedding as embedding
+    from src.storage.database import get_session_factory
 
     user = await create_user("semantic-memory@example.com")
     monkeypatch.setattr(embedding, "embed", lambda _text, cfg=None: _async_value([1.0, 0.0]))
@@ -1016,8 +1016,8 @@ async def test_memory_retrieval_rejects_weak_semantic_even_with_high_importance(
     db, create_user, monkeypatch
 ):
     """High importance must not rescue a weak semantic match on an off-topic query."""
-    import src.infra.embedding as embedding
-    from src.infra.database import get_session_factory
+    import src.storage.vector.embedding as embedding
+    from src.storage.database import get_session_factory
 
     user = await create_user("weak-semantic-memory@example.com")
     monkeypatch.setattr(embedding, "embed", lambda _text, cfg=None: _async_value([1.0, 0.0]))
@@ -1055,8 +1055,8 @@ async def test_memory_retrieval_dedupes_near_duplicate_explicits(
     db, create_user, monkeypatch
 ):
     """Near-duplicate bilingual explicits collapse to one inject slot."""
-    import src.infra.embedding as embedding
-    from src.infra.database import get_session_factory
+    import src.storage.vector.embedding as embedding
+    from src.storage.database import get_session_factory
 
     user = await create_user("dedupe-retrieve-memory@example.com")
     monkeypatch.setattr(embedding, "embed", lambda _text, cfg=None: _async_value([1.0, 0.0]))
@@ -1109,7 +1109,7 @@ async def _async_value(value):
 async def test_memory_consolidation_expires_and_merges_semantic_duplicates(db, create_user):
     from sqlalchemy import select
 
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
 
     user = await create_user("consolidate-memory@example.com")
     now = datetime.now(timezone.utc)
@@ -1218,9 +1218,9 @@ def test_provider_allocator_never_invents_history_space_for_small_window() -> No
 
 
 def test_final_provider_preparation_caps_rag_before_history() -> None:
-    from src.agents.loop.reason import _prepare_provider_request
-    from src.agents.loop.prompts_budget import provider_fixed_prompt_tokens
-    from src.conversations.context import SAFETY_RESERVE
+    from src.runtime.agent_loop.reason import _prepare_provider_request
+    from src.runtime.agent_loop.prompts_budget import provider_fixed_prompt_tokens
+    from src.context import SAFETY_RESERVE
 
     tools = [{"name": "search", "input_schema": {"type": "object"}}]
     prompt, kept, output, trace = _prepare_provider_request(
@@ -1256,7 +1256,7 @@ def test_final_provider_preparation_caps_rag_before_history() -> None:
 
 
 def test_retrieval_evidence_does_not_change_system_prompt_or_drop_question() -> None:
-    from src.agents.loop.reason import _prepare_provider_request
+    from src.runtime.agent_loop.reason import _prepare_provider_request
 
     base = "稳定系统规则"
     kwargs = {
@@ -1289,7 +1289,7 @@ def test_retrieval_evidence_does_not_change_system_prompt_or_drop_question() -> 
 
 
 def test_legacy_rag_mode_remains_a_reversible_system_injection_escape_hatch() -> None:
-    from src.agents.loop.reason import _prepare_provider_request
+    from src.runtime.agent_loop.reason import _prepare_provider_request
 
     prompt, messages, _, trace = _prepare_provider_request(
         model="custom-small-model",
@@ -1328,7 +1328,7 @@ def test_pinned_user_turn_drops_an_incomplete_tool_suffix() -> None:
 
 
 def test_final_provider_preparation_rejects_impossible_small_window() -> None:
-    from src.agents.loop.reason import _prepare_provider_request
+    from src.runtime.agent_loop.reason import _prepare_provider_request
 
     with pytest.raises(RuntimeError, match="上下文窗口不足"):
         _prepare_provider_request(
@@ -1375,7 +1375,7 @@ def test_output_budget_resolver_uses_task_and_context_window() -> None:
 @pytest.mark.asyncio
 async def test_long_conversation_is_summarized_and_recent_turns_are_retained(db, create_user):
     """Compression covers early rows while retaining the most recent ten turns."""
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
 
     user = await create_user("context@example.com")
     conv = Conversation(id=str(uuid.uuid4()), user_id=user.id, title="上下文测试")
@@ -1415,10 +1415,10 @@ async def test_long_conversation_is_summarized_and_recent_turns_are_retained(db,
 
 @pytest.mark.asyncio
 async def test_prepared_summary_waits_for_activation_threshold(db, create_user, monkeypatch):
-    from src.conversations import context as context_module
-    from src.conversations.context import prepare_summary_if_needed
-    from src.conversations.context.constants import ContextBudget
-    from src.infra.database import get_session_factory
+    from src import context as context_module
+    from src.context import prepare_summary_if_needed
+    from src.context.constants import ContextBudget
+    from src.storage.database import get_session_factory
 
     calls = 0
 
@@ -1479,7 +1479,7 @@ async def test_prepared_summary_waits_for_activation_threshold(db, create_user, 
 @pytest.mark.asyncio
 async def test_active_structured_memory_key_is_unique_in_database(db, create_user):
     from sqlalchemy.exc import IntegrityError
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
 
     user = await create_user("unique-memory@example.com")
     now = datetime.now(timezone.utc)
@@ -1518,8 +1518,8 @@ async def test_active_structured_memory_key_is_unique_in_database(db, create_use
 
 
 def test_summary_request_respects_small_byok_context_window() -> None:
-    from src.conversations.context.constants import SAFETY_RESERVE
-    from src.conversations.context.summary import _bounded_summary_request
+    from src.context.constants import SAFETY_RESERVE
+    from src.context.compression import _bounded_summary_request
 
     system_prompt = "摘要规则" * 80
     messages = [
@@ -1542,7 +1542,7 @@ def test_summary_request_respects_small_byok_context_window() -> None:
 
 @pytest.mark.asyncio
 async def test_summary_is_updated_in_place_when_coverage_advances(db, create_user):
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
 
     user = await create_user("rolling-summary@example.com")
     conv = Conversation(id=str(uuid.uuid4()), user_id=user.id, title="滚动摘要")
@@ -1591,8 +1591,8 @@ async def test_summary_is_updated_in_place_when_coverage_advances(db, create_use
 async def test_summary_write_uses_cas_when_another_worker_wins(db, create_user, monkeypatch):
     from sqlalchemy import select, update
 
-    from src.conversations import context as context_module
-    from src.infra.database import get_session_factory
+    from src import context as context_module
+    from src.storage.database import get_session_factory
 
     user = await create_user("summary-cas@example.com")
     conv = Conversation(id=str(uuid.uuid4()), user_id=user.id, title="summary cas")
@@ -1665,8 +1665,8 @@ async def test_summary_write_uses_cas_when_another_worker_wins(db, create_user, 
 
 @pytest.mark.asyncio
 async def test_structured_summary_uses_only_newly_covered_messages(db, create_user, monkeypatch):
-    from src.conversations import context as context_module
-    from src.infra.database import get_session_factory
+    from src import context as context_module
+    from src.storage.database import get_session_factory
 
     calls: list[tuple[str | None, list[str]]] = []
 

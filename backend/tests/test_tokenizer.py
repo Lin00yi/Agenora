@@ -1,7 +1,7 @@
 """Tests for tiktoken-backed context budgeting."""
 from __future__ import annotations
 
-from src.infra.tokenizer import (
+from src.models.tokenizer import (
     TOKEN_COUNT_PAD,
     count_tokens,
     encoding_name_for_model,
@@ -46,7 +46,7 @@ def test_truncate_to_token_budget_keeps_suffix_and_limit() -> None:
 
 
 def test_estimate_tokens_public_api_uses_tokenizer() -> None:
-    from src.conversations.context import estimate_tokens
+    from src.context import estimate_tokens
 
     text = "用户偏好使用中文回复。" * 30
     assert estimate_tokens(text, model="deepseek-v4-flash") == count_tokens(

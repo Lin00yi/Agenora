@@ -11,7 +11,7 @@ from src.runtime import (
     choose_initial_agent,
     should_handoff_to_chat,
 )
-from src.runtime.registry import AgentRegistry, AgentSpec, RuntimeDeps, build_default_agent_registry
+from src.agents.registry import AgentRegistry, AgentSpec, RuntimeDeps, build_default_agent_registry
 
 
 def test_default_registry_has_chat_and_rag() -> None:
@@ -299,7 +299,7 @@ async def test_supervisor_planned_rag_then_chat(monkeypatch: pytest.MonkeyPatch)
             "latency_ms": 10,
         }
 
-    monkeypatch.setattr("src.runtime.supervisor.resolve_agent_route", fake_resolve)
+    monkeypatch.setattr("src.agents.supervisor.resolve_agent_route", fake_resolve)
 
     class FakeKB:
         id = "kb-1"

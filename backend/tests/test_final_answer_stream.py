@@ -6,9 +6,9 @@ from typing import Any
 
 import pytest
 
-from src.agents.loop import reason_node
-from src.infra.llm import CostTracker
-from src.infra.llm_adapters import OpenAICompatToolAdapter, StreamHooks
+from src.runtime.agent_loop import reason_node
+from src.models.gateway import CostTracker
+from src.models.adapters import OpenAICompatToolAdapter, StreamHooks
 from src.settings_user.models import UserLLMConfig
 from src.tools.base import Tool, ToolRegistry, ToolResult
 
@@ -49,7 +49,7 @@ async def test_openai_stream_hooks_text_path(monkeypatch: pytest.MonkeyPatch) ->
             )
 
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
-    monkeypatch.setattr("src.infra.llm_adapters.get_client", lambda cfg=None: fake_client)
+    monkeypatch.setattr("src.models.adapters.get_client", lambda cfg=None: fake_client)
 
     deltas: list[str] = []
     tools_hit = []
@@ -95,7 +95,7 @@ async def test_openai_stream_hooks_tool_path(monkeypatch: pytest.MonkeyPatch) ->
             )
 
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
-    monkeypatch.setattr("src.infra.llm_adapters.get_client", lambda cfg=None: fake_client)
+    monkeypatch.setattr("src.models.adapters.get_client", lambda cfg=None: fake_client)
 
     deltas: list[str] = []
     tools_hit: list[bool] = []
@@ -135,7 +135,7 @@ async def test_reason_node_streams_final_tokens(
             )
 
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
-    monkeypatch.setattr("src.infra.llm_adapters.get_client", lambda cfg=None: fake_client)
+    monkeypatch.setattr("src.models.adapters.get_client", lambda cfg=None: fake_client)
 
     events: list[dict[str, Any]] = []
 
@@ -180,7 +180,7 @@ async def test_reason_node_tools_do_not_stream_tokens(
             )
 
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
-    monkeypatch.setattr("src.infra.llm_adapters.get_client", lambda cfg=None: fake_client)
+    monkeypatch.setattr("src.models.adapters.get_client", lambda cfg=None: fake_client)
 
     events: list[dict[str, Any]] = []
 
@@ -228,7 +228,7 @@ async def test_reason_node_streams_text_then_seals_for_tools(
             )
 
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
-    monkeypatch.setattr("src.infra.llm_adapters.get_client", lambda cfg=None: fake_client)
+    monkeypatch.setattr("src.models.adapters.get_client", lambda cfg=None: fake_client)
 
     events: list[dict[str, Any]] = []
 
@@ -272,7 +272,7 @@ async def test_reason_node_no_tools_streams_tokens_directly(
             )
 
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
-    monkeypatch.setattr("src.infra.llm_adapters.get_client", lambda cfg=None: fake_client)
+    monkeypatch.setattr("src.models.adapters.get_client", lambda cfg=None: fake_client)
 
     events: list[dict[str, Any]] = []
 
@@ -319,7 +319,7 @@ async def test_reason_node_recovers_empty_completion(
             )
 
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
-    monkeypatch.setattr("src.infra.llm_adapters.get_client", lambda cfg=None: fake_client)
+    monkeypatch.setattr("src.models.adapters.get_client", lambda cfg=None: fake_client)
 
     events: list[dict[str, Any]] = []
 
@@ -347,7 +347,7 @@ async def test_reason_node_recovers_empty_completion(
 async def test_reason_node_empty_completion_falls_back_copy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from src.agents.loop import EMPTY_ANSWER_FALLBACK
+    from src.runtime.agent_loop import EMPTY_ANSWER_FALLBACK
 
     class FakeCompletions:
         async def create(self, **kwargs: Any) -> Any:
@@ -362,7 +362,7 @@ async def test_reason_node_empty_completion_falls_back_copy(
             )
 
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
-    monkeypatch.setattr("src.infra.llm_adapters.get_client", lambda cfg=None: fake_client)
+    monkeypatch.setattr("src.models.adapters.get_client", lambda cfg=None: fake_client)
 
     events: list[dict[str, Any]] = []
 
@@ -407,7 +407,7 @@ async def test_reason_node_escalates_to_complex_model_after_empty(
             )
 
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
-    monkeypatch.setattr("src.infra.llm_adapters.get_client", lambda cfg=None: fake_client)
+    monkeypatch.setattr("src.models.adapters.get_client", lambda cfg=None: fake_client)
 
     events: list[dict[str, Any]] = []
 

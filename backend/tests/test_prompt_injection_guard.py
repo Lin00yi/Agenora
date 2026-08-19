@@ -5,8 +5,8 @@ from typing import Any
 
 import pytest
 
-from src.agents.loop import kb_search_node, query_policy_node, reason_node
-from src.infra.llm import CostTracker
+from src.runtime.agent_loop import kb_search_node, query_policy_node, reason_node
+from src.models.gateway import CostTracker
 from src.safety.output_filter import redact_sensitive_output
 from src.safety.prompt_injection import assess_prompt_injection, filter_untrusted_rag_text
 from src.settings_user.models import UserLLMConfig
@@ -191,7 +191,7 @@ async def test_reason_node_adds_guard_and_hides_web_search(
             )
 
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
-    monkeypatch.setattr("src.infra.llm_adapters.get_client", lambda cfg=None: fake_client)
+    monkeypatch.setattr("src.models.adapters.get_client", lambda cfg=None: fake_client)
 
     registry = ToolRegistry()
     registry.register(StaticWebTool())

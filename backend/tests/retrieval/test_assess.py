@@ -1,4 +1,4 @@
-from src.retrieval.assess import admit_hits, merge_assessments
+from src.context.rag.assess import admit_hits, merge_assessments
 
 
 def test_admit_hits_miss_vs_hit() -> None:

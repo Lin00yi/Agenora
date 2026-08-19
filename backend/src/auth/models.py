@@ -11,7 +11,7 @@ from typing import Optional
 from sqlalchemy import Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.infra.database import Base
+from src.storage.database import Base
 
 
 def _utcnow() -> datetime:

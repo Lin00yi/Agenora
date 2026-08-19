@@ -35,7 +35,7 @@ async def test_milvus_store_full_lifecycle(monkeypatch):
 
     try:
         from src import settings as settings_mod
-        from src.infra import vector_store as vs
+        from src.storage.vector import store as vs
 
         real_get_settings = settings_mod.get_settings.__wrapped__
 
@@ -139,7 +139,7 @@ async def test_milvus_store_full_lifecycle(monkeypatch):
     finally:
         import shutil
         shutil.rmtree(tmp_dir, ignore_errors=True)
-        from src.infra import vector_store as vs
+        from src.storage.vector import store as vs
         vs.reset_store()
 
 
@@ -159,7 +159,7 @@ async def test_milvus_hybrid_search_lifecycle(monkeypatch):
 
     try:
         from src import settings as settings_mod
-        from src.infra import vector_store as vs
+        from src.storage.vector import store as vs
 
         real_get_settings = settings_mod.get_settings.__wrapped__
 
@@ -259,7 +259,7 @@ async def test_milvus_hybrid_search_lifecycle(monkeypatch):
     finally:
         import shutil
         shutil.rmtree(tmp_dir, ignore_errors=True)
-        from src.infra import vector_store as vs
+        from src.storage.vector import store as vs
         vs.reset_store()
 
 
@@ -270,7 +270,7 @@ async def test_milvus_collection_supports_hybrid_false_for_missing(monkeypatch):
     db_path = tmp_dir / "test.db"
     try:
         from src import settings as settings_mod
-        from src.infra import vector_store as vs
+        from src.storage.vector import store as vs
 
         real_get_settings = settings_mod.get_settings.__wrapped__
 
@@ -291,5 +291,5 @@ async def test_milvus_collection_supports_hybrid_false_for_missing(monkeypatch):
     finally:
         import shutil
         shutil.rmtree(tmp_dir, ignore_errors=True)
-        from src.infra import vector_store as vs
+        from src.storage.vector import store as vs
         vs.reset_store()

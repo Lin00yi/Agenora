@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.rag_eval.metrics import EvaluationGateError, assert_quality_gate, evaluate, load_cases
+from src.evals.metrics import EvaluationGateError, assert_quality_gate, evaluate, load_cases
 
 ROOGOO_GOLDEN = Path(__file__).resolve().parents[1] / "config" / "rag_eval_roogoo.jsonl"
 
@@ -160,7 +160,7 @@ def test_evaluate_ignores_extra_predictions_and_records_missing_cases(tmp_path):
 
 
 def test_load_gate_reads_minimums(tmp_path):
-    from src.rag_eval.metrics import load_gate
+    from src.evals.metrics import load_gate
 
     gate = tmp_path / "gate.json"
     gate.write_text(

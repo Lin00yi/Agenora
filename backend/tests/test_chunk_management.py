@@ -134,7 +134,7 @@ async def test_get_document_and_list_chunks(client, create_user, create_kb, db):
     owner = await create_user("docmgr@x.com")
     kb = await create_kb(owner.id, name="DocMgr KB")
 
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
 
     doc_id = str(uuid.uuid4())
     factory = get_session_factory()
@@ -202,7 +202,7 @@ async def test_list_chunks_search_and_filter(client, create_user, create_kb, db)
     owner = await create_user("search@x.com")
     kb = await create_kb(owner.id, name="Search KB")
 
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
 
     doc_id = str(uuid.uuid4())
     c1 = str(uuid.uuid4())
@@ -265,7 +265,7 @@ async def test_batch_patch_chunks_enabled(client, create_user, create_kb, db):
     owner = await create_user("batch@x.com")
     kb = await create_kb(owner.id)
 
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
 
     doc_id = str(uuid.uuid4())
     c1 = str(uuid.uuid4())
@@ -327,7 +327,7 @@ async def test_merge_chunks_requires_adjacency(client, create_user, create_kb):
     owner = await create_user("merge@x.com")
     kb = await create_kb(owner.id)
 
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
 
     doc_id = str(uuid.uuid4())
     c1 = str(uuid.uuid4())
@@ -386,7 +386,7 @@ async def test_patch_document_enabled_without_embedding(client, create_user, cre
     owner = await create_user("docen@x.com")
     kb = await create_kb(owner.id, name="DocEnable KB")
 
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
 
     doc_id = str(uuid.uuid4())
     factory = get_session_factory()
@@ -423,7 +423,7 @@ async def test_patch_document_chunk_strategy_override_and_clear(client, create_u
     owner = await create_user("docstrategy@x.com")
     kb = await create_kb(owner.id, name="DocStrategy KB")
 
-    from src.infra.database import get_session_factory
+    from src.storage.database import get_session_factory
 
     doc_id = str(uuid.uuid4())
     factory = get_session_factory()

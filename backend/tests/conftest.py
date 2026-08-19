@@ -36,8 +36,8 @@ async def db(tmp_path, monkeypatch):
     monkeypatch.setenv("VECTOR_STORE", "local")
 
     from src.settings import get_settings
-    import src.infra.database as database
-    import src.infra.vector_store as vector_store
+    import src.storage.database as database
+    import src.storage.vector.store as vector_store
 
     # Drop cached Settings + engine + store so the temp env is picked up.
     get_settings.cache_clear()
@@ -82,7 +82,7 @@ def create_user():
     ):
         from src.auth.models import User
         from src.auth.password import hash_password
-        from src.infra.database import get_session_factory
+        from src.storage.database import get_session_factory
 
         factory = get_session_factory()
         async with factory() as session:
@@ -107,7 +107,7 @@ def create_kb():
     """Return an async factory that inserts a KB row straight into the app DB."""
 
     async def _create(owner_id: str, name: str = "KB", *, is_system: bool = False):
-        from src.infra.database import get_session_factory
+        from src.storage.database import get_session_factory
         from src.kb.models import KB
 
         factory = get_session_factory()

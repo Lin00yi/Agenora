@@ -12,14 +12,14 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.admin.routes import router as admin_router
-from src.api.chat import router as chat_router
-from src.auth.routes import router as auth_router
-from src.conversations.routes import router as conversations_router
-from src.infra.database import init_db
-from src.kb.routes import router as kb_router
+from src.api.routes.admin import router as admin_router
+from src.api.routes.chat import router as chat_router
+from src.api.routes.auth import router as auth_router
+from src.api.routes.conversations import router as conversations_router
+from src.storage.database import init_db
+from src.api.routes.kb import router as kb_router
 from src.settings import get_settings
-from src.settings_user.routes import router as settings_router
+from src.api.routes.settings import router as settings_router
 
 logging.basicConfig(level=logging.INFO)
 log = structlog.get_logger()

@@ -1,4 +1,4 @@
-from src.settings_user.routes import ProbeLLMBody
+from src.api.routes.settings import ProbeLLMBody
 
 
 def test_probe_llm_body_allows_empty_key_for_saved_configuration() -> None:

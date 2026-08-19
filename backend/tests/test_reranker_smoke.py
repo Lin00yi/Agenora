@@ -48,7 +48,7 @@ class _FakeClient:
 
 @pytest.mark.asyncio
 async def test_rerank_reorders_by_relevance_score(monkeypatch):
-    from src.infra import reranker
+    from src.storage.vector import reranker
     from src.settings_user.models import UserRerankerConfig
 
     cfg = UserRerankerConfig(
@@ -88,7 +88,7 @@ async def test_rerank_reorders_by_relevance_score(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_rerank_passthrough_when_cfg_none(monkeypatch):
-    from src.infra import reranker
+    from src.storage.vector import reranker
 
     # Even if a client exists, no call should be made.
     fake = _FakeClient(payload={"results": []})
@@ -102,7 +102,7 @@ async def test_rerank_passthrough_when_cfg_none(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_rerank_empty_documents_returns_empty(monkeypatch):
-    from src.infra import reranker
+    from src.storage.vector import reranker
     from src.settings_user.models import UserRerankerConfig
 
     cfg = UserRerankerConfig(
@@ -121,7 +121,7 @@ async def test_rerank_empty_documents_returns_empty(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_rerank_filters_out_of_range_indices(monkeypatch):
-    from src.infra import reranker
+    from src.storage.vector import reranker
     from src.settings_user.models import UserRerankerConfig
 
     cfg = UserRerankerConfig(

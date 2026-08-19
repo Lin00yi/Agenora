@@ -10,7 +10,7 @@ from sqlalchemy import text
 
 
 async def main() -> None:
-    from src.infra.database import get_session_factory, init_db
+    from src.storage.database import get_session_factory, init_db
 
     await init_db()
     email = None

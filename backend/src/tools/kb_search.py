@@ -22,12 +22,12 @@ from typing import Any, TYPE_CHECKING
 
 import httpx
 
-from src.infra.embedding import embed
-from src.retrieval.assess import admit_hits
-from src.retrieval.policy import resolve_kb_retrieval_policy
-from src.infra.reranker import rerank
-from src.conversations.context import RAG_RESERVE, estimate_tokens, truncate_text_to_token_budget
-from src.infra.vector_store import get_store
+from src.storage.vector.embedding import embed
+from src.context.rag.assess import admit_hits
+from src.context.rag.policy import resolve_kb_retrieval_policy
+from src.storage.vector.reranker import rerank
+from src.context import RAG_RESERVE, estimate_tokens, truncate_text_to_token_budget
+from src.storage.vector import get_store
 from src.kb.models import KB
 from src.tools.base import Tool, ToolResult
 

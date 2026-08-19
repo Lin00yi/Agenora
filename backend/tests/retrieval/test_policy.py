@@ -60,8 +60,8 @@ def _hit(index: int, score: float) -> dict[str, Any]:
 def test_query_policy_and_tool_share_the_configured_final_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from src.agents.loop.query_policy import _coerce_kb_queries
-    from src.retrieval.policy import resolve_kb_retrieval_policy
+    from src.runtime.agent_loop.query_policy import _coerce_kb_queries
+    from src.context.rag.policy import resolve_kb_retrieval_policy
     from src.settings import get_settings
 
     monkeypatch.setenv("KB_RETRIEVAL_CANDIDATE_LIMIT", "1")

@@ -21,7 +21,7 @@ async def main() -> None:
         },
     )
 
-    from src.infra.database import get_session_factory, init_db
+    from src.storage.database import get_session_factory, init_db
     from src.observability import start_trace
     from src.observability.langfuse_client import get_langfuse
     from sqlalchemy import text

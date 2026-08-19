@@ -164,7 +164,7 @@ services:
   ingestion-worker:
     extends:
       service: backend
-    command: ["python", "-m", "src.infra.ingestion_jobs"]
+    command: ["python", "-m", "src.storage.jobs.ingestion"]
     healthcheck:
       disable: true
 

@@ -171,7 +171,7 @@ async def build_rag_monitor_snapshot(
 
 async def monitor_once(*, fail_on_alert: bool = False) -> tuple[dict[str, Any], int]:
     """Run one aggregation sweep for a cron job, CLI, or Docker worker."""
-    from src.infra.database import get_session_factory, init_db
+    from src.storage.database import get_session_factory, init_db
 
     await init_db()
     factory = get_session_factory()

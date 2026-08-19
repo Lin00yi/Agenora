@@ -2,7 +2,7 @@ import asyncio
 
 from sqlalchemy import text
 
-from src.infra.database import get_session_factory, init_db
+from src.storage.database import get_session_factory, init_db
 
 
 async def main() -> None:

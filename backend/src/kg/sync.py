@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import structlog
 
-from src.infra.database import get_session_factory
+from src.storage.database import get_session_factory
 from src.kb.models import Document, KB
 from src.kg.lightrag_client import file_source_for_doc, get_lightrag_client
 from src.settings import get_settings

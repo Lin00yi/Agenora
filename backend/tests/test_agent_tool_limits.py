@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from src.agents.loop import call_tools_node
+from src.runtime.agent_loop import call_tools_node
 from src.tools.base import Tool, ToolRegistry, ToolResult
 
 

@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.models import User
 from src.auth.tokens import TokenError, decode_token
-from src.infra.database import get_session
+from src.storage.database import get_session
 from src.settings import get_settings
 
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 import structlog
 from sqlalchemy import update
 
-from src.infra.database import get_session_factory
+from src.storage.database import get_session_factory
 from src.kb.models import KB
 
 log = structlog.get_logger()
@@ -27,8 +27,8 @@ async def seed_system_kbs() -> None:
 async def purge_legacy_travel_kb() -> None:
     """Idempotent removal of the retired travel demo KB and its vectors."""
     from src.conversations.models import Conversation
-    from src.infra.vector_store import get_store
-    from src.kb.routes import purge_kb
+    from src.storage.vector import get_store
+    from src.api.routes.kb import purge_kb
 
     factory = get_session_factory()
     async with factory() as session:

@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.infra.crypto import decrypt
-from src.infra.database import Base
+from src.storage.database import Base
 from src.settings import get_settings
 
 if TYPE_CHECKING:

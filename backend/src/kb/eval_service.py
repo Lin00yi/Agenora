@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.models import User
 from src.kb.models import KB, KbEvalConfig, KbEvalRun
-from src.rag_eval.metrics import (
+from src.evals.metrics import (
     EvaluationGateError,
     RAGGoldenCase,
     assert_quality_gate,

@@ -1,7 +1,7 @@
 """Model-profile routing contracts that do not require a provider call."""
 from __future__ import annotations
 
-from src.infra.llm import (
+from src.models.gateway import (
     pick_model,
     resolve_empty_answer_fallback_model,
     should_route_to_complex,
