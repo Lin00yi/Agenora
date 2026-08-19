@@ -5,7 +5,7 @@ import { authFetch } from "./auth";
 /**
  * Admin dashboard API client (06-01).
  *
- * Mirrors backend/src/admin/routes.py. All calls go through authFetch (Bearer
+ * Mirrors backend/src/api/routes/admin.py. All calls go through authFetch (Bearer
  * token) and hit /api/admin/* — the backend rejects non-admins with 403.
  * Self-protection invariants surface as 400 (self) / 409 (last admin); we
  * throw the backend `detail` so the page can toast it verbatim.

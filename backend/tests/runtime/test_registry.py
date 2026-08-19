@@ -6,11 +6,8 @@ from typing import Any
 import pytest
 
 from src.agents import build_chat_graph, build_graph, build_rag_graph
-from src.runtime import (
-    build_supervisor_graph,
-    choose_initial_agent,
-    should_handoff_to_chat,
-)
+from src.planning.planner import choose_initial_agent
+from src.agents.supervisor import build_supervisor_graph, should_handoff_to_chat
 from src.agents.registry import AgentRegistry, AgentSpec, RuntimeDeps, build_default_agent_registry
 
 

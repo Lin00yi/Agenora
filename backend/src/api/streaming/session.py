@@ -13,7 +13,7 @@ import structlog
 from fastapi import HTTPException
 from sse_starlette.sse import EventSourceResponse
 
-from src.runtime import build_supervisor_graph
+from src.agents.supervisor import build_supervisor_graph
 from src.runtime.agent_loop import EMPTY_ANSWER_FALLBACK
 from src.auth.models import User
 from src.infra import generation_lock

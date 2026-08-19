@@ -2,7 +2,7 @@
 import pytest
 
 from src.agents import build_chat_graph, build_graph
-from src.runtime import build_supervisor_graph
+from src.agents.supervisor import build_supervisor_graph
 from src.agents.chat import build_chat_graph as build_chat_direct
 from src.agents.rag import build_rag_graph
 

@@ -22,7 +22,7 @@ def build_graph(
 ):
     """Direct subgraph helper — kb=None → chat, else → rag.
 
-    Production chat uses ``src.runtime.harness.build_supervisor_graph``.
+    Production chat uses ``src.agents.supervisor.build_supervisor_graph``.
     """
     if kb is None:
         return build_chat_graph(
