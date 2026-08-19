@@ -5,13 +5,13 @@ from typing import Any
 
 import pytest
 
-from src.agent.graph import build_chat_graph, build_graph, build_rag_graph
-from src.agent.main_agent import (
+from src.agents import build_chat_graph, build_graph, build_rag_graph
+from src.runtime import (
     build_supervisor_graph,
     choose_initial_agent,
     should_handoff_to_chat,
 )
-from src.agent.registry import AgentRegistry, AgentSpec, RuntimeDeps, build_default_agent_registry
+from src.runtime.registry import AgentRegistry, AgentSpec, RuntimeDeps, build_default_agent_registry
 
 
 def test_default_registry_has_chat_and_rag() -> None:
@@ -299,7 +299,7 @@ async def test_supervisor_planned_rag_then_chat(monkeypatch: pytest.MonkeyPatch)
             "latency_ms": 10,
         }
 
-    monkeypatch.setattr("src.agent.main_agent.supervisor.resolve_agent_route", fake_resolve)
+    monkeypatch.setattr("src.runtime.supervisor.resolve_agent_route", fake_resolve)
 
     class FakeKB:
         id = "kb-1"

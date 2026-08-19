@@ -68,6 +68,11 @@ export type MemoryTrace = {
       source_counts: Record<string, number>;
       in_system: boolean;
       pinned_current_question: boolean;
+      status?: "empty" | "miss" | "hit";
+      candidate_count?: number;
+      admitted_count?: number;
+      max_score?: number;
+      min_dense_score?: number;
     };
     cache?: {
       system_retrieval_free: boolean;

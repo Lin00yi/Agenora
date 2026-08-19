@@ -44,6 +44,7 @@ class AgentState(TypedDict, total=False):
     # ``legacy_system`` rollout mode; new requests use ``retrieved_evidence``.
     kb_context: str
     retrieved_evidence: list[RetrievedEvidence]  # untrusted KB/KG evidence for this turn
+    retrieval_assessment: dict[str, Any]
     kb_search_done: bool                     # guard so KB search runs once per user turn
     query_policy_action: str                 # direct | normalize | expand | skip_kb
     query_policy_reason: str                 # short machine-readable policy reason

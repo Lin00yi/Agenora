@@ -1,5 +1,5 @@
-"""General chat sub-agent (web_search / time tools)."""
+"""Compatibility shim — use ``src.agents.chat`` instead."""
 
-from src.agent.sub_agents.chat_agent.graph import build_chat_graph
+from src.agents.chat import build_chat_graph
 
 __all__ = ["build_chat_graph"]

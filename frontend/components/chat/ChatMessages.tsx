@@ -334,8 +334,10 @@ function MemoryContextTrace({ trace }: { trace: MemoryTrace }) {
                 </p>
                 {trace.prompt.retrieval ? (
                   <p className="text-pretty">
-                    预取检索证据 {trace.prompt.retrieval.evidence_count} 条，
-                    {trace.prompt.retrieval.in_system ? "当前使用兼容 system 注入。" : "作为普通参考消息注入，当前问题已固定保留。"}
+                    {formatRetrievalTrace(trace.prompt.retrieval)}
+                    {trace.prompt.retrieval.in_system
+                      ? " 当前使用兼容 system 注入。"
+                      : " 作为普通参考消息注入，当前问题已固定保留。"}
                   </p>
                 ) : null}
                 {trace.prompt.cache && (trace.prompt.cache.cache_read_tokens > 0 || trace.prompt.cache.cache_creation_tokens > 0) ? (
@@ -354,4 +356,29 @@ function MemoryContextTrace({ trace }: { trace: MemoryTrace }) {
       </div>
     </section>
   );
+}
+
+function formatRetrievalTrace(
+  retrieval: NonNullable<MemoryTrace["prompt"]>["retrieval"]
+): string {
+  if (!retrieval) return "";
+  const injected = retrieval.evidence_count;
+  const candidates = retrieval.candidate_count;
+  const admitted = retrieval.admitted_count;
+  const status = retrieval.status;
+  if (status === "miss" && candidates != null) {
+    const score =
+      retrieval.max_score != null ? retrieval.max_score.toFixed(2) : null;
+    return `检索未过阈值（候选 ${candidates} 条${score ? `，最高 ${score}` : ""}）。写入上下文 0 条。`;
+  }
+  if (status === "empty") {
+    return "检索无候选。写入上下文 0 条。";
+  }
+  if (candidates != null && admitted != null && candidates !== injected) {
+    return `检索候选 ${candidates} 条，写入上下文 ${injected} 条。`;
+  }
+  if (candidates != null) {
+    return `检索候选 ${candidates} 条，写入上下文 ${injected} 条。`;
+  }
+  return `预取检索证据 ${injected} 条，`;
 }

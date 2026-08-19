@@ -1,8 +1,14 @@
-"""Agent package public surface."""
+"""Compatibility shims for the pre-runtime agent package.
 
-from src.agent.main_agent import build_supervisor_graph
-from src.agent.registry import AgentRegistry, AgentSpec, build_default_agent_registry
-from src.agent.sub_agents import build_chat_graph, build_rag_graph
+Prefer:
+  ``from src.runtime import build_supervisor_graph``
+  ``from src.agents.chat import build_chat_graph``
+  ``from src.agents.rag import build_rag_graph``
+"""
+
+from src.agents import build_chat_graph, build_rag_graph
+from src.runtime import build_supervisor_graph
+from src.runtime.registry import AgentRegistry, AgentSpec, build_default_agent_registry
 
 __all__ = [
     "AgentRegistry",

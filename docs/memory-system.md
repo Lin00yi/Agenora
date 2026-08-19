@@ -318,8 +318,8 @@ Token 计量使用 **tiktoken**（按模型族选择 `o200k_base` / `cl100k_base
 | 消息写入与 Memory 管理接口 | `backend/src/conversations/routes.py` |
 | 定时维护（闲置 finalize / 整合 / 向量回填） | `backend/src/infra/memory_maintenance.py` |
 | 既有数据库的增量迁移 | `backend/src/infra/database.py` |
-| 对话请求中构建上下文 | `backend/src/app.py` |
-| Provider 安全系统提示词和最终 token 分配 | `backend/src/agent/nodes/reason.py`、`prompts_budget.py` |
+| 对话请求中构建上下文 | `backend/src/api/chat/routes.py` |
+| Provider 安全系统提示词和最终 token 分配 | `backend/src/agents/loop/reason.py`、`prompts_budget.py` |
 | 前端 SSE Trace 类型与渲染 | `frontend/lib/sseClient.ts`、`frontend/components/chat/ChatMessages.tsx` |
 | 记忆管理页 | `frontend/app/memories/page.tsx` |
 | 设计评审（已落地） | Memory Profile/Memory 去重、mode-based RAG reserve 等见本文件 §10 与代码实现 |

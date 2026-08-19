@@ -10,7 +10,7 @@ from src.settings_user.models import UserLLMConfig
 
 @pytest.mark.asyncio
 async def test_system_model_override_forces_default_and_complex(monkeypatch: pytest.MonkeyPatch) -> None:
-    from src import app as app_module
+    from src.api.chat import session as chat_session
 
     captured: dict[str, UserLLMConfig | None] = {}
 
@@ -22,10 +22,10 @@ async def test_system_model_override_forces_default_and_complex(monkeypatch: pyt
         captured["llm_cfg"] = kwargs["llm_cfg"]
         return DummyGraph(), object()
 
-    monkeypatch.setattr(app_module, "rate_check", lambda *_args, **_kwargs: (True, 99))
-    monkeypatch.setattr(app_module, "resolve_user_llm", lambda _user: None)
+    monkeypatch.setattr(chat_session, "rate_check", lambda *_args, **_kwargs: (True, 99))
+    monkeypatch.setattr(chat_session, "resolve_user_llm", lambda _user: None)
     monkeypatch.setattr(
-        app_module,
+        chat_session,
         "resolve_system_llm",
         lambda: UserLLMConfig(
             provider="openai-compat",
@@ -36,10 +36,9 @@ async def test_system_model_override_forces_default_and_complex(monkeypatch: pyt
             context_window=1_000_000,
         ),
     )
-    monkeypatch.setattr(app_module, "build_supervisor_graph", fake_build_graph)
-    monkeypatch.setattr(app_module, "build_graph", fake_build_graph)
+    monkeypatch.setattr(chat_session, "build_supervisor_graph", fake_build_graph)
 
-    app_module._run_chat_session(
+    chat_session.run_chat_session(
         [{"role": "user", "content": "hello"}],
         rate_key="test",
         model_override="deepseek-v4-pro",
@@ -55,16 +54,16 @@ async def test_chat_stream_emits_safe_context_before_agent_events(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The chat timeline must receive its context entry before agent activity."""
-    from src import app as app_module
+    from src.api.chat import session as chat_session
 
     class DummyGraph:
         async def ainvoke(self, state: dict[str, Any]) -> dict[str, Any]:
             return {"final_report": "ok", "cost_usd": 0.0}
 
-    monkeypatch.setattr(app_module, "rate_check", lambda *_args, **_kwargs: (True, 99))
-    monkeypatch.setattr(app_module, "resolve_user_llm", lambda _user: None)
+    monkeypatch.setattr(chat_session, "rate_check", lambda *_args, **_kwargs: (True, 99))
+    monkeypatch.setattr(chat_session, "resolve_user_llm", lambda _user: None)
     monkeypatch.setattr(
-        app_module,
+        chat_session,
         "resolve_system_llm",
         lambda: UserLLMConfig(
             provider="openai-compat",
@@ -76,11 +75,10 @@ async def test_chat_stream_emits_safe_context_before_agent_events(
         ),
     )
     monkeypatch.setattr(
-        app_module, "build_supervisor_graph", lambda **_kwargs: (DummyGraph(), object())
+        chat_session, "build_supervisor_graph", lambda **_kwargs: (DummyGraph(), object())
     )
-    monkeypatch.setattr(app_module, "build_graph", lambda **_kwargs: (DummyGraph(), object()))
 
-    response = app_module._run_chat_session(
+    response = chat_session.run_chat_session(
         [{"role": "user", "content": "hello"}],
         rate_key="test",
         memory_trace={"recent_message_count": 1},

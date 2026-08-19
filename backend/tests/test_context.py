@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.agent.nodes import allocate_provider_context, build_effective_system_prompt, reason_node
+from src.agents.loop import allocate_provider_context, build_effective_system_prompt, reason_node
 from src.conversations.context import (
     MAX_MEMORY_CONTEXT_TOKENS,
     allocate_context_blocks,
@@ -56,7 +56,7 @@ def test_context_blocks_stay_out_of_the_system_prompt() -> None:
 
 
 def test_provider_request_keeps_context_data_out_of_system_and_history_trace() -> None:
-    from src.agent.nodes.reason import _prepare_provider_request
+    from src.agents.loop.reason import _prepare_provider_request
 
     prompt, messages, _, trace = _prepare_provider_request(
         model="custom-small-model",
@@ -1218,8 +1218,8 @@ def test_provider_allocator_never_invents_history_space_for_small_window() -> No
 
 
 def test_final_provider_preparation_caps_rag_before_history() -> None:
-    from src.agent.nodes.reason import _prepare_provider_request
-    from src.agent.nodes.prompts_budget import provider_fixed_prompt_tokens
+    from src.agents.loop.reason import _prepare_provider_request
+    from src.agents.loop.prompts_budget import provider_fixed_prompt_tokens
     from src.conversations.context import SAFETY_RESERVE
 
     tools = [{"name": "search", "input_schema": {"type": "object"}}]
@@ -1256,7 +1256,7 @@ def test_final_provider_preparation_caps_rag_before_history() -> None:
 
 
 def test_retrieval_evidence_does_not_change_system_prompt_or_drop_question() -> None:
-    from src.agent.nodes.reason import _prepare_provider_request
+    from src.agents.loop.reason import _prepare_provider_request
 
     base = "稳定系统规则"
     kwargs = {
@@ -1289,7 +1289,7 @@ def test_retrieval_evidence_does_not_change_system_prompt_or_drop_question() -> 
 
 
 def test_legacy_rag_mode_remains_a_reversible_system_injection_escape_hatch() -> None:
-    from src.agent.nodes.reason import _prepare_provider_request
+    from src.agents.loop.reason import _prepare_provider_request
 
     prompt, messages, _, trace = _prepare_provider_request(
         model="custom-small-model",
@@ -1328,7 +1328,7 @@ def test_pinned_user_turn_drops_an_incomplete_tool_suffix() -> None:
 
 
 def test_final_provider_preparation_rejects_impossible_small_window() -> None:
-    from src.agent.nodes.reason import _prepare_provider_request
+    from src.agents.loop.reason import _prepare_provider_request
 
     with pytest.raises(RuntimeError, match="上下文窗口不足"):
         _prepare_provider_request(

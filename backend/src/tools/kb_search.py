@@ -23,7 +23,8 @@ from typing import Any, TYPE_CHECKING
 import httpx
 
 from src.infra.embedding import embed
-from src.infra.retrieval_policy import resolve_kb_retrieval_policy
+from src.retrieval.assess import admit_hits
+from src.retrieval.policy import resolve_kb_retrieval_policy
 from src.infra.reranker import rerank
 from src.conversations.context import RAG_RESERVE, estimate_tokens, truncate_text_to_token_budget
 from src.infra.vector_store import get_store
@@ -53,13 +54,6 @@ def _chunk_enabled(hit: dict) -> bool:
         return False
     doc_on = payload.get("doc_enabled", True)
     return doc_on is not False and doc_on != "false" and doc_on != 0
-
-
-def _normalized_score(value: Any) -> float:
-    try:
-        return max(0.0, min(float(value), 1.0))
-    except (TypeError, ValueError):
-        return 0.0
 
 
 def _describe_error(exc: BaseException) -> str:
@@ -239,33 +233,28 @@ class KBSearchTool(Tool):
         # may surface a keyword match with weak dense similarity; until a
         # calibrated cross-encoder exception is configured, low-score hits are
         # deliberately treated as a KB miss rather than sent to the model.
-        min_dense_score = policy.min_dense_score
-        hits = [h for h in hits if _chunk_enabled(h)]
-        candidate_count = len(hits)
-        max_score = max(
-            (_normalized_score(hit.get("score")) for hit in hits), default=0.0
+        hits, assessment = admit_hits(
+            hits,
+            min_dense_score=policy.min_dense_score,
+            final_limit=original_limit,
+            is_enabled=_chunk_enabled,
         )
-        hits = [
-            hit
-            for hit in hits
-            if _normalized_score(hit.get("score")) >= min_dense_score
-        ]
-        hits = hits[:original_limit]
 
         if not hits:
             return ToolResult(
                 text=(
                     f"知识库「{self.kb_name}」中没有找到与「{query}」相关的内容。"
-                    f"（候选最高相关度 {max_score:.3f}，准入阈值 {min_dense_score:.3f}）"
+                    f"（候选最高相关度 {assessment.max_score:.3f}，准入阈值 {assessment.min_dense_score:.3f}）"
                 ),
                 latency_ms=0,
                 raw={
                     "hits": 0,
                     "kb_id": self.kb_id,
                     "results": [],
-                    "candidate_hits": candidate_count,
-                    "max_score": max_score,
-                    "min_dense_score": min_dense_score,
+                    "candidate_hits": assessment.candidate_count,
+                    "max_score": assessment.max_score,
+                    "min_dense_score": assessment.min_dense_score,
+                    "retrieval_status": assessment.status,
                 },
             )
 
@@ -320,5 +309,9 @@ class KBSearchTool(Tool):
                 "kb_id": self.kb_id,
                 "truncated": len(blocks) < len(hits),
                 "results": structured,
+                "candidate_hits": assessment.candidate_count,
+                "max_score": assessment.max_score,
+                "min_dense_score": assessment.min_dense_score,
+                "retrieval_status": assessment.status,
             },
         )

@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from src.agent.nodes import reason_node
+from src.agents.loop import reason_node
 from src.infra.llm import CostTracker
 from src.infra.llm_adapters import OpenAICompatToolAdapter, StreamHooks
 from src.settings_user.models import UserLLMConfig
@@ -347,7 +347,7 @@ async def test_reason_node_recovers_empty_completion(
 async def test_reason_node_empty_completion_falls_back_copy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from src.agent.nodes import EMPTY_ANSWER_FALLBACK
+    from src.agents.loop import EMPTY_ANSWER_FALLBACK
 
     class FakeCompletions:
         async def create(self, **kwargs: Any) -> Any:

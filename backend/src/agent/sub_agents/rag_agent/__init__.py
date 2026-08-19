@@ -1,5 +1,5 @@
-"""KB-bound RAG sub-agent."""
+"""Compatibility shim — use ``src.agents.rag`` instead."""
 
-from src.agent.sub_agents.rag_agent.graph import build_rag_graph
+from src.agents.rag import build_rag_graph
 
 __all__ = ["build_rag_graph"]

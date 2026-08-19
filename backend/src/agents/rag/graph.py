@@ -6,7 +6,7 @@ from typing import Any, Awaitable, Callable, TYPE_CHECKING
 
 from langgraph.graph import END, StateGraph
 
-from src.agent.nodes import (
+from src.agents.loop import (
     call_tools_node,
     kb_search_node,
     query_policy_node,
@@ -14,10 +14,10 @@ from src.agent.nodes import (
     should_continue,
     should_search_kb,
 )
-from src.agent.prompts import build_kb_reason_system_prompt
-from src.agent.state import AgentState
+from src.agents.prompts import build_kb_reason_system_prompt
+from src.agents.state import AgentState
 from src.infra.llm import CostTracker
-from src.infra.web_search_policy import resolve_web_search_policy
+from src.retrieval.policy import resolve_web_search_policy
 from src.tools.base import ToolRegistry, build_default_registry
 
 if TYPE_CHECKING:

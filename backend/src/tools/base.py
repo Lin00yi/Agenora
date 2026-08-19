@@ -168,7 +168,7 @@ def build_default_registry(
     tighter than the unbound-chat mount because KB chunks should remain the
     primary source.
     """
-    from src.infra.web_search_policy import resolve_web_search_policy
+    from src.retrieval.policy import resolve_web_search_policy
 
     reg = ToolRegistry()
 

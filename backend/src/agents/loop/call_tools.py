@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, TYPE_CHECKING
 
-from src.agent.state import AgentState
+from src.agents.state import AgentState
 from src.observability import traced
 from src.safety.tool_guard import is_tool_allowed
 from src.tools.base import ToolRegistry

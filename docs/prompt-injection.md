@@ -86,7 +86,7 @@ PromptInjectionAssessment(
 
 在 chat 入口接入：
 
-- `backend/src/app.py`
+- `backend/src/api/chat/session.py`
 - 清洗用户输入后调用 `assess_prompt_injection(cleaned)`。
 - 将检测结果写入 `AgentState`：
 
@@ -102,7 +102,7 @@ PromptInjectionAssessment(
 
 实现位置：
 
-- `backend/src/agent/nodes.py`
+- `backend/src/agents/loop/`
 - `query_policy_node`
 
 策略：
@@ -122,7 +122,7 @@ kb_search_done = true
 
 - `backend/src/safety/prompt_injection.py`
 - `filter_untrusted_rag_text(text)`
-- `backend/src/agent/nodes.py`
+- `backend/src/agents/loop/`
 - `kb_search_node`
 
 处理方式：
@@ -148,7 +148,7 @@ prompt_injection_reasons += suspicious_reasons
 
 实现位置：
 
-- `backend/src/agent/nodes.py`
+- `backend/src/agents/loop/`
 - `reason_node`
 
 每轮都会在 system prompt 中保留固定的 `Prompt Injection Guard`，不携带本轮风险原因，以避免因动态 guard 破坏稳定前缀缓存：
@@ -167,7 +167,7 @@ prompt_injection_reasons += suspicious_reasons
 
 实现位置：
 
-- `backend/src/agent/nodes.py`
+- `backend/src/agents/loop/`
 - `reason_node`
 
 当风险为 `high` 时：
@@ -189,7 +189,7 @@ KB 模式下 `search_kb` 本来就不会暴露给 `reason_node`，检索只由 `
 
 - `backend/src/safety/output_filter.py`
 - `redact_sensitive_output(text)`
-- `backend/src/app.py`
+- `backend/src/api/chat/session.py`
 
 输出前统一过滤：
 

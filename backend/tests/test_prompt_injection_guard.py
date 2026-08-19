@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from src.agent.nodes import kb_search_node, query_policy_node, reason_node
+from src.agents.loop import kb_search_node, query_policy_node, reason_node
 from src.infra.llm import CostTracker
 from src.safety.output_filter import redact_sensitive_output
 from src.safety.prompt_injection import assess_prompt_injection, filter_untrusted_rag_text

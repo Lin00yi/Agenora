@@ -1,11 +1,10 @@
-"""Backward-compatible import path for the main (supervisor) agent.
+"""Compatibility shim — use ``src.runtime`` instead."""
 
-Prefer: ``from src.agent.main_agent import build_supervisor_graph``
-"""
-from src.agent.main_agent.router import choose_initial_agent, resolve_agent_route
-from src.agent.main_agent.supervisor import (
+from src.runtime import (
     SupervisorState,
     build_supervisor_graph,
+    choose_initial_agent,
+    resolve_agent_route,
     should_handoff_to_chat,
 )
 

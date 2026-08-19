@@ -157,7 +157,7 @@ class KB(Base):
         System KBs return 'viewer' for everyone (read-only, no member rows).
 
         v2-M9: replaces the old `user_id == owner OR is_system` two-state
-        check. Used by `kb/routes.py` helpers and `app.py:chat_post`.
+        check. Used by `kb/routes.py` helpers and `api/chat/routes.py`.
         """
         if self.user_id == user_id:
             return "owner"

@@ -92,8 +92,6 @@ class Settings(BaseSettings):
     rag_injection_mode: str = "user_evidence"  # user_evidence | legacy_system
 
     # ===== Multi-agent runtime =====
-    # supervisor: pluggable chat/rag (default). legacy: single build_graph(kb?).
-    agent_runtime_mode: str = "supervisor"  # supervisor | legacy
     # Empty RAG evidence may append a chat follow-up once (web_search stays a chat tool).
     # Planned qa_kb → qa_chat does not need this flag.
     agent_allow_rag_chat_handoff: bool = True
