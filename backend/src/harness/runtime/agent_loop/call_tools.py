@@ -109,15 +109,24 @@ async def call_tools_node(
     async def _run(tc: dict[str, Any]) -> dict[str, Any]:
         name = tc["name"]
         args = tc.get("input") or {}
+        tool = registry.get(name)
+        display = tool.trace_metadata() if tool is not None else None
         confirmation_error = _high_risk_mcp_error(
             name,
             args,
             state.get("messages"),
-            tool=registry.get(name),
+            tool=tool,
         )
         if confirmation_error:
             await emit(
-                {"event": "tool_blocked", "id": tc["id"], "name": name, "input": args, "reason": confirmation_error}
+                {
+                    "event": "tool_blocked",
+                    "id": tc["id"],
+                    "name": name,
+                    "input": args,
+                    "reason": confirmation_error,
+                    **({"display": display} if display else {}),
+                }
             )
             return {"type": "tool_result", "tool_use_id": tc["id"], "content": f"[blocked by safety] {confirmation_error}", "is_error": True}
         if tc["id"] in exhausted_web_tool_call_ids:
@@ -141,6 +150,7 @@ async def call_tools_node(
                     "name": name,
                     "input": args,
                     "reason": reason,
+                    **({"display": display} if display else {}),
                 }
             )
             return {
@@ -162,6 +172,7 @@ async def call_tools_node(
                     "name": name,
                     "input": args,
                     "reason": reason,
+                    **({"display": display} if display else {}),
                 }
             )
             return {
@@ -170,7 +181,15 @@ async def call_tools_node(
                 "content": f"[blocked by safety] {reason}",
                 "is_error": True,
             }
-        await emit({"event": "tool_start", "id": tc["id"], "name": name, "input": args})
+        await emit(
+            {
+                "event": "tool_start",
+                "id": tc["id"],
+                "name": name,
+                "input": args,
+                **({"display": display} if display else {}),
+            }
+        )
 
         result = await registry.call(name, args)
         citations = (
@@ -189,6 +208,7 @@ async def call_tools_node(
                     "ok": result.error is None,
                     "error": result.error,
                     "citations": citations,
+                    **({"display": display} if display else {}),
                 }
             )
         return {
@@ -199,6 +219,7 @@ async def call_tools_node(
             "raw": result.raw,
             "citations": citations,
             "latency_ms": result.latency_ms,
+            "display": display,
         }
 
     results = await asyncio.gather(*[_run(tc) for tc in pending])
@@ -268,6 +289,11 @@ async def call_tools_node(
                 "ok": True,
                 "error": None,
                 "citations": result["citations"],
+                **(
+                    {"display": registry.get("web_search").trace_metadata()}
+                    if registry.get("web_search") is not None
+                    else {}
+                ),
             }
         )
 
@@ -287,6 +313,7 @@ async def call_tools_node(
                 "latency_ms": 0,
                 "error": "yes" if r.get("is_error") else None,
                 "citations": cites,
+                **({"display": r["display"]} if r.get("display") else {}),
             }
         )
 

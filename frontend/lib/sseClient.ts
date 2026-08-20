@@ -125,6 +125,15 @@ export type ChatEvent = {
   name?: string;
   id?: string;
   input?: Record<string, unknown>;
+  /** Host-reviewed presentation metadata for a dynamically mounted tool. */
+  display?: {
+    kind?: "mcp";
+    label?: string;
+    detail?: string;
+    server_id?: string;
+    capability_id?: string;
+    risk?: "read" | "write" | "high_risk_write";
+  };
   text?: string;
   latency_ms?: number;
   ok?: boolean;

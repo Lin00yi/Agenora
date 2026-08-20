@@ -4,6 +4,7 @@ import {
   compactEvents,
   formatDagPlan,
   formatRouteReason,
+  formatToolAction,
   type ToolEvent,
 } from "./ThinkingChain";
 
@@ -82,5 +83,24 @@ describe("formatRouteReason", () => {
   it("maps hybrid plan reasons", () => {
     expect(formatRouteReason("needs_kb_then_web")).toBe("先查知识库，不够再联网");
     expect(formatRouteReason("rag_empty_evidence")).toBe("知识库暂无相关内容");
+  });
+});
+
+describe("dynamic capability presentation", () => {
+  it("uses a server-supplied MCP label instead of a frontend tool-name map", () => {
+    expect(
+      formatToolAction(
+        tool({
+          name: "inventory_lookup_v2",
+          display: {
+            kind: "mcp",
+            label: "查询仓库库存",
+            server_id: "inventory",
+            capability_id: "inventory.stock.lookup",
+            risk: "read",
+          },
+        })
+      )
+    ).toBe("已查询仓库库存");
   });
 });

@@ -22,6 +22,15 @@ export type ToolEvent = {
   reason?: string;
   /** Sub-agent that owns this step (chat | rag | …). */
   agent?: string;
+  /** Host-reviewed display data, normally provided by a dynamic MCP capability. */
+  display?: {
+    kind?: "mcp";
+    label?: string;
+    detail?: string;
+    server_id?: string;
+    capability_id?: string;
+    risk?: "read" | "write" | "high_risk_write";
+  };
 };
 
 type Props = {
@@ -30,18 +39,15 @@ type Props = {
   intro?: string;
 };
 
-const NAME_LABEL: Record<string, string> = {
+// Compatibility only for built-in tools and historical rows created before
+// MCP capabilities emitted a reviewed display descriptor. Newly mounted MCP
+// tools render from event.display and do not require a frontend release.
+const LEGACY_NAME_LABEL: Record<string, string> = {
   search_kb: "检索知识库",
   search_kg: "检索知识图谱",
   web_search: "搜索网络",
   generate_kb_report: "生成知识库报告",
   get_current_time: "获取当前时间",
-  list_orders: "查询我的订单",
-  get_order: "查询订单详情",
-  list_refunds: "查询退款记录",
-  get_refund: "查询退款详情",
-  prepare_refund: "创建退款确认单",
-  confirm_refund: "执行退款",
   intent_ready: "识别任务意图",
   human_input_required: "等待你补充信息",
   dag_ready: "处理计划",
@@ -221,7 +227,7 @@ function getTraceSummary(events: ToolEvent[], hasRunning: boolean, elapsedMs: nu
     if (active.length === 0) {
       return agentHint ? `${agentHint} · 处理中` : "正在处理";
     }
-    const labels = new Set(active.map((event) => NAME_LABEL[event.name] ?? "处理信息"));
+    const labels = new Set(active.map((event) => toolLabel(event)));
     const action =
       labels.size === 1 ? `正在${Array.from(labels)[0]}` : `正在处理 · ${active.length} 项`;
     return agentHint ? `${agentHint} · ${action}` : action;
@@ -271,7 +277,7 @@ function useTraceElapsed(events: ToolEvent[], now: number): number | null {
   return Math.max(0, (hasRunning ? now : completedAt) - startedAt);
 }
 
-function formatToolAction(event: ToolEvent): string {
+export function formatToolAction(event: ToolEvent): string {
   if (event.name === "dag_ready") {
     const plan = formatDagPlan(event.input?.tasks);
     return plan || "处理计划";
@@ -291,7 +297,7 @@ function formatToolAction(event: ToolEvent): string {
     const name = String(event.input?.name ?? "").trim();
     return name ? `本轮检索 ${name}` : "本轮选择知识库";
   }
-  const base = NAME_LABEL[event.name] ?? "处理信息";
+  const base = toolLabel(event);
   if (event.status === "running") return `正在${base}`;
   if (event.status === "ok") return `已${base}`;
   if (event.status === "blocked") return `${base}已阻止`;
@@ -303,6 +309,8 @@ function formatToolDetail(event: ToolEvent): string {
     const reason = typeof event.input?.reason === "string" ? event.input.reason : event.reason;
     return typeof reason === "string" ? formatRouteReason(reason.trim()) : "";
   }
+  const displayDetail = event.display?.detail?.trim();
+  if (displayDetail) return truncate(displayDetail, 72);
   const input = event.input;
   if (!input) return "";
   for (const key of ["query", "city", "date", "timezone"] as const) {
@@ -310,6 +318,12 @@ function formatToolDetail(event: ToolEvent): string {
     if (typeof value === "string" && value.trim()) return truncate(value.trim(), 72);
   }
   return "";
+}
+
+function toolLabel(event: ToolEvent): string {
+  const dynamic = event.display?.label?.trim();
+  if (dynamic) return dynamic;
+  return LEGACY_NAME_LABEL[event.name] ?? "调用服务能力";
 }
 
 /** Map machine / LLM snake reasons to short Chinese; hide opaque tokens. */

@@ -55,15 +55,26 @@ def _persisted_tool_events(tool_log: list[dict[str, Any]] | None) -> list[dict[s
         name = entry.get("name")
         if not isinstance(name, str) or not name:
             continue
-        events.append(
-            {
-                "id": str(entry.get("id") or f"persisted-tool-{index}"),
-                "name": name,
-                "status": "error" if entry.get("error") else "ok",
-                "latency_ms": entry.get("latency_ms"),
-                "error": entry.get("error"),
+        event = {
+            "id": str(entry.get("id") or f"persisted-tool-{index}"),
+            "name": name,
+            "status": "error" if entry.get("error") else "ok",
+            "latency_ms": entry.get("latency_ms"),
+            "error": entry.get("error"),
+        }
+        display = entry.get("display")
+        if isinstance(display, dict):
+            # Only retain the explicitly reviewed display envelope. Never
+            # persist arbitrary MCP metadata or raw service responses.
+            safe_display = {
+                key: value
+                for key, value in display.items()
+                if key in {"kind", "label", "detail", "server_id", "capability_id", "risk"}
+                and isinstance(value, str)
             }
-        )
+            if safe_display:
+                event["display"] = safe_display
+        events.append(event)
     return events
 
 
@@ -144,6 +155,18 @@ class _StreamingAssistantDraft:
     content: str = ""
     tools: list[dict[str, Any]] = field(default_factory=list)
 
+    @staticmethod
+    def _safe_display(value: Any) -> dict[str, str] | None:
+        if not isinstance(value, dict):
+            return None
+        display = {
+            key: item
+            for key, item in value.items()
+            if key in {"kind", "label", "detail", "server_id", "capability_id", "risk"}
+            and isinstance(item, str)
+        }
+        return display or None
+
     def observe(self, event: dict[str, Any]) -> None:
         kind = event.get("event")
         if kind == "token":
@@ -156,13 +179,14 @@ class _StreamingAssistantDraft:
             tool_id = event.get("id")
             if not isinstance(name, str) or not name:
                 return
-            self.tools.append(
-                {
-                    "id": str(tool_id or f"streaming-tool-{len(self.tools)}"),
-                    "name": name,
-                    "status": "running",
-                }
-            )
+            tool = {
+                "id": str(tool_id or f"streaming-tool-{len(self.tools)}"),
+                "name": name,
+                "status": "running",
+            }
+            if display := self._safe_display(event.get("display")):
+                tool["display"] = display
+            self.tools.append(tool)
             return
         if kind != "tool_end":
             return
@@ -174,6 +198,8 @@ class _StreamingAssistantDraft:
             tool["latency_ms"] = event.get("latency_ms")
             if event.get("error"):
                 tool["error"] = event["error"]
+            if display := self._safe_display(event.get("display")):
+                tool["display"] = display
             return
 
 

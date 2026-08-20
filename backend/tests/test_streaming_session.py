@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import json
 
-from src.api.streaming.session import _StreamingAssistantDraft, _human_interrupt_content
+from src.api.streaming.session import (
+    _StreamingAssistantDraft,
+    _human_interrupt_content,
+    _persisted_tool_events,
+)
 from src.capabilities.conversations.models import Message
 
 
@@ -34,6 +38,27 @@ def test_streaming_draft_keeps_partial_text_and_redacts_tool_input() -> None:
     assert draft.tools == [
         {"id": "call-1", "name": "lookup_order", "status": "ok", "latency_ms": 12}
     ]
+
+
+def test_persisted_tool_event_keeps_only_reviewed_dynamic_display_fields() -> None:
+    events = _persisted_tool_events(
+        [{
+            "id": "call-1",
+            "name": "inventory_lookup_v2",
+            "display": {
+                "kind": "mcp",
+                "label": "查询实时库存",
+                "server_id": "inventory",
+                "credential": "must-not-persist",
+            },
+        }]
+    )
+
+    assert events[0]["display"] == {
+        "kind": "mcp",
+        "label": "查询实时库存",
+        "server_id": "inventory",
+    }
 
 
 def test_streaming_marker_round_trips_through_message_public_shape() -> None:

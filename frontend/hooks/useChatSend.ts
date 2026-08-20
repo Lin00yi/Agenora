@@ -683,6 +683,7 @@ export function useChatSend({
                 status: "running",
                 t0: Date.now(),
                 agent: evt.agent,
+                display: evt.display,
               };
               if (streamingRef.current) {
                 const snap = streamingRef.current;
@@ -728,6 +729,7 @@ export function useChatSend({
                   status: evt.ok ? "ok" : "error",
                   latency_ms: evt.latency_ms ?? null,
                   error: evt.error ?? null,
+                  ...(evt.display ? { display: evt.display } : {}),
                 });
                 streamingRef.current.parts = streamingRef.current.parts.map((part) =>
                   part.type === "tools"
@@ -737,6 +739,7 @@ export function useChatSend({
                           status: evt.ok ? "ok" : "error",
                           latency_ms: evt.latency_ms ?? null,
                           error: evt.error ?? null,
+                          ...(evt.display ? { display: evt.display } : {}),
                         }),
                       }
                     : part
@@ -756,6 +759,7 @@ export function useChatSend({
                     status: evt.ok ? "ok" : "error",
                     latency_ms: evt.latency_ms ?? null,
                     error: evt.error ?? null,
+                    ...(evt.display ? { display: evt.display } : {}),
                   }),
                   parts: (m.parts ?? []).map((part) =>
                     part.type === "tools"
@@ -763,8 +767,9 @@ export function useChatSend({
                           type: "tools",
                           tools: updateToolEvent(part.tools, evt, {
                             status: evt.ok ? "ok" : "error",
-                            latency_ms: evt.latency_ms ?? null,
-                            error: evt.error ?? null,
+                          latency_ms: evt.latency_ms ?? null,
+                          error: evt.error ?? null,
+                          ...(evt.display ? { display: evt.display } : {}),
                           }),
                         }
                       : part
@@ -786,6 +791,7 @@ export function useChatSend({
                 status: "blocked",
                 reason: evt.reason ?? "",
                 agent: evt.agent,
+                display: evt.display,
               };
               if (streamingRef.current) {
                 const snap = streamingRef.current;

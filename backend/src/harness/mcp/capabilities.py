@@ -31,6 +31,20 @@ class McpCapabilityTool(Tool):
         self.risk = binding.risk
         self.policy_id = binding.policy_id
 
+    def trace_metadata(self) -> dict[str, Any]:
+        """Expose the catalog's reviewed presentation data to the UI."""
+        label = self.binding.display_name or self.binding.description or self.name
+        metadata: dict[str, Any] = {
+            "kind": "mcp",
+            "label": label,
+            "server_id": self.binding.server_id,
+            "capability_id": self.binding.id,
+            "risk": self.binding.risk,
+        }
+        if self.binding.description and self.binding.description != label:
+            metadata["detail"] = self.binding.description
+        return metadata
+
     async def execute(self, **kwargs: Any) -> ToolResult:
         started = time.perf_counter()
         try:

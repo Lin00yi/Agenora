@@ -63,13 +63,20 @@ class CapabilityBinding(BaseModel):
     agent_id: str = Field(min_length=1, max_length=80)
     risk: McpRisk = "read"
     description: str = ""
+    # Optional presentation label controlled by the Host/admin catalog. This
+    # is intentionally separate from the model-facing description so a newly
+    # injected MCP capability can render well without frontend code changes.
+    display_name: str | None = Field(default=None, max_length=120)
     input_schema: dict[str, Any] = Field(default_factory=lambda: {"type": "object", "properties": {}})
     policy_id: str | None = None
 
-    @field_validator("id", "server_id", "tool_name", "exposed_name", "agent_id")
+    @field_validator("id", "server_id", "tool_name", "exposed_name", "agent_id", "display_name")
     @classmethod
-    def _strip_identifier(cls, value: str) -> str:
-        return value.strip()
+    def _strip_identifier(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
 
 
 @dataclass(frozen=True)
@@ -169,12 +176,12 @@ def _orders_default_catalog(settings: Settings) -> McpCatalog:
         },
     }
     metadata = {
-        "list_orders": ("commerce.orders.list", "查询当前登录用户的订单列表。", "read", None),
-        "get_order": ("commerce.orders.get", "按订单号查询当前登录用户的一笔订单。", "read", None),
-        "list_refunds": ("commerce.refunds.list", "查询当前登录用户的退款记录。", "read", None),
-        "get_refund": ("commerce.refunds.get", "按退款单号或确认单号查询退款状态。", "read", None),
-        "prepare_refund": ("commerce.refund.prepare", "创建退款确认单，不会执行退款。", "write", "refund_v1"),
-        "confirm_refund": ("commerce.refund.confirm", "执行已确认的退款。", "high_risk_write", "refund_confirmation_v1"),
+        "list_orders": ("commerce.orders.list", "查询当前登录用户的订单列表。", "查询订单", "read", None),
+        "get_order": ("commerce.orders.get", "按订单号查询当前登录用户的一笔订单。", "查询订单详情", "read", None),
+        "list_refunds": ("commerce.refunds.list", "查询当前登录用户的退款记录。", "查询退款记录", "read", None),
+        "get_refund": ("commerce.refunds.get", "按退款单号或确认单号查询退款状态。", "查询退款详情", "read", None),
+        "prepare_refund": ("commerce.refund.prepare", "创建退款确认单，不会执行退款。", "创建退款确认单", "write", "refund_v1"),
+        "confirm_refund": ("commerce.refund.confirm", "执行已确认的退款。", "执行退款", "high_risk_write", "refund_confirmation_v1"),
     }
     capabilities = {
         capability_id: CapabilityBinding(
@@ -188,7 +195,7 @@ def _orders_default_catalog(settings: Settings) -> McpCatalog:
             policy_id=policy_id,
             input_schema=schemas[tool_name],
         )
-        for tool_name, (capability_id, description, risk, policy_id) in metadata.items()
+        for tool_name, (capability_id, description, display_name, risk, policy_id) in metadata.items()
     }
     return McpCatalog(servers={server.id: server}, capabilities=capabilities)
 

@@ -52,6 +52,15 @@ class Tool(abc.ABC):
         """Backward-compatible alias for the canonical internal schema."""
         return self.to_schema()
 
+    def trace_metadata(self) -> dict[str, Any]:
+        """Safe, user-facing metadata for the execution timeline.
+
+        Subclasses can expose a reviewed display label without leaking their
+        schema, credentials, raw result, or internal implementation details.
+        The empty default keeps built-in tools backward-compatible.
+        """
+        return {}
+
 
 class ToolRegistry:
     def __init__(self) -> None:

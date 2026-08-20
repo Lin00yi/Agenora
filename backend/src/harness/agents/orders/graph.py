@@ -94,7 +94,16 @@ async def _confirm_refund_fast(
 
     tool_id = f"refund-confirm-{approval_id}"
     payload = {"approval_id": approval_id, "confirmation_text": confirmation_text}
-    await emit({"event": "tool_start", "id": tool_id, "name": "confirm_refund", "input": payload})
+    display = tool.trace_metadata()
+    await emit(
+        {
+            "event": "tool_start",
+            "id": tool_id,
+            "name": "confirm_refund",
+            "input": payload,
+            **({"display": display} if display else {}),
+        }
+    )
     started_at = time.perf_counter()
     result = await registry.call("confirm_refund", payload)
     latency_ms = result.latency_ms or int((time.perf_counter() - started_at) * 1000)
@@ -107,6 +116,7 @@ async def _confirm_refund_fast(
             "ok": result.error is None,
             "error": result.error,
             "citations": [],
+            **({"display": display} if display else {}),
         }
     )
 
@@ -146,6 +156,7 @@ async def _confirm_refund_fast(
             "result": result.text if result.error is None else None,
             "latency_ms": latency_ms,
             "error": result.error,
+            **({"display": display} if display else {}),
         }
     )
     messages = list(state.get("messages") or [])

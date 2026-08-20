@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from src.harness.mcp.catalog import build_mcp_catalog
+from src.harness.mcp.capabilities import McpCapabilityTool
 from src.harness.mcp.manager import McpCapabilityError, McpConnectionManager
 from src.settings import Settings
 
@@ -60,7 +61,8 @@ def test_custom_http_server_can_bind_capability_and_host_secret_header() -> None
             '"identity_argument":"user_id","secret_headers":{"Authorization":"inventory_token"}}],'
             '"capabilities":[{"id":"inventory.lookup","server_id":"inventory",'
             '"tool_name":"lookup","exposed_name":"lookup_inventory","agent_id":"orders",'
-            '"description":"查询库存","input_schema":{"type":"object","properties":{}}}]}'
+            '"description":"查询库存","display_name":"查询实时库存",'
+            '"input_schema":{"type":"object","properties":{}}}]}'
         ),
         mcp_secrets_json='{"inventory_token":"Bearer test-token"}',
     )
@@ -68,7 +70,16 @@ def test_custom_http_server_can_bind_capability_and_host_secret_header() -> None
     server = manager.catalog.server("inventory")
 
     assert manager._host_headers(server) == {"Authorization": "Bearer test-token"}
-    assert manager.catalog.capabilities_for_agent("orders")[0].exposed_name == "lookup_inventory"
+    binding = manager.catalog.capabilities_for_agent("orders")[0]
+    assert binding.exposed_name == "lookup_inventory"
+    assert McpCapabilityTool(binding=binding, manager=manager, actor_id="user-a").trace_metadata() == {
+        "kind": "mcp",
+        "label": "查询实时库存",
+        "detail": "查询库存",
+        "server_id": "inventory",
+        "capability_id": "inventory.lookup",
+        "risk": "read",
+    }
 
 
 def test_manager_rejects_model_override_of_host_identity_and_secret() -> None:
