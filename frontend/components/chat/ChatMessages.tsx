@@ -111,12 +111,13 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
       <div className="min-w-0 flex-1">
         {legacyLayout ? (
           <>
-            {(hasTools || (!streaming && hasMemoryContext)) && (
+            {(hasTools || hasMemoryContext) && (
               <div className="mb-3 space-y-2">
+                {/* A restored message has no interleaved parts. Context was
+                    prepared before tools ran, so preserve that causal order
+                    instead of appending the fallback trace below processing. */}
+                {hasMemoryContext ? <MemoryContextTrace trace={message.memory_trace!} /> : null}
                 {hasTools ? <ThinkingChain events={message.tools} /> : null}
-                {!streaming && hasMemoryContext ? (
-                  <MemoryContextTrace trace={message.memory_trace!} />
-                ) : null}
               </div>
             )}
             <div className="kf-answer px-1 py-1 sm:px-2">
