@@ -16,6 +16,7 @@ jobs:
       - run: pip install -e ".[dev,openai,postgres]"
       - run: ruff check src tests
       - run: python scripts/verify_architecture_paths.py
+      - run: python -m src.harness.evaluation.react_cli --gate config/react_eval_gate.json
       - run: pytest -q
 
   frontend:

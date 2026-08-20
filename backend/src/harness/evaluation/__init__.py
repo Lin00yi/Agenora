@@ -1,4 +1,4 @@
-"""Versioned, deterministic RAG retrieval and citation evaluation."""
+"""Versioned, deterministic retrieval and constrained-runtime evaluation."""
 
 from .metrics import (
     EvaluationGateError,
@@ -15,6 +15,14 @@ from .metrics import (
     search_overfetch_limit,
     unique_ids,
 )
+from .react_runtime import (
+    ReactEvaluationError,
+    ReactGoldenCase,
+    assert_react_quality_gate,
+    evaluate_react_cases,
+    load_react_cases,
+    parse_react_cases_jsonl,
+)
 
 __all__ = [
     "EvaluationGateError",
@@ -30,4 +38,10 @@ __all__ = [
     "parse_predictions_jsonl",
     "search_overfetch_limit",
     "unique_ids",
+    "ReactEvaluationError",
+    "ReactGoldenCase",
+    "assert_react_quality_gate",
+    "evaluate_react_cases",
+    "load_react_cases",
+    "parse_react_cases_jsonl",
 ]

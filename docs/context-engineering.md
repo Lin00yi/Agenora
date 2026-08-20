@@ -42,11 +42,10 @@ flowchart TD
     BA --> CP["组装带 _context_source 的上下文"]
     CP --> CE["SSE context_ready 初始 Trace"]
 
-    CP --> AG["Agent 图执行"]
-    AG --> KG{"绑定 KB 且需要检索"}
-    KG -->|"是"| KS["并行 KB / KG 检索"]
+    CP --> SC["scope：仅从 ACL KB 候选中选择能力范围"]
+    SC --> RN["单 Agent ReAct：reason ⇄ call_tools"]
+    RN --> KS["按需调用 KB / KG / 网页等已挂载工具"]
     KS --> RB["结构化 KB/KG 证据，并先限制到 8,000 token"]
-    KG -->|"否"| RN["reason_node"]
     RB --> RN["reason：固定当前问题 + 普通 evidence 消息"]
     RN --> BP["合并可信系统上下文与安全规则"]
     BP --> FP["实测 System / Tools / 输出 / 安全余量"]
@@ -133,9 +132,21 @@ Profile 每轮注入稳定的个人偏好，不占用检索名额。其他长期
 
 ## 5. Agent、RAG 与最终 Provider 请求
 
+### 5.0 默认是受约束的单 Agent ReAct Runtime
+
+普通聊天与知识库问答默认使用 `agent_runtime_mode=react`：
+
+```text
+scope（ACL KB 范围选择） → reason ⇄ call_tools
+```
+
+`scope` 只可从当前用户可读的 KB 候选中选择最多三个库，不会创建任务 DAG，也不会授予订单或未挂载工具。随后同一个模型在一个循环内决定是否调用 `search_kb`、`search_kg`、`web_search` 等当前已授权工具；调用次数、网页证据数、提示注入限制、工具白名单和输出上下文预算都由服务端强制执行。
+
+订单和退款不由模型路由：规则识别出的订单意图才进入独立的确定性审批图，退款仍要求下一条用户消息精确确认。旧 Supervisor 仅作为显式回滚和历史 checkpoint 恢复兼容路径，不是新会话的默认架构。
+
 ### 5.1 RAG 是独立的可裁剪证据块
 
-当会话绑定 KB，Agent 可以执行多条改写查询和 KG 查询。每次检索的结果在 `kb_search_node` 合并后首先受 `8,000` token 上限约束，避免「单次查询有上限、合并后超窗」。
+当 scope 选择了 KB，ReAct Agent 可以按需执行多条 KB/KG 查询。每次检索的结果在工具执行层合并后首先受 `8,000` token 上限约束，避免「单次查询有上限、合并后超窗」。
 
 `kb_search_node` 不再只输出扁平的 `kb_context`：它会为每个 KB chunk 或 KG 结果创建 `retrieved_evidence`，保留 `id`、`source_type`、`query`、`document_id`、`chunk_id`、`title`、`score` 与原文。`kb_context` 只保留给 `RAG_INJECTION_MODE=legacy_system` 的紧急回滚路径。
 
@@ -161,6 +172,8 @@ Anthropic 适配层会在稳定业务规则之后设置 `cache_control`，再追
 ## 6. 观测与前端可解释性
 
 聊天开始时，SSE 先发送一次 `context_ready`，内容是 Profile、Memory、Summary 和最近消息的初始 Trace。Agent 完成请求准备后会再次发送 `context_ready`，替换为最终 Trace；同一 Trace 也写入助手消息和观测系统。
+
+最终 Trace 的 `runtime.execution` 额外记录安全聚合的 ReAct 信号：能力范围、选中的 KB ID、迭代数、各工具调用次数、工具错误数、网页调用/证据预算。它不包含工具参数、工具返回原文、用户查询或向量。`config/react_eval_cases.jsonl` 与 `react_eval_gate.json` 是对应的确定性发布门禁；CI 会执行它以防订单隔离、工具白名单或预算约束回退。
 
 `prompt_trace` 不包含原始系统提示词、工具 schema 或安全原因，只包含安全的度量数据：
 

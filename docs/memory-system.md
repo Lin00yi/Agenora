@@ -250,6 +250,8 @@ python -m src.capabilities.memory.application.worker
 
 聊天完成后 SSE `done` 事件会带回 `memory_trace`，前端可按消息展示注入 Trace。除 Profile / 检索记忆 / 摘要元数据外，Trace 还带有最终 Provider 请求的模型、context window、System/Tools/RAG/History/输出/安全余量 token 分配，以及 Profile/Memory/Summary/RAG/History 的截断标记；该数据来自调用前的最终实测，而非固定预算推测。
 
+每条进入检索 Memory 块的 Trace 还会给出安全的 `selection` 说明：`keyword`、`semantic`、`preference_intent` 或 `kb_scope`，以及排序评分。该说明只描述召回信号；不会写入用户查询词、embedding 或工具结果，因此可以解释“为何注入”而不扩大敏感数据留存面。
+
 ## 7. 上下文预算
 
 本节只保留 Memory 相关的预算规则。完整的 Provider 最终请求、RAG 二次裁剪、工具 Schema 测量和 `prompt_trace` 流程见 [上下文工程说明](context-engineering.md)。

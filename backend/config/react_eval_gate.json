@@ -1,0 +1,5 @@
+{
+  "dataset": "config/react_eval_cases.jsonl",
+  "max_failures": 0,
+  "notes": "Deterministic release gate for ReAct runtime routing, mounted-tool isolation, per-turn budgets, and telemetry redaction."
+}
