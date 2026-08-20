@@ -255,10 +255,58 @@ export function formatMemoryTraceSummary(trace: MemoryTrace): string {
   if (trace.summary) {
     parts.push("含会话摘要");
   }
+  if (trace.runtime?.execution?.tool_call_total) {
+    parts.push(`调用 ${trace.runtime.execution.tool_call_total} 次工具`);
+  }
   if (trace.prompt) {
     parts.push(`模型总输入 ${formatTokenCount(trace.prompt.tokens.total_input)}`);
   }
   return parts.join(" · ") || "本轮上下文";
+}
+
+/** A user-readable explanation of the safe retrieval signals in memory_trace. */
+export function formatMemorySelection(item: MemoryTraceItem): string | null {
+  const labels: Record<string, string> = {
+    keyword: "关键词匹配",
+    semantic: "语义匹配",
+    preference_intent: "偏好意图",
+    kb_scope: "当前知识库范围",
+    query_relevance: "与当前问题相关",
+  };
+  const matchedBy = item.selection?.matched_by
+    ?.map((reason) => labels[reason] ?? reason)
+    .filter(Boolean);
+  if (!matchedBy?.length) return null;
+  return `命中依据：${Array.from(new Set(matchedBy)).join("、")}`;
+}
+
+/** Compact, safe ReAct outcome summary; never includes tool input or output. */
+export function formatRuntimeExecutionSummary(trace: MemoryTrace): string | null {
+  const execution = trace.runtime?.execution;
+  if (!execution) return null;
+
+  const parts: string[] = [];
+  if (trace.runtime?.agent_runtime === "react") parts.push("单 Agent ReAct");
+  else if (trace.runtime?.agent_runtime === "orders") parts.push("受控订单流程");
+  else if (trace.runtime?.agent_runtime) parts.push(trace.runtime.agent_runtime);
+
+  if (typeof execution.iterations === "number" && execution.iterations > 0) {
+    parts.push(`${execution.iterations} 轮`);
+  }
+  const calls = Object.entries(execution.tool_calls ?? {})
+    .filter(([, count]) => Number.isFinite(count) && count > 0)
+    .slice(0, 3)
+    .map(([name, count]) => `${getToolLabelClean(name)} ×${count}`);
+  if (calls.length > 0) parts.push(calls.join("、"));
+  else if ((execution.tool_call_total ?? 0) === 0) parts.push("未调用工具");
+
+  if ((execution.web_search_calls ?? 0) > 0) {
+    parts.push(`网页证据 ${execution.web_search_evidence ?? 0} 条`);
+  }
+  if ((execution.tool_error_total ?? 0) > 0) {
+    parts.push(`${execution.tool_error_total} 次工具未成功`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 export function memoryTraceTypeLabel(type: string) {

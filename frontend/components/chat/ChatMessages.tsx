@@ -20,8 +20,10 @@ import { cn } from "@/lib/cn";
 import { SourceCards } from "./SourceCards";
 import {
   buildInjectedMemoryItems,
+  formatMemorySelection,
   formatMemoryTraceSummary,
   formatMessageTime,
+  formatRuntimeExecutionSummary,
   formatTokenCount,
   getAssistantStreamingStatus,
   hasVisibleCitations,
@@ -280,6 +282,7 @@ function MemoryContextTrace({ trace }: { trace: MemoryTrace }) {
   const [open, setOpen] = useState(false);
   const items = buildInjectedMemoryItems(trace);
   const summaryText = formatMemoryTraceSummary(trace);
+  const executionSummary = formatRuntimeExecutionSummary(trace);
   const truncatedBlocks = trace.prompt
     ? [
         trace.prompt.truncation.profile ? "偏好" : "",
@@ -321,6 +324,11 @@ function MemoryContextTrace({ trace }: { trace: MemoryTrace }) {
                 </span>
               </div>
             ) : null}
+            {executionSummary ? (
+              <p className="text-pretty text-xs leading-5 text-muted">
+                执行摘要 · {executionSummary}
+              </p>
+            ) : null}
             {trace.recent_message_count ? (
               <p className="text-xs leading-5 text-muted">
                 保留最近 {trace.recent_message_count} 条对话作为本轮参考。
@@ -328,19 +336,25 @@ function MemoryContextTrace({ trace }: { trace: MemoryTrace }) {
             ) : null}
             {items.length > 0 ? (
               <ul className="space-y-1.5">
-                {items.slice(0, 6).map((item) => (
-                  <li key={item.id} className="border-l border-surface-border/70 pl-2.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-xs font-medium text-ink/85">
-                        {memoryTraceTypeLabel(item.type)}
-                      </span>
-                      <span className="shrink-0 text-[11px] tabular-nums text-muted">
-                        重要度 {Math.round((item.importance ?? 0) * 100)}%
-                      </span>
-                    </div>
-                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted">{item.content}</p>
-                  </li>
-                ))}
+                {items.slice(0, 6).map((item) => {
+                  const selection = formatMemorySelection(item);
+                  return (
+                    <li key={item.id} className="border-l border-surface-border/70 pl-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-xs font-medium text-ink/85">
+                          {memoryTraceTypeLabel(item.type)}
+                        </span>
+                        <span className="shrink-0 text-[11px] tabular-nums text-muted">
+                          重要度 {Math.round((item.importance ?? 0) * 100)}%
+                        </span>
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted">{item.content}</p>
+                      {selection ? (
+                        <p className="mt-1 text-xs leading-5 text-muted/85">{selection}</p>
+                      ) : null}
+                    </li>
+                  );
+                })}
               </ul>
             ) : null}
 

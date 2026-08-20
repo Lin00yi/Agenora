@@ -9,6 +9,11 @@ export type MemoryTraceItem = {
   confidence: number;
   importance: number;
   updated_at: string | null;
+  /** Safe explanation of why this recalled memory was selected for this turn. */
+  selection?: {
+    score?: number;
+    matched_by?: string[];
+  };
 };
 
 export type MemoryTrace = {
@@ -17,6 +22,27 @@ export type MemoryTrace = {
     mode?: "general" | "knowledge_base";
     agent_runtime?: string;
     safety?: "standard" | "heightened";
+    /** Aggregate runtime telemetry. It deliberately excludes tool inputs and results. */
+    execution?: {
+      iterations?: number;
+      tool_calls?: Record<string, number>;
+      tool_call_total?: number;
+      tool_error_total?: number;
+      web_search_calls?: number;
+      web_search_evidence?: number;
+      scope?: {
+        kind?: string;
+        selected_kb_ids?: string[];
+        route?: {
+          needs_retrieval?: boolean;
+          source?: string;
+          confidence?: string;
+          reason?: string;
+          candidate_count?: number;
+          latency_ms?: number;
+        };
+      };
+    };
   };
   kb_route?: {
     needs_retrieval: boolean;
