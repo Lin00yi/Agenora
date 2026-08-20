@@ -183,6 +183,14 @@ python -m src.harness.evaluation.live_tool_selection_cli --live \
   --max-total-cost-usd 0.05 --report /tmp/react-live-tool-selection.json
 ```
 
+默认使用系统级 LLM 配置。若平台没有共享凭据、而管理员已取得某个用户的明确授权，可显式提供该用户 UUID 并使用其已保存的 BYOK 配置；命令不会枚举用户或打印密钥：
+
+```bash
+python -m src.harness.evaluation.live_tool_selection_cli --live \
+  --user-id <user-uuid> --max-total-cost-usd 0.05 \
+  --report /tmp/react-live-tool-selection.json
+```
+
 该命令不进 CI：模型输出和计费具有外部波动。它用于模型或提示词升级前后的人工验收，报告只记录模型名、所选工具、通过状态与总成本，不保存回答正文。
 
 `prompt_trace` 不包含原始系统提示词、工具 schema 或安全原因，只包含安全的度量数据：
