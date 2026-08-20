@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.capabilities.conversations.models import Message
 
 from src.capabilities.memory.application.lifecycle import _memory_trace_item
-from src.capabilities.memory.application.retrieval import memory_block, retrieve_user_memories
+from src.capabilities.memory.application.retrieval import memory_block, retrieve_user_memory_matches
 
 from .compression import ensure_summary_if_needed
 from .constants import MAX_SUMMARY_CONTEXT_TOKENS, BuiltContext
@@ -64,7 +64,7 @@ async def build_context_for_conversation(
         last_user = next((m for m in reversed(messages) if m.role == "user"), None)
         profile = await build_user_memory_profile(session, user_id=user_id, kb_id=kb_id)
         profile_ids = set(profile.get("memory_ids") or set())
-        memories = await retrieve_user_memories(
+        memory_matches = await retrieve_user_memory_matches(
             session,
             user_id=user_id,
             query=last_user.content if last_user else "",
@@ -72,6 +72,7 @@ async def build_context_for_conversation(
             embedding_cfg=embedding_cfg,
             exclude_ids=profile_ids,
         )
+        memories = [match.memory for match in memory_matches]
 
         out: list[dict[str, str]] = []
         profile_text = user_profile_block(profile)
@@ -172,7 +173,13 @@ async def build_context_for_conversation(
                 },
                 "memories": {
                     "injected_count": len(memories),
-                    "items": [_memory_trace_item(row) for row in memories],
+                    "items": [
+                        {
+                            **_memory_trace_item(match.memory),
+                            "selection": match.trace_metadata(),
+                        }
+                        for match in memory_matches
+                    ],
                 },
                 "summary": (
                     {

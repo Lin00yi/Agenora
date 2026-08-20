@@ -20,6 +20,7 @@ from src.harness.agents.orders import build_orders_graph
 from src.harness.agents.react import build_react_graph
 from src.harness.agents.supervisor import build_supervisor_graph
 from src.harness.runtime.intent_routing import requires_order_workflow
+from src.harness.runtime.telemetry import summarize_runtime_state
 from src.harness.runtime.checkpoints import checkpoint_config, open_agent_checkpointer
 from src.harness.contracts.runtime import RunContext, RunIdentity
 from src.harness.runtime.agent_loop import EMPTY_ANSWER_FALLBACK
@@ -641,29 +642,31 @@ async def run_chat_session(
             final_kb_id = final_state.get("kb_id") or (kb.id if kb else None)
             final_kb_route = final_state.get("kb_auto_route")
             prompt_trace = final_state.get("prompt_trace")
-            if memory_trace is not None and isinstance(prompt_trace, dict):
-                block_trace = memory_trace.get("context_blocks") or {}
-                final_plan = prompt_trace.get("context_plan") or {}
-                tokens = prompt_trace.get("tokens")
-                truncation = prompt_trace.get("truncation")
-                if isinstance(tokens, dict) and isinstance(truncation, dict):
-                    for name in ("profile", "memory", "summary"):
-                        final_block = final_plan.get(name)
-                        block = block_trace.get(name)
-                        if isinstance(final_block, dict):
-                            tokens[name] = int(final_block.get("admitted_tokens") or 0)
-                            truncation[name] = bool(final_block.get("dropped"))
-                            continue
-                        if not isinstance(block, dict):
-                            continue
-                        injected_tokens = int(block.get("injected_tokens") or 0)
-                        tokens[name] = injected_tokens
-                        truncation[name] = bool(block.get("truncated"))
-                    # Profile, memory, and summary are now attached to the
-                    # latest user turn as untrusted data. ``reason`` excludes
-                    # their measured payload from history before this trace is
-                    # emitted, so adding their own UI segments does not alter
-                    # the total or double-count them.
+            runtime_telemetry = summarize_runtime_state(final_state)
+            if memory_trace is not None:
+                if isinstance(prompt_trace, dict):
+                    block_trace = memory_trace.get("context_blocks") or {}
+                    final_plan = prompt_trace.get("context_plan") or {}
+                    tokens = prompt_trace.get("tokens")
+                    truncation = prompt_trace.get("truncation")
+                    if isinstance(tokens, dict) and isinstance(truncation, dict):
+                        for name in ("profile", "memory", "summary"):
+                            final_block = final_plan.get(name)
+                            block = block_trace.get(name)
+                            if isinstance(final_block, dict):
+                                tokens[name] = int(final_block.get("admitted_tokens") or 0)
+                                truncation[name] = bool(final_block.get("dropped"))
+                                continue
+                            if not isinstance(block, dict):
+                                continue
+                            injected_tokens = int(block.get("injected_tokens") or 0)
+                            tokens[name] = injected_tokens
+                            truncation[name] = bool(block.get("truncated"))
+                        # Profile, memory, and summary are now attached to the
+                        # latest user turn as untrusted data. ``reason`` excludes
+                        # their measured payload from history before this trace is
+                        # emitted, so adding their own UI segments does not alter
+                        # the total or double-count them.
                 memory_trace = {
                     **memory_trace,
                     "runtime": {
@@ -676,8 +679,9 @@ async def run_chat_session(
                         # must still describe the provider request that just
                         # completed instead of its pre-routing starting mode.
                         "mode": "knowledge_base" if final_kb_id else "general",
+                        "execution": runtime_telemetry,
                     },
-                    "prompt": prompt_trace,
+                    **({"prompt": prompt_trace} if isinstance(prompt_trace, dict) else {}),
                     **({"kb_route": final_kb_route} if isinstance(final_kb_route, dict) else {}),
                 }
                 # Replace the early context snapshot before the answer is
@@ -718,6 +722,8 @@ async def run_chat_session(
                             ),
                             "prompt_trace": prompt_trace if isinstance(prompt_trace, dict) else None,
                             "kb_auto_route": final_kb_route,
+                            "agent_runtime": execution_runtime,
+                            "runtime_telemetry": runtime_telemetry,
                         },
                     )
                 )

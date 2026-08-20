@@ -32,6 +32,7 @@ from src.capabilities.memory.application.retrieval import (
     memory_block,
     memory_embedding_is_available,
     refresh_memory_embedding,
+    retrieve_user_memory_matches,
     retrieve_user_memories,
 )
 
@@ -163,6 +164,7 @@ __all__ = [
     "refresh_memory_embedding",
     "resolve_output_token_budget",
     "retrieve_user_memories",
+    "retrieve_user_memory_matches",
     "prepare_summary_if_needed",
     "run_summary_prepare_background",
     "resolve_context_window",

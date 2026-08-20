@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import math
 import re
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Iterable
 
@@ -24,6 +25,25 @@ from src.capabilities.memory.domain.policy import (
 from src.capabilities.memory.domain.extraction import memory_content_rejection_reason
 
 
+@dataclass(frozen=True)
+class MemoryRetrievalMatch:
+    """A selected memory plus a safe explanation of why it matched.
+
+    Scores are diagnostic metadata only. Raw query terms and embeddings stay
+    out of the trace, so this object cannot reveal a prompt or vector payload.
+    """
+
+    memory: UserMemory
+    score: float
+    matched_by: tuple[str, ...]
+
+    def trace_metadata(self) -> dict[str, object]:
+        return {
+            "score": round(self.score, 3),
+            "matched_by": list(self.matched_by),
+        }
+
+
 def estimate_tokens(text: str) -> int:
     return count_tokens(text)
 
@@ -38,7 +58,7 @@ def _memory_terms(text: str) -> set[str]:
     return words | cjk_chunks
 
 
-async def retrieve_user_memories(
+async def retrieve_user_memory_matches(
     session: AsyncSession,
     *,
     user_id: str,
@@ -47,8 +67,8 @@ async def retrieve_user_memories(
     limit: int = MEMORY_RETRIEVAL_LIMIT,
     embedding_cfg=None,
     exclude_ids: set[str] | frozenset[str] | None = None,
-) -> list[UserMemory]:
-    """Hybrid retrieval with a safe lexical fallback.
+) -> list[MemoryRetrievalMatch]:
+    """Hybrid retrieval with a safe lexical fallback and traceable matches.
 
     Memory vectors deliberately live beside the relational rows.  That keeps
     per-user data isolated and portable; with the bounded (50-row) candidate
@@ -86,6 +106,7 @@ async def retrieve_user_memories(
             await session.commit()
     wants_preferences = bool(re.search(r"偏好|默认|风格|语言|格式|习惯", query))
     scored: list[tuple[float, UserMemory]] = []
+    match_reasons: dict[str, tuple[str, ...]] = {}
     for row in rows:
         if row.scope == "kb" and row.scope_id != kb_id:
             continue
@@ -128,15 +149,56 @@ async def retrieve_user_memories(
             + float(row.confidence or 0.0) * MEMORY_CONFIDENCE_WEIGHT
         )
         scored.append((score, row))
+        reasons: list[str] = []
+        if keyword_hit:
+            reasons.append("keyword")
+        if semantic_hit:
+            reasons.append("semantic")
+        if preference_boost:
+            reasons.append("preference_intent")
+        if scope_bonus:
+            reasons.append("kb_scope")
+        match_reasons[row.id] = tuple(reasons or ["query_relevance"])
     scored.sort(key=lambda item: item[0], reverse=True)
     deduped = _dedupe_scored_memories(scored)
-    selected = [row for _, row in deduped[:limit]]
+    selected_pairs = deduped[:limit]
+    selected = [row for _, row in selected_pairs]
     if selected:
         now = datetime.now(timezone.utc)
         for row in selected:
             row.last_accessed_at = now
             row.recall_count = int(row.recall_count or 0) + 1
-    return selected
+    return [
+        MemoryRetrievalMatch(
+            memory=row,
+            score=score,
+            matched_by=match_reasons.get(row.id, ("query_relevance",)),
+        )
+        for score, row in selected_pairs
+    ]
+
+
+async def retrieve_user_memories(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    query: str,
+    kb_id: str | None = None,
+    limit: int = MEMORY_RETRIEVAL_LIMIT,
+    embedding_cfg=None,
+    exclude_ids: set[str] | frozenset[str] | None = None,
+) -> list[UserMemory]:
+    """Backward-compatible row-only view for callers without trace needs."""
+    matches = await retrieve_user_memory_matches(
+        session,
+        user_id=user_id,
+        query=query,
+        kb_id=kb_id,
+        limit=limit,
+        embedding_cfg=embedding_cfg,
+        exclude_ids=exclude_ids,
+    )
+    return [match.memory for match in matches]
 
 
 def _dedupe_scored_memories(

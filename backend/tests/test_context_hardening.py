@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from src.capabilities.conversations.models import UserMemory
 from src.capabilities.memory.application.lifecycle import enforce_memory_capacity, store_memory_candidates
+from src.capabilities.memory.application.retrieval import retrieve_user_memory_matches
 from src.capabilities.memory.domain.extraction import (
     _coerce_llm_memory_candidate,
     memory_content_rejection_reason,
@@ -176,5 +177,40 @@ async def test_session_inferred_memory_stays_pending_until_user_review() -> None
             assert len(rows) == 1
             assert rows[0].status == "pending_review"
             assert rows[0].source_message_ids == '["m-1"]'
+    finally:
+        await engine.dispose()
+
+
+async def test_memory_retrieval_trace_explains_selection_without_query_content() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with session_factory() as session:
+            session.add(
+                UserMemory(
+                    id="memory-1",
+                    user_id="user-1",
+                    type="fact",
+                    memory_key="project.database",
+                    memory_value="PostgreSQL",
+                    content="项目数据库使用 PostgreSQL。",
+                    source="explicit",
+                    confidence=0.9,
+                    importance=0.8,
+                )
+            )
+            await session.commit()
+            matches = await retrieve_user_memory_matches(
+                session,
+                user_id="user-1",
+                query="这个项目的 PostgreSQL 配置怎么处理？",
+            )
+
+        assert len(matches) == 1
+        assert matches[0].memory.id == "memory-1"
+        assert matches[0].trace_metadata()["matched_by"] == ["keyword"]
+        assert "PostgreSQL 配置" not in str(matches[0].trace_metadata())
     finally:
         await engine.dispose()
