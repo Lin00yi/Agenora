@@ -1,6 +1,8 @@
 """Execution sub-agent for authenticated order and refund operations."""
 from __future__ import annotations
 
+import re
+import time
 from functools import partial
 from typing import Any, Awaitable, Callable, TYPE_CHECKING
 
@@ -44,6 +46,125 @@ async def _noop_emit(_evt: dict[str, Any]) -> None:
     return None
 
 
+def _latest_user_text(state: AgentState) -> str:
+    """Return the latest user turn, including an interrupted HITL resume."""
+    for message in reversed(state.get("messages") or []):
+        if message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if isinstance(content, str) and content.strip():
+            return content.strip()
+    return ""
+
+
+def _confirmed_refund_approval(state: AgentState) -> str | None:
+    """Accept only the exact confirmation phrase required by the write tool."""
+    match = re.fullmatch(r"确认退款\s+(RFD-[A-Z0-9-]+)", _latest_user_text(state))
+    return match.group(1) if match else None
+
+
+def _fast_confirmation_route(state: AgentState, *, registry: ToolRegistry) -> str:
+    """Skip an otherwise unnecessary LLM round-trip after explicit approval.
+
+    The MCP service remains the authority for ownership, expiry, idempotency and
+    the actual write. This only makes the already-authorized dispatch path
+    deterministic, so the irreversible action is not delayed by model latency.
+    """
+    return "confirm" if _confirmed_refund_approval(state) and registry.get("confirm_refund") else "reason"
+
+
+async def _confirm_refund_fast(
+    state: AgentState,
+    *,
+    registry: ToolRegistry,
+    emit: Emitter,
+) -> AgentState:
+    """Execute a user-confirmed refund and format its result without an LLM."""
+    approval_id = _confirmed_refund_approval(state)
+    confirmation_text = _latest_user_text(state)
+    tool = registry.get("confirm_refund")
+    if not approval_id or tool is None:
+        # The conditional edge protects this branch; retain a safe fallback for
+        # stale graph snapshots or a registry changed at runtime.
+        return {
+            **state,
+            "final_report": "退款确认信息已失效，请重新发起退款申请。",
+            "report_streamed": False,
+        }
+
+    tool_id = f"refund-confirm-{approval_id}"
+    payload = {"approval_id": approval_id, "confirmation_text": confirmation_text}
+    await emit({"event": "tool_start", "id": tool_id, "name": "confirm_refund", "input": payload})
+    started_at = time.perf_counter()
+    result = await registry.call("confirm_refund", payload)
+    latency_ms = result.latency_ms or int((time.perf_counter() - started_at) * 1000)
+    await emit(
+        {
+            "event": "tool_end",
+            "id": tool_id,
+            "name": "confirm_refund",
+            "latency_ms": latency_ms,
+            "ok": result.error is None,
+            "error": result.error,
+            "citations": [],
+        }
+    )
+
+    raw = result.raw if isinstance(result.raw, dict) else {}
+    status = str(raw.get("status") or "")
+    order_id = str(raw.get("order_id") or "").strip()
+    refund_no = str(raw.get("refund_no") or "").strip()
+    amount_minor = raw.get("amount_minor")
+    refund_to = str(raw.get("refund_to") or "").strip()
+    estimated_arrival_at = str(raw.get("estimated_arrival_at") or "").strip()
+    if result.error:
+        report = f"退款未执行：{result.error}"
+    elif status == "completed":
+        lines = ["退款申请已提交。"]
+        if order_id:
+            lines.append(f"订单：{order_id}")
+        if refund_no:
+            lines.append(f"退款单号：{refund_no}")
+        if amount_minor is not None:
+            lines.append(f"退款金额：{amount_minor} 分")
+        if refund_to:
+            lines.append(f"退款去向：{refund_to}")
+        if estimated_arrival_at:
+            lines.append(f"预计到账：{estimated_arrival_at}")
+        report = "\n".join(lines)
+    elif status == "already_completed":
+        report = f"该退款已受理，无需重复提交。{f'退款单号：{refund_no}' if refund_no else ''}"
+    else:
+        report = str(raw.get("message") or "退款未执行，请重新发起退款申请。")
+
+    tool_log = list(state.get("tool_call_log") or [])
+    tool_log.append(
+        {
+            "id": tool_id,
+            "name": "confirm_refund",
+            "input": payload,
+            "result": result.text if result.error is None else None,
+            "latency_ms": latency_ms,
+            "error": result.error,
+        }
+    )
+    messages = list(state.get("messages") or [])
+    messages.append({"role": "assistant", "content": report})
+    return {
+        **state,
+        "messages": messages,
+        "tool_call_log": tool_log,
+        "pending_tool_calls": [],
+        "final_report": report,
+        "report_streamed": False,
+    }
+
+
+async def _fast_confirmation_gate(state: AgentState) -> AgentState:
+    """Route only; normal order work must retain its existing LLM tool loop."""
+    return state
+
+
 def build_orders_graph(
     registry: ToolRegistry | None = None,
     emit: Emitter | None = None,
@@ -57,6 +178,11 @@ def build_orders_graph(
     cost = CostTracker()
     em = emit or _noop_emit
     graph = StateGraph(AgentState)
+    graph.add_node("fast_confirmation_gate", _fast_confirmation_gate)
+    graph.add_node(
+        "confirm_refund_fast",
+        partial(_confirm_refund_fast, registry=registry, emit=em),
+    )
     graph.add_node(
         "reason",
         partial(
@@ -72,7 +198,13 @@ def build_orders_graph(
         ),
     )
     graph.add_node("call_tools", partial(call_tools_node, registry=registry, emit=em, llm_cfg=llm_cfg))
-    graph.set_entry_point("reason")
+    graph.set_entry_point("fast_confirmation_gate")
+    graph.add_conditional_edges(
+        "fast_confirmation_gate",
+        partial(_fast_confirmation_route, registry=registry),
+        {"confirm": "confirm_refund_fast", "reason": "reason"},
+    )
+    graph.add_edge("confirm_refund_fast", END)
     graph.add_conditional_edges("reason", should_continue, {"tools": "call_tools", "end": END})
     graph.add_edge("call_tools", "reason")
     return graph.compile(), cost

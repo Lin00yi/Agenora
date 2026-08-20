@@ -8,6 +8,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.types import Command
 
 from src.harness.agents.supervisor import build_supervisor_graph
+from src.harness.contracts.runtime import RunContext, RunIdentity
 from src.harness.orchestration.registry import AgentRegistry, AgentSpec, RuntimeDeps
 from src.platform.llm.gateway import CostTracker
 
@@ -123,6 +124,67 @@ async def test_missing_refund_slots_pause_and_resume_with_langgraph_interrupt(tm
     assert len(calls) == 1
     all_user_text = [item["content"] for item in calls[0] if item["role"] == "user"]
     assert all_user_text[-2:] == ["ORD-TEST-1001", "商品不符合预期"]
+
+
+@pytest.mark.asyncio
+async def test_refund_order_interrupt_contains_only_server_resolved_options(tmp_path, monkeypatch) -> None:
+    async def fake_options(*, user_id: str | None) -> list[dict]:
+        assert user_id == "user-1"
+        return [
+            {
+                "order_id": "ORD-TEST-1001",
+                "product_name": "演示商品",
+                "status_label": "已支付，待发货",
+                "refundable_minor": 12900,
+                "currency": "CNY",
+            }
+        ]
+
+    monkeypatch.setattr("src.harness.agents.supervisor.list_refundable_order_options", fake_options)
+    registry = AgentRegistry()
+    registry.register(
+        AgentSpec(
+            id="orders",
+            description="",
+            side_effect="write",
+            provides=("orders_read", "refund_prepare", "refund_confirm"),
+        ),
+        lambda _deps, **_kwargs: (_OrdersGraph([]), CostTracker()),
+    )
+    config = {"configurable": {"thread_id": "test-human-order-options"}}
+    async with AsyncSqliteSaver.from_conn_string(str(tmp_path / "checkpoints.db")) as saver:
+        graph, _cost = build_supervisor_graph(
+            registry=registry,
+            deps=RuntimeDeps(
+                emit=lambda _event: asyncio.sleep(0),
+                run=RunContext(identity=RunIdentity(user_id="user-1")),
+            ),
+            allow_rag_chat_handoff=False,
+            checkpointer=saver,
+        )
+        paused = await graph.ainvoke(
+            {
+                "messages": [{"role": "user", "content": "我要退款"}],
+                "base_messages": [{"role": "user", "content": "我要退款"}],
+                "human_inputs": {},
+                "human_required_slots": [],
+                "human_gate_resumed": False,
+                "pending_confirmation": None,
+            },
+            config=config,
+        )
+
+    payload = paused["__interrupt__"][0].value
+    assert payload["slot"] == "order_id"
+    assert payload["order_options"] == [
+        {
+            "order_id": "ORD-TEST-1001",
+            "product_name": "演示商品",
+            "status_label": "已支付，待发货",
+            "refundable_minor": 12900,
+            "currency": "CNY",
+        }
+    ]
 
 
 @pytest.mark.asyncio

@@ -9,4 +9,4 @@ export { EmptyWorkbench } from "./ChatEmpty";
 export { ChatMessage } from "./ChatMessages";
 export { SourceCards } from "./SourceCards";
 export { Composer, ContextUsageIndicator } from "./ChatComposer";
-export { HumanInputPanel, type HumanInputRequest } from "./HumanInputPanel";
+export { HumanInputPanel, type HumanInputRequest, type RefundOrderOption } from "./HumanInputPanel";

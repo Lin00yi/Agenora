@@ -146,6 +146,21 @@ export type ChatEvent = {
   order_id?: string;
   amount_minor?: number;
   currency?: string;
+  refund_to?: string;
+  product_name?: string;
+  product_url?: string;
+  order_status_label?: string;
+  order_options?: Array<{
+    order_id?: string;
+    product_name?: string;
+    product_url?: string;
+    image_url?: string;
+    status?: string;
+    status_label?: string;
+    refundable_minor?: number;
+    currency?: string;
+    refund_to?: string;
+  }>;
   interrupted?: boolean;
   /** Server-owned assistant message persisted before the terminal SSE event. */
   message_id?: string | null;

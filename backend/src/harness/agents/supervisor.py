@@ -26,6 +26,7 @@ from src.harness.orchestration.registry import (
     build_default_agent_registry,
 )
 from src.harness.contracts.runtime import RunContext
+from src.harness.mcp.orders import list_refundable_order_options
 from src.platform.llm.gateway import CostTracker
 from src.platform.observability import traced
 
@@ -113,13 +114,17 @@ def _extract_pending_confirmation(tool_log: list[dict[str, Any]] | None) -> dict
                     "order_id": payload.get("order_id"),
                     "amount_minor": payload.get("amount_minor"),
                     "currency": payload.get("currency"),
+                    "refund_to": payload.get("refund_to"),
+                    "product_name": payload.get("product_name"),
+                    "product_url": payload.get("product_url"),
+                    "order_status_label": payload.get("order_status_label"),
                 }
     return None
 
 
 def _human_slot_prompt(slot: str, confirmation: dict[str, Any] | None = None) -> str:
     if slot == "order_id":
-        return "请提供要处理的订单号。"
+        return "请选择要退款的订单。"
     if slot == "refund_reason":
         return "请填写退款原因。"
     if slot == "refund_confirmation" and confirmation is not None:
@@ -409,6 +414,13 @@ def build_supervisor_graph(
             }
 
         slot = remaining[0]
+        order_options = (
+            await list_refundable_order_options(
+                user_id=runtime.run.identity.user_id if runtime.run is not None else None
+            )
+            if slot == "order_id"
+            else []
+        )
         answer = interrupt(
             {
                 "kind": "human_input_required",
@@ -420,6 +432,11 @@ def build_supervisor_graph(
                 "order_id": confirmation.get("order_id") if isinstance(confirmation, dict) else None,
                 "amount_minor": confirmation.get("amount_minor") if isinstance(confirmation, dict) else None,
                 "currency": confirmation.get("currency") if isinstance(confirmation, dict) else None,
+                "refund_to": confirmation.get("refund_to") if isinstance(confirmation, dict) else None,
+                "product_name": confirmation.get("product_name") if isinstance(confirmation, dict) else None,
+                "product_url": confirmation.get("product_url") if isinstance(confirmation, dict) else None,
+                "order_status_label": confirmation.get("order_status_label") if isinstance(confirmation, dict) else None,
+                "order_options": order_options,
             }
         )
         value = answer.get("value") or answer.get(slot) or "" if isinstance(answer, dict) else answer

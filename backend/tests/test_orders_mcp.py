@@ -6,9 +6,61 @@ import pytest
 
 from src.harness.orchestration.planner import rule_route
 from src.harness.orchestration.registry import build_default_agent_registry
+from src.harness.agents.orders.graph import build_orders_graph
 from src.harness.runtime.agent_loop.call_tools import call_tools_node
 from src.harness.tools.base import Tool, ToolRegistry, ToolResult
-from src.harness.mcp.orders import OrdersMCPClient
+from src.harness.mcp.orders import OrdersMCPClient, refundable_order_options
+
+
+class _ConfirmRefundTool(Tool):
+    name = "confirm_refund"
+    description = "test confirm"
+    input_schema = {"type": "object", "properties": {}, "required": []}
+
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    async def execute(self, **kwargs) -> ToolResult:
+        self.calls.append(kwargs)
+        return ToolResult(
+            text='{"status":"completed","order_id":"ORD-TEST-1001","refund_no":"RFN-TEST-1","amount_minor":12900,"refund_to":"微信支付"}',
+            raw={
+                "status": "completed",
+                "order_id": "ORD-TEST-1001",
+                "refund_no": "RFN-TEST-1",
+                "amount_minor": 12900,
+                "refund_to": "微信支付",
+                "estimated_arrival_at": "2026-08-20T10:00:00+00:00",
+            },
+            latency_ms=1,
+        )
+
+
+@pytest.mark.asyncio
+async def test_exact_refund_confirmation_bypasses_llm_and_executes_once() -> None:
+    registry = ToolRegistry()
+    tool = _ConfirmRefundTool()
+    registry.register(tool)
+    events: list[dict] = []
+
+    async def emit(event: dict) -> None:
+        events.append(event)
+
+    graph, _cost = build_orders_graph(registry=registry, emit=emit, user_id="user-1")
+    result = await graph.ainvoke(
+        {
+            "messages": [{"role": "user", "content": "确认退款 RFD-TEST-1"}],
+            "tool_call_log": [],
+        }
+    )
+
+    assert tool.calls == [
+        {"approval_id": "RFD-TEST-1", "confirmation_text": "确认退款 RFD-TEST-1"}
+    ]
+    assert result["final_report"] == (
+        "退款申请已提交。\n订单：ORD-TEST-1001\n退款单号：RFN-TEST-1\n退款金额：12900 分\n退款去向：微信支付\n预计到账：2026-08-20T10:00:00+00:00"
+    )
+    assert [event["event"] for event in events] == ["tool_start", "tool_end"]
 
 
 @pytest.mark.asyncio
@@ -28,13 +80,27 @@ async def test_stdio_mcp_refund_is_owned_confirmed_and_idempotent(tmp_path) -> N
     try:
         listing = await client.call("list_orders", {})
         assert listing["status"] == "ok"
-        assert listing["total"] == 5
+        assert listing["total"] == 20
+        assert {order["status"] for order in listing["orders"]} == {
+            "paid",
+            "shipped",
+            "completed",
+            "partial_refunded",
+            "refunded",
+            "closed",
+        }
+        assert {order["refund_eligibility"]["eligible"] for order in listing["orders"]} == {True, False}
         order_id = listing["orders"][0]["order_id"]
         first_order = listing["orders"][0]
         assert first_order["items"][0]["product_name"]
         assert first_order["items"][0]["product_url"].startswith("https://demo.agenora.local/")
         assert first_order["payment"]["transaction_masked"]
         assert first_order["refund_eligibility"]["eligible"] is True
+        assert all(order["items"][0]["product_url"] for order in listing["orders"])
+        assert all(order["payment"]["method"] for order in listing["orders"])
+        assert all(order["fulfillment"]["tracking_number"] for order in listing["orders"])
+        assert all(order["invoice"]["title"] for order in listing["orders"])
+        assert all(order["refund_eligibility"]["deadline_at"] for order in listing["orders"])
 
         detail = await client.call("get_order", {"order_id": order_id})
         assert detail["status"] == "ok"
@@ -43,14 +109,36 @@ async def test_stdio_mcp_refund_is_owned_confirmed_and_idempotent(tmp_path) -> N
 
         refunds = await client.call("list_refunds", {})
         assert refunds["status"] == "ok"
-        assert refunds["total"] == 2
-        historical = await client.call("get_refund", {"refund_id": refunds["refunds"][0]["refund_no"]})
+        assert refunds["total"] == 8
+        assert {refund["status"] for refund in refunds["refunds"]} >= {
+            "awaiting_confirmation",
+            "completed",
+            "expired",
+        }
+        completed_refund = next(refund for refund in refunds["refunds"] if refund["refund_no"])
+        historical = await client.call("get_refund", {"refund_id": completed_refund["refund_no"]})
         assert historical["status"] == "ok"
         assert historical["refund"]["timeline"]
+
+        refunded_order = next(order for order in listing["orders"] if order["status"] == "refunded")
+        assert (await client.call("prepare_refund", {"order_id": refunded_order["order_id"], "reason": "测试"}))["status"] == "invalid"
+        expired_order = next(
+            order
+            for order in listing["orders"]
+            if order["status"] == "completed" and not order["refund_eligibility"]["eligible"]
+        )
+        assert (await client.call("prepare_refund", {"order_id": expired_order["order_id"], "reason": "测试"}))["status"] == "invalid"
 
         pending = await client.call("prepare_refund", {"order_id": order_id, "reason": "本地测试"})
         assert pending["status"] == "awaiting_confirmation"
         assert pending["refund_to"]
+        assert pending["product_name"]
+        assert pending["product_url"].startswith("https://demo.agenora.local/")
+        too_large = await client.call(
+            "prepare_refund",
+            {"order_id": order_id, "reason": "金额校验", "amount_minor": first_order["refundable_minor"] + 1},
+        )
+        assert too_large["status"] == "invalid"
         repeated_pending = await client.call("prepare_refund", {"order_id": order_id, "reason": "本地测试"})
         assert repeated_pending["approval_id"] == pending["approval_id"]
 
@@ -80,6 +168,43 @@ async def test_stdio_mcp_refund_is_owned_confirmed_and_idempotent(tmp_path) -> N
             os.environ.pop("ORDERS_MCP_SERVICE_TOKEN", None)
         else:
             os.environ["ORDERS_MCP_SERVICE_TOKEN"] = old_token
+
+
+def test_refundable_order_options_only_projects_eligible_order_display_fields() -> None:
+    options = refundable_order_options(
+        {
+            "orders": [
+                {
+                    "order_id": "ORD-ELIGIBLE",
+                    "status": "paid",
+                    "status_label": "已支付，待发货",
+                    "currency": "CNY",
+                    "refund_eligibility": {"eligible": True, "refundable_minor": 12900},
+                    "payment": {"method": "微信支付"},
+                    "items": [{"product_name": "演示商品", "product_url": "https://demo.agenora.local/p/1"}],
+                },
+                {
+                    "order_id": "ORD-REFUNDED",
+                    "refund_eligibility": {"eligible": False, "refundable_minor": 0},
+                    "items": [{"product_name": "不可退款商品"}],
+                },
+            ]
+        }
+    )
+
+    assert options == [
+        {
+            "order_id": "ORD-ELIGIBLE",
+            "product_name": "演示商品",
+            "product_url": "https://demo.agenora.local/p/1",
+            "image_url": None,
+            "status": "paid",
+            "status_label": "已支付，待发货",
+            "refundable_minor": 12900,
+            "currency": "CNY",
+            "refund_to": "微信支付",
+        }
+    ]
 
 
 class _ConfirmTool(Tool):

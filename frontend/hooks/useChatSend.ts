@@ -5,7 +5,13 @@ import { useRouter } from "next/navigation";
 import { toast } from "@/lib/toast";
 
 import { type ToolEvent } from "@/components/ThinkingChain";
-import { DEFAULT_TITLE, mergeCitations, updateToolEvent, type HumanInputRequest } from "@/components/chat";
+import {
+  DEFAULT_TITLE,
+  mergeCitations,
+  updateToolEvent,
+  type HumanInputRequest,
+  type RefundOrderOption,
+} from "@/components/chat";
 import { useStreamingTokenPaint } from "@/hooks/useStreamingTokenPaint";
 import {
   appendAssistantMessage,
@@ -101,6 +107,24 @@ export function pendingHumanInput(messages: Message[]): HumanInputRequest | null
   if (tail.some((message) => message.role === "assistant")) return null;
   const phase = tail.some((message) => message.role === "user") ? "processing" : "awaiting";
   const input = event.input ?? {};
+  const orderOptions: RefundOrderOption[] | undefined = Array.isArray(input.order_options)
+    ? input.order_options.flatMap((option) => {
+        if (!option || typeof option !== "object") return [];
+        const value = option as Record<string, unknown>;
+        if (typeof value.order_id !== "string" || typeof value.product_name !== "string") return [];
+        return [{
+          orderId: value.order_id,
+          productName: value.product_name,
+          productUrl: typeof value.product_url === "string" ? value.product_url : undefined,
+          imageUrl: typeof value.image_url === "string" ? value.image_url : undefined,
+          status: typeof value.status === "string" ? value.status : undefined,
+          statusLabel: typeof value.status_label === "string" ? value.status_label : undefined,
+          refundableMinor: typeof value.refundable_minor === "number" ? value.refundable_minor : undefined,
+          currency: typeof value.currency === "string" ? value.currency : undefined,
+          refundTo: typeof value.refund_to === "string" ? value.refund_to : undefined,
+        }];
+      })
+    : undefined;
   return {
     phase,
     slot: typeof input.slot === "string" ? input.slot : undefined,
@@ -114,6 +138,11 @@ export function pendingHumanInput(messages: Message[]): HumanInputRequest | null
     orderId: typeof input.order_id === "string" ? input.order_id : undefined,
     amountMinor: typeof input.amount_minor === "number" ? input.amount_minor : undefined,
     currency: typeof input.currency === "string" ? input.currency : undefined,
+    refundTo: typeof input.refund_to === "string" ? input.refund_to : undefined,
+    productName: typeof input.product_name === "string" ? input.product_name : undefined,
+    productUrl: typeof input.product_url === "string" ? input.product_url : undefined,
+    orderStatusLabel: typeof input.order_status_label === "string" ? input.order_status_label : undefined,
+    orderOptions,
   };
 }
 
@@ -571,6 +600,11 @@ export function useChatSend({
                   order_id: evt.order_id,
                   amount_minor: evt.amount_minor,
                   currency: evt.currency,
+                  refund_to: evt.refund_to,
+                  product_name: evt.product_name,
+                  product_url: evt.product_url,
+                  order_status_label: evt.order_status_label,
+                  order_options: evt.order_options,
                 },
               };
               if (streamingRef.current) {
@@ -608,6 +642,24 @@ export function useChatSend({
                 orderId: evt.order_id,
                 amountMinor: evt.amount_minor,
                 currency: evt.currency,
+                refundTo: evt.refund_to,
+                productName: evt.product_name,
+                productUrl: evt.product_url,
+                orderStatusLabel: evt.order_status_label,
+                orderOptions: evt.order_options?.flatMap((option) => {
+                  if (!option?.order_id || !option.product_name) return [];
+                  return [{
+                    orderId: option.order_id,
+                    productName: option.product_name,
+                    productUrl: option.product_url,
+                    imageUrl: option.image_url,
+                    status: option.status,
+                    statusLabel: option.status_label,
+                    refundableMinor: option.refundable_minor,
+                    currency: option.currency,
+                    refundTo: option.refund_to,
+                  }];
+                }),
               });
               break;
             }

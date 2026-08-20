@@ -129,6 +129,11 @@ class OrdersService:
                     occurred_at TEXT NOT NULL,
                     FOREIGN KEY(approval_id) REFERENCES refunds(approval_id)
                 );
+                CREATE TABLE IF NOT EXISTS demo_seed_versions (
+                    user_id TEXT PRIMARY KEY,
+                    version INTEGER NOT NULL,
+                    seeded_at TEXT NOT NULL
+                );
                 CREATE INDEX IF NOT EXISTS ix_orders_user ON orders(user_id, created_at DESC);
                 CREATE INDEX IF NOT EXISTS ix_order_items_order ON order_items(order_id);
                 CREATE INDEX IF NOT EXISTS ix_refunds_user ON refunds(user_id, created_at DESC);
@@ -362,6 +367,154 @@ class OrdersService:
             (f"RFE-{uuid.uuid4().hex[:16].upper()}", approval_id, event_type, status, message, json.dumps(details or {}, ensure_ascii=False), occurred_at),
         )
 
+    def _ensure_extra_demo_orders(
+        self, conn: sqlite3.Connection, user_id: str, suffix: str, now: datetime | None = None
+    ) -> None:
+        """Expand the original five examples to a 20-order rule-coverage set."""
+        now = now or self._now()
+        # Older mock rows did not have every presentation field. Populate safe
+        # demo defaults so a detail UI can render a complete record for all 20.
+        conn.execute(
+            """UPDATE orders SET
+                sales_channel = COALESCE(sales_channel, 'agenora-shop'),
+                store_name = COALESCE(store_name, 'Agenora 官方店'),
+                payment_method = COALESCE(payment_method, '微信支付'),
+                payment_transaction_masked = COALESCE(payment_transaction_masked, '微信支付 ·· 8821'),
+                shipping_status = COALESCE(shipping_status, '待发货'),
+                recipient_name_masked = COALESCE(recipient_name_masked, '林*'),
+                recipient_phone_masked = COALESCE(recipient_phone_masked, '138****0621'),
+                shipping_address_masked = COALESCE(shipping_address_masked, '上海市浦东新区世纪大道***号'),
+                logistics_company = COALESCE(logistics_company, 'Agenora 配送'),
+                tracking_number = COALESCE(tracking_number, 'AGD-0000****0000'),
+                invoice_status = COALESCE(invoice_status, '未开票'),
+                invoice_title = COALESCE(invoice_title, '个人 · 林*'),
+                paid_at = COALESCE(paid_at, created_at),
+                shipped_at = COALESCE(shipped_at, created_at),
+                delivered_at = COALESCE(delivered_at, created_at),
+                completed_at = COALESCE(completed_at, created_at),
+                refund_deadline_at = COALESCE(refund_deadline_at, updated_at),
+                updated_at = COALESCE(updated_at, created_at)
+            WHERE user_id = ?""",
+            (user_id,),
+        )
+        count = conn.execute("SELECT COUNT(*) FROM orders WHERE user_id = ?", (user_id,)).fetchone()[0]
+        if count >= 20:
+            return
+
+        products = (
+            ("PRD-KEY-02", "机械键盘 87 键", "雾灰 · 茶轴", "数码", {"配列": "87 键", "轴体": "茶轴"}),
+            ("PRD-MON-01", "27 英寸 4K 显示器", "雾银 · 60Hz", "办公", {"尺寸": "27 英寸", "分辨率": "3840×2160"}),
+            ("PRD-MUG-01", "保温随行杯", "石墨灰 · 480ml", "生活方式", {"容量": "480ml", "颜色": "石墨灰"}),
+            ("PRD-PLAN-02", "Agenora Team 季度订阅", "3 个成员席位", "数字服务", {"周期": "90 天", "席位": "3"}),
+            ("PRD-CHG-01", "氮化镓 65W 充电器", "白色 · 双口", "数码", {"功率": "65W", "接口": "USB-C + USB-A"}),
+            ("PRD-CHAIR-01", "人体工学腰靠", "深灰", "办公", {"颜色": "深灰", "材质": "记忆棉"}),
+            ("PRD-BAG-02", "防水收纳包", "墨绿 · 中号", "生活方式", {"颜色": "墨绿", "尺寸": "中号"}),
+            ("PRD-BOOK-01", "产品设计方法论", "纸质书", "图书", {"装帧": "平装", "页数": "286"}),
+            ("PRD-PLAN-03", "Agenora API 额度包", "100 万 Token", "数字服务", {"额度": "100 万 Token", "有效期": "180 天"}),
+            ("PRD-LAMP-02", "氛围阅读灯", "暖灰", "家居", {"色温": "2700K-5000K", "功率": "10W"}),
+            ("PRD-CASE-01", "磁吸平板保护套", "藏蓝", "数码配件", {"颜色": "藏蓝", "尺寸": "11 英寸"}),
+            ("PRD-PLAN-04", "Agenora Pro 年度订阅", "12 个月会员权益", "数字服务", {"周期": "365 天", "账号": "当前账号"}),
+            ("PRD-MOUSE-01", "静音无线鼠标", "曜石黑", "数码", {"连接": "蓝牙 + 2.4G", "颜色": "曜石黑"}),
+            ("PRD-TOTE-01", "帆布托特包", "原色", "生活方式", {"材质": "帆布", "颜色": "原色"}),
+            ("PRD-STAND-02", "笔记本升降支架", "银色", "办公", {"材质": "铝合金", "颜色": "银色"}),
+        )
+        # Together with orders 1001-1005, the statuses cover every supported
+        # state and each refund decision branch: eligible, deadline-expired,
+        # partial refund, full refund, awaiting confirmation, and expired.
+        statuses = (
+            "closed", "paid", "shipped", "completed", "partial_refunded",
+            "refunded", "paid", "shipped", "completed", "paid",
+            "partial_refunded", "completed", "refunded", "closed", "paid",
+        )
+        payment_methods = ("微信支付", "支付宝", "银行卡", "云闪付")
+        logistics = ("顺丰速运", "京东物流", "中通快递", "Agenora 配送")
+        order_rows: list[tuple[Any, ...]] = []
+        item_rows: list[tuple[Any, ...]] = []
+        refund_rows: list[tuple[Any, ...]] = []
+        refund_events: list[tuple[str, str, str, str, str, dict[str, Any]]] = []
+        for offset, status in enumerate(statuses, start=6):
+            product_id, product_name, subtitle, category, specs = products[offset - 6]
+            order_id = f"ORD-{suffix}-{1000 + offset}"
+            created = now - timedelta(days=offset * 3)
+            paid_at = created + timedelta(minutes=2)
+            shipped_at = paid_at + timedelta(days=1)
+            delivered_at = shipped_at + timedelta(days=2)
+            completed_at = delivered_at + timedelta(days=7)
+            discount = 0 if offset % 3 else 500
+            subtotal = 8900 + offset * 2170
+            total = subtotal - discount
+            refunded = total if status == "refunded" else (total // 3 if status == "partial_refunded" else 0)
+            is_digital = category == "数字服务"
+            deadline = now - timedelta(days=1) if offset == 14 else now + timedelta(days=30 - offset)
+            method = payment_methods[offset % len(payment_methods)]
+            logistics_company = "数字权益中心" if is_digital else logistics[offset % len(logistics)]
+            tracking = f"DIGI-{offset:04d}" if is_digital else f"AGD-{offset:04d}****{9000 + offset}"
+            shipping_status = "数字权益已发放" if is_digital else {
+                "paid": "待发货", "shipped": "运输中", "completed": "已签收", "partial_refunded": "已签收",
+                "refunded": "未发货", "closed": "交易关闭",
+            }[status]
+            order_rows.append(
+                (
+                    order_id, user_id, status, "CNY", subtotal, discount, 0, total, total, refunded,
+                    "digital" if is_digital else "physical", "agenora-web" if is_digital else "agenora-shop",
+                    "Agenora 数字内容" if is_digital else "Agenora 官方店", method, f"{method} ·· {1000 + offset}",
+                    shipping_status, "林*" if not is_digital else "不适用", "138****0621" if not is_digital else "不适用",
+                    "上海市浦东新区世纪大道***号" if not is_digital else "不适用", logistics_company, tracking,
+                    "已开票" if offset % 2 else "未开票", "个人 · 林*", self._iso(created), self._iso(paid_at),
+                    self._iso(shipped_at), self._iso(delivered_at), self._iso(completed_at), self._iso(now), self._iso(deadline),
+                )
+            )
+            quantity = 2 if offset % 4 == 0 else 1
+            item_rows.append(
+                (
+                    f"ITM-{suffix}-{1000 + offset}-1", order_id, product_id, f"SKU-{product_id}-{offset:02d}",
+                    product_name, subtitle, f"https://demo.agenora.local/products/{product_id.lower()}",
+                    f"https://images.agenora.local/products/{product_id.lower()}.jpg", category,
+                    json.dumps(specs, ensure_ascii=False), quantity, subtotal // quantity, discount, total,
+                    shipping_status, "已全额退款" if status == "refunded" else ("部分退款" if status == "partial_refunded" else "可申请退款"),
+                )
+            )
+            if status in {"partial_refunded", "refunded"}:
+                approval_id = f"RFD-HIST-{suffix}-{1000 + offset}"
+                refund_rows.append(
+                    (
+                        approval_id, f"RFN-{suffix}-{1000 + offset}", order_id, user_id,
+                        "full" if status == "refunded" else "partial", "mock_rule_coverage", "覆盖退款状态规则的历史退款",
+                        refunded, "CNY", f"{method} ·· {1000 + offset}", "completed", f"确认退款 {approval_id}",
+                        self._iso(created + timedelta(days=1)), self._iso(created + timedelta(days=5)),
+                        self._iso(created + timedelta(days=2)), self._iso(created), self._iso(created + timedelta(days=2)),
+                    )
+                )
+                refund_events.append((approval_id, "refund_completed", "completed", "退款已原路退回", self._iso(created + timedelta(days=2)), {"amount_minor": refunded, "currency": "CNY"}))
+            if offset == 17:
+                approval_id = f"RFD-PENDING-{suffix}-{1000 + offset}"
+                phrase = f"确认退款 {approval_id}"
+                refund_rows.append((approval_id, None, order_id, user_id, "partial", "awaiting_confirmation", "等待确认的部分退款", total // 2, "CNY", f"{method} ·· {1000 + offset}", "awaiting_confirmation", phrase, self._iso(now + timedelta(minutes=10)), None, None, self._iso(now), self._iso(now)))
+                refund_events.append((approval_id, "refund_prepared", "awaiting_confirmation", "已创建退款确认单，等待用户确认", self._iso(now), {"amount_minor": total // 2, "currency": "CNY"}))
+            if offset == 14:
+                approval_id = f"RFD-EXPIRED-{suffix}-{1000 + offset}"
+                refund_rows.append((approval_id, None, order_id, user_id, "partial", "confirmation_expired", "已过期的退款确认单", total // 2, "CNY", f"{method} ·· {1000 + offset}", "expired", f"确认退款 {approval_id}", self._iso(now - timedelta(minutes=1)), None, None, self._iso(now - timedelta(hours=1)), self._iso(now)))
+                refund_events.append((approval_id, "confirmation_expired", "expired", "确认已过期，请重新发起退款", self._iso(now), {}))
+        conn.executemany(
+            """INSERT OR IGNORE INTO orders(order_id, user_id, status, currency, subtotal_minor, discount_minor, shipping_minor, total_minor, paid_minor, refunded_minor, order_type, sales_channel, store_name, payment_method, payment_transaction_masked, shipping_status, recipient_name_masked, recipient_phone_masked, shipping_address_masked, logistics_company, tracking_number, invoice_status, invoice_title, created_at, paid_at, shipped_at, delivered_at, completed_at, updated_at, refund_deadline_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            order_rows,
+        )
+        conn.executemany(
+            """INSERT OR IGNORE INTO order_items(item_id, order_id, product_id, sku_id, product_name, product_subtitle, product_url, image_url, category, specifications_json, quantity, unit_price_minor, discount_minor, paid_minor, fulfillment_status, after_sale_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            item_rows,
+        )
+        conn.executemany(
+            """INSERT OR IGNORE INTO refunds(approval_id, refund_no, order_id, user_id, refund_type, reason_code, reason, amount_minor, currency, payment_method, status, confirmation_phrase, expires_at, estimated_arrival_at, executed_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            refund_rows,
+        )
+        for approval_id, event_type, status, message, occurred_at, details in refund_events:
+            self._append_refund_event(conn, approval_id, event_type, status, message, occurred_at, details)
+        conn.execute(
+            """INSERT INTO demo_seed_versions(user_id, version, seeded_at) VALUES (?, 2, ?)
+            ON CONFLICT(user_id) DO UPDATE SET version = excluded.version, seeded_at = excluded.seeded_at""",
+            (user_id, self._iso(now)),
+        )
+
     def _ensure_demo_orders(self, conn: sqlite3.Connection, user_id: str) -> None:
         row = conn.execute("SELECT 1 FROM orders WHERE user_id = ? LIMIT 1", (user_id,)).fetchone()
         if row is not None:
@@ -372,6 +525,7 @@ class OrdersService:
                 (user_id,),
             ).fetchone()
             if item is not None:
+                self._ensure_extra_demo_orders(conn, user_id, "".join(ch for ch in user_id if ch.isalnum())[:8] or "guest")
                 return
             # Upgrade the original two-field mock in place. Existing order ids
             # and completed refunds remain valid; INSERT OR IGNORE below adds
@@ -413,6 +567,7 @@ class OrdersService:
         )
         for approval_id, _, order_id, _, _, _, _, amount, currency, _, _, _, _, _, executed_at, created_at, _ in historical_refunds:
             self._append_refund_event(conn, approval_id, "refund_completed", "completed", "退款已原路退回", executed_at or created_at, {"order_id": order_id, "amount_minor": amount, "currency": currency})
+        self._ensure_extra_demo_orders(conn, user_id, suffix, now)
 
     def list_orders(self, actor_id: str) -> dict[str, Any]:
         with self._connect() as conn:
@@ -449,11 +604,16 @@ class OrdersService:
             refund = self._serialize_refund(conn, row, include_timeline=True)
         return {"status": "ok", "refund": refund}
 
-    def _prepare_response(self, row: sqlite3.Row) -> dict[str, Any]:
+    def _prepare_response(self, conn: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
+        order = conn.execute("SELECT * FROM orders WHERE order_id = ?", (row["order_id"],)).fetchone()
+        items = self._items_for_order(conn, row["order_id"])
+        first_item = items[0] if items else {}
         return {
             "status": "awaiting_confirmation", "approval_id": row["approval_id"], "order_id": row["order_id"],
             "amount_minor": self._minor(row["amount_minor"]), "currency": row["currency"], "refund_type": row["refund_type"],
             "reason": row["reason"], "refund_to": row["payment_method"], "expires_at": row["expires_at"],
+            "product_name": first_item.get("product_name"), "product_url": first_item.get("product_url"),
+            "order_status_label": _ORDER_STATUS_LABELS.get(order["status"], order["status"]) if order else None,
             "confirmation_phrase": row["confirmation_phrase"],
             "message": "退款尚未执行。请让用户单独发送 confirmation_phrase 后再调用确认工具。",
         }
@@ -480,7 +640,7 @@ class OrdersService:
             existing = conn.execute("SELECT * FROM refunds WHERE order_id = ? AND user_id = ? AND amount_minor = ? AND reason = ? AND status = 'awaiting_confirmation' ORDER BY created_at DESC LIMIT 1", (order["order_id"], actor_id, requested, reason)).fetchone()
             if existing is not None and now <= datetime.fromisoformat(existing["expires_at"]):
                 # LangGraph may replay a node on resume; this makes prepare idempotent.
-                return self._prepare_response(existing)
+                return self._prepare_response(conn, existing)
             approval_id = f"RFD-{uuid.uuid4().hex[:12].upper()}"
             phrase = f"确认退款 {approval_id}"
             expires = now + timedelta(minutes=10)
@@ -492,7 +652,7 @@ class OrdersService:
             )
             self._append_refund_event(conn, approval_id, "refund_prepared", "awaiting_confirmation", "已创建退款确认单，等待用户确认", now_iso, {"order_id": order["order_id"], "amount_minor": requested, "currency": order["currency"]})
             row = conn.execute("SELECT * FROM refunds WHERE approval_id = ?", (approval_id,)).fetchone()
-        return self._prepare_response(row)
+        return self._prepare_response(conn, row)
 
     def confirm_refund(self, actor_id: str, approval_id: str, confirmation_text: str) -> dict[str, Any]:
         with self._connect() as conn:

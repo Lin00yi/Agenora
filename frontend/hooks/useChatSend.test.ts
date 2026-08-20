@@ -33,6 +33,38 @@ describe("pendingHumanInput", () => {
     });
   });
 
+  it("restores server-authoritative refundable order options for step one", () => {
+    const orderSelection: Message = {
+      ...confirmationRequest,
+      id: "assistant-select-order",
+      tools: [{
+        ...confirmationEvent,
+        input: {
+          slot: "order_id",
+          prompt: "请选择要退款的订单。",
+          order_options: [{
+            order_id: "ORD-1001",
+            product_name: "AeroPods 降噪耳机",
+            product_url: "https://demo.agenora.local/products/aeropods-pro",
+            status_label: "已支付，待发货",
+            refundable_minor: 11700,
+            currency: "CNY",
+            refund_to: "微信支付",
+          }],
+        },
+      }],
+    };
+
+    expect(pendingHumanInput([orderSelection])).toMatchObject({
+      slot: "order_id",
+      orderOptions: [{
+        orderId: "ORD-1001",
+        productName: "AeroPods 降噪耳机",
+        refundableMinor: 11700,
+      }],
+    });
+  });
+
   it("keeps the confirmation surface disabled after it was submitted", () => {
     const submitted: Message = {
       id: "user-confirmation",

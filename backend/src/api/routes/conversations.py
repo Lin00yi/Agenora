@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
@@ -26,8 +27,10 @@ from src.harness.context import (
     run_summary_prepare_background,
     store_user_memories,
 )
+from src.harness.mcp.orders import OrdersMCPClient
 from src.capabilities.conversations.models import Conversation, Message, UserMemory
 from src.platform.persistence import get_session
+from src.settings import get_settings
 from src.platform.llm import normalize_model_name
 from src.capabilities.settings.domain.models import (
     configured_context_window_for_model,
@@ -40,6 +43,9 @@ from src.capabilities.settings.domain.models import (
 )
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
+
+_REFUND_CONFIRMATION_RE = re.compile(r"^确认退款\s+(RFD-[A-Z0-9-]+)$")
+_REFUND_RECOVERY_DELAY = timedelta(seconds=10)
 
 
 class CreateConversationRequest(BaseModel):
@@ -99,6 +105,122 @@ class ImportConversation(BaseModel):
 
 class ImportRequest(BaseModel):
     conversations: list[ImportConversation] = Field(default_factory=list)
+
+
+def _human_refund_approval(message: Message) -> str | None:
+    """Extract the server-issued confirmation id, never one inferred from text."""
+    if message.role != "assistant" or not message.tool_call_log:
+        return None
+    try:
+        parsed = json.loads(message.tool_call_log)
+    except (TypeError, ValueError):
+        return None
+    tools = parsed.get("tools") if isinstance(parsed, dict) else parsed
+    if not isinstance(tools, list):
+        return None
+    for tool in reversed(tools):
+        if not isinstance(tool, dict) or tool.get("name") != "human_input_required":
+            continue
+        payload = tool.get("input")
+        if not isinstance(payload, dict) or payload.get("slot") != "refund_confirmation":
+            continue
+        approval_id = payload.get("approval_id")
+        return approval_id.strip() if isinstance(approval_id, str) else None
+    return None
+
+
+def _stale_refund_confirmation(messages: list[Message]) -> tuple[Message, str] | None:
+    """Identify a confirmed refund with no durable assistant outcome yet."""
+    if not messages or messages[-1].role != "user":
+        return None
+    match = _REFUND_CONFIRMATION_RE.fullmatch((messages[-1].content or "").strip())
+    if match is None:
+        return None
+    submitted_at = messages[-1].created_at
+    if submitted_at.tzinfo is None:
+        submitted_at = submitted_at.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) - submitted_at < _REFUND_RECOVERY_DELAY:
+        return None
+    expected_approval = match.group(1)
+    for message in reversed(messages[:-1]):
+        approval_id = _human_refund_approval(message)
+        if approval_id == expected_approval:
+            return messages[-1], approval_id
+    return None
+
+
+def _completed_refund_report(refund: dict[str, Any]) -> str:
+    lines = ["退款申请已提交。"]
+    order_id = str(refund.get("order_id") or "").strip()
+    refund_no = str(refund.get("refund_no") or "").strip()
+    refund_to = str(refund.get("refund_to") or "").strip()
+    estimated_arrival_at = str(refund.get("estimated_arrival_at") or "").strip()
+    if order_id:
+        lines.append(f"订单：{order_id}")
+    if refund_no:
+        lines.append(f"退款单号：{refund_no}")
+    if refund.get("amount_minor") is not None:
+        lines.append(f"退款金额：{refund['amount_minor']} 分")
+    if refund_to:
+        lines.append(f"退款去向：{refund_to}")
+    if estimated_arrival_at:
+        lines.append(f"预计到账：{estimated_arrival_at}")
+    return "\n".join(lines)
+
+
+async def _recover_completed_refund(
+    session: AsyncSession,
+    conv: Conversation,
+    user: CurrentUser,
+) -> None:
+    """Repair an interrupted post-confirmation chat turn from MCP source of truth.
+
+    A process may stop after the MCP write has committed but before the assistant
+    result is persisted. Only a stale, exact user confirmation tied to the
+    previous server-issued HITL payload can enter this recovery path; the MCP
+    read is still identity-scoped and must report ``completed`` before a message
+    is written.
+    """
+    pending = _stale_refund_confirmation(list(conv.messages or []))
+    if pending is None:
+        return
+    _, approval_id = pending
+    settings = get_settings()
+    if not settings.orders_mcp_enabled:
+        return
+    client = OrdersMCPClient(
+        actor_id=user.id,
+        server_path=settings.orders_mcp_server_path,
+        db_path=settings.orders_mcp_db_path,
+        service_token=settings.orders_mcp_service_token,
+        timeout_s=settings.orders_mcp_timeout_seconds,
+    )
+    try:
+        payload = await client.call("get_refund", {"refund_id": approval_id})
+    except Exception:  # noqa: BLE001
+        return
+    refund = payload.get("refund") if isinstance(payload, dict) else None
+    if not isinstance(refund, dict) or refund.get("status") != "completed":
+        return
+    recovered = Message(
+        id=str(uuid.uuid4()),
+        conversation_id=conv.id,
+        role="assistant",
+        content=_completed_refund_report(refund),
+        tool_call_log=Message.encode_tool_call_log(
+            [
+                {
+                    "id": f"refund-recovery-{approval_id}",
+                    "name": "confirm_refund",
+                    "status": "ok",
+                    "latency_ms": 0,
+                    "input": {"approval_id": approval_id},
+                }
+            ]
+        ),
+    )
+    conv.messages.append(recovered)
+    await session.commit()
 
 
 async def _load_owned_conversation(
@@ -487,6 +609,7 @@ async def get_conversation(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     conv = await _load_owned_conversation(session, conv_id, user.id)
+    await _recover_completed_refund(session, conv, user)
     payload = conv.to_dict_with_messages()
     llm_cfg = await _context_cfg_for_conversation(session, conv, user)
     payload["context_status"] = await _build_context_status(

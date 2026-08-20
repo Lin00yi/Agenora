@@ -68,6 +68,55 @@ class OrdersMCPClient:
         return {"status": "error", "message": "MCP tool returned no structured result."}
 
 
+def refundable_order_options(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Project only safe, UI-relevant fields from the authoritative order list."""
+    options: list[dict[str, Any]] = []
+    for order in payload.get("orders") or []:
+        if not isinstance(order, dict):
+            continue
+        eligibility = order.get("refund_eligibility")
+        if not isinstance(eligibility, dict) or eligibility.get("eligible") is not True:
+            continue
+        order_id = order.get("order_id")
+        items = order.get("items")
+        first_item = items[0] if isinstance(items, list) and items and isinstance(items[0], dict) else {}
+        payment = order.get("payment")
+        if not isinstance(order_id, str) or not order_id:
+            continue
+        options.append(
+            {
+                "order_id": order_id,
+                "product_name": first_item.get("product_name") or "未命名商品",
+                "product_url": first_item.get("product_url"),
+                "image_url": first_item.get("image_url"),
+                "status": order.get("status"),
+                "status_label": order.get("status_label") or order.get("status"),
+                "refundable_minor": eligibility.get("refundable_minor"),
+                "currency": order.get("currency"),
+                "refund_to": payment.get("method") if isinstance(payment, dict) else None,
+            }
+        )
+    return options
+
+
+async def list_refundable_order_options(*, user_id: str | None) -> list[dict[str, Any]]:
+    """Read selectable refund orders with the authenticated user injected by Host."""
+    settings = get_settings()
+    if not settings.orders_mcp_enabled or not user_id:
+        return []
+    client = OrdersMCPClient(
+        actor_id=user_id,
+        server_path=settings.orders_mcp_server_path,
+        db_path=settings.orders_mcp_db_path,
+        service_token=settings.orders_mcp_service_token,
+        timeout_s=settings.orders_mcp_timeout_seconds,
+    )
+    try:
+        return refundable_order_options(await client.call("list_orders", {}))
+    except Exception:  # noqa: BLE001
+        return []
+
+
 class _OrdersMCPTool(Tool):
     tool_name: str
 

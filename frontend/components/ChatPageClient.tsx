@@ -403,8 +403,8 @@ export function ChatPage({
     [currentModel, currentProfileId, handleSend, modelProfiles.length]
   );
 
-  const submitComposerWithLlmGuard = useCallback(() => {
-    handleSendWithLlmGuard(composerValue);
+  const submitComposerWithLlmGuard = useCallback((value?: string) => {
+    handleSendWithLlmGuard(value ?? composerValue);
   }, [composerValue, handleSendWithLlmGuard]);
 
   const openLlmSettings = useCallback(() => {
