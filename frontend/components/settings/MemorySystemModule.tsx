@@ -79,12 +79,25 @@ export function MemorySystemModule({ embedded = false }: { embedded?: boolean })
   const [editTarget, setEditTarget] = useState<UserMemory | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<UserMemory | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
 
   const refresh = async (nextStatus: StatusFilter = status) => {
     setRefreshing(true);
     try {
-      const memories = await listMemories({ status: nextStatus });
+      const [memories, pending] = await Promise.all([
+        listMemories({ status: nextStatus }),
+        nextStatus === "pending_review" || nextStatus === "all"
+          ? Promise.resolve(null)
+          : listMemories({ status: "pending_review" }),
+      ]);
       setRows(memories);
+      setPendingCount(
+        nextStatus === "pending_review"
+          ? memories.length
+          : nextStatus === "all"
+            ? memories.filter((item) => item.status === "pending_review").length
+            : pending?.length ?? 0
+      );
     } catch (e) {
       toast.error((e as Error).message || "读取记忆失败");
     } finally {
@@ -150,6 +163,9 @@ export function MemorySystemModule({ embedded = false }: { embedded?: boolean })
     setBusyId(deleteTarget.id);
     try {
       await deleteMemory(deleteTarget.id);
+      if (deleteTarget.status === "pending_review") {
+        setPendingCount((count) => Math.max(0, count - 1));
+      }
       setRows((current) =>
         status === "all"
           ? current.map((item) =>
@@ -167,7 +183,15 @@ export function MemorySystemModule({ embedded = false }: { embedded?: boolean })
   };
 
   const applyEdit = (updated: UserMemory) => {
-    setRows((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    if (editTarget?.status === "pending_review" && updated.status !== "pending_review") {
+      setPendingCount((count) => Math.max(0, count - 1));
+    }
+    setRows((current) => {
+      if (status !== "all" && updated.status !== status) {
+        return current.filter((item) => item.id !== updated.id);
+      }
+      return current.map((item) => (item.id === updated.id ? updated : item));
+    });
     setEditTarget(null);
   };
 
@@ -214,10 +238,23 @@ export function MemorySystemModule({ embedded = false }: { embedded?: boolean })
                 <p className="shrink-0 text-sm tabular-nums text-muted">
                   有效 <span className="font-semibold text-ink">{stats.active}</span>
                   <span className="mx-2 text-surface-border">·</span>
+                  待确认 <span className="font-semibold text-ink">{pendingCount}</span>
+                  <span className="mx-2 text-surface-border">·</span>
                   本页 <span className="font-semibold text-ink">{stats.total}</span>
                   <span className="mx-2 text-surface-border">·</span>
                   已向量化 <span className="font-semibold text-ink">{stats.embedded}</span>
                 </p>
+                {status !== "pending_review" ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-[var(--control-h)] min-h-[var(--control-h)]"
+                    onClick={() => handleStatusChange("pending_review")}
+                    disabled={pendingCount === 0 || refreshing}
+                  >
+                    查看待确认
+                  </Button>
+                ) : null}
                 <Button
                   type="button"
                   variant="outline"
