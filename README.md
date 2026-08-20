@@ -88,7 +88,7 @@ cd backend
 uv run python scripts/maintain_checkpoints.py --keep-per-thread 8
 ```
 
-确认输出后，显式加上 `--apply --vacuum-into data/agent_checkpoints.compacted.db` 生成紧凑副本，再在后端停机状态下备份并替换原库。生产环境应使用 PostgreSQL checkpoint backend，并在数据库层制定独立保留策略。
+确认输出后，显式加上 `--apply --vacuum-into /Volumes/<有足够空间的磁盘>/agent_checkpoints.compacted.db` 生成紧凑副本，再在后端停机状态下备份并替换原库。脚本会在删除前保守校验目标卷至少有源库 110% 的空闲空间；本盘空间不足时不要先执行 `--apply`，应改用外接盘或另一块卷。生产环境应使用 PostgreSQL checkpoint backend，并在数据库层制定独立保留策略。
 
 ### 多 Agent 编排链路
 
