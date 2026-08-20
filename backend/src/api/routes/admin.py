@@ -17,7 +17,7 @@ kb.routes.purge_kb) and leave a structlog "admin_action" breadcrumb.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, Literal
+from typing import Literal
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -35,30 +35,10 @@ from src.capabilities.memory.application import run_maintenance as run_memory_ma
 from src.capabilities.knowledge.domain.models import KB, Document
 from src.api.routes.kb import _email_map
 from src.capabilities.knowledge.application.lifecycle import purge_kb
-from src.harness.mcp.catalog import build_mcp_catalog
-from src.harness.mcp.configuration import (
-    draft_view,
-    manager_for_server_test,
-    publish_draft,
-    save_draft,
-)
 
 log = structlog.get_logger()
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
-
-
-class McpCatalogDraftRequest(BaseModel):
-    """Reviewable catalog JSON plus only newly entered secret values."""
-
-    catalog: dict[str, Any]
-    secrets: dict[str, str] = Field(default_factory=dict)
-
-
-class McpServerTestRequest(BaseModel):
-    server: dict[str, Any]
-    secrets: dict[str, str] = Field(default_factory=dict)
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -160,75 +140,6 @@ async def stats(admin: AdminUser, session: AsyncSession = Depends(get_session)) 
         "conversations": await _count(session, Conversation),
         "messages": await _count(session, Message),
     }
-
-
-# ---------------------------------------------------------------------------
-# MCP catalog — administrator-only, versioned configuration
-# ---------------------------------------------------------------------------
-@router.get("/mcp/catalog")
-async def get_mcp_catalog(
-    admin: AdminUser,  # noqa: ARG001
-    session: AsyncSession = Depends(get_session),
-) -> dict:
-    """Return the editable catalog, deliberately omitting secret values."""
-    from src.settings import get_settings
-
-    return await draft_view(session, fallback=build_mcp_catalog(get_settings()))
-
-
-@router.put("/mcp/catalog")
-async def put_mcp_catalog(
-    req: McpCatalogDraftRequest,
-    admin: AdminUser,
-    session: AsyncSession = Depends(get_session),
-) -> dict:
-    """Validate and save a draft; this does not alter live agent capability access."""
-    try:
-        result = await save_draft(
-            session,
-            catalog_payload=req.catalog,
-            submitted_secrets=req.secrets,
-            actor_id=admin.id,
-        )
-        await session.commit()
-    except ValueError as exc:
-        await session.rollback()
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    log.info("admin_action", actor=admin.email, action="save_mcp_catalog_draft")
-    return result
-
-
-@router.post("/mcp/catalog/test")
-async def test_mcp_server(
-    req: McpServerTestRequest,
-    admin: AdminUser,  # noqa: ARG001
-) -> dict:
-    """Open an isolated connection and run only MCP tool discovery."""
-    manager = None
-    try:
-        manager = manager_for_server_test(req.server, secrets=req.secrets)
-        return await manager.probe(str(req.server.get("id") or ""))
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    finally:
-        if manager is not None:
-            await manager.aclose()
-
-
-@router.post("/mcp/catalog/publish")
-async def publish_mcp_catalog(
-    admin: AdminUser,
-    session: AsyncSession = Depends(get_session),
-) -> dict:
-    """Atomically publish the current draft as the next live catalog version."""
-    try:
-        result, version = await publish_draft(session, actor_id=admin.id)
-        await session.commit()
-    except ValueError as exc:
-        await session.rollback()
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    log.info("admin_action", actor=admin.email, action="publish_mcp_catalog", version=version)
-    return result
 
 
 @router.get("/rag/monitor")

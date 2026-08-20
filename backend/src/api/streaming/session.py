@@ -253,10 +253,10 @@ async def run_chat_session(
     kb_route_scope: str = "turn",
     container=None,
 ) -> EventSourceResponse:
-    # A published MCP catalog is versioned in the shared app database. Refresh
-    # before compiling this graph so every API replica converges on the same
-    # reviewed capability set; in-flight graphs retain their prior manager.
-    from src.harness.mcp.manager import refresh_mcp_manager, resolve_mcp_manager
+    # MCP configuration is deployment-owned. Every graph in this process uses
+    # the same reviewed catalog; applying a configuration change requires a
+    # deployment restart rather than an administrator hot-publish operation.
+    from src.harness.mcp.manager import refresh_mcp_manager
 
     active_mcp_manager = await refresh_mcp_manager()
     settings = container.settings if container is not None else get_settings()
@@ -510,18 +510,6 @@ async def run_chat_session(
                     pending_interrupt = any(
                         bool(getattr(task, "interrupts", ())) for task in (snapshot.tasks or ())
                     )
-                    pinned_version = None
-                    if pending_interrupt and isinstance(getattr(snapshot, "values", None), dict):
-                        stored = snapshot.values.get("mcp_plugin_set_version")
-                        if isinstance(stored, int) and stored >= 0:
-                            pinned_version = stored
-                    if pinned_version is not None and pinned_version != active_mcp_manager.plugin_set_version:
-                        # Compile the resumed workflow with the immutable
-                        # PluginSet that created its approval/checkpoint.
-                        pinned_manager = await resolve_mcp_manager(pinned_version)
-                        run_context.attributes["mcp_manager"] = pinned_manager
-                        run_context.attributes["plugin_set_version"] = pinned_manager.plugin_set_version
-                        graph, _cost = build_graph(checkpointer=checkpointer)
                     final_state = await graph.ainvoke(
                         Command(resume=cleaned) if pending_interrupt else initial_state,
                         config=workflow_config,

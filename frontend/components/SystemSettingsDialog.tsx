@@ -11,7 +11,6 @@ import {
   BrainCircuit,
   Download,
   Info,
-  Network,
   SlidersHorizontal,
   Trash2,
   User as UserIcon,
@@ -45,19 +44,13 @@ const MemorySystemModule = dynamic(
   () => import("@/components/settings/MemorySystemModule").then((module) => module.MemorySystemModule),
   { ssr: false }
 );
-const McpManagementModule = dynamic(
-  () => import("@/components/settings/McpManagementModule").then((module) => module.McpManagementModule),
-  { ssr: false }
-);
-
-type SettingsModule = "personal" | "model" | "memory" | "mcp" | "about";
+type SettingsModule = "personal" | "model" | "memory" | "about";
 type PersonalTab = "general" | "appearance" | "account" | "data";
 
 const MODULES: { key: SettingsModule; label: string; Icon: typeof UserIcon }[] = [
   { key: "personal", label: "个人", Icon: UserIcon },
   { key: "model", label: "模型", Icon: SlidersHorizontal },
   { key: "memory", label: "记忆系统", Icon: BrainCircuit },
-  { key: "mcp", label: "MCP 管理", Icon: Network },
   { key: "about", label: "关于", Icon: Info },
 ];
 
@@ -88,9 +81,7 @@ export default function SystemSettingsDialog({
   const [clearing, setClearing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const router = useRouter();
-  const modules = user.is_admin
-    ? MODULES
-    : MODULES.filter((item) => item.key !== "mcp");
+  const modules = MODULES;
 
   const doClear = async () => {
     setClearing(true);
@@ -177,7 +168,6 @@ export default function SystemSettingsDialog({
               )}
               {module === "model" && <ModelSettingsModule embedded />}
               {module === "memory" && <MemorySystemModule embedded />}
-              {module === "mcp" && user.is_admin && <McpManagementModule embedded />}
               {module === "about" && (
                 <div className="px-5 py-5 sm:px-6">
                   <AboutTab />

@@ -73,7 +73,7 @@ npm run sync:model-catalog
 
 ### 订单与退款 MCP 执行示例
 
-仓库根目录的 `mock-mcp/orders` 是一个独立的本地 SQLite 演示订单 MCP 服务。Host 侧以 `backend/src/harness/mcp/catalog.py` 的**服务目录 + 能力绑定**管理 MCP：连接管理器支持 stdio / Streamable HTTP，工具发现只作为 allowlist 校验，Agent 只获得显式绑定给它的能力。`/admin/mcp` 的 `MCP` Tab 用 Codex 风格配置连接；`受限 MCP` Tab 才将远端工具映射到订单契约并发布，因此普通连接不会自动授予 Agent 权限。STDIO 表单支持命令、参数、环境变量传递与工作目录，但仅在本地开发环境启用；生产仍只允许 HTTPS Streamable HTTP 或部署级 STDIO 插件，且 STDIO 子进程只继承明确允许的环境变量。`orders.py` 只保留订单领域投影，不再持有子进程、端点或密钥。空配置仍兼容这个本地 Mock；生产管理员可在 `/admin/mcp` 保存、测试并发布 HTTPS Streamable HTTP catalog，或通过 `MCP_SERVERS_JSON` 和 `MCP_SECRETS_JSON` 提供部署级回退，详见 [`backend/docs/mcp-catalog.md`](backend/docs/mcp-catalog.md)。它不是支付渠道生产接入：演示订单会按当前登录用户首次查询时创建，数据位于 `mock-mcp/orders/data/orders.db`。当输入“查我的订单”“申请退款，订单号是 …”或“确认退款 …”时，Planner 会优先路由到该执行 agent，不会把操作请求交给知识库。
+仓库根目录的 `mock-mcp/orders` 是一个独立的本地 SQLite 演示订单 MCP 服务。Host 侧以 `backend/src/harness/mcp/catalog.py` 的**服务目录 + 能力绑定**管理 MCP：连接管理器支持 stdio / Streamable HTTP，工具发现只作为 allowlist 校验，Agent 只获得显式绑定给它的能力。MCP 不提供设置页、后台页面或管理 API；连接、密钥和契约绑定由部署级 `MCP_SERVERS_JSON`、`MCP_SECRETS_JSON` 或受审核的镜像配置提供，变更后重启后端生效。生产仍只允许 HTTPS Streamable HTTP 或部署级 STDIO 插件，且 STDIO 子进程只继承明确允许的环境变量。`orders.py` 只保留订单领域投影，不再持有子进程、端点或密钥。空配置仍兼容这个本地 Mock，详见 [`backend/docs/mcp-catalog.md`](backend/docs/mcp-catalog.md)。它不是支付渠道生产接入：演示订单会按当前登录用户首次查询时创建，数据位于 `mock-mcp/orders/data/orders.db`。当输入“查我的订单”“申请退款，订单号是 …”或“确认退款 …”时，Planner 会优先路由到该执行 agent，不会把操作请求交给知识库。
 
 退款严格分两轮：agent 先收集订单号和退款原因，调用 `prepare_refund` 只生成 10 分钟有效的确认单；界面回复确认单号、金额和原因。用户必须在下一条消息单独精确输入 `确认退款 <approval_id>`，系统会在调用工具节点再次比对“最新用户消息”和工具参数，匹配后才允许 MCP 服务执行。服务端还会校验当前用户归属、确认文本、过期时间和状态，并以 `approval_id` 保证重复确认不会重复退款。
 

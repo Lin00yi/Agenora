@@ -13,7 +13,6 @@ def _register_application_models() -> None:
     from src.capabilities.settings.domain import models as _settings_models  # noqa: F401
     from src.platform.observability import models as _observability_models  # noqa: F401
     from src.platform.tasks import models as _operation_job_models  # noqa: F401
-    from src.harness.mcp import configuration as _mcp_configuration  # noqa: F401
 
 
 async def initialize_database() -> None:

@@ -8,7 +8,6 @@ import {
   ChevronLeft,
   GitBranch,
   LayoutDashboard,
-  Network,
   Radar,
   Users,
 } from "lucide-react";
@@ -23,7 +22,6 @@ const TABS = [
   { href: "/admin/users", label: "用户", icon: Users, title: "用户" },
   { href: "/admin/kbs", label: "知识库", icon: BookOpen, title: "知识库" },
   { href: "/admin/rag", label: "RAG", icon: Radar, title: "RAG 健康" },
-  { href: "/admin/mcp", label: "MCP", icon: Network, title: "MCP 管理" },
   { href: "/admin/traces", label: "追踪", icon: GitBranch, title: "追踪" },
 ] as const;
 

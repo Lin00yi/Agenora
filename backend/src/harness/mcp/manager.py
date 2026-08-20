@@ -406,18 +406,11 @@ class McpConnectionManager:
 
 
 _default_manager: McpConnectionManager | None = None
-_published_managers: dict[int, McpConnectionManager] = {}
-_published_version: int | None = None
-_refresh_lock: asyncio.Lock | None = None
 
 
 def get_mcp_manager() -> McpConnectionManager:
-    """Application-wide lazy manager, closed by the FastAPI lifespan."""
+    """Application-wide manager built from deployment-owned configuration."""
     global _default_manager
-    if _published_version is not None:
-        published = _published_managers.get(_published_version)
-        if published is not None:
-            return published
     if _default_manager is None:
         settings = get_settings()
         _default_manager = McpConnectionManager(catalog=build_mcp_catalog(settings), settings=settings)
@@ -425,52 +418,28 @@ def get_mcp_manager() -> McpConnectionManager:
 
 
 async def refresh_mcp_manager() -> McpConnectionManager:
-    """Use the latest published DB catalog for this request when one exists.
+    """Return the deployment-owned manager.
 
-    Every API replica calls this before it compiles a chat graph. The database
-    version is therefore the cross-replica invalidation signal; older manager
-    generations remain alive for already-running graphs and are closed only at
-    process shutdown.
+    Runtime MCP configuration is intentionally immutable for a process. Change
+    the environment or packaged catalog and restart the deployment to apply it.
     """
-    return await resolve_mcp_manager()
+    return get_mcp_manager()
 
 
 async def resolve_mcp_manager(plugin_set_version: int | None = None) -> McpConnectionManager:
-    """Resolve the current or an immutable PluginSet manager generation."""
-    global _published_version, _refresh_lock
-    if _refresh_lock is None:
-        _refresh_lock = asyncio.Lock()
-    async with _refresh_lock:
-        from src.harness.mcp.configuration import published_snapshot
-        from src.platform.persistence.database import get_session_factory
+    """Resolve the single deployment-owned manager.
 
-        factory = get_session_factory()
-        async with factory() as session:
-            snapshot = await published_snapshot(session, version=plugin_set_version)
-        if snapshot is None:
-            if plugin_set_version not in {None, 0}:
-                raise McpCapabilityError(f"MCP PluginSet v{plugin_set_version} is unavailable.")
-            return get_mcp_manager()
-        version, catalog, secrets = snapshot
-        manager = _published_managers.get(version)
-        if manager is None:
-            manager = McpConnectionManager(
-                catalog=catalog,
-                settings=get_settings(),
-                secret_values=secrets,
-                plugin_set_version=version,
-            )
-            _published_managers[version] = manager
-        if plugin_set_version is None:
-            _published_version = version
-        return manager
+    ``plugin_set_version`` remains accepted for callers compiled before the
+    management plane was removed; every supported runtime catalog is version 0.
+    """
+    if plugin_set_version not in {None, 0}:
+        raise McpCapabilityError("MCP configuration changed; restart the pending workflow.")
+    return get_mcp_manager()
 
 
 async def close_mcp_manager() -> None:
-    global _default_manager, _published_version
-    managers = list(_published_managers.values())
-    _published_managers.clear()
-    _published_version = None
+    global _default_manager
+    managers: list[McpConnectionManager] = []
     if _default_manager is not None:
         managers.append(_default_manager)
         _default_manager = None
