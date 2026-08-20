@@ -31,8 +31,10 @@ class RunEvent(TypedDict, total=False):
     reason: str
     source: str
     confidence: str
+    scope: str
     text: str
     kb_id: str
+    kb_ids: list[str]
     name: str
     tasks: list[dict[str, Any]]
     metadata: dict[str, Any]

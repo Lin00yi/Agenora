@@ -174,6 +174,7 @@ export function ChatPage({
         const summary: ConversationSummary = {
           id: detail.id,
           title: detail.title,
+          kb_mode: detail.kb_mode,
           kb_id: detail.kb_id,
           llm_model: detail.llm_model,
           llm_profile_id: detail.llm_profile_id,
@@ -552,7 +553,11 @@ export function ChatPage({
       try {
         await patchConversation(currentId, { kb_id: kbId });
         setSummaries((prev) =>
-          prev.map((c) => (c.id === currentId ? { ...c, kb_id: kbId } : c))
+          prev.map((c) => (
+            c.id === currentId
+              ? { ...c, kb_id: kbId, kb_mode: kbId ? "pinned" : "auto" }
+              : c
+          ))
         );
       } catch (e) {
         toast.error((e as Error)?.message ?? "\u4fdd\u5b58\u77e5\u8bc6\u5e93\u7ed1\u5b9a\u5931\u8d25");

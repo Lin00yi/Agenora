@@ -22,6 +22,7 @@ import type { MemoryTrace } from "@/lib/sseClient";
 export type ConversationSummary = {
   id: string;
   title: string;
+  kb_mode: "auto" | "pinned";
   kb_id: string | null;
   /** v3-M6: per-conversation LLM model override. null = use user default. */
   llm_model: string | null;
@@ -201,20 +202,20 @@ export async function getConversationContextStatus(
 }
 
 export async function createConversation(
-  opts: { kb_id?: string | null; title?: string } = {}
+  opts: { kb_id?: string | null; kb_mode?: "auto" | "pinned"; title?: string } = {}
 ): Promise<ConversationDetail> {
   return unwrap(
     await authFetch("/api/conversations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kb_id: opts.kb_id ?? null, title: opts.title }),
+      body: JSON.stringify({ kb_id: opts.kb_id ?? null, kb_mode: opts.kb_mode, title: opts.title }),
     })
   );
 }
 
 export async function patchConversation(
   id: string,
-  patch: { title?: string; kb_id?: string | null; llm_model?: string | null; llm_profile_id?: string | null }
+  patch: { title?: string; kb_id?: string | null; kb_mode?: "auto" | "pinned"; llm_model?: string | null; llm_profile_id?: string | null }
 ): Promise<ConversationSummary> {
   return unwrap(
     await authFetch(`/api/conversations/${id}`, {
@@ -437,6 +438,7 @@ export async function migrateFromLocalStorage(userId: string): Promise<number> {
   const body = {
     conversations: list.map((c) => ({
       title: c.title ?? "新对话",
+      kb_mode: c.kb_id ? "pinned" : "auto",
       kb_id: c.kb_id ?? null,
       created_at: c.created_at,
       updated_at: c.updated_at,

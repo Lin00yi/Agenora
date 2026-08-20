@@ -274,6 +274,19 @@ def _migrate_additive_columns(sync_conn) -> None:
     # LLM model override; NULL means fall back to the user's default model.
     if "conversations" in tables:
         conv_cols = {c["name"] for c in insp.get_columns("conversations")}
+        # v6: keep an explicit user-selected KB sticky, but leave automatic
+        # routing per-turn. Existing non-null bindings predate this distinction
+        # and are conservatively preserved as pinned.
+        if "kb_mode" not in conv_cols:
+            sync_conn.execute(
+                text(
+                    "ALTER TABLE conversations ADD COLUMN kb_mode "
+                    "VARCHAR(16) NOT NULL DEFAULT 'auto'"
+                )
+            )
+            sync_conn.execute(
+                text("UPDATE conversations SET kb_mode = 'pinned' WHERE kb_id IS NOT NULL")
+            )
         if "llm_model" not in conv_cols:
             sync_conn.execute(
                 text("ALTER TABLE conversations ADD COLUMN llm_model VARCHAR(128)")

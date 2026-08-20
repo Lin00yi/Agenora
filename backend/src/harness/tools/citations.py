@@ -47,7 +47,7 @@ def citations_from_tool_raw(tool_name: str, raw: Any) -> list[Citation]:
                     "score": score,
                     "url": url,
                     "snippet": snippet[:240] if snippet else None,
-                    "kb_id": kb_id,
+                    "kb_id": item.get("kb_id") or kb_id,
                     "doc_id": str(doc_id) if doc_id else None,
                 }
             )

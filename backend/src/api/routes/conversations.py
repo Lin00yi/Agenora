@@ -44,12 +44,14 @@ router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
 class CreateConversationRequest(BaseModel):
     kb_id: str | None = Field(default=None, max_length=36)
+    kb_mode: Literal["auto", "pinned"] | None = None
     title: str | None = Field(default=None, max_length=128)
 
 
 class PatchConversationRequest(BaseModel):
     title: str | None = Field(default=None, max_length=128)
     kb_id: str | None = Field(default=None, max_length=36)
+    kb_mode: Literal["auto", "pinned"] | None = None
     llm_model: str | None = Field(default=None, max_length=128)
     llm_profile_id: str | None = Field(default=None, max_length=36)
 
@@ -470,6 +472,7 @@ async def create_conversation(
         user_id=user.id,
         title=(req.title or "新对话").strip()[:128] or "新对话",
         kb_id=req.kb_id,
+        kb_mode="pinned" if req.kb_id else "auto",
     )
     session.add(conv)
     await session.commit()
@@ -585,6 +588,16 @@ async def patch_conversation(
             conv.title = title
     if "kb_id" in fields_set:
         conv.kb_id = req.kb_id
+        conv.kb_mode = "pinned" if req.kb_id else "auto"
+    elif "kb_mode" in fields_set:
+        # A pinned scope without a KB is not meaningful. Keeping this
+        # canonical also prevents a raw API caller from disabling auto-route
+        # forever with an empty pin.
+        if req.kb_mode == "pinned" and conv.kb_id:
+            conv.kb_mode = "pinned"
+        else:
+            conv.kb_mode = "auto"
+            conv.kb_id = None
     if "llm_profile_id" in fields_set:
         if req.llm_profile_id is None:
             conv.llm_profile_id = None
@@ -754,6 +767,7 @@ async def import_conversations(
             user_id=user.id,
             title=title,
             kb_id=c.kb_id,
+            kb_mode="pinned" if c.kb_id else "auto",
             created_at=c_created,
             updated_at=c_updated,
         )

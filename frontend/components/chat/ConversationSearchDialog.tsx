@@ -105,6 +105,7 @@ export function ConversationSearchDialog({
         (conversation): ConversationSummary => ({
           id: conversation.id,
           title: conversation.title,
+          kb_mode: "auto",
           kb_id: null,
           llm_model: null,
           llm_profile_id: null,

@@ -21,6 +21,7 @@ export type MemoryTrace = {
   kb_route?: {
     needs_retrieval: boolean;
     selected_kb_id: string | null;
+    selected_kb_ids?: string[];
     source: "disabled" | "rule" | "llm" | "fallback";
     confidence: "high" | "medium" | "low";
     reason: string;
@@ -134,6 +135,8 @@ export type ChatEvent = {
   to?: string;
   source?: string;
   confidence?: string;
+  /** `turn` is automatic for this response only; `pinned` is a conversation scope. */
+  scope?: "turn" | "pinned";
   tasks?: Array<{
     id?: string;
     type?: string;
@@ -145,6 +148,7 @@ export type ChatEvent = {
   citations?: Citation[] | null;
   message?: string;
   kb_id?: string | null;
+  kb_ids?: string[];
   /** v2-M2 BYOK gate: `llm_not_configured` | `embedding_not_configured` */
   code?: string;
   /** Where the UI should send the user when code is set. */

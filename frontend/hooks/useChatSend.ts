@@ -142,6 +142,7 @@ export function useChatSend({
           const summary: ConversationSummary = {
             id: created.id,
             title: created.title,
+            kb_mode: created.kb_mode,
             kb_id: created.kb_id,
             llm_model: created.llm_model,
             llm_profile_id: created.llm_profile_id,
@@ -330,12 +331,18 @@ export function useChatSend({
           switch (evt.event) {
             case "kb_routed": {
               if (!evt.kb_id) break;
-              setCurrentKbId(evt.kb_id);
-              setSummaries((prev) =>
-                prev.map((item) =>
-                  item.id === convId ? { ...item, kb_id: evt.kb_id ?? null } : item
-                )
-              );
+              // A turn-scoped automatic route must not make the conversation
+              // sticky. Only a user-owned pinned scope changes local state.
+              if (evt.scope === "pinned") {
+                setCurrentKbId(evt.kb_id);
+                setSummaries((prev) =>
+                  prev.map((item) =>
+                    item.id === convId
+                      ? { ...item, kb_id: evt.kb_id ?? null, kb_mode: "pinned" }
+                      : item
+                  )
+                );
+              }
               break;
             }
             case "context_ready": {
@@ -369,7 +376,8 @@ export function useChatSend({
             }
             case "dag_ready":
             case "agent_route":
-            case "agent_handoff": {
+            case "agent_handoff":
+            case "kb_routed": {
               flushTokenPaint();
               const newTool: ToolEvent = {
                 id: evt.id ?? `${evt.event}-${Date.now()}`,
@@ -393,7 +401,14 @@ export function useChatSend({
                           source: evt.source,
                           confidence: evt.confidence,
                         }
-                      : { from: evt.from, to: evt.to, reason: evt.reason },
+                      : evt.event === "agent_handoff"
+                        ? { from: evt.from, to: evt.to, reason: evt.reason }
+                        : {
+                            name: evt.name,
+                            kb_ids: evt.kb_ids ?? (evt.kb_id ? [evt.kb_id] : []),
+                            scope: evt.scope ?? "turn",
+                            reason: evt.reason,
+                          },
                 reason: evt.reason,
               };
               if (streamingRef.current) {

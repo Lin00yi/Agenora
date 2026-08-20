@@ -119,7 +119,7 @@ def _kb_evidence_items(
                 "chunk_id": str(index),
                 "title": title,
                 "score": score,
-                "kb_id": str(kb_id) if kb_id else None,
+                "kb_id": str(meta.get("kb_id") or kb_id) if (meta.get("kb_id") or kb_id) else None,
             }
         )
     return evidence

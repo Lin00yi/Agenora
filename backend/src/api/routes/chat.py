@@ -62,11 +62,11 @@ async def chat_post(
             )
 
     try:
-        # A persisted binding is authoritative. An unbound conversation may be
-        # bound by an explicit client choice. For automatic routing this
-        # endpoint only prepares ACL-scoped candidates; the Planner/Supervisor
-        # DAG owns semantic selection and agent delegation.
-        effective_kb_id = conv.kb_id if conv and conv.kb_id else req.kb_id
+        # Only an explicit user-pinned binding is authoritative. Automatic
+        # routing remains per-turn, so an earlier match must not silently lock
+        # all later questions to the same KB.
+        pinned = bool(conv and conv.kb_mode == "pinned" and conv.kb_id)
+        effective_kb_id = conv.kb_id if pinned else req.kb_id
         route_candidates: list[KB] = []
         selected_profile_id = req.model_profile_id or (conv.llm_profile_id if conv else None)
         selected_model = normalize_model_name(req.model or (conv.llm_model if conv else None))
@@ -180,19 +180,6 @@ async def chat_post(
                 detail="messages or conversation_id is required",
             )
 
-        async def persist_auto_kb_binding(selected_kb: KB, _route: dict[str, Any]) -> None:
-            """Persist only a supervisor-accepted, ACL-scoped selection."""
-            if conv is None:
-                return
-            from src.platform.persistence import get_session_factory
-
-            factory = get_session_factory()
-            async with factory() as write_session:
-                stored = await write_session.get(Conversation, conv.id)
-                if stored is not None and stored.user_id == user.id and stored.kb_id is None:
-                    stored.kb_id = selected_kb.id
-                    await write_session.commit()
-
         return run_chat_session(
             messages,
             rate_key=f"user:{user.id}",
@@ -208,7 +195,7 @@ async def chat_post(
             triage_llm_cfg_override=None if selected_model else (routing_cfgs.triage if routing_cfgs else None),
             fallback_llm_cfg_override=None if selected_model else (routing_cfgs.fallback if routing_cfgs else None),
             kb_candidates=route_candidates,
-            on_kb_routed=persist_auto_kb_binding if conv is not None else None,
+            kb_route_scope="pinned" if pinned else "turn",
         )
     except Exception:
         if conversation_lock_id:

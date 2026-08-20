@@ -51,7 +51,7 @@ def run_chat_session(
     triage_llm_cfg_override=None,
     fallback_llm_cfg_override=None,
     kb_candidates: list[KB] | None = None,
-    on_kb_routed=None,
+    kb_route_scope: str = "turn",
 ) -> EventSourceResponse:
     settings = get_settings()
     allowed, remaining = rate_check(rate_key, settings.rate_limit_per_hour)
@@ -153,7 +153,7 @@ def run_chat_session(
         kb_web_search_enabled=kb_web_search_enabled,
         kb_candidates=kb_candidates,
         configure_routed_kb=configure_routed_kb if kb_candidates else None,
-        on_kb_routed=on_kb_routed,
+        kb_route_scope=kb_route_scope,
         run_context=run_context,
         allow_rag_chat_handoff=bool(settings.agent_allow_rag_chat_handoff),
     )

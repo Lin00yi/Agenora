@@ -37,6 +37,9 @@ class Conversation(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     user_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
     title: Mapped[str] = mapped_column(String(128), default="新对话", nullable=False)
+    # ``kb_id`` is a user-pinned scope only. Automatic routing is deliberately
+    # per-turn and must never turn an otherwise general conversation sticky.
+    kb_mode: Mapped[str] = mapped_column(String(16), default="auto", nullable=False)
     kb_id: Mapped[str | None] = mapped_column(String(36), nullable=True, default=None)
     llm_model: Mapped[str | None] = mapped_column(String(128), nullable=True, default=None)
     # Stable selection used by the multi-connection pool.  Keep llm_model for
@@ -67,6 +70,7 @@ class Conversation(Base):
             # build a draft Conversation before it is persisted.  Keep the
             # public API stable for that normal in-memory path too.
             "title": self.title or "新对话",
+            "kb_mode": self.kb_mode or ("pinned" if self.kb_id else "auto"),
             "kb_id": self.kb_id,
             "llm_model": self.llm_model,
             "llm_profile_id": self.llm_profile_id,

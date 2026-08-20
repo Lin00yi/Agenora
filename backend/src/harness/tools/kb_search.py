@@ -18,6 +18,7 @@ and similarity score inline so the agent can cite sources.
 from __future__ import annotations
 
 import logging
+import asyncio
 from typing import Any, TYPE_CHECKING
 
 import httpx
@@ -314,4 +315,63 @@ class KBSearchTool(Tool):
                 "min_dense_score": assessment.min_dense_score,
                 "retrieval_status": assessment.status,
             },
+        )
+
+
+class MultiKBSearchTool(Tool):
+    """One ACL-scoped search capability faning a query out to selected KBs.
+
+    Each underlying ``KBSearchTool`` retains its own embedding/reranker config.
+    The shared RAG node applies the final aggregate evidence budget afterwards.
+    """
+
+    name = "search_kb"
+    input_schema = KBSearchTool.input_schema
+
+    def __init__(self, tools: list[KBSearchTool]) -> None:
+        if len(tools) < 2:
+            raise ValueError("MultiKBSearchTool requires at least two KBs")
+        self._tools = tools
+        names = "、".join(tool.kb_name for tool in tools)
+        self.description = f"在本轮已选择的多个知识库（{names}）中并行检索，并保留每条证据所属的知识库。"
+
+    async def execute(self, query: str, limit: int = 3) -> ToolResult:
+        results = await asyncio.gather(
+            *(tool.execute(query=query, limit=limit) for tool in self._tools)
+        )
+        blocks: list[str] = []
+        rows: list[dict[str, Any]] = []
+        errors: list[str] = []
+        latency_ms = 0
+        candidate_hits = 0
+        max_score = 0.0
+        for tool, result in zip(self._tools, results, strict=True):
+            latency_ms = max(latency_ms, result.latency_ms)
+            if result.error:
+                errors.append(f"{tool.kb_name}: {result.error}")
+                continue
+            raw = result.raw if isinstance(result.raw, dict) else {}
+            try:
+                candidate_hits += int(raw.get("candidate_hits") or 0)
+                max_score = max(max_score, float(raw.get("max_score") or 0.0))
+            except (TypeError, ValueError):
+                pass
+            for row in raw.get("results") or []:
+                if isinstance(row, dict):
+                    rows.append({**row, "kb_id": tool.kb_id, "kb_name": tool.kb_name})
+            if raw.get("results"):
+                blocks.append(f"[知识库：{tool.kb_name}]\n{result.text}")
+        return ToolResult(
+            text="\n\n---\n\n".join(blocks),
+            latency_ms=latency_ms,
+            raw={
+                "hits": len(rows),
+                "kb_id": None,
+                "kb_ids": [tool.kb_id for tool in self._tools],
+                "results": rows,
+                "candidate_hits": candidate_hits,
+                "max_score": max_score,
+                "retrieval_status": "hit" if rows else "miss",
+            },
+            error="; ".join(errors) if errors and not rows else None,
         )

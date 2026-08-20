@@ -39,6 +39,7 @@ const NAME_LABEL: Record<string, string> = {
   dag_ready: "处理计划",
   agent_route: "选择处理方式",
   agent_handoff: "切换处理方式",
+  kb_routed: "选择知识库",
 };
 
 const AGENT_LABEL: Record<string, string> = {
@@ -276,6 +277,10 @@ function formatToolAction(event: ToolEvent): string {
     if (from && to) return `从${from}转到${to}`;
     return "切换处理方式";
   }
+  if (event.name === "kb_routed") {
+    const name = String(event.input?.name ?? "").trim();
+    return name ? `本轮检索 ${name}` : "本轮选择知识库";
+  }
   const base = NAME_LABEL[event.name] ?? "处理信息";
   if (event.status === "running") return `正在${base}`;
   if (event.status === "ok") return `已${base}`;
@@ -352,7 +357,7 @@ function isSearchTool(name: string): boolean {
 }
 
 function isRouteEvent(name: string): boolean {
-  return name === "dag_ready" || name === "agent_route" || name === "agent_handoff";
+  return name === "dag_ready" || name === "agent_route" || name === "agent_handoff" || name === "kb_routed";
 }
 
 function normalizeIssue(issue: string): string {

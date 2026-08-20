@@ -169,7 +169,7 @@ def build_supervisor_graph(
     kb_web_search_enabled: bool = False,
     kb_candidates: list[Any] | None = None,
     configure_routed_kb=None,
-    on_kb_routed=None,
+    kb_route_scope: str = "turn",
     run_context: RunContext | None = None,
 ):
     """Compile the multi-agent supervisor around a pluggable registry."""
@@ -193,7 +193,7 @@ def build_supervisor_graph(
         kb_web_search_enabled=kb_web_search_enabled,
         kb_candidates=list(kb_candidates or []),
         configure_routed_kb=configure_routed_kb,
-        on_kb_routed=on_kb_routed,
+        kb_route_scope=kb_route_scope,
     )
     if deps is None:
         runtime.emit = em
@@ -292,6 +292,7 @@ def build_supervisor_graph(
             else {
                 "needs_retrieval": False,
                 "selected_kb_id": None,
+                "selected_kb_ids": [],
                 "source": "fallback",
                 "confidence": "low",
                 "reason": "invalid_router_result",
@@ -299,29 +300,40 @@ def build_supervisor_graph(
                 "candidate_count": len(runtime.kb_candidates),
             }
         )
-        selected_kb = getattr(decision, "kb", None)
-        if selected_kb is not None:
+        selected_kbs = tuple(getattr(decision, "selected_kbs", ()) or ())
+        if not selected_kbs:
+            selected = getattr(decision, "kb", None)
+            selected_kbs = (selected,) if selected is not None else ()
+        selected_kb = selected_kbs[0] if selected_kbs else None
+        if selected_kbs:
             try:
-                if runtime.configure_routed_kb is not None:
-                    config = runtime.configure_routed_kb(selected_kb)
+                configs: dict[str, dict[str, Any]] = {}
+                for item in selected_kbs:
+                    if runtime.configure_routed_kb is None:
+                        continue
+                    config = runtime.configure_routed_kb(item)
                     if inspect.isawaitable(config):
                         config = await config
                     if isinstance(config, dict):
-                        runtime.embedding_cfg = config.get("embedding_cfg", runtime.embedding_cfg)
-                        runtime.reranker_cfg = config.get("reranker_cfg", runtime.reranker_cfg)
-                        runtime.kb_web_search_enabled = bool(
-                            config.get("kb_web_search_enabled", runtime.kb_web_search_enabled)
-                        )
+                        configs[str(item.id)] = config
+                first_config = configs.get(str(selected_kb.id), {})
+                runtime.embedding_cfg = first_config.get("embedding_cfg", runtime.embedding_cfg)
+                runtime.reranker_cfg = first_config.get("reranker_cfg", runtime.reranker_cfg)
+                runtime.kb_web_search_enabled = bool(
+                    first_config.get("kb_web_search_enabled", runtime.kb_web_search_enabled)
+                )
                 runtime.kb = selected_kb
-                if runtime.on_kb_routed is not None:
-                    await runtime.on_kb_routed(selected_kb, route_metadata)
+                runtime.routed_kbs = list(selected_kbs)
+                runtime.routed_kb_configs = configs
             except Exception:  # noqa: BLE001
                 log.exception("kb_router_activation_failed", extra={"kb_id": getattr(selected_kb, "id", None)})
                 selected_kb = None
+                selected_kbs = ()
                 route_metadata = {
                     **route_metadata,
                     "needs_retrieval": False,
                     "selected_kb_id": None,
+                    "selected_kb_ids": [],
                     "source": "fallback",
                     "confidence": "low",
                     "reason": "kb_activation_failed",
@@ -374,6 +386,7 @@ def build_supervisor_graph(
                 "event": "kb_route_completed",
                 "task_id": task_id,
                 "selected_kb_id": route_metadata.get("selected_kb_id"),
+                "selected_kb_ids": route_metadata.get("selected_kb_ids") or [],
                 "reason": route_metadata.get("reason"),
             }
         )
@@ -382,9 +395,11 @@ def build_supervisor_graph(
             await em(
                 {
                     "event": "kb_routed",
+                    "scope": runtime.kb_route_scope,
                     "agent": "kb_router",
                     "kb_id": selected_kb.id,
-                    "name": selected_kb.name,
+                    "kb_ids": [item.id for item in selected_kbs],
+                    "name": "、".join(str(item.name) for item in selected_kbs),
                     "source": route_metadata.get("source"),
                     "confidence": route_metadata.get("confidence"),
                 }

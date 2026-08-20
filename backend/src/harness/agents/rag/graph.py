@@ -35,6 +35,8 @@ def build_rag_graph(
     emit: Emitter | None = None,
     *,
     kb,
+    kbs: list[Any] | None = None,
+    kb_configs: dict[str, dict[str, Any]] | None = None,
     llm_cfg: "UserLLMConfig | None" = None,
     complex_llm_cfg: "UserLLMConfig | None" = None,
     triage_llm_cfg: "UserLLMConfig | None" = None,
@@ -43,22 +45,54 @@ def build_rag_graph(
     reranker_cfg: "UserRerankerConfig | None" = None,
     kb_web_search_enabled: bool = False,
 ):
-    """KB-bound subgraph — query_policy → kb_search → reason ⇄ tools."""
-    if kb is None:
+    """KB-bound subgraph — one or more ACL-scoped KBs, then one answer."""
+    selected_kbs = list(kbs or ([kb] if kb is not None else []))
+    if not selected_kbs:
         raise ValueError("build_rag_graph requires kb")
 
     if registry is None:
-        registry = build_default_registry(
-            kb=kb,
-            embedding_cfg=embedding_cfg,
-            reranker_cfg=reranker_cfg,
-            llm_cfg=llm_cfg,
-            user_kb_web_search_enabled=kb_web_search_enabled,
-        )
+        if len(selected_kbs) == 1:
+            registry = build_default_registry(
+                kb=selected_kbs[0],
+                embedding_cfg=embedding_cfg,
+                reranker_cfg=reranker_cfg,
+                llm_cfg=llm_cfg,
+                user_kb_web_search_enabled=kb_web_search_enabled,
+            )
+        else:
+            from src.harness.tools.base import ToolRegistry
+            from src.harness.tools.kb_search import KBSearchTool, MultiKBSearchTool
+            from src.harness.tools.web_search import WebSearchTool
 
+            configs = kb_configs or {}
+            tools = []
+            for item in selected_kbs:
+                config = configs.get(str(item.id), {})
+                tools.append(
+                    KBSearchTool(
+                        item,
+                        embedding_cfg=config.get("embedding_cfg", embedding_cfg),
+                        reranker_cfg=config.get("reranker_cfg", reranker_cfg),
+                    )
+                )
+            registry = ToolRegistry()
+            registry.register(MultiKBSearchTool(tools))
+            if kb_web_search_enabled:
+                policy = resolve_web_search_policy("kb")
+                registry.register(
+                    WebSearchTool(
+                        max_results_default=policy.results_per_call,
+                        max_results_cap=policy.results_per_call,
+                    )
+                )
+
+    kb_names = "、".join(str(item.name) for item in selected_kbs)
+    kb_descriptions = "\n".join(
+        f"- {item.name}: {item.description or '(empty)'}" for item in selected_kbs
+    )
     system_prompt = build_kb_reason_system_prompt(
-        kb.name,
-        kb.description or "",
+        kb_names,
+        kb_descriptions,
         with_web_search=kb_web_search_enabled,
     )
     web_search_policy = resolve_web_search_policy(
@@ -73,8 +107,8 @@ def build_rag_graph(
         partial(
             query_policy_node,
             cost=cost,
-            kb_name=kb.name,
-            kb_description=kb.description or "",
+            kb_name=kb_names,
+            kb_description=kb_descriptions,
             llm_cfg=triage_llm_cfg or llm_cfg,
         ),
     )

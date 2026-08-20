@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Literal, TYPE_CHECKING
+from typing import Any, Callable, Literal, TYPE_CHECKING
 
 from src.harness.contracts.events import EventEmitter
 from src.harness.contracts.runtime import RunContext
@@ -48,8 +48,12 @@ class RuntimeDeps:
     reranker_cfg: "UserRerankerConfig | None" = None
     kb_web_search_enabled: bool = False
     kb_candidates: list[Any] = field(default_factory=list)
+    routed_kbs: list[Any] = field(default_factory=list)
+    routed_kb_configs: dict[str, dict[str, Any]] = field(default_factory=dict)
     configure_routed_kb: Callable[[Any], Any] | None = None
-    on_kb_routed: Callable[[Any, Any], Awaitable[None]] | None = None
+    # "turn" means an automatic selection shown only in the response trace;
+    # "pinned" is reserved for an explicit conversation scope.
+    kb_route_scope: str = "turn"
 
 
 @dataclass
@@ -111,6 +115,8 @@ def build_default_agent_registry() -> AgentRegistry:
             raise ValueError("rag agent requires kb")
         return build_rag_graph(
             kb=deps.kb,
+            kbs=deps.routed_kbs or None,
+            kb_configs=deps.routed_kb_configs or None,
             emit=emit or deps.emit,
             llm_cfg=deps.llm_cfg,
             complex_llm_cfg=deps.complex_llm_cfg,
