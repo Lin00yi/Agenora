@@ -542,6 +542,15 @@ async def patch_memory(
     row = await session.get(UserMemory, memory_id)
     if row is None or row.user_id != user.id:
         raise HTTPException(status_code=404, detail="memory not found")
+    if req.status == "active" and row.status == "superseded":
+        # A superseded row normally shares its structured key with a newer
+        # active row. Reopening it would violate the one-current-value
+        # invariant (or, worse, make an old value win again). Keep its audit
+        # history immutable; the user can edit the current record instead.
+        raise HTTPException(
+            status_code=409,
+            detail="memory has been superseded; edit the current active memory instead",
+        )
     if req.content is not None:
         if memory_content_rejection_reason(req.content):
             raise HTTPException(status_code=422, detail="memory content violates the retention policy")

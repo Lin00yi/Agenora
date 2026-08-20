@@ -2,10 +2,14 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
+import pytest
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from src.api.routes.conversations import PatchMemoryRequest, patch_memory
 from src.capabilities.conversations.models import UserMemory
 from src.capabilities.memory.application.lifecycle import enforce_memory_capacity, store_memory_candidates
 from src.capabilities.memory.application.retrieval import retrieve_user_memory_matches
@@ -323,5 +327,38 @@ async def test_memory_recall_usage_persists_when_context_transaction_commits() -
             assert stored is not None
             assert stored.recall_count == 1
             assert stored.last_accessed_at is not None
+    finally:
+        await engine.dispose()
+
+
+async def test_superseded_memory_cannot_be_reactivated_over_current_value() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with session_factory() as session:
+            session.add(
+                UserMemory(
+                    id="old-memory",
+                    user_id="user-1",
+                    type="preference",
+                    memory_key="response_language",
+                    memory_value="en",
+                    content="用户曾偏好英文回复。",
+                    source="auto_rule",
+                    status="superseded",
+                )
+            )
+            await session.commit()
+
+            with pytest.raises(HTTPException) as exc_info:
+                await patch_memory(
+                    "old-memory",
+                    PatchMemoryRequest(status="active"),
+                    SimpleNamespace(id="user-1"),
+                    session,
+                )
+            assert getattr(exc_info.value, "status_code", None) == 409
     finally:
         await engine.dispose()

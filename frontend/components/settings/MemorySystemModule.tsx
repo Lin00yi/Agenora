@@ -357,6 +357,7 @@ function MemoryRow({
   const expiryLabel = memory.expires_at
     ? `到期 ${formatMemoryDate(memory.expires_at)}`
     : "长期有效";
+  const superseded = memory.status === "superseded";
 
   return (
     <article
@@ -399,6 +400,12 @@ function MemoryRow({
             ) : null}
           </div>
 
+          {superseded ? (
+            <p className="mt-2 text-pretty text-xs leading-5 text-muted">
+              此记录已被较新的同类记忆覆盖；请编辑当前有效版本。
+            </p>
+          ) : null}
+
           {detailsOpen ? (
             <div className="mt-3 grid gap-2 rounded-md border border-surface-border/60 bg-surface-2/50 px-3 py-2.5 text-xs text-muted sm:grid-cols-2">
               <DetailItem label="结构键" value={memory.key || "—"} mono />
@@ -430,9 +437,9 @@ function MemoryRow({
             type="button"
             className="admin-icon-action admin-icon-action-brand size-8"
             onClick={onEdit}
-            disabled={busy}
+            disabled={busy || superseded}
             aria-label="编辑记忆"
-            title="编辑记忆"
+            title={superseded ? "已覆盖记忆不可直接恢复" : "编辑记忆"}
           >
             <Edit3 className="h-4 w-4" />
           </button>
@@ -543,6 +550,19 @@ function MemoryEditDialog({
   const [neverExpires, setNeverExpires] = useState(true);
   const [expiresLocal, setExpiresLocal] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const activationAction =
+    memory?.status === "pending_review"
+      ? "confirm"
+      : memory?.status === "archived" || memory?.status === "expired"
+        ? "restore"
+        : null;
+  const dialogTitle = activationAction === "confirm" ? "确认记忆" : "编辑记忆";
+  const saveLabel =
+    activationAction === "confirm"
+      ? "确认并保存"
+      : activationAction === "restore"
+        ? "恢复并保存"
+        : "保存";
 
   useEffect(() => {
     if (!memory) return;
@@ -598,7 +618,7 @@ function MemoryEditDialog({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      title="编辑记忆"
+      title={dialogTitle}
       size="md"
       busy={busy}
       footer={
@@ -608,12 +628,19 @@ function MemoryEditDialog({
           </Button>
           <Button type="button" onClick={save} disabled={busy}>
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-            保存
+            {saveLabel}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
+        {activationAction ? (
+          <p className="text-pretty rounded-md border border-surface-border/70 bg-surface-2/40 px-3 py-2 text-xs leading-5 text-muted">
+            {activationAction === "confirm"
+              ? "确认后，这条候选记忆才会作为长期记忆注入后续对话。"
+              : "恢复后，这条记忆会重新参与后续对话的上下文检索。"}
+          </p>
+        ) : null}
         <label className="block">
           <div className="mb-1 text-xs font-medium text-muted">内容</div>
           <Textarea
