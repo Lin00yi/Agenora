@@ -23,6 +23,14 @@ from .react_runtime import (
     load_react_cases,
     parse_react_cases_jsonl,
 )
+from .live_tool_selection import (
+    LiveToolSelectionCase,
+    LiveToolSelectionError,
+    assert_live_tool_selection_gate,
+    evaluate_live_tool_selection,
+    load_live_tool_cases,
+    parse_live_tool_cases_jsonl,
+)
 
 __all__ = [
     "EvaluationGateError",
@@ -44,4 +52,10 @@ __all__ = [
     "evaluate_react_cases",
     "load_react_cases",
     "parse_react_cases_jsonl",
+    "LiveToolSelectionCase",
+    "LiveToolSelectionError",
+    "assert_live_tool_selection_gate",
+    "evaluate_live_tool_selection",
+    "load_live_tool_cases",
+    "parse_live_tool_cases_jsonl",
 ]

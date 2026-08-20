@@ -1,0 +1,3 @@
+{"id":"current_time_uses_clock","messages":[{"role":"user","content":"现在几点？"}],"mounted_tools":["get_current_time","web_search"],"expected":{"required_any_tools":["get_current_time"],"forbidden_tools":["web_search"],"tool_count":1}}
+{"id":"fresh_fact_uses_web","messages":[{"role":"user","content":"请查询今天最新的 Python 版本发布消息，并给出权威链接。"}],"mounted_tools":["get_current_time","web_search"],"expected":{"required_any_tools":["web_search"],"tool_count":1}}
+{"id":"stable_explanation_avoids_tools","messages":[{"role":"user","content":"解释一下 Redis 的连接池是什么。"}],"mounted_tools":["get_current_time","web_search"],"expected":{"forbidden_tools":["get_current_time","web_search"],"tool_count":0}}

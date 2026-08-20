@@ -10,6 +10,7 @@
     "backend/src/harness/runtime/agent_loop",
     "backend/src/harness/runtime/telemetry.py",
     "backend/src/harness/evaluation/react_runtime.py",
+    "backend/src/harness/evaluation/live_tool_selection.py",
     "backend/src/harness/policy",
     "backend/src/capabilities/memory/application",
     "backend/src/capabilities/knowledge/application",

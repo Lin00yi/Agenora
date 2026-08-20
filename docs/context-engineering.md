@@ -175,6 +175,16 @@ Anthropic 适配层会在稳定业务规则之后设置 `cache_control`，再追
 
 最终 Trace 的 `runtime.execution` 额外记录安全聚合的 ReAct 信号：能力范围、选中的 KB ID、迭代数、各工具调用次数、工具错误数、网页调用/证据预算。它不包含工具参数、工具返回原文、用户查询或向量。`config/react_eval_cases.jsonl` 与 `react_eval_gate.json` 是对应的确定性发布门禁；CI 会执行它以防订单隔离、工具白名单或预算约束回退。
 
+此外，`config/react_live_tool_cases.jsonl` 提供真实 Provider 的首步工具选择基线。它复用线上 adapter、系统提示词、工具 schema 和 Provider 预算，但不会执行工具；必须显式确认才会发出付费请求：
+
+```bash
+cd backend
+python -m src.harness.evaluation.live_tool_selection_cli --live \
+  --max-total-cost-usd 0.05 --report /tmp/react-live-tool-selection.json
+```
+
+该命令不进 CI：模型输出和计费具有外部波动。它用于模型或提示词升级前后的人工验收，报告只记录模型名、所选工具、通过状态与总成本，不保存回答正文。
+
 `prompt_trace` 不包含原始系统提示词、工具 schema 或安全原因，只包含安全的度量数据：
 
 ```text
