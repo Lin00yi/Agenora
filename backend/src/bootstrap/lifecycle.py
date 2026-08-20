@@ -11,6 +11,7 @@ from src.bootstrap.container import build_container
 from src.capabilities.identity.admin_seed import seed_admins
 from src.capabilities.knowledge.application.system_seed import seed_system_kbs
 from src.bootstrap.database import initialize_database
+from src.harness.mcp.manager import close_mcp_manager
 
 log = structlog.get_logger()
 
@@ -28,5 +29,8 @@ async def application_lifespan(app: FastAPI):
     log.info("system_kbs_ready")
     await seed_admins()
     log.info("admins_seeded")
-    yield
-    log.info("shutdown")
+    try:
+        yield
+    finally:
+        await close_mcp_manager()
+        log.info("shutdown")

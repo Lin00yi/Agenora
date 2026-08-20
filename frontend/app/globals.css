@@ -746,6 +746,26 @@
     );
   }
 
+  /* Human intervention replaces the composer without floating over the thread.
+     The message list keeps its own scroll area, so every prior message remains
+     readable and the panel stays reachable on short viewports. */
+  .kf-chat .kf-workspace .kf-thread-dock.kf-thread-dock-human {
+    position: relative;
+    right: auto;
+    max-height: min(70dvh, 42rem);
+    overflow-y: auto;
+    padding: 0.75rem 1.25rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+    background: var(--chat-canvas);
+  }
+
+  .kf-chat .kf-workspace .kf-thread-inner.kf-thread-inner-human {
+    padding-bottom: 1.25rem;
+  }
+
+  .kf-chat .kf-workspace .kf-thread-dock-human .kf-human-input-panel {
+    max-width: 860px;
+  }
+
   .kf-chat .kf-workspace .kf-composer.kf-composer-docked {
     background: transparent;
   }

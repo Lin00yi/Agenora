@@ -44,6 +44,22 @@ def _refund_confirmation_error(name: str, args: dict[str, Any], messages: list[d
         return "退款必须由用户在最新一条消息精确确认（确认退款 <approval_id>）；本次未执行。"
     return None
 
+
+def _high_risk_mcp_error(
+    name: str,
+    args: dict[str, Any],
+    messages: list[dict[str, Any]] | None,
+    *,
+    tool: Any | None,
+) -> str | None:
+    """Apply Host policy to catalogued high-risk MCP tools before dispatch."""
+    if getattr(tool, "risk", None) != "high_risk_write":
+        return _refund_confirmation_error(name, args, messages)
+    policy_id = getattr(tool, "policy_id", None)
+    if policy_id == "refund_confirmation_v1":
+        return _refund_confirmation_error(name, args, messages)
+    return "该高风险操作没有可执行的宿主确认策略，本次未执行。"
+
 if TYPE_CHECKING:
     from src.capabilities.settings.domain.models import UserLLMConfig
 
@@ -93,7 +109,12 @@ async def call_tools_node(
     async def _run(tc: dict[str, Any]) -> dict[str, Any]:
         name = tc["name"]
         args = tc.get("input") or {}
-        confirmation_error = _refund_confirmation_error(name, args, state.get("messages"))
+        confirmation_error = _high_risk_mcp_error(
+            name,
+            args,
+            state.get("messages"),
+            tool=registry.get(name),
+        )
         if confirmation_error:
             await emit(
                 {"event": "tool_blocked", "id": tc["id"], "name": name, "input": args, "reason": confirmation_error}

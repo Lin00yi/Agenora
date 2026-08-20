@@ -7,9 +7,12 @@ import pytest
 from src.harness.orchestration.planner import rule_route
 from src.harness.orchestration.registry import build_default_agent_registry
 from src.harness.agents.orders.graph import build_orders_graph
+from src.harness.mcp.catalog import build_mcp_catalog
+from src.harness.mcp.manager import McpConnectionManager
+from src.harness.mcp.orders import refundable_order_options
 from src.harness.runtime.agent_loop.call_tools import call_tools_node
 from src.harness.tools.base import Tool, ToolRegistry, ToolResult
-from src.harness.mcp.orders import OrdersMCPClient, refundable_order_options
+from src.settings import Settings
 
 
 class _ConfirmRefundTool(Tool):
@@ -65,20 +68,24 @@ async def test_exact_refund_confirmation_bypasses_llm_and_executes_once() -> Non
 
 @pytest.mark.asyncio
 async def test_stdio_mcp_refund_is_owned_confirmed_and_idempotent(tmp_path) -> None:
-    client = OrdersMCPClient(
-        actor_id="user-alpha",
-        server_path=str(Path(__file__).resolve().parents[2] / "mock-mcp" / "orders"),
-        db_path=str(tmp_path / "orders.db"),
-        service_token="test-mcp-token",
-        timeout_s=10,
+    settings = Settings(
+        orders_mcp_server_path=str(Path(__file__).resolve().parents[2] / "mock-mcp" / "orders"),
+        orders_mcp_db_path=str(tmp_path / "orders.db"),
+        orders_mcp_service_token="test-mcp-token",
+        orders_mcp_timeout_seconds=10,
     )
-    # The subprocess receives this through the client environment.
-    import os
-
-    old_token = os.environ.get("ORDERS_MCP_SERVICE_TOKEN")
-    os.environ["ORDERS_MCP_SERVICE_TOKEN"] = "test-mcp-token"
+    manager = McpConnectionManager(catalog=build_mcp_catalog(settings), settings=settings)
     try:
-        listing = await client.call("list_orders", {})
+        discovered = await manager.discover("orders")
+        assert {tool["name"] for tool in discovered} == {
+            "list_orders",
+            "get_order",
+            "list_refunds",
+            "get_refund",
+            "prepare_refund",
+            "confirm_refund",
+        }
+        listing = await manager.call("commerce.orders.list", actor_id="user-alpha")
         assert listing["status"] == "ok"
         assert listing["total"] == 20
         assert {order["status"] for order in listing["orders"]} == {
@@ -102,12 +109,12 @@ async def test_stdio_mcp_refund_is_owned_confirmed_and_idempotent(tmp_path) -> N
         assert all(order["invoice"]["title"] for order in listing["orders"])
         assert all(order["refund_eligibility"]["deadline_at"] for order in listing["orders"])
 
-        detail = await client.call("get_order", {"order_id": order_id})
+        detail = await manager.call("commerce.orders.get", actor_id="user-alpha", arguments={"order_id": order_id})
         assert detail["status"] == "ok"
         assert detail["order"]["fulfillment"]["recipient_phone_masked"] == "138****0621"
         assert detail["order"]["items"][0]["specifications"]
 
-        refunds = await client.call("list_refunds", {})
+        refunds = await manager.call("commerce.refunds.list", actor_id="user-alpha")
         assert refunds["status"] == "ok"
         assert refunds["total"] == 8
         assert {refund["status"] for refund in refunds["refunds"]} >= {
@@ -116,58 +123,51 @@ async def test_stdio_mcp_refund_is_owned_confirmed_and_idempotent(tmp_path) -> N
             "expired",
         }
         completed_refund = next(refund for refund in refunds["refunds"] if refund["refund_no"])
-        historical = await client.call("get_refund", {"refund_id": completed_refund["refund_no"]})
+        historical = await manager.call("commerce.refunds.get", actor_id="user-alpha", arguments={"refund_id": completed_refund["refund_no"]})
         assert historical["status"] == "ok"
         assert historical["refund"]["timeline"]
 
         refunded_order = next(order for order in listing["orders"] if order["status"] == "refunded")
-        assert (await client.call("prepare_refund", {"order_id": refunded_order["order_id"], "reason": "测试"}))["status"] == "invalid"
+        assert (await manager.call("commerce.refund.prepare", actor_id="user-alpha", arguments={"order_id": refunded_order["order_id"], "reason": "测试"}))["status"] == "invalid"
         expired_order = next(
             order
             for order in listing["orders"]
             if order["status"] == "completed" and not order["refund_eligibility"]["eligible"]
         )
-        assert (await client.call("prepare_refund", {"order_id": expired_order["order_id"], "reason": "测试"}))["status"] == "invalid"
+        assert (await manager.call("commerce.refund.prepare", actor_id="user-alpha", arguments={"order_id": expired_order["order_id"], "reason": "测试"}))["status"] == "invalid"
 
-        pending = await client.call("prepare_refund", {"order_id": order_id, "reason": "本地测试"})
+        pending = await manager.call("commerce.refund.prepare", actor_id="user-alpha", arguments={"order_id": order_id, "reason": "本地测试"})
         assert pending["status"] == "awaiting_confirmation"
         assert pending["refund_to"]
         assert pending["product_name"]
         assert pending["product_url"].startswith("https://demo.agenora.local/")
-        too_large = await client.call(
-            "prepare_refund",
-            {"order_id": order_id, "reason": "金额校验", "amount_minor": first_order["refundable_minor"] + 1},
+        too_large = await manager.call(
+            "commerce.refund.prepare",
+            actor_id="user-alpha",
+            arguments={"order_id": order_id, "reason": "金额校验", "amount_minor": first_order["refundable_minor"] + 1},
         )
         assert too_large["status"] == "invalid"
-        repeated_pending = await client.call("prepare_refund", {"order_id": order_id, "reason": "本地测试"})
+        repeated_pending = await manager.call("commerce.refund.prepare", actor_id="user-alpha", arguments={"order_id": order_id, "reason": "本地测试"})
         assert repeated_pending["approval_id"] == pending["approval_id"]
 
-        wrong_user = OrdersMCPClient(
-            actor_id="user-beta",
-            server_path=str(Path(__file__).resolve().parents[2] / "mock-mcp" / "orders"),
-            db_path=str(tmp_path / "orders.db"),
-            service_token="test-mcp-token",
-            timeout_s=10,
-        )
-        assert (await wrong_user.call("get_order", {"order_id": order_id}))["status"] == "not_found"
+        assert (await manager.call("commerce.orders.get", actor_id="user-beta", arguments={"order_id": order_id}))["status"] == "not_found"
 
-        completed = await client.call(
-            "confirm_refund",
-            {"approval_id": pending["approval_id"], "confirmation_text": pending["confirmation_phrase"]},
+        completed = await manager.call(
+            "commerce.refund.confirm",
+            actor_id="user-alpha",
+            arguments={"approval_id": pending["approval_id"], "confirmation_text": pending["confirmation_phrase"]},
         )
         assert completed["status"] == "completed"
         assert completed["refund_no"]
         assert completed["estimated_arrival_at"]
-        repeated = await client.call(
-            "confirm_refund",
-            {"approval_id": pending["approval_id"], "confirmation_text": pending["confirmation_phrase"]},
+        repeated = await manager.call(
+            "commerce.refund.confirm",
+            actor_id="user-alpha",
+            arguments={"approval_id": pending["approval_id"], "confirmation_text": pending["confirmation_phrase"]},
         )
         assert repeated["status"] == "already_completed"
     finally:
-        if old_token is None:
-            os.environ.pop("ORDERS_MCP_SERVICE_TOKEN", None)
-        else:
-            os.environ["ORDERS_MCP_SERVICE_TOKEN"] = old_token
+        await manager.aclose()
 
 
 def test_refundable_order_options_only_projects_eligible_order_display_fields() -> None:
@@ -220,6 +220,12 @@ class _ConfirmTool(Tool):
         return ToolResult(text="ok", latency_ms=1)
 
 
+class _UnmanagedHighRiskTool(_ConfirmTool):
+    name = "transfer_funds"
+    risk = "high_risk_write"
+    policy_id = "unknown_policy"
+
+
 @pytest.mark.asyncio
 async def test_refund_execution_is_blocked_without_exact_latest_human_confirmation() -> None:
     tool = _ConfirmTool()
@@ -245,6 +251,30 @@ async def test_refund_execution_is_blocked_without_exact_latest_human_confirmati
     assert tool.calls == 0
     assert out["messages"][-1]["content"][0]["is_error"] is True
     assert any(event["event"] == "tool_blocked" for event in emitted)
+
+
+@pytest.mark.asyncio
+async def test_high_risk_catalog_tool_is_blocked_without_a_host_execution_policy() -> None:
+    tool = _UnmanagedHighRiskTool()
+    registry = ToolRegistry()
+    registry.register(tool)
+    emitted: list[dict] = []
+
+    async def emit(event: dict) -> None:
+        emitted.append(event)
+
+    out = await call_tools_node(
+        {
+            "messages": [{"role": "user", "content": "转账 100 元"}],
+            "pending_tool_calls": [{"id": "call-risk", "name": "transfer_funds", "input": {}}],
+        },
+        registry=registry,
+        emit=emit,
+    )
+
+    assert tool.calls == 0
+    assert out["messages"][-1]["content"][0]["is_error"] is True
+    assert emitted[0]["event"] == "tool_blocked"
 
 
 def test_order_operations_route_to_execution_agent_even_when_kb_is_bound() -> None:

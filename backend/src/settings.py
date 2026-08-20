@@ -121,6 +121,14 @@ class Settings(BaseSettings):
     orders_mcp_db_path: str = str(_PROJECT_ROOT / "mock-mcp" / "orders" / "data" / "orders.db")
     orders_mcp_service_token: str = "local-dev-orders-mcp-change-me"
     orders_mcp_timeout_seconds: float = 15.0
+    # Optional reviewed MCP catalog. Empty retains the backwards-compatible
+    # local orders entry above. The JSON schema is owned by
+    # ``harness.mcp.catalog`` and can describe multiple stdio / HTTP servers.
+    mcp_servers_json: str = ""
+    # Values referenced by an MCP catalog's ``secret_arguments`` or
+    # ``secret_headers``. Keep this deployment-only and never put secret
+    # values in MCP_SERVERS_JSON (which is safe to review/export).
+    mcp_secrets_json: str = ""
 
     # ===== Vector store (decoupled: factory picks impl by VECTOR_STORE) =====
     vector_store: str = "qdrant"  # qdrant | milvus | local

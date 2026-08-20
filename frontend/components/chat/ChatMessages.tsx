@@ -30,6 +30,15 @@ import {
   stripHandwrittenSourceList,
 } from "./utils";
 
+function humanInterruptPrompt(message: Extract<Message, { role: "assistant" }>): string {
+  for (const tool of [...message.tools].reverse()) {
+    if (tool.name !== "human_input_required") continue;
+    const prompt = tool.input?.prompt;
+    if (typeof prompt === "string" && prompt.trim()) return prompt.trim();
+  }
+  return "";
+}
+
 export const ChatMessage = memo(function ChatMessage({ message }: { message: Message }) {
   if (message.role === "user") {
     const copyMessage = async () => {
@@ -77,14 +86,16 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
   const hasLiveContent = liveContent.trim().length > 0;
   const hasTools = message.tools.length > 0;
   const joined = joinAssistantText(parts, liveContent);
-  const hasAnyText = joined.trim().length > 0;
+  const interruptPrompt = joined.trim() ? "" : humanInterruptPrompt(message);
+  const displayText = joined.trim() || interruptPrompt;
+  const hasAnyText = displayText.length > 0;
   const hasMemoryContext = hasVisibleMemoryTrace(message.memory_trace);
   const hasContextPart = parts.some((part) => part.type === "context");
   const hasCitations = hasVisibleCitations(message.citations);
   const elapsedMs = useLiveElapsed(streaming, message.created_at);
   const status = getAssistantStreamingStatus(message, elapsedMs);
   const exportMarkdown =
-    hasCitations && !streaming ? stripHandwrittenSourceList(joined) : joined;
+    hasCitations && !streaming ? stripHandwrittenSourceList(displayText) : displayText;
   // Persisted conversations may still contain the legacy backend error code.
   // Translate it at render time as well as at the SSE boundary so old chats are
   // just as understandable as newly-created messages.
@@ -165,6 +176,11 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
               <div className="kf-streaming-status flex flex-wrap items-center gap-2 px-1 text-sm">
                 <LoaderCircle className="h-4 w-4 animate-spin text-[color:var(--chat-accent)] motion-reduce:animate-none" />
                 <span>{status.label}</span>
+              </div>
+            )}
+            {!hasLiveContent && interruptPrompt && !streaming && (
+              <div className="kf-answer px-1 py-1 sm:px-2">
+                <AnswerMarkdown markdown={interruptPrompt} streaming={false} />
               </div>
             )}
           </div>

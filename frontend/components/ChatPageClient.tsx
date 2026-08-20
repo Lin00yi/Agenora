@@ -483,6 +483,15 @@ export function ChatPage({
     scrollThreadToBottom("auto");
   }, [scrollThreadToBottom, visibleMessages.length, lastAssistantContentLen]);
 
+  // A human panel occupies real layout space below the thread. Keep its first
+  // appearance in view for readers already following the conversation, while
+  // preserving position if they intentionally scrolled up.
+  useEffect(() => {
+    if (!humanInput || !stickToBottomRef.current) return;
+    const frame = requestAnimationFrame(() => scrollThreadToBottom("auto"));
+    return () => cancelAnimationFrame(frame);
+  }, [humanInput, scrollThreadToBottom]);
+
   useEffect(() => {
     stickToBottomRef.current = true;
     setShowScrollToBottom(false);
@@ -778,17 +787,26 @@ export function ChatPage({
                   </div>
                 </div>
               ) : (
-                <div className="kf-thread relative min-h-0 flex-1" data-kf-region="thread">
+                <div className="kf-thread relative flex min-h-0 flex-1 flex-col" data-kf-region="thread">
                   <div
                     ref={scrollRef}
                     onScroll={onThreadScroll}
-                    className="kf-thread-scroll absolute inset-0 overflow-y-auto"
+                    className={cn(
+                      "kf-thread-scroll",
+                      humanInput ? "min-h-0 flex-1 overflow-y-auto" : "absolute inset-0 overflow-y-auto"
+                    )}
                     data-kf-region="thread-scroll"
                     role="log"
                     aria-live="polite"
                     aria-relevant="additions"
                   >
-                    <div className="kf-thread-inner mx-auto flex w-full max-w-[860px] flex-col gap-7 px-5 pt-5" data-kf-region="thread-inner">
+                    <div
+                      className={cn(
+                        "kf-thread-inner mx-auto flex w-full max-w-[860px] flex-col gap-7 px-5 pt-5",
+                        humanInput && "kf-thread-inner-human"
+                      )}
+                      data-kf-region="thread-inner"
+                    >
                       {visibleMessages.length === 0 ? (
                         <EmptyWorkbench currentKbName={currentKb?.name ?? null} onPick={handleSendWithLlmGuard} />
                       ) : (
@@ -796,7 +814,13 @@ export function ChatPage({
                       )}
                     </div>
                   </div>
-                  <div className="kf-thread-dock pointer-events-none absolute bottom-0 left-0 z-10" data-kf-region="thread-dock">
+                  <div
+                    className={cn(
+                      "kf-thread-dock pointer-events-none absolute bottom-0 left-0 z-10",
+                      humanInput && "kf-thread-dock-human relative bottom-auto left-auto z-0 shrink-0"
+                    )}
+                    data-kf-region="thread-dock"
+                  >
                     {showScrollToBottom ? (
                       <div className="pointer-events-none flex justify-center pb-2">
                         <button

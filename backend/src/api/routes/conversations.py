@@ -27,10 +27,9 @@ from src.harness.context import (
     run_summary_prepare_background,
     store_user_memories,
 )
-from src.harness.mcp.orders import OrdersMCPClient
+from src.harness.mcp.orders import get_refund
 from src.capabilities.conversations.models import Conversation, Message, UserMemory
 from src.platform.persistence import get_session
-from src.settings import get_settings
 from src.platform.llm import normalize_model_name
 from src.capabilities.settings.domain.models import (
     configured_context_window_for_model,
@@ -185,18 +184,8 @@ async def _recover_completed_refund(
     if pending is None:
         return
     _, approval_id = pending
-    settings = get_settings()
-    if not settings.orders_mcp_enabled:
-        return
-    client = OrdersMCPClient(
-        actor_id=user.id,
-        server_path=settings.orders_mcp_server_path,
-        db_path=settings.orders_mcp_db_path,
-        service_token=settings.orders_mcp_service_token,
-        timeout_s=settings.orders_mcp_timeout_seconds,
-    )
     try:
-        payload = await client.call("get_refund", {"refund_id": approval_id})
+        payload = await get_refund(user_id=user.id, refund_id=approval_id)
     except Exception:  # noqa: BLE001
         return
     refund = payload.get("refund") if isinstance(payload, dict) else None

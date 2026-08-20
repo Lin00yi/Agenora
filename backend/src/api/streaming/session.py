@@ -67,6 +67,19 @@ def _persisted_tool_events(tool_log: list[dict[str, Any]] | None) -> list[dict[s
     return events
 
 
+def _human_interrupt_content(payload: dict[str, Any]) -> str:
+    """Give a paused turn a durable, user-visible assistant message.
+
+    The structured payload remains the source for the form, but an interrupt is
+    still an assistant turn in the conversation transcript. Persisting its
+    prompt prevents a blank row after reloads and exports.
+    """
+    prompt = payload.get("prompt")
+    if isinstance(prompt, str) and prompt.strip():
+        return prompt.strip()
+    return "请补充继续处理所需的信息。"
+
+
 async def _persist_assistant_turn(
     *,
     conversation_id: str | None,
@@ -339,7 +352,7 @@ def run_chat_session(
                 persisted_message_id = await _persist_assistant_turn(
                     conversation_id=conversation_id,
                     user=user,
-                    content="",
+                    content=_human_interrupt_content(payload),
                     tools=[human_tool],
                 )
                 await queue.put({"event": "human_input_required", **payload})
