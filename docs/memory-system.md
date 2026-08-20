@@ -154,7 +154,7 @@ BackgroundTasks：向量刷新 + 记忆整合 + 摘要预热
 | `content` | 供模型理解的自然语言描述 |
 | `source` | `explicit`、`auto_rule`、`auto_session`、`user_edited` |
 | `confidence` / `importance` | 检索排序信号 |
-| `status` | `active`、`superseded`、`deleted`、`expired` |
+| `status` | `active`、`pending_review`、`archived`、`superseded`、`deleted`、`expired` |
 | `supersedes_memory_id` | 新记忆覆盖旧记忆时的关联 |
 | `source_message_ids` | 来源消息，用于可追溯性 |
 | `embedding_json` / `embedding_fingerprint` | 记忆向量及其模型空间标识，用于语义检索 |
@@ -228,7 +228,7 @@ cd backend
 python -m src.capabilities.memory.application.worker
 ```
 
-该命令会按用户提交处理结果，并输出 `users_scanned`、过期、覆盖、去重、向量回填及失败数量。部署时只应调度一个实例；管理员也可以调用 `POST /api/admin/memory-maintenance` 进行有界的手动执行。
+该命令会按用户提交处理结果，并输出 `users_scanned`、过期、覆盖、去重、向量回填及失败数量。每个 scope 最多保留 100 条 `active` 记忆和 30 条 `pending_review` 候选；超出的低优先级项会进入 `archived`，可在管理页恢复，不会被删除。部署时只应调度一个实例；管理员也可以调用 `POST /api/admin/memory-maintenance` 进行有界的手动执行。
 
 最终的上下文顺序为：
 

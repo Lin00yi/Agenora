@@ -7,6 +7,10 @@ from dataclasses import dataclass
 
 MAX_MEMORY_EXTRACTION_SOURCE_CHARS = 16_000
 MAX_ACTIVE_MEMORIES_PER_SCOPE = 100
+# Whole-conversation extraction is deliberately review-gated. Keep its queue
+# bounded too: otherwise inactive users can accumulate unlimited suggestions
+# that are never eligible for recall but still inflate maintenance/API scans.
+MAX_PENDING_REVIEW_MEMORIES_PER_SCOPE = 30
 MAX_MEMORY_CONTEXT_TOKENS = 1_200
 MAX_PROFILE_MEMORY_ROWS = 40
 MEMORY_SEMANTIC_MIN = 0.55

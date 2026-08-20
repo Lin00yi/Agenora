@@ -14,6 +14,7 @@ from src.capabilities.conversations.models import Message, UserMemory
 
 from src.capabilities.memory.domain.policy import (
     MAX_ACTIVE_MEMORIES_PER_SCOPE,
+    MAX_PENDING_REVIEW_MEMORIES_PER_SCOPE,
     MEMORY_CONSOLIDATE_SEMANTIC,
     MemoryCandidate,
 )
@@ -227,32 +228,42 @@ async def enforce_memory_capacity(
     *,
     user_id: str,
     limit_per_scope: int = MAX_ACTIVE_MEMORIES_PER_SCOPE,
+    pending_limit_per_scope: int = MAX_PENDING_REVIEW_MEMORIES_PER_SCOPE,
 ) -> int:
-    """Archive excess inferred memory instead of silently making it unrecallable.
+    """Archive excess active and review-gated inferred memory without deletion.
 
     Archived rows remain visible/exportable and can be reactivated by the user.
     Explicit and user-edited memories are retained ahead of model-inferred facts;
     the archive is a transparent recall-capacity policy, never data deletion.
+
+    ``pending_review`` has its own, lower cap. It cannot be recalled, but the
+    idle-conversation extractor may create it indefinitely for users who never
+    open Memory Settings; treating only active rows as capacity-bound makes the
+    review queue and maintenance scans grow without limit.
     """
-    if limit_per_scope <= 0:
+    if limit_per_scope <= 0 and pending_limit_per_scope <= 0:
         return 0
     rows = list(
         (
             await session.execute(
                 select(UserMemory)
-                .where(UserMemory.user_id == user_id, UserMemory.status == "active")
+                .where(
+                    UserMemory.user_id == user_id,
+                    UserMemory.status.in_(("active", "pending_review")),
+                )
                 .order_by(desc(UserMemory.updated_at))
             )
         ).scalars()
     )
-    by_scope: dict[tuple[str, str | None], list[UserMemory]] = {}
+    by_status_scope: dict[tuple[str, str, str | None], list[UserMemory]] = {}
     for row in rows:
-        by_scope.setdefault((row.scope, row.scope_id), []).append(row)
+        by_status_scope.setdefault((row.status, row.scope, row.scope_id), []).append(row)
     archived = 0
     now = datetime.now(timezone.utc)
-    for scope_rows in by_scope.values():
-        if len(scope_rows) <= limit_per_scope:
-            continue
+
+    def archive_excess(scope_rows: list[UserMemory], *, limit: int) -> int:
+        if limit <= 0 or len(scope_rows) <= limit:
+            return 0
         ranked = sorted(
             scope_rows,
             key=lambda row: (
@@ -265,10 +276,14 @@ async def enforce_memory_capacity(
             ),
             reverse=True,
         )
-        for row in ranked[limit_per_scope:]:
+        for row in ranked[limit:]:
             row.status = "archived"
             row.updated_at = now
-            archived += 1
+        return len(ranked[limit:])
+
+    for (status, _scope, _scope_id), scope_rows in by_status_scope.items():
+        limit = limit_per_scope if status == "active" else pending_limit_per_scope
+        archived += archive_excess(scope_rows, limit=limit)
     return archived
 
 

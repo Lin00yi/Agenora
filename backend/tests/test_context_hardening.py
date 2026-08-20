@@ -181,6 +181,79 @@ async def test_session_inferred_memory_stays_pending_until_user_review() -> None
         await engine.dispose()
 
 
+async def test_capacity_bounds_pending_review_queue_without_archiving_active_memories() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        now = datetime.now(timezone.utc)
+        async with session_factory() as session:
+            session.add_all(
+                [
+                    UserMemory(
+                        id="active-user-memory",
+                        user_id="user-1",
+                        type="explicit",
+                        content="用户确认保留的记忆",
+                        source="explicit",
+                        importance=0.1,
+                        confidence=0.8,
+                        status="active",
+                        updated_at=now - timedelta(days=4),
+                    ),
+                    UserMemory(
+                        id="pending-high",
+                        user_id="user-1",
+                        type="fact",
+                        content="高优先级待确认候选",
+                        source="auto_session",
+                        importance=0.9,
+                        confidence=0.9,
+                        status="pending_review",
+                        updated_at=now - timedelta(days=3),
+                    ),
+                    UserMemory(
+                        id="pending-mid",
+                        user_id="user-1",
+                        type="fact",
+                        content="中优先级待确认候选",
+                        source="auto_session",
+                        importance=0.5,
+                        confidence=0.8,
+                        status="pending_review",
+                        updated_at=now - timedelta(days=2),
+                    ),
+                    UserMemory(
+                        id="pending-low",
+                        user_id="user-1",
+                        type="fact",
+                        content="低优先级待确认候选",
+                        source="auto_session",
+                        importance=0.1,
+                        confidence=0.7,
+                        status="pending_review",
+                        updated_at=now - timedelta(days=1),
+                    ),
+                ]
+            )
+            await session.flush()
+
+            assert await enforce_memory_capacity(
+                session,
+                user_id="user-1",
+                limit_per_scope=1,
+                pending_limit_per_scope=2,
+            ) == 1
+            rows = {row.id: row for row in (await session.execute(select(UserMemory))).scalars()}
+            assert rows["active-user-memory"].status == "active"
+            assert rows["pending-high"].status == "pending_review"
+            assert rows["pending-mid"].status == "pending_review"
+            assert rows["pending-low"].status == "archived"
+    finally:
+        await engine.dispose()
+
+
 async def test_memory_retrieval_trace_explains_selection_without_query_content() -> None:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     try:
