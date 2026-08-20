@@ -4,17 +4,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from src.capabilities.knowledge.application.retrieval import (
+    KBRetrievalPolicy,
+    resolve_kb_retrieval_policy,
+)
 from src.settings import Settings, get_settings
 
+__all__ = [
+    "KBRetrievalPolicy",
+    "WebSearchPolicy",
+    "resolve_kb_retrieval_policy",
+    "resolve_web_search_policy",
+]
+
 WebSearchMode = Literal["general", "kb", "disabled"]
-
-
-@dataclass(frozen=True)
-class KBRetrievalPolicy:
-    candidate_limit: int
-    final_limit: int
-    min_dense_score: float
-    kg_skip_if_dense_score_ge: float
 
 
 @dataclass(frozen=True)
@@ -36,25 +39,6 @@ def _bounded_score(value: object, *, default: float) -> float:
         return max(0.0, min(float(value), 1.0))
     except (TypeError, ValueError):
         return default
-
-
-def resolve_kb_retrieval_policy(settings: Settings | None = None) -> KBRetrievalPolicy:
-    """Resolve bounded KB retrieval settings for all runtime call paths."""
-    current = settings or get_settings()
-    final_limit = _bounded_int(
-        current.kb_retrieval_final_limit, default=3, minimum=1, maximum=10
-    )
-    return KBRetrievalPolicy(
-        candidate_limit=max(
-            final_limit,
-            _bounded_int(current.kb_retrieval_candidate_limit, default=6, minimum=1, maximum=30),
-        ),
-        final_limit=final_limit,
-        min_dense_score=_bounded_score(current.kb_retrieval_min_dense_score, default=0.4),
-        kg_skip_if_dense_score_ge=_bounded_score(
-            current.kb_kg_skip_if_dense_score_ge, default=0.7
-        ),
-    )
 
 
 def resolve_web_search_policy(

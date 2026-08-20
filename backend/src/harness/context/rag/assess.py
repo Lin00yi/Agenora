@@ -1,65 +1,24 @@
 """Classify KB recall: empty store vs below-threshold miss vs admitted hit."""
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 
-RetrievalStatus = Literal["empty", "miss", "hit"]
+from src.capabilities.knowledge.application.retrieval import (
+    RetrievalAssessment,
+    RetrievalStatus,
+    admit_hits,
+    normalized_score,
+)
 
-
-@dataclass(frozen=True)
-class RetrievalAssessment:
-    status: RetrievalStatus
-    candidate_count: int
-    admitted_count: int
-    max_score: float
-    min_dense_score: float
-
-    def as_dict(self) -> dict[str, Any]:
-        return {
-            "status": self.status,
-            "candidate_count": self.candidate_count,
-            "admitted_count": self.admitted_count,
-            "max_score": self.max_score,
-            "min_dense_score": self.min_dense_score,
-        }
-
-
-def normalized_score(value: Any) -> float:
-    try:
-        return max(0.0, min(float(value), 1.0))
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def admit_hits(
-    hits: list[dict[str, Any]],
-    *,
-    min_dense_score: float,
-    final_limit: int,
-    is_enabled: Callable[[dict[str, Any]], bool] | None = None,
-) -> tuple[list[dict[str, Any]], RetrievalAssessment]:
-    """Filter enabled candidates, then admit those at/above the dense threshold."""
-    enabled = [hit for hit in hits if is_enabled(hit)] if is_enabled else list(hits)
-    candidate_count = len(enabled)
-    max_score = max((normalized_score(hit.get("score")) for hit in enabled), default=0.0)
-    admitted = [
-        hit for hit in enabled if normalized_score(hit.get("score")) >= min_dense_score
-    ][: max(0, int(final_limit))]
-    if candidate_count == 0:
-        status: RetrievalStatus = "empty"
-    elif not admitted:
-        status = "miss"
-    else:
-        status = "hit"
-    return admitted, RetrievalAssessment(
-        status=status,
-        candidate_count=candidate_count,
-        admitted_count=len(admitted),
-        max_score=max_score,
-        min_dense_score=float(min_dense_score),
-    )
+__all__ = [
+    "RetrievalAssessment",
+    "RetrievalStatus",
+    "admit_hits",
+    "assessment_from_tool_raw",
+    "is_empty_injected_evidence",
+    "merge_assessments",
+    "normalized_score",
+]
 
 
 def merge_assessments(parts: list[RetrievalAssessment]) -> RetrievalAssessment:

@@ -1,74 +1,30 @@
-"""KB vector search tool — generic per-KB RAG.
+"""LangGraph adapter for the product-owned knowledge retrieval service.
 
-Construction:
-    KBSearchTool(kb=<KB row>, embedding_cfg=<UserEmbeddingConfig | None>,
-                 reranker_cfg=<UserRerankerConfig | None>)
-    binds the tool to one KB collection so its description can include the KB
-    name/description (helps the LLM decide when to invoke it) and `execute(query)`
-    doesn't need a kb_id arg. embedding_cfg routes query embedding through the
-    user's configured provider (None = env fallback). reranker_cfg (v3-M4) opts
-    the user into a second-stage cross-encoder rerank pass — when set, search
-    over-fetches 4x candidates and the reranker picks the final top-K. System
-    KBs always bypass the reranker regardless of user setting, to keep
-    built-in behavior stable.
-
-Returned text format is one chunk per block, separated by `---`, with filename
-and similarity score inline so the agent can cite sources.
+Actual vector recall, hybrid search, reranking and relevance admission live in
+``capabilities.knowledge.application.retrieval``. This adapter only converts
+structured, untrusted evidence into the current harness tool envelope and
+applies its model-context budget.
 """
 from __future__ import annotations
 
-import logging
 import asyncio
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-import httpx
-
-from src.platform.vector.embedding import embed
-from src.harness.context.rag.assess import admit_hits
-from src.harness.context.rag.policy import resolve_kb_retrieval_policy
-from src.platform.vector.reranker import rerank
-from src.harness.context import RAG_RESERVE, estimate_tokens, truncate_text_to_token_budget
-from src.platform.vector import get_vector_store as get_store
+from src.capabilities.knowledge.application.retrieval import (
+    KnowledgeRetrievalResult,
+    retrieve_knowledge_evidence,
+)
 from src.capabilities.knowledge.domain.models import KB
+from src.harness.context import RAG_RESERVE, estimate_tokens, truncate_text_to_token_budget
 from src.harness.tools.base import Tool, ToolResult
 
 if TYPE_CHECKING:
     from src.capabilities.settings.domain.models import UserEmbeddingConfig, UserRerankerConfig
 
 
-log = logging.getLogger(__name__)
-
-# v3-M4: when reranker is enabled we over-fetch candidates to give the
-# cross-encoder more material to choose from. 4x is the industry default;
-# capped at 30 so a misbehaving caller can't blow up the upstream quota.
-# The chat allocator reserves this capacity for retrieved knowledge. Enforcing
-# it at the tool boundary prevents one large document from consuming the whole
-# prompt before the next planning step can apply its final context budget.
+# This is specific to the current prompt allocator. Other adapters can receive
+# the same structured result and choose their own bounded context allocation.
 MAX_RAG_RESULT_TOKENS = RAG_RESERVE
-
-
-def _chunk_enabled(hit: dict) -> bool:
-    """Skip chunks disabled at chunk or document level."""
-    payload = hit.get("payload") or {}
-    chunk_on = payload.get("enabled", True)
-    if chunk_on is False or chunk_on == "false" or chunk_on == 0:
-        return False
-    doc_on = payload.get("doc_enabled", True)
-    return doc_on is not False and doc_on != "false" and doc_on != 0
-
-
-def _describe_error(exc: BaseException) -> str:
-    detail = str(exc).strip()
-    if isinstance(exc, httpx.HTTPStatusError):
-        try:
-            body = (exc.response.text or "").strip()
-        except Exception:  # noqa: BLE001
-            body = ""
-        if body and body not in detail:
-            detail = f"{detail}; response={body[:300]}" if detail else body[:300]
-    if not detail:
-        detail = exc.__class__.__name__
-    return detail
 
 
 class KBSearchTool(Tool):
@@ -82,8 +38,8 @@ class KBSearchTool(Tool):
             },
             "limit": {
                 "type": "integer",
-            "description": "返回经相关性准入后的 top-k 证据，默认 3。",
-            "default": 3,
+                "description": "返回经相关性准入后的 top-k 证据，默认 3。",
+                "default": 3,
             },
         },
         "required": ["query"],
@@ -95,153 +51,35 @@ class KBSearchTool(Tool):
         embedding_cfg: "UserEmbeddingConfig | None" = None,
         reranker_cfg: "UserRerankerConfig | None" = None,
     ) -> None:
+        self._kb = kb
         self.kb_id = kb.id
         self.kb_name = kb.name
-        self.kb_description = kb.description or ""
-        self.collection_name = kb.collection_name
         self.embedding_cfg = embedding_cfg
-        # System KBs skip the optional reranker so built-in ranking stays stable.
-        self.reranker_cfg = None if bool(getattr(kb, "is_system", False)) else reranker_cfg
-        # v3-M3: owner-controlled. Passed through to hybrid_search as
-        # group_by_field="doc_id" so each document contributes at most one
-        # chunk to top-k. No-op if the collection doesn't support hybrid.
-        self.grouping_enabled = bool(getattr(kb, "grouping_enabled", False))
-        # Compose a description that tells the LLM what's in this KB so it
-        # knows when calling search_kb makes sense.
-        desc_part = f"。{self.kb_description}" if self.kb_description else ""
+        self.reranker_cfg = reranker_cfg
+        description = f"。{kb.description}" if kb.description else ""
         self.description = (
-            f"在用户的知识库「{self.kb_name}」中做向量检索{desc_part}。"
-            f"任何用户问题如果可能在该 KB 里能找到答案，都应优先调用此工具。"
-            f"传 query (中文 / 英文均可)，返回 top-k 相关文本 chunks，"
-            f"基于 chunks 内容作答，不要编造。"
+            f"在用户的知识库「{self.kb_name}」中做向量检索{description}。"
+            "任何用户问题如果可能在该 KB 里能找到答案，都应优先调用此工具。"
+            "传 query (中文 / 英文均可)，返回 top-k 相关文本 chunks，基于 chunks 内容作答，不要编造。"
         )
 
-    async def execute(self, query: str, limit: int = 3) -> ToolResult:
-        if not query or not query.strip():
-            return ToolResult(text="", latency_ms=0, error="query is empty")
-
-        try:
-            vec = await embed(query.strip(), cfg=self.embedding_cfg)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("kb_search.embed_failed kb_id=%s err=%r", self.kb_id, exc)
-            return ToolResult(
-                text="",
-                latency_ms=0,
-                error=f"embedding 调用失败: {_describe_error(exc)}",
-            )
-
-        try:
-            store = get_store()
-            if not hasattr(store, "search") or not self.collection_name:
-                return ToolResult(
-                    text="", latency_ms=0, error="KB search requires a multi-collection backend (qdrant or milvus)"
-                )
-            policy = resolve_kb_retrieval_policy()
-            # The caller's limit is an evidence budget, not a permission to
-            # inject arbitrary amounts of KB text. Each route over-fetches a
-            # small, configurable candidate set before fusion; only the final
-            # configured amount can survive relevance admission.
-            original_limit = min(
-                max(1, min(int(limit) if limit else policy.final_limit, 20)),
-                policy.final_limit,
-            )
-            fetch_limit = max(original_limit, policy.candidate_limit)
-            # v3-M3: prefer hybrid (dense + BM25) if the collection was built
-            # with the hybrid schema. Falls back to dense-only for legacy
-            # collections and Qdrant. RRF picks the top-N members; per-chunk
-            # `score` is still cosine similarity so the v2-M6 prompt's 3-tier
-            # threshold logic continues to work unchanged.
-            supports_hybrid = (
-                hasattr(store, "hybrid_search")
-                and hasattr(store, "collection_supports_hybrid")
-                and await store.collection_supports_hybrid(self.collection_name)
-            )
-            if supports_hybrid:
-                hits = await store.hybrid_search(
-                    query_vector=vec,
-                    query_text=query.strip(),
-                    collection_name=self.collection_name,
-                    limit=fetch_limit,
-                    group_by="doc_id" if self.grouping_enabled else None,
-                )
-            else:
-                hits = await store.search(
-                    vec,
-                    collection_name=self.collection_name,
-                    limit=fetch_limit,
-                )
-        except Exception as exc:  # noqa: BLE001
-            log.warning("kb_search.vector_failed kb_id=%s err=%r", self.kb_id, exc)
-            return ToolResult(
-                text="",
-                latency_ms=0,
-                error=f"向量检索失败: {_describe_error(exc)}",
-            )
-
-        # v3-M4: cross-encoder rerank pass. Reorders top-N candidates; on
-        # failure, fall back to first-stage order so chat doesn't break.
-        # IMPORTANT: hit["score"] stays cosine — reranker only reorders.
-        # Latency guard: skip rerank when the first-stage top hit is already strong.
-        from src.settings import get_settings as _get_settings
-
-        skip_rerank_ge = float(
-            getattr(_get_settings(), "kb_rerank_skip_if_score_ge", 0.7) or 0.0
-        )
-        top_score = 0.0
-        for hit in hits:
-            try:
-                top_score = max(top_score, float(hit.get("score") or 0.0))
-            except (TypeError, ValueError):
-                continue
-        should_rerank = (
-            self.reranker_cfg
-            and len(hits) >= 2
-            and not (skip_rerank_ge > 0 and top_score >= skip_rerank_ge)
-        )
-        if should_rerank:
-            texts = [(h.get("payload") or {}).get("text", "") or "" for h in hits]
-            try:
-                reordered = await rerank(
-                    query.strip(),
-                    texts,
-                    top_n=original_limit,
-                    cfg=self.reranker_cfg,
-                )
-                if reordered:
-                    hits = [hits[idx] for idx, _ in reordered if 0 <= idx < len(hits)]
-                    log.info(
-                        "kb_search.reranked",
-                        extra={
-                            "kb_id": self.kb_id,
-                            "fetch_limit": fetch_limit,
-                            "top_n": len(hits),
-                        },
-                    )
-            except Exception as exc:  # noqa: BLE001
-                log.warning(
-                    "kb_search.rerank_failed kb_id=%s err=%s — falling back to dense order",
-                    self.kb_id,
-                    exc,
-                )
-        elif self.reranker_cfg and skip_rerank_ge > 0 and top_score >= skip_rerank_ge:
-            log.info(
-                "kb_search.rerank_skipped_strong_hit kb_id=%s top_score=%.3f",
-                self.kb_id,
-                top_score,
-            )
-
-        # Admit evidence in the tool, not merely in a prompt instruction. RRF
-        # may surface a keyword match with weak dense similarity; until a
-        # calibrated cross-encoder exception is configured, low-score hits are
-        # deliberately treated as a KB miss rather than sent to the model.
-        hits, assessment = admit_hits(
-            hits,
-            min_dense_score=policy.min_dense_score,
-            final_limit=original_limit,
-            is_enabled=_chunk_enabled,
+    async def retrieve(self, query: str, limit: int = 3) -> KnowledgeRetrievalResult:
+        """Return runtime-neutral RAG evidence for this already-bound KB."""
+        return await retrieve_knowledge_evidence(
+            kb=self._kb,
+            query=query,
+            limit=limit,
+            embedding_cfg=self.embedding_cfg,
+            reranker_cfg=self.reranker_cfg,
         )
 
-        if not hits:
+    def format_result(self, result: KnowledgeRetrievalResult, *, query: str) -> ToolResult:
+        """Preserve the old tool text/raw shape for existing graph consumers."""
+        if result.error:
+            return ToolResult(text="", latency_ms=0, error=result.error)
+
+        assessment = result.assessment
+        if not result.evidence:
             return ToolResult(
                 text=(
                     f"知识库「{self.kb_name}」中没有找到与「{query}」相关的内容。"
@@ -259,41 +97,23 @@ class KBSearchTool(Tool):
                 },
             )
 
-        # Format: per-chunk block with source filename + score for citation.
-        # Structured `results` mirror only chunks that actually entered the
-        # returned text (token-budget trimmed), so UI cards match evidence.
         blocks: list[str] = []
         structured: list[dict[str, Any]] = []
         used_tokens = 0
-        for i, c in enumerate(hits, start=1):
-            p = c.get("payload", {}) or {}
-            filename = p.get("filename", "(unknown)")
-            text = (p.get("text") or "").strip()
-            score = c.get("score", 0.0)
-            header = f"[chunk {i}] 来源: {filename}  相关度: {score:.3f}\n"
+        for index, evidence in enumerate(result.evidence, start=1):
+            header = f"[chunk {index}] 来源: {evidence.filename}  相关度: {evidence.score:.3f}\n"
             separator_tokens = estimate_tokens("\n\n---\n\n") if blocks else 0
             remaining = MAX_RAG_RESULT_TOKENS - used_tokens - separator_tokens
             if remaining <= estimate_tokens(header):
                 break
-            block = header + text
+            block = header + evidence.text
             if estimate_tokens(block) > remaining:
                 block = header + truncate_text_to_token_budget(
-                    text, remaining - estimate_tokens(header)
+                    evidence.text, remaining - estimate_tokens(header)
                 )
             blocks.append(block)
             used_tokens += separator_tokens + estimate_tokens(block)
-            try:
-                score_f = float(score)
-            except (TypeError, ValueError):
-                score_f = 0.0
-            structured.append(
-                {
-                    "filename": filename,
-                    "score": score_f,
-                    "doc_id": p.get("doc_id"),
-                    "text_preview": text[:240],
-                }
-            )
+            structured.append(evidence.ui_payload())
 
         if not blocks:
             return ToolResult(
@@ -308,7 +128,7 @@ class KBSearchTool(Tool):
             raw={
                 "hits": len(blocks),
                 "kb_id": self.kb_id,
-                "truncated": len(blocks) < len(hits),
+                "truncated": len(blocks) < len(result.evidence),
                 "results": structured,
                 "candidate_hits": assessment.candidate_count,
                 "max_score": assessment.max_score,
@@ -317,13 +137,12 @@ class KBSearchTool(Tool):
             },
         )
 
+    async def execute(self, query: str, limit: int = 3) -> ToolResult:
+        return self.format_result(await self.retrieve(query=query, limit=limit), query=query)
+
 
 class MultiKBSearchTool(Tool):
-    """One ACL-scoped search capability faning a query out to selected KBs.
-
-    Each underlying ``KBSearchTool`` retains its own embedding/reranker config.
-    The shared RAG node applies the final aggregate evidence budget afterwards.
-    """
+    """One ACL-scoped capability that fans retrieval out to selected KBs."""
 
     name = "search_kb"
     input_schema = KBSearchTool.input_schema
@@ -336,26 +155,22 @@ class MultiKBSearchTool(Tool):
         self.description = f"在本轮已选择的多个知识库（{names}）中并行检索，并保留每条证据所属的知识库。"
 
     async def execute(self, query: str, limit: int = 3) -> ToolResult:
-        results = await asyncio.gather(
-            *(tool.execute(query=query, limit=limit) for tool in self._tools)
+        retrievals = await asyncio.gather(
+            *(tool.retrieve(query=query, limit=limit) for tool in self._tools)
         )
         blocks: list[str] = []
         rows: list[dict[str, Any]] = []
         errors: list[str] = []
-        latency_ms = 0
         candidate_hits = 0
         max_score = 0.0
-        for tool, result in zip(self._tools, results, strict=True):
-            latency_ms = max(latency_ms, result.latency_ms)
+        for tool, retrieval in zip(self._tools, retrievals, strict=True):
+            result = tool.format_result(retrieval, query=query)
             if result.error:
                 errors.append(f"{tool.kb_name}: {result.error}")
                 continue
             raw = result.raw if isinstance(result.raw, dict) else {}
-            try:
-                candidate_hits += int(raw.get("candidate_hits") or 0)
-                max_score = max(max_score, float(raw.get("max_score") or 0.0))
-            except (TypeError, ValueError):
-                pass
+            candidate_hits += int(raw.get("candidate_hits") or 0)
+            max_score = max(max_score, float(raw.get("max_score") or 0.0))
             for row in raw.get("results") or []:
                 if isinstance(row, dict):
                     rows.append({**row, "kb_id": tool.kb_id, "kb_name": tool.kb_name})
@@ -363,7 +178,7 @@ class MultiKBSearchTool(Tool):
                 blocks.append(f"[知识库：{tool.kb_name}]\n{result.text}")
         return ToolResult(
             text="\n\n---\n\n".join(blocks),
-            latency_ms=latency_ms,
+            latency_ms=0,
             raw={
                 "hits": len(rows),
                 "kb_id": None,
