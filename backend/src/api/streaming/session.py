@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 import uuid
 from dataclasses import dataclass, field, replace as dc_replace
 from typing import Any, AsyncGenerator
@@ -43,7 +44,11 @@ from src.capabilities.settings.domain.models import (
 log = structlog.get_logger()
 
 
-def _persisted_tool_events(tool_log: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+def _persisted_tool_events(
+    tool_log: list[dict[str, Any]] | None,
+    *,
+    fallback_started_at_ms: int | None = None,
+) -> list[dict[str, Any]]:
     """Convert server-side tool records to the safe timeline shape stored in chat.
 
     The browser can disconnect at any point; a durable assistant row must not
@@ -62,6 +67,14 @@ def _persisted_tool_events(tool_log: list[dict[str, Any]] | None) -> list[dict[s
             "latency_ms": entry.get("latency_ms"),
             "error": entry.get("error"),
         }
+        started_at = entry.get("t0")
+        if isinstance(started_at, (int, float)):
+            event["t0"] = int(started_at)
+        elif fallback_started_at_ms is not None:
+            # Old/direct execution paths may not have an individual tool
+            # start. Retain the run start so restored timelines can still
+            # report a truthful total elapsed time.
+            event["t0"] = fallback_started_at_ms
         display = entry.get("display")
         if isinstance(display, dict):
             # Only retain the explicitly reviewed display envelope. Never
@@ -184,6 +197,24 @@ class _StreamingAssistantDraft:
                 "name": name,
                 "status": "running",
             }
+            if isinstance(event.get("t0"), (int, float)):
+                tool["t0"] = int(event["t0"])
+            if display := self._safe_display(event.get("display")):
+                tool["display"] = display
+            self.tools.append(tool)
+            return
+        if kind == "tool_blocked":
+            name = event.get("name")
+            if not isinstance(name, str) or not name:
+                return
+            tool = {
+                "id": str(event.get("id") or f"streaming-tool-{len(self.tools)}"),
+                "name": name,
+                "status": "blocked",
+                "reason": event.get("reason") if isinstance(event.get("reason"), str) else "",
+            }
+            if isinstance(event.get("t0"), (int, float)):
+                tool["t0"] = int(event["t0"])
             if display := self._safe_display(event.get("display")):
                 tool["display"] = display
             self.tools.append(tool)
@@ -296,6 +327,12 @@ def run_chat_session(
 
     async def emit(evt: dict[str, Any]) -> None:
         nonlocal draft_dirty
+        if evt.get("event") in {"tool_start", "tool_blocked"} and not isinstance(
+            evt.get("t0"), (int, float)
+        ):
+            # Server wall-clock time is serializable and survives a browser
+            # reload; the client uses it for the restored elapsed indicator.
+            evt = {**evt, "t0": int(time.time() * 1000)}
         draft.observe(evt)
         draft_dirty = True
         await persist_draft()
@@ -420,6 +457,7 @@ def run_chat_session(
                     cleaned, store_io=_gs().trace_store_io
                 )
         final_state: dict[str, Any] | None = None
+        run_started_at_ms = int(time.time() * 1000)
         try:
             # The row exists before the first model token.  A page refresh can
             # therefore render an honest “generating” state instead of an
@@ -478,6 +516,8 @@ def run_chat_session(
                     "name": "human_input_required",
                     "status": "ok",
                     "input": payload,
+                    "t0": run_started_at_ms,
+                    "latency_ms": max(0, int(time.time() * 1000) - run_started_at_ms),
                 }
                 persisted_message_id = await _persist_assistant_turn(
                     conversation_id=conversation_id,
@@ -586,7 +626,10 @@ def run_chat_session(
                 conversation_id=conversation_id,
                 user=user,
                 content=report,
-                tools=_persisted_tool_events(final_state.get("tool_call_log")),
+                tools=_persisted_tool_events(
+                    final_state.get("tool_call_log"),
+                    fallback_started_at_ms=run_started_at_ms,
+                ),
                 cost_usd=cost_usd,
                 memory_trace=memory_trace,
                 citations=list(final_state.get("citations") or []),

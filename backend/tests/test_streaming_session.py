@@ -45,6 +45,8 @@ def test_persisted_tool_event_keeps_only_reviewed_dynamic_display_fields() -> No
         [{
             "id": "call-1",
             "name": "inventory_lookup_v2",
+            "t0": 1_723_000_000_000,
+            "latency_ms": 842,
             "display": {
                 "kind": "mcp",
                 "label": "查询实时库存",
@@ -59,6 +61,8 @@ def test_persisted_tool_event_keeps_only_reviewed_dynamic_display_fields() -> No
         "label": "查询实时库存",
         "server_id": "inventory",
     }
+    assert events[0]["t0"] == 1_723_000_000_000
+    assert events[0]["latency_ms"] == 842
 
 
 def test_streaming_marker_round_trips_through_message_public_shape() -> None:

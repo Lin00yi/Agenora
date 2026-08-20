@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any, TYPE_CHECKING
 
 from src.harness.contracts.state import AgentState
@@ -109,6 +110,7 @@ async def call_tools_node(
     async def _run(tc: dict[str, Any]) -> dict[str, Any]:
         name = tc["name"]
         args = tc.get("input") or {}
+        started_at_ms = int(time.time() * 1000)
         tool = registry.get(name)
         display = tool.trace_metadata() if tool is not None else None
         confirmation_error = _high_risk_mcp_error(
@@ -218,8 +220,9 @@ async def call_tools_node(
             "is_error": result.error is not None,
             "raw": result.raw,
             "citations": citations,
-            "latency_ms": result.latency_ms,
-            "display": display,
+                "latency_ms": result.latency_ms,
+                "display": display,
+                "t0": started_at_ms,
         }
 
     results = await asyncio.gather(*[_run(tc) for tc in pending])
@@ -310,7 +313,8 @@ async def call_tools_node(
                 "name": tc["name"],
                 "input": tc.get("input") or {},
                 "result": r["content"],
-                "latency_ms": 0,
+                "latency_ms": r.get("latency_ms"),
+                "t0": r.get("t0"),
                 "error": "yes" if r.get("is_error") else None,
                 "citations": cites,
                 **({"display": r["display"]} if r.get("display") else {}),

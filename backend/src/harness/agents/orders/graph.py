@@ -94,6 +94,7 @@ async def _confirm_refund_fast(
 
     tool_id = f"refund-confirm-{approval_id}"
     payload = {"approval_id": approval_id, "confirmation_text": confirmation_text}
+    started_at_ms = int(time.time() * 1000)
     display = tool.trace_metadata()
     await emit(
         {
@@ -101,6 +102,7 @@ async def _confirm_refund_fast(
             "id": tool_id,
             "name": "confirm_refund",
             "input": payload,
+            "t0": started_at_ms,
             **({"display": display} if display else {}),
         }
     )
@@ -113,6 +115,7 @@ async def _confirm_refund_fast(
             "id": tool_id,
             "name": "confirm_refund",
             "latency_ms": latency_ms,
+            "t0": started_at_ms,
             "ok": result.error is None,
             "error": result.error,
             "citations": [],
@@ -155,6 +158,7 @@ async def _confirm_refund_fast(
             "input": payload,
             "result": result.text if result.error is None else None,
             "latency_ms": latency_ms,
+            "t0": started_at_ms,
             "error": result.error,
             **({"display": display} if display else {}),
         }
