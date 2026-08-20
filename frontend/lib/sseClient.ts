@@ -111,6 +111,7 @@ export type ChatEvent = {
     | "kb_routed"
     | "agent_route"
     | "agent_handoff"
+    | "intent_ready"
     | "dag_ready"
     | "tool_start"
     | "tool_end"
@@ -135,6 +136,7 @@ export type ChatEvent = {
   to?: string;
   source?: string;
   confidence?: string;
+  metadata?: Record<string, unknown>;
   /** `turn` is automatic for this response only; `pinned` is a conversation scope. */
   scope?: "turn" | "pinned";
   tasks?: Array<{

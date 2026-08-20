@@ -95,9 +95,10 @@ class AgentRegistry:
 
 
 def build_default_agent_registry() -> AgentRegistry:
-    """Register the built-in chat, retrieval, and KB-routing capabilities."""
+    """Register the built-in chat, retrieval, KB-routing, and orders capabilities."""
     from src.harness.agents.chat import build_chat_graph
     from src.harness.agents.kb_router import build_kb_router_graph
+    from src.harness.agents.orders import build_orders_graph
     from src.harness.agents.rag import build_rag_graph
 
     registry = AgentRegistry()
@@ -127,6 +128,26 @@ def build_default_agent_registry() -> AgentRegistry:
             kb_web_search_enabled=deps.kb_web_search_enabled,
         )
 
+    def _build_orders(deps: RuntimeDeps, *, emit: Emitter | None = None) -> tuple[Any, CostTracker]:
+        return build_orders_graph(
+            emit=emit or deps.emit,
+            user_id=deps.run.identity.user_id if deps.run is not None else None,
+            llm_cfg=deps.llm_cfg,
+            complex_llm_cfg=deps.complex_llm_cfg,
+            fallback_llm_cfg=deps.fallback_llm_cfg,
+        )
+
+    registry.register(
+        AgentSpec(
+            id="orders",
+            description="Authenticated order lookup and two-step refund execution through MCP",
+            side_effect="write",
+            requires_kb=False,
+            handoff_targets=(),
+            provides=("orders_read", "refund_prepare", "refund_confirm"),
+        ),
+        _build_orders,
+    )
     registry.register(
         AgentSpec(
             id="kb_router",

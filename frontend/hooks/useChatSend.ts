@@ -447,6 +447,24 @@ export function useChatSend({
               });
               break;
             }
+            case "intent_ready": {
+              flushTokenPaint();
+              const newTool: ToolEvent = {
+                id: evt.id ?? `intent_ready-${Date.now()}`,
+                name: "intent_ready",
+                status: "ok",
+                t0: Date.now(),
+                latency_ms: 0,
+                input: evt.metadata,
+              };
+              if (streamingRef.current) {
+                streamingRef.current.tools.push(newTool);
+              }
+              updateLastAssistant((m) =>
+                m.role === "assistant" ? { ...m, tools: [...m.tools, newTool] } : m
+              );
+              break;
+            }
             case "tool_start": {
               flushTokenPaint();
               const newTool: ToolEvent = {

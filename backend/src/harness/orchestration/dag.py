@@ -3,23 +3,27 @@ from __future__ import annotations
 
 from typing import Any, Literal, TypedDict
 
-TaskType = Literal["qa_chat", "qa_kb", "kb_route"]
-Capability = Literal["chat", "web_search", "kb_read", "kb_route"]
+TaskType = Literal["qa_chat", "qa_kb", "kb_route", "qa_orders"]
+Capability = Literal["chat", "web_search", "kb_read", "kb_route", "orders_read", "refund_prepare", "refund_confirm"]
 TaskStatus = Literal["pending", "done", "skipped"]
 
-ALLOWED_TASK_TYPES = frozenset({"qa_chat", "qa_kb", "kb_route"})
-ALLOWED_CAPABILITIES = frozenset({"chat", "web_search", "kb_read", "kb_route"})
-MAX_TASKS = 2
+ALLOWED_TASK_TYPES = frozenset({"qa_chat", "qa_kb", "kb_route", "qa_orders"})
+ALLOWED_CAPABILITIES = frozenset({"chat", "web_search", "kb_read", "kb_route", "orders_read", "refund_prepare", "refund_confirm"})
+# A small upper bound keeps a single conversational turn auditable while still
+# allowing a fan-out of independent read tasks followed by an aggregation task.
+MAX_TASKS = 6
 
 TYPE_DEFAULT_CAPABILITIES: dict[str, tuple[str, ...]] = {
     "qa_chat": ("chat", "web_search"),
     "qa_kb": ("kb_read",),
     "kb_route": ("kb_route",),
+    "qa_orders": ("orders_read", "refund_prepare", "refund_confirm"),
 }
 TYPE_PREFERRED_AGENT: dict[str, str] = {
     "qa_chat": "chat",
     "qa_kb": "rag",
     "kb_route": "kb_router",
+    "qa_orders": "orders",
 }
 
 
@@ -30,6 +34,9 @@ class TaskNode(TypedDict, total=False):
     depends_on: list[str]
     agent: str
     on_fail: str
+    instruction: str
+    resource_key: str
+    requires_approval: bool
 
 
 class TaskDag(TypedDict, total=False):

@@ -13,6 +13,37 @@ from src.harness.tools.web_search import _format_web_results, select_web_result_
 
 from .constants import MAX_SEARCH_KB_CALLS_PER_STEP
 
+
+def _latest_user_text(messages: list[dict[str, Any]] | None) -> str:
+    """Return the last human text without trusting model-generated tool args."""
+    for message in reversed(messages or []):
+        if message.get("role") != "user":
+            continue
+        content = message.get("content", "")
+        if isinstance(content, str) and content.strip():
+            return content.strip()
+        if isinstance(content, list):
+            text = "\n".join(
+                str(block.get("text", "")).strip()
+                for block in content
+                if isinstance(block, dict) and block.get("type") == "text"
+            ).strip()
+            if text:
+                return text
+    return ""
+
+
+def _refund_confirmation_error(name: str, args: dict[str, Any], messages: list[dict[str, Any]] | None) -> str | None:
+    """Enforce a human turn boundary before the irreversible MCP tool runs."""
+    if name != "confirm_refund":
+        return None
+    approval_id = str(args.get("approval_id") or "").strip()
+    expected = f"确认退款 {approval_id}" if approval_id else ""
+    actual = _latest_user_text(messages)
+    if not expected or actual != expected or str(args.get("confirmation_text") or "").strip() != expected:
+        return "退款必须由用户在最新一条消息精确确认（确认退款 <approval_id>）；本次未执行。"
+    return None
+
 if TYPE_CHECKING:
     from src.capabilities.settings.domain.models import UserLLMConfig
 
@@ -62,6 +93,12 @@ async def call_tools_node(
     async def _run(tc: dict[str, Any]) -> dict[str, Any]:
         name = tc["name"]
         args = tc.get("input") or {}
+        confirmation_error = _refund_confirmation_error(name, args, state.get("messages"))
+        if confirmation_error:
+            await emit(
+                {"event": "tool_blocked", "id": tc["id"], "name": name, "input": args, "reason": confirmation_error}
+            )
+            return {"type": "tool_result", "tool_use_id": tc["id"], "content": f"[blocked by safety] {confirmation_error}", "is_error": True}
         if tc["id"] in exhausted_web_tool_call_ids:
             return {
                 "type": "tool_result",

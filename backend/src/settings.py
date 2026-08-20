@@ -109,6 +109,14 @@ class Settings(BaseSettings):
     bing_search_api_key: str = ""
     tavily_api_key: str = ""
 
+    # ===== Local Orders MCP demo =====
+    # The API server starts this stdio MCP service as a child process for each
+    # tool call.  Keep the token unique outside local development.
+    orders_mcp_enabled: bool = True
+    orders_mcp_db_path: str = str(_DATA_DIR / "orders_mcp.db")
+    orders_mcp_service_token: str = "local-dev-orders-mcp-change-me"
+    orders_mcp_timeout_seconds: float = 15.0
+
     # ===== Vector store (decoupled: factory picks impl by VECTOR_STORE) =====
     vector_store: str = "qdrant"  # qdrant | milvus | local
 

@@ -36,6 +36,11 @@ const NAME_LABEL: Record<string, string> = {
   web_search: "搜索网络",
   generate_kb_report: "生成知识库报告",
   get_current_time: "获取当前时间",
+  list_orders: "查询我的订单",
+  get_order: "查询订单详情",
+  prepare_refund: "创建退款确认单",
+  confirm_refund: "执行退款",
+  intent_ready: "识别任务意图",
   dag_ready: "处理计划",
   agent_route: "选择处理方式",
   agent_handoff: "切换处理方式",
@@ -45,11 +50,13 @@ const NAME_LABEL: Record<string, string> = {
 const AGENT_LABEL: Record<string, string> = {
   chat: "通用对话",
   rag: "知识库问答",
+  orders: "订单与退款",
 };
 
 const TASK_LABEL: Record<string, string> = {
   qa_kb: "查阅知识库",
   qa_chat: "通用对话",
+  qa_orders: "订单与退款",
 };
 
 type DagTask = {

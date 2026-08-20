@@ -11,21 +11,12 @@ from .dag import (
     TYPE_PREFERRED_AGENT,
     TaskDag,
     TaskNode,
-    topology_key,
 )
 from .registry import AgentRegistry
 
 
 class DagValidationError(ValueError):
     pass
-
-
-_ALLOWED_TOPOLOGIES = {
-    ("qa_chat",),
-    ("qa_kb",),
-    ("qa_kb", "qa_chat"),
-    ("kb_route",),
-}
 
 
 def match_agent(registry: AgentRegistry, *, task_type: str, capabilities: list[str], has_kb: bool) -> str:
@@ -77,12 +68,22 @@ def _normalize_task(raw: Any, *, index: int) -> TaskNode:
         raise DagValidationError("depends_on must be a list")
     depends_on = [str(value).strip() for value in depends_raw if str(value).strip()]
     on_fail = str(raw.get("on_fail") or "abort").strip().lower()
+    instruction = str(raw.get("instruction") or "").strip()[:2000]
+    resource_key = str(raw.get("resource_key") or "").strip()[:120]
+    requires_approval = bool(raw.get("requires_approval", False))
+    # A planner cannot weaken this invariant by omitting a flag.  The actual
+    # tool layer separately checks the latest user confirmation text.
+    if "refund_confirm" in caps:
+        requires_approval = True
     return {
         "id": task_id,
         "type": task_type,
         "capabilities": caps,
         "depends_on": depends_on,
         "on_fail": on_fail if on_fail in {"skip", "abort"} else "abort",
+        **({"instruction": instruction} if instruction else {}),
+        **({"resource_key": resource_key} if resource_key else {}),
+        **({"requires_approval": True} if requires_approval else {}),
     }
 
 
@@ -109,11 +110,10 @@ def validate_and_bind(payload: Any, *, registry: AgentRegistry, has_kb: bool) ->
             if dependency not in seen:
                 raise DagValidationError("depends_on must refer to an earlier task")
         seen.add(task["id"])
-    topo = topology_key(list(tasks))
-    if topo not in _ALLOWED_TOPOLOGIES:
-        raise DagValidationError(f"topology not allowed: {topo}")
-    if topo[0] == "qa_kb" and not has_kb:
+    if any(task["type"] == "qa_kb" for task in tasks) and not has_kb:
         raise DagValidationError("qa_kb requires a bound knowledge base")
+    if any(task["type"] == "kb_route" for task in tasks) and len(tasks) != 1:
+        raise DagValidationError("kb_route must be the only initial task")
     bound = [
         {**task, "agent": match_agent(registry, task_type=str(task["type"]), capabilities=list(task.get("capabilities") or []), has_kb=has_kb)}
         for task in tasks

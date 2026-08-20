@@ -41,6 +41,7 @@ dependencies = [
   "pyyaml>=6.0",
   # Production schema ownership is Alembic (Compose runs a one-shot migrate job).
   "alembic>=1.13",
+  "mcp>=1.0",
 ]
 
 [project.optional-dependencies]

@@ -39,10 +39,12 @@ class SupervisorState(TypedDict, total=False):
     route_reason: str
     route_source: str
     route_confidence: str
+    intent_assessment: dict[str, Any]
     handoff_count: int
     supervisor_trace: list[dict[str, Any]]
     supervisor_decision: SupervisorDecision
     task_dag: TaskDag
     task_status: dict[str, str]
     active_task_id: str | None
+    active_tasks: list[dict[str, Any]]
     kb_auto_route: dict[str, Any] | None
