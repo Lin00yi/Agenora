@@ -36,7 +36,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, EmailStr, Field, HttpUrl
 from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1043,18 +1043,19 @@ async def download_document(
     doc_id: str,
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
-) -> FileResponse:
+) -> Response:
     await _load_readable_kb(session, kb_id, user.id)
     doc = await _load_document(session, kb_id, doc_id)
     if doc.source_type != "file":
         raise HTTPException(status_code=400, detail="only file uploads can be downloaded")
-    path = documents.uploaded_path(kb_id, doc_id, doc.filename)
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="original file not found on disk")
-    return FileResponse(
-        path=str(path),
-        filename=doc.filename,
+    try:
+        content = await documents.read_upload(kb_id, doc_id, doc.filename)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="original file not found") from exc
+    return Response(
+        content=content,
         media_type=doc.mime or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{doc.filename}"'},
     )
 
 

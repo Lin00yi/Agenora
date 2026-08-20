@@ -27,7 +27,7 @@ from src.context.rag.assess import admit_hits
 from src.context.rag.policy import resolve_kb_retrieval_policy
 from src.storage.vector.reranker import rerank
 from src.context import RAG_RESERVE, estimate_tokens, truncate_text_to_token_budget
-from src.storage.vector import get_store
+from src.adapters.vector import get_vector_store as get_store
 from src.kb.models import KB
 from src.tools.base import Tool, ToolResult
 

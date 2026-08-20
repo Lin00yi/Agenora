@@ -27,7 +27,7 @@ async def seed_system_kbs() -> None:
 async def purge_legacy_travel_kb() -> None:
     """Idempotent removal of the retired travel demo KB and its vectors."""
     from src.conversations.models import Conversation
-    from src.storage.vector import get_store
+    from src.adapters.vector import get_vector_store as get_store
     from src.api.routes.kb import purge_kb
 
     factory = get_session_factory()

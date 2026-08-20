@@ -6,38 +6,35 @@ the legacy ingestion worker or its on-disk layout directly.
 """
 from __future__ import annotations
 
-from pathlib import Path
-
-from src.adapters.files import LocalFileStorage
-
-
-UPLOAD_ROOT = Path(__file__).resolve().parents[4] / "data" / "uploads"
-_storage = LocalFileStorage(UPLOAD_ROOT)
-
-
+from src.adapters.files import get_object_storage
 def upload_key(kb_id: str, doc_id: str, filename: str) -> str:
     ext = filename.rsplit(".", 1)[-1] if "." in filename else "bin"
     ext = "".join(char for char in ext if char.isalnum())[:16] or "bin"
     return f"{kb_id}/{doc_id}.{ext}"
 
 
-def uploaded_path(kb_id: str, doc_id: str, filename: str) -> Path:
-    """Return the local serving path without exposing the storage root."""
-    return _storage.path_for(upload_key(kb_id, doc_id, filename))
-
-
-async def save_upload(kb_id: str, doc_id: str, filename: str, content: bytes, *, content_type: str | None = None) -> Path:
+async def save_upload(
+    kb_id: str,
+    doc_id: str,
+    filename: str,
+    content: bytes,
+    *,
+    content_type: str | None = None,
+) -> None:
     key = upload_key(kb_id, doc_id, filename)
-    await _storage.put(key, content, content_type=content_type)
-    return _storage.path_for(key)
+    await get_object_storage().put(key, content, content_type=content_type)
+
+
+async def read_upload(kb_id: str, doc_id: str, filename: str) -> bytes:
+    return await get_object_storage().get(upload_key(kb_id, doc_id, filename))
 
 
 async def delete_upload(kb_id: str, doc_id: str, filename: str) -> None:
-    await _storage.delete(upload_key(kb_id, doc_id, filename))
+    await get_object_storage().delete(upload_key(kb_id, doc_id, filename))
 
 
 async def delete_kb_uploads(kb_id: str) -> None:
-    await _storage.delete_prefix(f"{kb_id}/")
+    await get_object_storage().delete_prefix(f"{kb_id}/")
 
 
 async def remove_document_chunks(collection_name: str, doc_id: str) -> None:

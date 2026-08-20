@@ -22,7 +22,9 @@ from typing import TYPE_CHECKING
 import structlog
 
 from src.storage.database import get_session_factory
-from src.storage.vector import get_store
+from src.adapters.files import get_object_storage
+from src.adapters.vector import get_vector_store as get_store
+from src.capabilities.knowledge.application.documents import upload_key
 from src.kb.chunk_service import chunk_document_text, clear_document_chunks, persist_ingested_chunks
 from src.kb.models import KB, Document
 from src.kb.parsers import dispatch, parse_url
@@ -144,8 +146,9 @@ async def ingest_document(
         if doc_snapshot["source_type"] == "url":
             _, text = await parse_url(doc_snapshot["source_url"])
         else:
-            path = upload_path(doc_snapshot["kb_id"], doc_id, doc_snapshot["filename"])
-            content = path.read_bytes()
+            content = await get_object_storage().get(
+                upload_key(doc_snapshot["kb_id"], doc_id, doc_snapshot["filename"])
+            )
             _, text = dispatch(doc_snapshot["filename"], content)
 
         if not text.strip():

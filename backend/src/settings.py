@@ -126,6 +126,16 @@ class Settings(BaseSettings):
     # to backend/ so it works under systemd / Docker / non-default CWD.
     local_vector_db_path: str = _DEFAULT_LOCAL_VECTOR_DB
 
+    # ===== Object storage (source documents; local by default) =====
+    # local keeps current data/uploads behavior. s3 supports AWS S3 and MinIO.
+    object_storage: str = "local"  # local | s3
+    object_storage_local_root: str = str(_DATA_DIR / "uploads")
+    object_storage_bucket: str = ""
+    object_storage_endpoint_url: str = ""
+    object_storage_access_key_id: str = ""
+    object_storage_secret_access_key: str = ""
+    object_storage_region: str = ""
+
     # ===== Embedding (OpenAI-compatible by default) =====
     # Provider preset: openai | siliconflow | ollama | hashmock
     # Preset only fills defaults — explicit URL/API_KEY/MODEL always wins.

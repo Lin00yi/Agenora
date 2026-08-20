@@ -7,12 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.storage.vector import get_store
 from src.storage.vector.embedding import _resolve_config, get_vector_size, probe_vector_size
-
-
-def get_vector_store() -> Any:
-    return get_store()
 
 
 def configured_vector_size() -> int:

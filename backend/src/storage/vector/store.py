@@ -48,10 +48,20 @@ class VectorStore(Protocol):
 # All three differ only by QDRANT_URL + QDRANT_API_KEY in .env.
 # ---------------------------------------------------------------------------
 class QdrantStore:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        url: str | None = None,
+        api_key: str | None = None,
+        collection_name: str | None = None,
+        client: AsyncQdrantClient | None = None,
+    ) -> None:
         s = get_settings()
-        self._client = AsyncQdrantClient(url=s.qdrant_url, api_key=s.qdrant_api_key or None)
-        self._collection = s.qdrant_collection
+        self._client = client or AsyncQdrantClient(
+            url=url if url is not None else s.qdrant_url,
+            api_key=(api_key if api_key is not None else s.qdrant_api_key) or None,
+        )
+        self._collection = collection_name if collection_name is not None else s.qdrant_collection
 
     async def ensure_collection(
         self, vector_size: int, collection_name: str | None = None
@@ -373,7 +383,14 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
 
 
 class MilvusStore:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        uri: str | None = None,
+        token: str | None = None,
+        collection_name: str | None = None,
+        client: Any | None = None,
+    ) -> None:
         # pymilvus.settings runs `load_dotenv()` at module-import time and then
         # reads `MILVUS_URI` from os.environ to validate as HTTP-style URI. Our
         # MILVUS_URI setting carries a local .db file path (Milvus Lite) and
@@ -387,7 +404,8 @@ class MilvusStore:
         import os
         os.environ["MILVUS_URI"] = ""
         os.environ["MILVUS_CONN_ALIAS"] = "default"
-        from pymilvus import MilvusClient
+        if client is None:
+            from pymilvus import MilvusClient
 
         # Windows compatibility patch (v3-M3): milvus-lite 3.0 uses
         # `os.rename(tmp, manifest.json)` in storage/manifest.py to atomically
@@ -406,16 +424,15 @@ class MilvusStore:
             pass  # milvus-lite not installed (Standalone server mode)
 
         s = get_settings()
+        uri = uri if uri is not None else s.milvus_uri
+        token = token if token is not None else s.milvus_token
         # Ensure parent dir exists for Lite mode (local .db path).
-        if not s.milvus_uri.startswith("http"):
+        if not uri.startswith("http"):
             from pathlib import Path
-            Path(s.milvus_uri).parent.mkdir(parents=True, exist_ok=True)
-        self._client = MilvusClient(
-            uri=s.milvus_uri,
-            token=s.milvus_token or None,
-        )
-        self._collection = s.qdrant_collection
-        self._uri = s.milvus_uri
+            Path(uri).parent.mkdir(parents=True, exist_ok=True)
+        self._client = client or MilvusClient(uri=uri, token=token or None)
+        self._collection = collection_name if collection_name is not None else s.qdrant_collection
+        self._uri = uri
         self._hybrid_support_cache: dict[str, bool] = {}
 
     # ---- collection management ----
@@ -880,35 +897,16 @@ class MilvusStore:
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
-_store: VectorStore | None = None
-
-
 def get_store() -> VectorStore:
-    """Return the configured vector store singleton."""
-    global _store
-    if _store is not None:
-        return _store
+    """Compatibility entrypoint; new callers use ``adapters.vector``."""
+    from src.adapters.vector.composition import VectorStoreConfig, get_vector_store
 
     s = get_settings()
-    backend = (s.vector_store or "qdrant").lower()
-
-    if backend == "qdrant":
-        _store = QdrantStore()
-    elif backend == "milvus":
-        _store = MilvusStore()
-    elif backend == "local":
-        # Lazy import — avoid SQLite cost when not used.
-        from src.storage.vector.local import LocalVectorStore
-
-        _store = LocalVectorStore(db_path=s.local_vector_db_path)
-    else:
-        raise ValueError(
-            f"Unknown VECTOR_STORE='{backend}'. Supported: 'qdrant', 'milvus', 'local'."
-        )
-    return _store
+    return get_vector_store(VectorStoreConfig.from_settings(s))  # type: ignore[return-value]
 
 
 def reset_store() -> None:
-    """Test helper: clear the cached singleton so the next get_store() rebuilds."""
-    global _store
-    _store = None
+    """Compatibility test helper; resets the adapter-owned cache."""
+    from src.adapters.vector.composition import reset_vector_store
+
+    reset_vector_store()
