@@ -173,6 +173,12 @@ async def chat_post(
                 )
             messages = built.messages
             memory_trace = built.memory_trace
+            # Context construction records actual memory recall usage and may
+            # prepare a summary or backfill a small embedding batch. The
+            # request-scoped dependency otherwise rolls this transaction back
+            # after the SSE response closes, leaving the persisted recall
+            # counters inconsistent with the trace shown to the user.
+            await session.commit()
         elif req.messages:
             messages = [{"role": m.role, "content": m.content} for m in req.messages]
             memory_trace = None

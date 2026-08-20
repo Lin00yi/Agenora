@@ -287,3 +287,41 @@ async def test_memory_retrieval_trace_explains_selection_without_query_content()
         assert "PostgreSQL 配置" not in str(matches[0].trace_metadata())
     finally:
         await engine.dispose()
+
+
+async def test_memory_recall_usage_persists_when_context_transaction_commits() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with session_factory() as session:
+            session.add(
+                UserMemory(
+                    id="memory-usage",
+                    user_id="user-1",
+                    type="fact",
+                    memory_key="project.database",
+                    memory_value="PostgreSQL",
+                    content="项目数据库使用 PostgreSQL。",
+                    source="explicit",
+                    confidence=0.9,
+                    importance=0.8,
+                )
+            )
+            await session.commit()
+            matches = await retrieve_user_memory_matches(
+                session,
+                user_id="user-1",
+                query="PostgreSQL 配置怎么处理？",
+            )
+            assert len(matches) == 1
+            await session.commit()
+
+        async with session_factory() as session:
+            stored = await session.get(UserMemory, "memory-usage")
+            assert stored is not None
+            assert stored.recall_count == 1
+            assert stored.last_accessed_at is not None
+    finally:
+        await engine.dispose()
