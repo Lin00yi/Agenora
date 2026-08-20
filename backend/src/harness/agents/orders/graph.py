@@ -12,6 +12,7 @@ from src.harness.contracts.state import AgentState
 from src.harness.runtime.agent_loop import call_tools_node, reason_node, should_continue
 from src.harness.tools.base import ToolRegistry
 from src.harness.mcp.orders import build_orders_registry
+from src.harness.mcp.manager import McpConnectionManager
 from src.platform.llm.gateway import CostTracker
 
 if TYPE_CHECKING:
@@ -188,8 +189,9 @@ def build_orders_graph(
     llm_cfg: "UserLLMConfig | None" = None,
     complex_llm_cfg: "UserLLMConfig | None" = None,
     fallback_llm_cfg: "UserLLMConfig | None" = None,
+    mcp_manager: McpConnectionManager | None = None,
 ):
-    registry = registry or build_orders_registry(user_id=user_id)
+    registry = registry or build_orders_registry(user_id=user_id, manager=mcp_manager)
     cost = CostTracker()
     em = emit or _noop_emit
     graph = StateGraph(AgentState)

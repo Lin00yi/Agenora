@@ -6,7 +6,12 @@ import time
 from typing import Any
 
 from src.harness.mcp.catalog import CapabilityBinding
-from src.harness.mcp.manager import McpCapabilityError, McpConnectionManager, get_mcp_manager
+from src.harness.mcp.manager import (
+    McpCapabilityError,
+    McpConnectionManager,
+    get_mcp_manager,
+    resolve_mcp_manager,
+)
 from src.harness.tools.base import Tool, ToolRegistry, ToolResult
 
 
@@ -39,8 +44,15 @@ class McpCapabilityTool(Tool):
             "label": label,
             "server_id": self.binding.server_id,
             "capability_id": self.binding.id,
+            "contract_id": self.binding.contract_id or self.binding.id,
+            "contract_version": str(self.binding.contract_version),
+            "plugin_set_version": str(self.manager.plugin_set_version),
             "risk": self.binding.risk,
         }
+        contract = self.manager.catalog.contract_for(self.binding)
+        if contract.plugin_id:
+            metadata["plugin_id"] = contract.plugin_id
+            metadata["plugin_version"] = str(contract.plugin_version)
         if self.binding.description and self.binding.description != label:
             metadata["detail"] = self.binding.description
         return metadata
@@ -66,12 +78,14 @@ class McpCapabilityTool(Tool):
             )
 
 
-def build_capability_registry(*, agent_id: str, user_id: str | None) -> ToolRegistry:
+def build_capability_registry(
+    *, agent_id: str, user_id: str | None, manager: McpConnectionManager | None = None
+) -> ToolRegistry:
     """Build an agent-local registry from the current reviewed catalog."""
     registry = ToolRegistry()
     if not user_id:
         return registry
-    manager = get_mcp_manager()
+    manager = manager or get_mcp_manager()
     for binding in manager.catalog.capabilities_for_agent(agent_id):
         registry.register(McpCapabilityTool(binding=binding, manager=manager, actor_id=user_id))
     return registry
@@ -82,6 +96,8 @@ async def call_capability(
     *,
     user_id: str | None,
     arguments: dict[str, Any] | None = None,
+    plugin_set_version: int | None = None,
 ) -> dict[str, Any]:
     """Use a capability outside an agent loop (e.g. durable recovery)."""
-    return await get_mcp_manager().call(capability_id, actor_id=user_id, arguments=arguments)
+    manager = await resolve_mcp_manager(plugin_set_version)
+    return await manager.call(capability_id, actor_id=user_id, arguments=arguments)

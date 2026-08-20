@@ -29,7 +29,12 @@ class McpServerSpec(BaseModel):
     args: list[str] = Field(default_factory=list)
     cwd: str | None = None
     endpoint: str | None = None
+    # STDIO plugins receive only explicitly inherited values, rather than the
+    # entire API-process environment. This mirrors Codex's env passthrough UI
+    # without accidentally leaking unrelated deployment credentials.
+    inherit_environment: list[str] = Field(default_factory=list)
     environment: dict[str, str] = Field(default_factory=dict)
+    secret_environment: dict[str, str] = Field(default_factory=dict)
     headers: dict[str, str] = Field(default_factory=dict)
     secret_headers: dict[str, str] = Field(default_factory=dict)
     allowed_tools: list[str] = Field(default_factory=list)
@@ -57,6 +62,10 @@ class CapabilityBinding(BaseModel):
     """A reviewed business capability backed by one allowed MCP tool."""
 
     id: str = Field(min_length=1, max_length=160)
+    # The transport binding can keep a provider-specific id, while agents and
+    # policies rely on this versioned business contract.
+    contract_id: str | None = Field(default=None, min_length=3, max_length=160)
+    contract_version: int = Field(default=1, ge=1, le=1000)
     server_id: str = Field(min_length=1, max_length=80)
     tool_name: str = Field(min_length=1, max_length=160)
     exposed_name: str = Field(min_length=1, max_length=160)
@@ -83,6 +92,8 @@ class CapabilityBinding(BaseModel):
 class McpCatalog:
     servers: dict[str, McpServerSpec]
     capabilities: dict[str, CapabilityBinding]
+    contracts: dict[str, Any] | None = None
+    plugins: dict[str, Any] | None = None
 
     def server(self, server_id: str) -> McpServerSpec:
         try:
@@ -103,6 +114,16 @@ class McpCatalog:
             if binding.agent_id == agent_id and self.server(binding.server_id).enabled
         ]
 
+    def contract_for(self, binding: CapabilityBinding):
+        from .contracts import CapabilityContract
+
+        contract_id = binding.contract_id or binding.id
+        key = f"{contract_id}@v{binding.contract_version}"
+        contract = (self.contracts or {}).get(key)
+        if not isinstance(contract, CapabilityContract):
+            raise KeyError(f"Unknown capability contract: {key}")
+        return contract
+
 
 def _orders_default_catalog(settings: Settings) -> McpCatalog:
     """Compatibility catalog for the existing local orders service."""
@@ -120,14 +141,15 @@ def _orders_default_catalog(settings: Settings) -> McpCatalog:
             "mock_orders_mcp.server",
         ],
         cwd=settings.orders_mcp_server_path,
+        inherit_environment=["PATH", "LANG", "LC_ALL", "LC_CTYPE"],
         environment={
             "ORDERS_MCP_DB_PATH": settings.orders_mcp_db_path,
-            "ORDERS_MCP_SERVICE_TOKEN": settings.orders_mcp_service_token,
             # The local mock is launched through uv. Keep its cache owned by
             # the mock data directory instead of assuming the process can read
             # a developer's home-directory cache (CI/sandboxes cannot).
             "UV_CACHE_DIR": str(Path(settings.orders_mcp_db_path).parent / ".uv-cache"),
         },
+        secret_environment={"ORDERS_MCP_SERVICE_TOKEN": "orders_mcp_service_token"},
         allowed_tools=[
             "list_orders",
             "get_order",
@@ -140,41 +162,11 @@ def _orders_default_catalog(settings: Settings) -> McpCatalog:
         secret_arguments={"service_token": "orders_mcp_service_token"},
         timeout_seconds=settings.orders_mcp_timeout_seconds,
     )
-    schemas: dict[str, dict[str, Any]] = {
-        "list_orders": {"type": "object", "properties": {}, "required": []},
-        "get_order": {
-            "type": "object",
-            "properties": {"order_id": {"type": "string", "description": "订单号"}},
-            "required": ["order_id"],
-        },
-        "list_refunds": {
-            "type": "object",
-            "properties": {"order_id": {"type": "string", "description": "可选的订单号"}},
-            "required": [],
-        },
-        "get_refund": {
-            "type": "object",
-            "properties": {"refund_id": {"type": "string", "description": "退款单号或确认单号"}},
-            "required": ["refund_id"],
-        },
-        "prepare_refund": {
-            "type": "object",
-            "properties": {
-                "order_id": {"type": "string", "description": "订单号"},
-                "reason": {"type": "string", "description": "退款原因"},
-                "amount_minor": {"type": "integer", "description": "退款金额，单位分"},
-            },
-            "required": ["order_id", "reason"],
-        },
-        "confirm_refund": {
-            "type": "object",
-            "properties": {
-                "approval_id": {"type": "string", "description": "待确认退款单号"},
-                "confirmation_text": {"type": "string", "description": "用户的精确确认文本"},
-            },
-            "required": ["approval_id", "confirmation_text"],
-        },
-    }
+    from .contracts import builtin_contracts, contract_index
+    from .plugins import builtin_plugin_manifests, plugin_index
+
+    contracts = contract_index(builtin_contracts())
+    plugins = plugin_index(builtin_plugin_manifests())
     metadata = {
         "list_orders": ("commerce.orders.list", "查询当前登录用户的订单列表。", "查询订单", "read", None),
         "get_order": ("commerce.orders.get", "按订单号查询当前登录用户的一笔订单。", "查询订单详情", "read", None),
@@ -186,6 +178,7 @@ def _orders_default_catalog(settings: Settings) -> McpCatalog:
     capabilities = {
         capability_id: CapabilityBinding(
             id=capability_id,
+            contract_id=capability_id,
             server_id=server.id,
             tool_name=tool_name,
             exposed_name=tool_name,
@@ -193,11 +186,13 @@ def _orders_default_catalog(settings: Settings) -> McpCatalog:
             description=description,
             risk=risk,  # type: ignore[arg-type]
             policy_id=policy_id,
-            input_schema=schemas[tool_name],
+            input_schema=contracts[f"{capability_id}@v1"].input_schema,
         )
         for tool_name, (capability_id, description, display_name, risk, policy_id) in metadata.items()
     }
-    return McpCatalog(servers={server.id: server}, capabilities=capabilities)
+    return McpCatalog(
+        servers={server.id: server}, capabilities=capabilities, contracts=contracts, plugins=plugins
+    )
 
 
 def _catalog_from_json(raw: str) -> McpCatalog:
@@ -217,11 +212,82 @@ def _catalog_from_json(raw: str) -> McpCatalog:
     server_map = {server.id: server for server in servers}
     if len(server_map) != len(servers):
         raise ValueError("MCP catalog server ids must be unique")
-    capability_map = {binding.id: binding for binding in capabilities}
+    # Preserve protocol/security errors ahead of plugin-contract errors: a
+    # catalog must never make an unallowlisted or ungoverned tool look valid
+    # merely because its plugin manifest is incomplete.
+    for binding in capabilities:
+        server = server_map.get(binding.server_id)
+        if server is None:
+            raise ValueError(f"Capability {binding.id} refers to unknown server {binding.server_id}")
+        if binding.tool_name not in server.allowed_tools:
+            raise ValueError(f"Capability {binding.id} refers to tool not allowed by {binding.server_id}")
+        if binding.risk == "high_risk_write" and not binding.policy_id:
+            raise ValueError(f"High-risk MCP capability {binding.id} requires a Host policy_id")
+    from .contracts import CapabilityContract, builtin_contracts, contract_index
+    from .plugins import McpPluginManifest, builtin_plugin_manifests, plugin_index
+
+    try:
+        declared_contracts = [
+            CapabilityContract.model_validate(item) for item in parsed.get("contracts", [])
+        ]
+    except ValidationError as exc:
+        raise ValueError(f"Invalid MCP capability contracts: {exc}") from exc
+    try:
+        declared_plugins = [
+            McpPluginManifest.model_validate(item) for item in parsed.get("plugins", [])
+        ]
+        plugins = plugin_index([*builtin_plugin_manifests(), *declared_plugins])
+    except (ValidationError, ValueError) as exc:
+        raise ValueError(f"Invalid MCP plugin manifests: {exc}") from exc
+    try:
+        contracts = contract_index([*builtin_contracts(), *declared_contracts])
+    except ValueError as exc:
+        raise ValueError(f"Invalid MCP capability contracts: {exc}") from exc
+    for plugin in plugins.values():
+        for contract_key in plugin.contracts:
+            if contract_key not in contracts:
+                raise ValueError(
+                    f"Plugin {plugin.key} declares an unknown contract: {contract_key}"
+                )
+    for contract in contracts.values():
+        plugin_key = f"{contract.plugin_id or ''}@v{contract.plugin_version}"
+        plugin = plugins.get(plugin_key)
+        if contract.plugin_id is None or plugin is None or contract.key not in plugin.contracts:
+            raise ValueError(
+                f"Capability contract {contract.key} must be supplied by a declared plugin manifest"
+            )
+    normalised_capabilities: list[CapabilityBinding] = []
+    for binding in capabilities:
+        # ``id`` remains a compatibility default for pre-plugin catalogs, but
+        # unrecognised ids must now declare a contract explicitly.
+        binding = binding.model_copy(update={"contract_id": binding.contract_id or binding.id})
+        key = f"{binding.contract_id}@v{binding.contract_version}"
+        contract = contracts.get(key)
+        if contract is None:
+            raise ValueError(
+                f"Capability {binding.id} must reference a declared contract ({key})"
+            )
+        if binding.agent_id not in contract.agent_ids:
+            raise ValueError(
+                f"Capability {binding.id} cannot bind contract {key} to agent {binding.agent_id}"
+            )
+        if binding.risk != contract.risk or binding.policy_id != contract.policy_id:
+            raise ValueError(
+                f"Capability {binding.id} risk and policy must match contract {key}"
+            )
+        if binding.exposed_name != contract.exposed_name:
+            raise ValueError(
+                f"Capability {binding.id} must expose contract tool name {contract.exposed_name}"
+            )
+        # Prompt-visible schemas are Host-owned contract schemas, never raw
+        # discovery metadata from an MCP server.
+        binding = binding.model_copy(update={"input_schema": contract.input_schema})
+        normalised_capabilities.append(binding)
+    capability_map = {binding.id: binding for binding in normalised_capabilities}
     if len(capability_map) != len(capabilities):
         raise ValueError("MCP catalog capability ids must be unique")
     exposed_names: set[tuple[str, str]] = set()
-    for binding in capabilities:
+    for binding in normalised_capabilities:
         server = server_map.get(binding.server_id)
         if server is None:
             raise ValueError(f"Capability {binding.id} refers to unknown server {binding.server_id}")
@@ -233,7 +299,9 @@ def _catalog_from_json(raw: str) -> McpCatalog:
         if key in exposed_names:
             raise ValueError(f"Duplicate exposed MCP tool for agent: {binding.agent_id}/{binding.exposed_name}")
         exposed_names.add(key)
-    return McpCatalog(servers=server_map, capabilities=capability_map)
+    return McpCatalog(
+        servers=server_map, capabilities=capability_map, contracts=contracts, plugins=plugins
+    )
 
 
 def build_mcp_catalog(settings: Settings) -> McpCatalog:

@@ -281,3 +281,67 @@ export async function listTraces(params?: {
 export async function getTrace(id: string): Promise<AdminTraceDetail> {
   return unwrap(await authFetch(`/api/admin/traces/${id}`));
 }
+
+// ---------------------------------------------------------------------------
+// MCP catalog (administrator-managed; secret values never appear in responses)
+// ---------------------------------------------------------------------------
+export type McpCatalogPayload = {
+  servers: Array<Record<string, unknown>>;
+  capabilities: Array<Record<string, unknown>>;
+  contracts: Array<Record<string, unknown>>;
+  plugins: Array<Record<string, unknown>>;
+};
+
+export type AdminMcpCatalog = {
+  source: "environment" | "database";
+  catalog: McpCatalogPayload;
+  secret_refs: Record<string, boolean>;
+  draft_version: number;
+  active_version: number;
+  published_at: string | null;
+};
+
+export type McpServerHealth = {
+  server_id: string;
+  healthy: boolean;
+  tool_count?: number;
+  latency_ms: number;
+  error?: string;
+  tools?: Array<{ name: string; description: string; input_schema: Record<string, unknown> }>;
+};
+
+export async function getMcpCatalog(): Promise<AdminMcpCatalog> {
+  return unwrap(await authFetch("/api/admin/mcp/catalog"));
+}
+
+export async function saveMcpCatalogDraft(body: {
+  catalog: McpCatalogPayload;
+  secrets?: Record<string, string>;
+}): Promise<AdminMcpCatalog> {
+  return unwrap(
+    await authFetch("/api/admin/mcp/catalog", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+  );
+}
+
+export async function testMcpServer(body: {
+  server: Record<string, unknown>;
+  secrets?: Record<string, string>;
+}): Promise<McpServerHealth> {
+  return unwrap(
+    await authFetch("/api/admin/mcp/catalog/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+  );
+}
+
+export async function publishMcpCatalog(): Promise<AdminMcpCatalog> {
+  return unwrap(
+    await authFetch("/api/admin/mcp/catalog/publish", { method: "POST" })
+  );
+}

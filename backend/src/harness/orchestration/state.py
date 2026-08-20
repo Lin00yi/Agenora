@@ -9,6 +9,9 @@ SupervisorDecision = Literal["dispatch", "finish", "human_input"]
 
 
 class SupervisorState(TypedDict, total=False):
+    # Immutable MCP PluginSet version selected when this workflow began.
+    # LangGraph checkpoints preserve it for approval/retry replay safety.
+    mcp_plugin_set_version: int
     messages: list[dict[str, Any]]
     iterations: int
     tool_call_log: list[dict[str, Any]]

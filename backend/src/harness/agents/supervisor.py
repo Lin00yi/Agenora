@@ -313,6 +313,10 @@ def build_supervisor_graph(
         configure_routed_kb=configure_routed_kb,
         kb_route_scope=kb_route_scope,
         services=services,
+        mcp_manager=(run_context.attributes.get("mcp_manager") if run_context else None),
+        plugin_set_version=int(
+            (run_context.attributes.get("plugin_set_version") if run_context else 0) or 0
+        ),
     )
     if deps is None:
         runtime.emit = em

@@ -10,6 +10,7 @@ from typing import Any
 
 from src.harness.mcp.capabilities import build_capability_registry, call_capability
 from src.harness.mcp.manager import McpCapabilityError
+from src.harness.mcp.manager import McpConnectionManager
 from src.harness.tools.base import ToolRegistry
 
 LIST_ORDERS_CAPABILITY = "commerce.orders.list"
@@ -47,26 +48,35 @@ def refundable_order_options(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return options
 
 
-async def list_refundable_order_options(*, user_id: str | None) -> list[dict[str, Any]]:
+async def list_refundable_order_options(
+    *, user_id: str | None, plugin_set_version: int | None = None
+) -> list[dict[str, Any]]:
     """Read eligible orders through the Host-reviewed read capability."""
     if not user_id:
         return []
     try:
-        payload = await call_capability(LIST_ORDERS_CAPABILITY, user_id=user_id)
+        payload = await call_capability(
+            LIST_ORDERS_CAPABILITY, user_id=user_id, plugin_set_version=plugin_set_version
+        )
     except (KeyError, McpCapabilityError):
         return []
     return refundable_order_options(payload)
 
 
-async def get_refund(*, user_id: str | None, refund_id: str) -> dict[str, Any]:
+async def get_refund(
+    *, user_id: str | None, refund_id: str, plugin_set_version: int | None = None
+) -> dict[str, Any]:
     """Read a refund record for durable post-confirmation recovery."""
     return await call_capability(
         GET_REFUND_CAPABILITY,
         user_id=user_id,
         arguments={"refund_id": refund_id},
+        plugin_set_version=plugin_set_version,
     )
 
 
-def build_orders_registry(*, user_id: str | None) -> ToolRegistry:
+def build_orders_registry(
+    *, user_id: str | None, manager: McpConnectionManager | None = None
+) -> ToolRegistry:
     """Compatibility facade for the orders graph's current tool names."""
-    return build_capability_registry(agent_id="orders", user_id=user_id)
+    return build_capability_registry(agent_id="orders", user_id=user_id, manager=manager)

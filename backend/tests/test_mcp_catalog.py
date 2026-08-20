@@ -59,8 +59,12 @@ def test_custom_http_server_can_bind_capability_and_host_secret_header() -> None
             '{"servers":[{"id":"inventory","transport":"streamable_http",'
             '"endpoint":"https://mcp.example.test/mcp","allowed_tools":["lookup"],'
             '"identity_argument":"user_id","secret_headers":{"Authorization":"inventory_token"}}],'
+            '"plugins":[{"id":"inventory","contracts":["inventory.lookup@v1"]}],'
+            '"contracts":[{"id":"inventory.lookup","plugin_id":"inventory","agent_tool_name":"lookup_inventory","agent_ids":["orders"],'
+            '"description":"查询库存"}],'
             '"capabilities":[{"id":"inventory.lookup","server_id":"inventory",'
             '"tool_name":"lookup","exposed_name":"lookup_inventory","agent_id":"orders",'
+            '"contract_id":"inventory.lookup",'
             '"description":"查询库存","display_name":"查询实时库存",'
             '"input_schema":{"type":"object","properties":{}}}]}'
         ),
@@ -78,6 +82,11 @@ def test_custom_http_server_can_bind_capability_and_host_secret_header() -> None
         "detail": "查询库存",
         "server_id": "inventory",
         "capability_id": "inventory.lookup",
+        "contract_id": "inventory.lookup",
+        "contract_version": "1",
+        "plugin_id": "inventory",
+        "plugin_version": "1",
+        "plugin_set_version": "0",
         "risk": "read",
     }
 
@@ -97,3 +106,13 @@ def test_manager_rejects_model_override_of_host_identity_and_secret() -> None:
         "actor_id": "user-a",
         "service_token": "test-service-token",
     }
+
+
+@pytest.mark.asyncio
+async def test_manager_rejects_arguments_outside_the_capability_contract_before_connecting() -> None:
+    settings = Settings(orders_mcp_service_token="test-service-token")
+    manager = McpConnectionManager(catalog=build_mcp_catalog(settings), settings=settings)
+
+    with pytest.raises(McpCapabilityError, match="Arguments do not match contract"):
+        await manager.call("commerce.orders.get", actor_id="user-a", arguments={})
+    assert manager._connections == {}

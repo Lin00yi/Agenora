@@ -8,6 +8,7 @@ from typing import Any, TYPE_CHECKING
 from src.harness.contracts.state import AgentState
 from src.platform.observability import traced
 from src.harness.policy.tool_guard import is_tool_allowed
+from src.harness.mcp.policies import supports_high_risk_policy
 from src.harness.tools.base import ToolRegistry
 from src.harness.tools.citations import citations_from_tool_raw, merge_citations
 from src.harness.tools.web_search import _format_web_results, select_web_result_raw
@@ -57,7 +58,7 @@ def _high_risk_mcp_error(
     if getattr(tool, "risk", None) != "high_risk_write":
         return _refund_confirmation_error(name, args, messages)
     policy_id = getattr(tool, "policy_id", None)
-    if policy_id == "refund_confirmation_v1":
+    if supports_high_risk_policy(policy_id):
         return _refund_confirmation_error(name, args, messages)
     return "该高风险操作没有可执行的宿主确认策略，本次未执行。"
 

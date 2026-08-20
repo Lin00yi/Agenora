@@ -58,6 +58,10 @@ class RuntimeDeps:
     # "turn" means an automatic selection shown only in the response trace;
     # "pinned" is reserved for an explicit conversation scope.
     kb_route_scope: str = "turn"
+    # A graph receives one resolved, immutable MCP PluginSet generation. This
+    # avoids a resumed approval silently rebuilding tools from today's catalog.
+    mcp_manager: Any | None = None
+    plugin_set_version: int = 0
 
 
 @dataclass
@@ -139,6 +143,7 @@ def build_default_agent_registry() -> AgentRegistry:
             llm_cfg=deps.llm_cfg,
             complex_llm_cfg=deps.complex_llm_cfg,
             fallback_llm_cfg=deps.fallback_llm_cfg,
+            mcp_manager=deps.mcp_manager,
         )
 
     registry.register(

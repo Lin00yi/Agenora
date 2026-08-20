@@ -11,6 +11,7 @@ import {
   BrainCircuit,
   Download,
   Info,
+  Network,
   SlidersHorizontal,
   Trash2,
   User as UserIcon,
@@ -44,14 +45,19 @@ const MemorySystemModule = dynamic(
   () => import("@/components/settings/MemorySystemModule").then((module) => module.MemorySystemModule),
   { ssr: false }
 );
+const McpManagementModule = dynamic(
+  () => import("@/components/settings/McpManagementModule").then((module) => module.McpManagementModule),
+  { ssr: false }
+);
 
-type SettingsModule = "personal" | "model" | "memory" | "about";
+type SettingsModule = "personal" | "model" | "memory" | "mcp" | "about";
 type PersonalTab = "general" | "appearance" | "account" | "data";
 
 const MODULES: { key: SettingsModule; label: string; Icon: typeof UserIcon }[] = [
   { key: "personal", label: "个人", Icon: UserIcon },
   { key: "model", label: "模型", Icon: SlidersHorizontal },
   { key: "memory", label: "记忆系统", Icon: BrainCircuit },
+  { key: "mcp", label: "MCP 管理", Icon: Network },
   { key: "about", label: "关于", Icon: Info },
 ];
 
@@ -82,6 +88,9 @@ export default function SystemSettingsDialog({
   const [clearing, setClearing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const router = useRouter();
+  const modules = user.is_admin
+    ? MODULES
+    : MODULES.filter((item) => item.key !== "mcp");
 
   const doClear = async () => {
     setClearing(true);
@@ -126,7 +135,7 @@ export default function SystemSettingsDialog({
             <div className="hidden px-2 py-2 text-xs font-semibold text-muted sm:block">
               设置
             </div>
-            {MODULES.map(({ key, label, Icon }) => {
+            {modules.map(({ key, label, Icon }) => {
               const active = module === key;
               return (
                 <button
@@ -151,7 +160,7 @@ export default function SystemSettingsDialog({
           <div className="flex min-h-0 flex-1 flex-col">
             <header className="flex h-14 shrink-0 items-center border-b border-surface-border/70 bg-surface px-5 pr-14">
               <h2 className="text-[15px] font-semibold tracking-tight">
-                {MODULES.find((item) => item.key === module)?.label}
+                {modules.find((item) => item.key === module)?.label}
               </h2>
             </header>
 
@@ -168,6 +177,7 @@ export default function SystemSettingsDialog({
               )}
               {module === "model" && <ModelSettingsModule embedded />}
               {module === "memory" && <MemorySystemModule embedded />}
+              {module === "mcp" && user.is_admin && <McpManagementModule embedded />}
               {module === "about" && (
                 <div className="px-5 py-5 sm:px-6">
                   <AboutTab />

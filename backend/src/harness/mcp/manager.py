@@ -8,8 +8,10 @@ added here and never appear in a tool schema.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import os
+import socket
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from time import perf_counter
@@ -53,13 +55,60 @@ def _result_payload(result: Any) -> dict[str, Any]:
     return {"status": "error", "message": "MCP tool returned no structured result."}
 
 
+def _matches_output_schema(value: Any, schema: dict[str, Any]) -> bool:
+    """Small conservative schema guard for MCP structured responses.
+
+    Full JSON Schema is intentionally not a runtime dependency here. Contracts
+    currently need object/required/property primitive validation; unsupported
+    schema keywords remain documentation rather than silently rejecting a
+    legitimate provider response.
+    """
+    declared_type = schema.get("type")
+    if declared_type == "object":
+        if not isinstance(value, dict):
+            return False
+        required = schema.get("required", [])
+        if not isinstance(required, list) or any(key not in value for key in required if isinstance(key, str)):
+            return False
+        properties = schema.get("properties", {})
+        if not isinstance(properties, dict):
+            return True
+        for key, item_schema in properties.items():
+            if key not in value or not isinstance(item_schema, dict):
+                continue
+            expected = item_schema.get("type")
+            item = value[key]
+            if expected == "string" and not isinstance(item, str):
+                return False
+            if expected == "integer" and (not isinstance(item, int) or isinstance(item, bool)):
+                return False
+            if expected == "number" and (not isinstance(item, (int, float)) or isinstance(item, bool)):
+                return False
+            if expected == "boolean" and not isinstance(item, bool):
+                return False
+            if expected == "array" and not isinstance(item, list):
+                return False
+    return True
+
+
 class McpConnectionManager:
     """Lazily manages one initialized connection for every configured server."""
 
-    def __init__(self, *, catalog: McpCatalog, settings: Settings) -> None:
+    def __init__(
+        self,
+        *,
+        catalog: McpCatalog,
+        settings: Settings,
+        secret_values: dict[str, str] | None = None,
+        plugin_set_version: int = 0,
+    ) -> None:
         self.catalog = catalog
         self.settings = settings
-        self._secrets = self._load_secret_values(settings.mcp_secrets_json)
+        self.plugin_set_version = plugin_set_version
+        self._secrets = {
+            **self._load_secret_values(settings.mcp_secrets_json),
+            **(secret_values or {}),
+        }
         self._connections: dict[str, _Connection] = {}
         self._create_locks: dict[str, asyncio.Lock] = {}
 
@@ -91,6 +140,23 @@ class McpConnectionManager:
             headers[header] = self._secret_value(secret_reference, server_id=server.id)
         return headers
 
+    def _stdio_environment(self, server: McpServerSpec) -> dict[str, str]:
+        """Build the child environment from an explicit allowlist.
+
+        A local plugin may need PATH or locale variables, but it must not
+        automatically inherit database, provider, or Host secret variables.
+        Secret values use references and are resolved only at launch.
+        """
+        environment = {
+            name: os.environ[name]
+            for name in server.inherit_environment
+            if name in os.environ
+        }
+        environment.update(server.environment)
+        for name, reference in server.secret_environment.items():
+            environment[name] = self._secret_value(reference, server_id=server.id)
+        return environment
+
     def _create_lock(self, server_id: str) -> asyncio.Lock:
         lock = self._create_locks.get(server_id)
         if lock is None:
@@ -102,12 +168,10 @@ class McpConnectionManager:
         stack = AsyncExitStack()
         try:
             if server.transport == "stdio":
-                environment = dict(os.environ)
-                environment.update(server.environment)
                 params = StdioServerParameters(
                     command=server.command or "",
                     args=server.args,
-                    env=environment,
+                    env=self._stdio_environment(server),
                     cwd=server.cwd,
                 )
                 read, write = await stack.enter_async_context(stdio_client(params))
@@ -118,8 +182,14 @@ class McpConnectionManager:
                 import httpx2
                 from mcp.client.streamable_http import streamable_http_client
 
+                await self._validate_http_egress(server)
+
                 http_client = await stack.enter_async_context(
-                    httpx2.AsyncClient(headers=self._host_headers(server) or None)
+                    httpx2.AsyncClient(
+                        headers=self._host_headers(server) or None,
+                        follow_redirects=False,
+                        timeout=httpx2.Timeout(server.timeout_seconds),
+                    )
                 )
                 read, write = await stack.enter_async_context(
                     streamable_http_client(server.endpoint or "", http_client=http_client)
@@ -130,6 +200,44 @@ class McpConnectionManager:
         except Exception:
             await stack.aclose()
             raise
+
+    async def _validate_http_egress(self, server: McpServerSpec) -> None:
+        """Reject private, loopback and DNS-rebinding MCP destinations.
+
+        Configuration-time scheme checks are not sufficient: a hostname can
+        resolve to an RFC1918 address only when the request is made. Resolve
+        immediately before opening the client and require every address to be
+        globally routable, except explicitly permitted local development.
+        """
+        from urllib.parse import urlparse
+
+        endpoint = urlparse(server.endpoint or "")
+        host = endpoint.hostname
+        if not host:
+            raise McpCapabilityError(f"MCP server {server.id} has an invalid endpoint.")
+        local_dev = self.settings.app_env.strip().lower() in {"dev", "development", "test"}
+        try:
+            addresses = {
+                item[4][0]
+                for item in await asyncio.get_running_loop().getaddrinfo(
+                    host, endpoint.port or 443, type=socket.SOCK_STREAM
+                )
+            }
+        except OSError as exc:
+            raise McpCapabilityError(
+                f"MCP server {server.id} endpoint could not be resolved."
+            ) from exc
+        if not addresses:
+            raise McpCapabilityError(f"MCP server {server.id} endpoint could not be resolved.")
+        for address in addresses:
+            ip = ipaddress.ip_address(address)
+            if ip.is_global:
+                continue
+            if local_dev and ip.is_loopback:
+                continue
+            raise McpCapabilityError(
+                f"MCP server {server.id} endpoint resolves to a non-public address."
+            )
 
     async def _connection(self, server: McpServerSpec) -> _Connection:
         existing = self._connections.get(server.id)
@@ -196,7 +304,13 @@ class McpConnectionManager:
             raise McpCapabilityError(
                 f"MCP capability {binding.id} is not allowed by server {server.id}."
             )
-        payload = self._host_arguments(server, actor_id=actor_id, arguments=arguments or {})
+        business_arguments = arguments or {}
+        contract = self.catalog.contract_for(binding)
+        if not _matches_output_schema(business_arguments, contract.input_schema):
+            raise McpCapabilityError(
+                f"Arguments do not match contract {contract.key}."
+            )
+        payload = self._host_arguments(server, actor_id=actor_id, arguments=business_arguments)
         connection = await self._connection(server)
         try:
             async with connection.lock:
@@ -208,10 +322,17 @@ class McpConnectionManager:
         except Exception as exc:
             await self._invalidate(server.id, connection)
             raise McpCapabilityError(f"MCP server {server.id} is unavailable.") from exc
-        return _result_payload(result)
+        data = _result_payload(result)
+        if not _matches_output_schema(data, contract.output_schema):
+            raise McpCapabilityError(
+                f"MCP server {server.id} returned data outside contract {contract.key}."
+            )
+        return data
 
-    async def discover(self, server_id: str) -> list[dict[str, Any]]:
-        """Return safe metadata for the server's Host-allowlisted tools."""
+    async def discover(
+        self, server_id: str, *, include_unlisted: bool = False
+    ) -> list[dict[str, Any]]:
+        """Return tool metadata; only admin probes may include unlisted tools."""
         server = self.catalog.server(server_id)
         if not server.enabled:
             return []
@@ -225,7 +346,9 @@ class McpConnectionManager:
         tools: list[dict[str, Any]] = []
         for tool in getattr(response, "tools", []) or []:
             name = getattr(tool, "name", None)
-            if not isinstance(name, str) or name not in server.allowed_tools:
+            if not isinstance(name, str) or (
+                not include_unlisted and name not in server.allowed_tools
+            ):
                 continue
             schema = getattr(tool, "inputSchema", None)
             tools.append(
@@ -236,6 +359,26 @@ class McpConnectionManager:
                 }
             )
         return tools
+
+    async def probe(self, server_id: str) -> dict[str, Any]:
+        """Admin-only connection check that discovers tools without granting use."""
+        started = perf_counter()
+        try:
+            tools = await self.discover(server_id, include_unlisted=True)
+            return {
+                "server_id": server_id,
+                "healthy": True,
+                "tool_count": len(tools),
+                "tools": tools,
+                "latency_ms": int((perf_counter() - started) * 1000),
+            }
+        except McpCapabilityError as exc:
+            return {
+                "server_id": server_id,
+                "healthy": False,
+                "error": str(exc),
+                "latency_ms": int((perf_counter() - started) * 1000),
+            }
 
     async def health(self, server_id: str) -> dict[str, Any]:
         started = perf_counter()
@@ -263,19 +406,73 @@ class McpConnectionManager:
 
 
 _default_manager: McpConnectionManager | None = None
+_published_managers: dict[int, McpConnectionManager] = {}
+_published_version: int | None = None
+_refresh_lock: asyncio.Lock | None = None
 
 
 def get_mcp_manager() -> McpConnectionManager:
     """Application-wide lazy manager, closed by the FastAPI lifespan."""
     global _default_manager
+    if _published_version is not None:
+        published = _published_managers.get(_published_version)
+        if published is not None:
+            return published
     if _default_manager is None:
         settings = get_settings()
         _default_manager = McpConnectionManager(catalog=build_mcp_catalog(settings), settings=settings)
     return _default_manager
 
 
+async def refresh_mcp_manager() -> McpConnectionManager:
+    """Use the latest published DB catalog for this request when one exists.
+
+    Every API replica calls this before it compiles a chat graph. The database
+    version is therefore the cross-replica invalidation signal; older manager
+    generations remain alive for already-running graphs and are closed only at
+    process shutdown.
+    """
+    return await resolve_mcp_manager()
+
+
+async def resolve_mcp_manager(plugin_set_version: int | None = None) -> McpConnectionManager:
+    """Resolve the current or an immutable PluginSet manager generation."""
+    global _published_version, _refresh_lock
+    if _refresh_lock is None:
+        _refresh_lock = asyncio.Lock()
+    async with _refresh_lock:
+        from src.harness.mcp.configuration import published_snapshot
+        from src.platform.persistence.database import get_session_factory
+
+        factory = get_session_factory()
+        async with factory() as session:
+            snapshot = await published_snapshot(session, version=plugin_set_version)
+        if snapshot is None:
+            if plugin_set_version not in {None, 0}:
+                raise McpCapabilityError(f"MCP PluginSet v{plugin_set_version} is unavailable.")
+            return get_mcp_manager()
+        version, catalog, secrets = snapshot
+        manager = _published_managers.get(version)
+        if manager is None:
+            manager = McpConnectionManager(
+                catalog=catalog,
+                settings=get_settings(),
+                secret_values=secrets,
+                plugin_set_version=version,
+            )
+            _published_managers[version] = manager
+        if plugin_set_version is None:
+            _published_version = version
+        return manager
+
+
 async def close_mcp_manager() -> None:
-    global _default_manager
+    global _default_manager, _published_version
+    managers = list(_published_managers.values())
+    _published_managers.clear()
+    _published_version = None
     if _default_manager is not None:
-        await _default_manager.aclose()
+        managers.append(_default_manager)
         _default_manager = None
+    for manager in managers:
+        await manager.aclose()
