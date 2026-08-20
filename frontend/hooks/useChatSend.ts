@@ -191,21 +191,28 @@ export function useChatSend({
     if (!busy) setHumanInput(pendingHumanInput(currentMessages));
   }, [busy, currentId, currentMessages]);
 
-  // If a confirmation was submitted just before a reload, the running graph
-  // finishes server-side and writes its result itself. Poll only that narrow
-  // recovery state; normal conversations continue to use SSE.
+  // SSE is intentionally disposable: a browser refresh must not cancel a
+  // server-owned run.  Poll both a submitted confirmation and a persisted
+  // streaming draft so reloads show partial text/tools as they are checkpointed.
   useEffect(() => {
     const pending = pendingHumanInput(currentMessages);
-    if (!currentId || pending?.phase !== "processing") return;
+    const hasStreamingDraft = currentMessages.some(
+      (message) => message.role === "assistant" && message.streaming
+    );
+    // The active tab already has richer token-by-token state keyed by its
+    // optimistic id. Reconciliation is only for a recovered page, otherwise
+    // replacing that id mid-SSE would detach the live token painter.
+    if (busy || !currentId || (pending?.phase !== "processing" && !hasStreamingDraft)) return;
     let cancelled = false;
     const refresh = async () => {
       try {
         const detail = await getConversation(currentId);
         if (cancelled) return;
         const restored = detail.messages.map(serverMsgToLocal);
-        const unchanged =
-          restored.length === currentMessages.length &&
-          restored.every((message, index) => message.id === currentMessages[index]?.id);
+        // Draft progress updates the content of the same server message id,
+        // so id-only comparison would incorrectly keep the pre-refresh blank
+        // state until the terminal response arrives.
+        const unchanged = JSON.stringify(restored) === JSON.stringify(currentMessages);
         if (!unchanged) setMessagesForCurrent(restored);
       } catch {
         // Keep the safe disabled surface; the next retry will reconcile it.
@@ -217,7 +224,7 @@ export function useChatSend({
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [currentId, currentMessages, setMessagesForCurrent]);
+  }, [busy, currentId, currentMessages, setMessagesForCurrent]);
 
   const releaseSendLock = useCallback(() => {
     sendLockRef.current = false;
@@ -228,6 +235,10 @@ export function useChatSend({
     async (q: string) => {
       const trimmed = q.trim();
       if (!trimmed || sendLockRef.current) return;
+      if (currentMessages.some((message) => message.role === "assistant" && message.streaming)) {
+        toast.info("当前会话正在生成回答，请等待完成后再发送");
+        return;
+      }
       sendLockRef.current = true;
       stickToBottomRef.current = true;
       setShowScrollToBottom(false);
@@ -858,7 +869,7 @@ export function useChatSend({
                   },
                 });
               }
-              void persistFinal({ error: errMsg });
+              void persistFinal({ error: errMsg, messageId: evt.message_id });
               cleanupRef.current = null;
               releaseSendLock();
               break;

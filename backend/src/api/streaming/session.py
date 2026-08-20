@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from dataclasses import replace as dc_replace
+from dataclasses import dataclass, field, replace as dc_replace
 from typing import Any, AsyncGenerator
 
 import structlog
@@ -89,8 +89,11 @@ async def _persist_assistant_turn(
     cost_usd: float | None = None,
     memory_trace: dict[str, Any] | None = None,
     citations: list[dict[str, Any]] | None = None,
+    error: str | None = None,
+    message_id: str | None = None,
+    streaming: bool = False,
 ) -> str | None:
-    """Persist an agent outcome before sending the terminal SSE event.
+    """Create or update the durable assistant row for one agent run.
 
     This is intentionally server-owned: a tab reload cannot otherwise lose a
     completed refund result between the tool call and the frontend's own
@@ -103,17 +106,75 @@ async def _persist_assistant_turn(
         conversation = await session.get(Conversation, conversation_id)
         if conversation is None or conversation.user_id != user.id:
             return None
-        message = Message(
-            id=str(uuid.uuid4()),
-            conversation_id=conversation.id,
-            role="assistant",
-            content=content,
-            tool_call_log=Message.encode_tool_call_log(tools, memory_trace=memory_trace, citations=citations),
-            cost_usd=cost_usd,
+        message = await session.get(Message, message_id) if message_id else None
+        if message is not None and (
+            message.conversation_id != conversation.id or message.role != "assistant"
+        ):
+            return None
+        if message is None:
+            message = Message(
+                id=str(uuid.uuid4()),
+                conversation_id=conversation.id,
+                role="assistant",
+                content="",
+            )
+            session.add(message)
+        message.content = content
+        message.tool_call_log = Message.encode_tool_call_log(
+            tools,
+            memory_trace=memory_trace,
+            citations=citations,
+            streaming=streaming,
         )
-        session.add(message)
+        message.cost_usd = cost_usd
+        message.error = error
         await session.commit()
         return message.id
+
+
+@dataclass
+class _StreamingAssistantDraft:
+    """Small, safe snapshot of a running assistant response.
+
+    Browser SSE is deliberately disposable.  This object holds only the
+    displayable partial answer and a redacted tool timeline; raw tool results
+    remain in the runtime trace and are never written into the transcript.
+    """
+
+    content: str = ""
+    tools: list[dict[str, Any]] = field(default_factory=list)
+
+    def observe(self, event: dict[str, Any]) -> None:
+        kind = event.get("event")
+        if kind == "token":
+            text = event.get("text")
+            if isinstance(text, str):
+                self.content += text
+            return
+        if kind == "tool_start":
+            name = event.get("name")
+            tool_id = event.get("id")
+            if not isinstance(name, str) or not name:
+                return
+            self.tools.append(
+                {
+                    "id": str(tool_id or f"streaming-tool-{len(self.tools)}"),
+                    "name": name,
+                    "status": "running",
+                }
+            )
+            return
+        if kind != "tool_end":
+            return
+        tool_id = event.get("id")
+        for tool in reversed(self.tools):
+            if tool_id is not None and tool.get("id") != str(tool_id):
+                continue
+            tool["status"] = "ok" if event.get("ok") else "error"
+            tool["latency_ms"] = event.get("latency_ms")
+            if event.get("error"):
+                tool["error"] = event["error"]
+            return
 
 
 def run_chat_session(
@@ -172,8 +233,46 @@ def run_chat_session(
     full_messages = messages[:-1] + [{"role": "user", "content": cleaned}]
 
     queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
+    draft = _StreamingAssistantDraft()
+    draft_message_id: str | None = None
+    draft_dirty = False
+    last_draft_persist_at = 0.0
+
+    async def persist_draft(*, force: bool = False) -> None:
+        """Checkpoint visible stream progress at a bounded write rate.
+
+        A draft is written before graph execution and then at most twice per
+        second.  This makes reload recovery useful without turning every token
+        into a database transaction.
+        """
+        nonlocal draft_message_id, draft_dirty, last_draft_persist_at
+        if not conversation_id or user is None:
+            return
+        now = asyncio.get_running_loop().time()
+        if not force and (not draft_dirty or now - last_draft_persist_at < 0.5):
+            return
+        try:
+            draft_message_id = await _persist_assistant_turn(
+                conversation_id=conversation_id,
+                user=user,
+                content=draft.content,
+                tools=draft.tools,
+                memory_trace=memory_trace,
+                message_id=draft_message_id,
+                streaming=True,
+            )
+            draft_dirty = False
+        except Exception:  # noqa: BLE001
+            # Checkpointing improves reload recovery, but a transient database
+            # issue must never terminate an otherwise healthy agent stream.
+            log.warning("stream_draft_persist_failed", conversation_id=conversation_id)
+        last_draft_persist_at = now
 
     async def emit(evt: dict[str, Any]) -> None:
+        nonlocal draft_dirty
+        draft.observe(evt)
+        draft_dirty = True
+        await persist_draft()
         await queue.put(evt)
 
     # Per-user LLM wins; otherwise use the env-backed platform config.
@@ -271,7 +370,7 @@ def run_chat_session(
         }
 
     async def run_agent() -> None:
-        nonlocal memory_trace
+        nonlocal memory_trace, draft_dirty
         from src.platform.observability import get_current_trace
 
         trace = get_current_trace()
@@ -296,8 +395,13 @@ def run_chat_session(
                 )
         final_state: dict[str, Any] | None = None
         try:
+            # The row exists before the first model token.  A page refresh can
+            # therefore render an honest “generating” state instead of an
+            # empty transcript and later poll this same row for progress.
+            draft_dirty = True
+            await persist_draft(force=True)
             if memory_trace is not None:
-                await queue.put(
+                await emit(
                     {
                         "event": "context_ready",
                         "memory_trace": memory_trace,
@@ -359,6 +463,7 @@ def run_chat_session(
                     # the assistant row. Otherwise a refresh restores only
                     # the form/tool and loses the visible context trace.
                     memory_trace=memory_trace,
+                    message_id=draft_message_id,
                 )
                 await queue.put({"event": "human_input_required", **payload})
                 if trace is not None:
@@ -447,9 +552,9 @@ def run_chat_session(
                 )
             if not report_streamed:
                 # Skill / non-stream paths still use fake chunking for UX.
-                await queue.put({"event": "report_start"})
+                await emit({"event": "report_start"})
                 for piece in _chunks(report, size=8):
-                    await queue.put({"event": "token", "text": piece})
+                    await emit({"event": "token", "text": piece})
                     await asyncio.sleep(0.02)
             persisted_message_id = await _persist_assistant_turn(
                 conversation_id=conversation_id,
@@ -459,6 +564,7 @@ def run_chat_session(
                 cost_usd=cost_usd,
                 memory_trace=memory_trace,
                 citations=list(final_state.get("citations") or []),
+                message_id=draft_message_id,
             )
             await queue.put(
                 {
@@ -504,7 +610,24 @@ def run_chat_session(
                     )
                 except Exception:  # noqa: BLE001
                     pass
-            await queue.put({"event": "error", "message": str(exc)})
+            # Keep any already visible answer text after an error.  The same
+            # row is finalized so refresh cannot revive a stale spinner.
+            persisted_error_message_id: str | None = None
+            try:
+                persisted_error_message_id = await _persist_assistant_turn(
+                    conversation_id=conversation_id,
+                    user=user,
+                    content=draft.content,
+                    tools=draft.tools,
+                    memory_trace=memory_trace,
+                    error=str(exc),
+                    message_id=draft_message_id,
+                )
+            except Exception:  # noqa: BLE001
+                log.warning("stream_error_persist_failed", conversation_id=conversation_id)
+            await queue.put(
+                {"event": "error", "message": str(exc), "message_id": persisted_error_message_id}
+            )
         finally:
             await queue.put(None)
             if conversation_lock_id:

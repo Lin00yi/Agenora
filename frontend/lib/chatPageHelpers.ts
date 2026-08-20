@@ -132,6 +132,7 @@ export function serverMsgToLocal(m: MessagePayload): Message {
     parts,
     memory_trace: m.memory_trace ?? null,
     citations: m.citations ?? null,
+    streaming: m.streaming === true,
     cost_usd: m.cost_usd ?? undefined,
     error: m.error === STOPPED_GENERATION_MESSAGE ? undefined : m.error ?? undefined,
     created_at: ts,

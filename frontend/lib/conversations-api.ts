@@ -11,10 +11,11 @@ import type { MemoryTrace } from "@/lib/sseClient";
  * Replaces the v1 localStorage-only store. All endpoints proxied through
  * /api/conversations/* (Next route hops to backend with Bearer attached).
  *
- * Frontend orchestration (no server-side chat persistence):
+ * Frontend orchestration with server-owned assistant drafts:
  *   1. user types        → appendMessage(role: "user")
  *   2. SSE chat fires    → existing sseClient.connectChat
- *   3. SSE done/error    → appendMessage(role: "assistant", tools, cost_usd, error?)
+ *   3. backend checkpoints the running assistant row; SSE paints it live
+ *   4. terminal SSE supplies the same row id after it is finalized
  *
  * Keep types in sync with backend/src/conversations/models.py.
  */
@@ -80,6 +81,8 @@ export type MessagePayload = {
   parts?: AssistantPart[] | null;
   memory_trace?: MemoryTrace | null;
   citations?: CitationPayload[] | null;
+  /** True only while the backend still owns a recoverable stream draft. */
+  streaming?: boolean;
   cost_usd: number | null;
   error: string | null;
   created_at: string | null;

@@ -117,6 +117,7 @@ class Message(Base):
         parts: list | None = None
         memory_trace: dict | None = None
         citations: list | None = None
+        streaming = False
         if self.tool_call_log:
             try:
                 parsed = json.loads(self.tool_call_log)
@@ -127,6 +128,7 @@ class Message(Base):
                 or "parts" in parsed
                 or "memory_trace" in parsed
                 or "citations" in parsed
+                or "streaming" in parsed
             ):
                 raw_tools = parsed.get("tools")
                 tools = raw_tools if isinstance(raw_tools, list) else []
@@ -136,6 +138,7 @@ class Message(Base):
                 memory_trace = raw_trace if isinstance(raw_trace, dict) else None
                 raw_citations = parsed.get("citations")
                 citations = raw_citations if isinstance(raw_citations, list) else None
+                streaming = parsed.get("streaming") is True
             elif isinstance(parsed, list):
                 tools = parsed
 
@@ -147,6 +150,7 @@ class Message(Base):
             "parts": parts,
             "memory_trace": memory_trace,
             "citations": citations,
+            "streaming": streaming,
             "cost_usd": self.cost_usd,
             "error": self.error or None,
             "created_at": _isoformat_utc(self.created_at),
@@ -158,6 +162,7 @@ class Message(Base):
         parts: list | None = None,
         memory_trace: dict | None = None,
         citations: list | None = None,
+        streaming: bool = False,
     ) -> str | None:
         """Serialize assistant timeline metadata into tool_call_log JSON.
 
@@ -169,7 +174,7 @@ class Message(Base):
         tool_list = list(tools or [])
         part_list = list(parts or [])
         citation_list = list(citations or [])
-        if part_list or memory_trace or citation_list:
+        if part_list or memory_trace or citation_list or streaming:
             payload: dict = {"tools": tool_list}
             if part_list:
                 payload["parts"] = part_list
@@ -177,6 +182,8 @@ class Message(Base):
                 payload["memory_trace"] = memory_trace
             if citation_list:
                 payload["citations"] = citation_list
+            if streaming:
+                payload["streaming"] = True
             return json.dumps(payload, ensure_ascii=False)
         if tool_list:
             return json.dumps(tool_list, ensure_ascii=False)
