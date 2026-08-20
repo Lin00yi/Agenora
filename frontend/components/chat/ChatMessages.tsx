@@ -85,6 +85,10 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
   const status = getAssistantStreamingStatus(message, elapsedMs);
   const exportMarkdown =
     hasCitations && !streaming ? stripHandwrittenSourceList(joined) : joined;
+  // Persisted conversations may still contain the legacy backend error code.
+  // Translate it at render time as well as at the SSE boundary so old chats are
+  // just as understandable as newly-created messages.
+  const visibleError = formatAssistantError(message.error);
 
   // Legacy / persisted messages: no parts → single answer + tools above.
   const legacyLayout = !hasParts;
@@ -105,9 +109,9 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
               </div>
             )}
             <div className="kf-answer px-1 py-1 sm:px-2">
-              {message.error && (
+              {visibleError && (
                 <div className="kf-answer-error mb-3 rounded-lg border px-3 py-2 text-sm">
-                  {message.error}
+                  {visibleError}
                 </div>
               )}
               {!hasAnyText && streaming && (
@@ -123,9 +127,9 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
           </>
         ) : (
           <div className="space-y-3">
-            {message.error && (
+            {visibleError && (
               <div className="kf-answer-error rounded-lg border px-3 py-2 text-sm">
-                {message.error}
+                {visibleError}
               </div>
             )}
             {parts.map((part, index) => {
@@ -176,6 +180,13 @@ function ChatAssistantMessage({ message }: { message: Extract<Message, { role: "
       </div>
     </div>
   );
+}
+
+function formatAssistantError(error?: string) {
+  if (error === "rate_limit_exceeded") {
+    return "发送过于频繁，请稍后再试。本次提问尚未处理。";
+  }
+  return error;
 }
 
 function useLiveElapsed(active: boolean, startedAt: number) {

@@ -102,6 +102,9 @@ class Settings(BaseSettings):
     agent_allow_rag_chat_handoff: bool = True
     # rule_only | rule_triage | layered (rule → triage → complex)
     agent_route_mode: str = "layered"
+    # Durable LangGraph interrupt checkpoints. Kept outside conversation rows
+    # so only workflow state/interrupt payloads live here, not chat history.
+    agent_checkpoint_db_path: str = str(_DATA_DIR / "agent_checkpoints.db")
 
     # ===== Tools =====
     web_search_provider: str = "duckduckgo"  # duckduckgo | brave | bing | tavily

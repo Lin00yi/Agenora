@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "@/lib/toast";
 
 import { type ToolEvent } from "@/components/ThinkingChain";
-import { DEFAULT_TITLE, mergeCitations, updateToolEvent } from "@/components/chat";
+import { DEFAULT_TITLE, mergeCitations, updateToolEvent, type HumanInputRequest } from "@/components/chat";
 import { useStreamingTokenPaint } from "@/hooks/useStreamingTokenPaint";
 import {
   appendAssistantMessage,
@@ -80,6 +80,27 @@ type Args = {
   ) => void;
 };
 
+function pendingHumanInput(messages: Message[]): HumanInputRequest | null {
+  const last = messages.at(-1);
+  if (!last || last.role !== "assistant") return null;
+  const event = [...last.tools].reverse().find((tool) => tool.name === "human_input_required");
+  if (!event) return null;
+  const input = event.input ?? {};
+  return {
+    slot: typeof input.slot === "string" ? input.slot : undefined,
+    requiredSlots: Array.isArray(input.required_slots)
+      ? input.required_slots.filter((value): value is string => typeof value === "string")
+      : undefined,
+    prompt: typeof input.prompt === "string" ? input.prompt : "请补充继续处理所需的信息。",
+    approvalId: typeof input.approval_id === "string" ? input.approval_id : undefined,
+    confirmationPhrase:
+      typeof input.confirmation_phrase === "string" ? input.confirmation_phrase : undefined,
+    orderId: typeof input.order_id === "string" ? input.order_id : undefined,
+    amountMinor: typeof input.amount_minor === "number" ? input.amount_minor : undefined,
+    currency: typeof input.currency === "string" ? input.currency : undefined,
+  };
+}
+
 /**
  * Owns send lock, SSE streaming state, optimistic first-turn paint, stop, and composer submit.
  */
@@ -110,6 +131,7 @@ export function useChatSend({
 }: Args) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [humanInput, setHumanInput] = useState<HumanInputRequest | null>(null);
   const sendLockRef = useRef(false);
   const cleanupRef = useRef<(() => void) | null>(null);
   const streamingRef = useRef<StreamingSnap | null>(null);
@@ -117,6 +139,12 @@ export function useChatSend({
     streamingRef,
     setMessagesForCurrent
   );
+
+  // A reload should preserve the dedicated input surface while the backend
+  // checkpoint remains paused. A live stream owns this state until it ends.
+  useEffect(() => {
+    if (!busy) setHumanInput(pendingHumanInput(currentMessages));
+  }, [busy, currentId, currentMessages]);
 
   const releaseSendLock = useCallback(() => {
     sendLockRef.current = false;
@@ -465,6 +493,64 @@ export function useChatSend({
               );
               break;
             }
+            case "human_input_required": {
+              flushTokenPaint();
+              const prompt = evt.prompt?.trim() || "请补充继续处理所需的信息。";
+              const newTool: ToolEvent = {
+                id: evt.id ?? `human-input-${Date.now()}`,
+                name: "human_input_required",
+                status: "ok",
+                t0: Date.now(),
+                latency_ms: 0,
+                input: {
+                  slot: evt.slot,
+                  required_slots: evt.required_slots,
+                  approval_id: evt.approval_id,
+                  prompt,
+                  confirmation_phrase: evt.confirmation_phrase,
+                  order_id: evt.order_id,
+                  amount_minor: evt.amount_minor,
+                  currency: evt.currency,
+                },
+              };
+              if (streamingRef.current) {
+                const snap = streamingRef.current;
+                const last = snap.parts[snap.parts.length - 1];
+                if (last?.type === "tools") {
+                  snap.parts = [
+                    ...snap.parts.slice(0, -1),
+                    { type: "tools", tools: [...last.tools, newTool] },
+                  ];
+                } else {
+                  snap.parts = [...snap.parts, { type: "tools", tools: [newTool] }];
+                }
+                snap.tools = [...snap.tools, newTool];
+              }
+              updateLastAssistant((m) => {
+                if (m.role !== "assistant") return m;
+                const parts = [...(m.parts ?? [])];
+                const last = parts[parts.length - 1];
+                return {
+                  ...m,
+                  parts:
+                    last?.type === "tools"
+                      ? [...parts.slice(0, -1), { type: "tools", tools: [...last.tools, newTool] }]
+                      : [...parts, { type: "tools", tools: [newTool] }],
+                  tools: [...m.tools, newTool],
+                };
+              });
+              setHumanInput({
+                slot: evt.slot,
+                requiredSlots: evt.required_slots,
+                prompt,
+                approvalId: evt.approval_id,
+                confirmationPhrase: evt.confirmation_phrase,
+                orderId: evt.order_id,
+                amountMinor: evt.amount_minor,
+                currency: evt.currency,
+              });
+              break;
+            }
             case "tool_start": {
               flushTokenPaint();
               const newTool: ToolEvent = {
@@ -677,6 +763,23 @@ export function useChatSend({
                 streamingRef.current.memory_trace = memoryTrace;
                 streamingRef.current.citations = finalCitations;
               }
+              if (evt.interrupted) {
+                updateLastAssistant((m) =>
+                  m.role === "assistant"
+                    ? {
+                        ...m,
+                        streaming: false,
+                        cost_usd: costUsd,
+                        memory_trace: memoryTrace,
+                        citations: finalCitations,
+                      }
+                    : m
+                );
+                void persistFinal({ costUsd });
+                cleanupRef.current = null;
+                releaseSendLock();
+                break;
+              }
               const snap = streamingRef.current;
               const emptyResponse = !snap?.content.trim();
               if (emptyResponse) {
@@ -802,6 +905,7 @@ export function useChatSend({
 
   return {
     busy,
+    humanInput,
     handleSend,
     handleStop,
     submitComposer,

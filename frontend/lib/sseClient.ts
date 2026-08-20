@@ -112,6 +112,7 @@ export type ChatEvent = {
     | "agent_route"
     | "agent_handoff"
     | "intent_ready"
+    | "human_input_required"
     | "dag_ready"
     | "tool_start"
     | "tool_end"
@@ -137,6 +138,15 @@ export type ChatEvent = {
   source?: string;
   confidence?: string;
   metadata?: Record<string, unknown>;
+  prompt?: string;
+  slot?: string;
+  required_slots?: string[];
+  approval_id?: string;
+  confirmation_phrase?: string;
+  order_id?: string;
+  amount_minor?: number;
+  currency?: string;
+  interrupted?: boolean;
   /** `turn` is automatic for this response only; `pinned` is a conversation scope. */
   scope?: "turn" | "pinned";
   tasks?: Array<{
@@ -153,6 +163,7 @@ export type ChatEvent = {
   kb_ids?: string[];
   /** v2-M2 BYOK gate: `llm_not_configured` | `embedding_not_configured` */
   code?: string;
+  retry_after_seconds?: number;
   /** Where the UI should send the user when code is set. */
   settings_url?: string;
 };
@@ -232,6 +243,7 @@ export function connectChat(
       let message = `HTTP ${resp.status}`;
       let code: string | undefined;
       let settings_url: string | undefined;
+      let retry_after_seconds: number | undefined;
       try {
         const text = await resp.text();
         try {
@@ -241,6 +253,10 @@ export function connectChat(
             message = detail.message || text;
             code = detail.code;
             settings_url = detail.settings_url;
+            retry_after_seconds =
+              typeof detail.retry_after_seconds === "number"
+                ? detail.retry_after_seconds
+                : undefined;
           } else if (typeof detail === "string") {
             message = detail;
           } else {
@@ -252,7 +268,10 @@ export function connectChat(
       } catch {
         /* noop */
       }
-      onEvent({ event: "error", message, code, settings_url });
+      if (code === "rate_limit_exceeded" || message === "rate_limit_exceeded") {
+        message = formatRateLimitMessage(retry_after_seconds);
+      }
+      onEvent({ event: "error", message, code, settings_url, retry_after_seconds });
       return;
     }
 
@@ -326,4 +345,12 @@ function friendlyStreamError(err: unknown): string {
     return "连接中断：后端可能正在热重载或网络超时，请重试。";
   }
   return raw;
+}
+
+function formatRateLimitMessage(retryAfterSeconds?: number): string {
+  if (typeof retryAfterSeconds === "number" && retryAfterSeconds > 0) {
+    const minutes = Math.max(1, Math.ceil(retryAfterSeconds / 60));
+    return `发送过于频繁，请约 ${minutes} 分钟后再试。本次提问尚未处理。`;
+  }
+  return "发送过于频繁，请稍后再试。本次提问尚未处理。";
 }

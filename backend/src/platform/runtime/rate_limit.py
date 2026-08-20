@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sqlite3
 import time
+from math import ceil
 from pathlib import Path
 from threading import Lock
 
@@ -102,6 +103,44 @@ def check(ip: str, limit_per_hour: int) -> tuple[bool, int]:
     except Exception:  # noqa: BLE001 — fail open to in-process memory
         # Fail open to memory so a disk issue never hard-blocks chat.
         return _check_memory(ip, limit_per_hour)
+
+
+def _retry_after_memory(rate_key: str) -> int:
+    now = time.time()
+    with _memory_lock:
+        active = [ts for ts in _memory_buckets.get(rate_key, []) if now - ts <= 3600.0]
+        if not active:
+            return 1
+        return max(1, int(ceil(active[0] + 3600.0 - now)))
+
+
+def _retry_after_sqlite(rate_key: str) -> int:
+    now = time.time()
+    cutoff = now - 3600.0
+    with _db_lock:
+        conn = _connect()
+        try:
+            row = conn.execute(
+                "SELECT MIN(ts) FROM hits WHERE rate_key = ? AND ts > ?",
+                (rate_key, cutoff),
+            ).fetchone()
+        finally:
+            conn.close()
+    oldest = row[0] if row else None
+    if not isinstance(oldest, (int, float)):
+        return 1
+    return max(1, int(ceil(float(oldest) + 3600.0 - now)))
+
+
+def retry_after_seconds(rate_key: str) -> int:
+    """Return the earliest safe retry delay for a currently limited key."""
+    backend = (get_settings().rate_limit_backend or "sqlite").strip().lower()
+    if backend == "memory":
+        return _retry_after_memory(rate_key)
+    try:
+        return _retry_after_sqlite(rate_key)
+    except Exception:  # noqa: BLE001 — the limiter itself must stay recoverable
+        return _retry_after_memory(rate_key)
 
 
 def reset_for_tests() -> None:

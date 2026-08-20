@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 import logging
 from typing import Any, Awaitable, Callable
 
 from langgraph.graph import END, StateGraph
+from langgraph.types import interrupt
 
 from src.harness.orchestration.dag import TaskDag, append_chat_followup
 from src.harness.orchestration.planner import resolve_agent_route
@@ -87,6 +89,45 @@ def _has_pending_refund_followup(messages: list[dict[str, Any]] | None) -> bool:
             text = content if isinstance(content, str) else ""
             return "退款" in text and any(marker in text for marker in ("退款原因", "确认退款", "待确认"))
     return False
+
+
+def _extract_pending_confirmation(tool_log: list[dict[str, Any]] | None) -> dict[str, Any] | None:
+    """Read only the structured prepare-refund result needed for the gate."""
+    for entry in reversed(tool_log or []):
+        if entry.get("name") != "prepare_refund" or entry.get("error"):
+            continue
+        raw = entry.get("result")
+        if not isinstance(raw, str):
+            continue
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict) and payload.get("status") == "awaiting_confirmation":
+            phrase = payload.get("confirmation_phrase")
+            approval_id = payload.get("approval_id")
+            if isinstance(phrase, str) and isinstance(approval_id, str):
+                return {
+                    "approval_id": approval_id,
+                    "confirmation_phrase": phrase,
+                    "order_id": payload.get("order_id"),
+                    "amount_minor": payload.get("amount_minor"),
+                    "currency": payload.get("currency"),
+                }
+    return None
+
+
+def _human_slot_prompt(slot: str, confirmation: dict[str, Any] | None = None) -> str:
+    if slot == "order_id":
+        return "请提供要处理的订单号。"
+    if slot == "refund_reason":
+        return "请填写退款原因。"
+    if slot == "refund_confirmation" and confirmation is not None:
+        return (
+            f"退款确认单 {confirmation['approval_id']} 已创建。"
+            f"请单独确认：{confirmation['confirmation_phrase']}"
+        )
+    return "请补充继续处理所需的信息。"
 
 
 def _has_chat_task(dag: TaskDag | None) -> bool:
@@ -226,6 +267,7 @@ def build_supervisor_graph(
     configure_routed_kb=None,
     kb_route_scope: str = "turn",
     run_context: RunContext | None = None,
+    checkpointer=None,
 ):
     """Compile the multi-agent supervisor around a pluggable registry."""
     from src.settings import get_settings
@@ -270,6 +312,7 @@ def build_supervisor_graph(
         has_kb = runtime.kb is not None or bool(state.get("kb_id"))
         messages = state.get("messages") or state.get("base_messages")
         user_query = _latest_user_text(messages)
+        human_inputs = dict(state.get("human_inputs") or {})
         decision = await resolve_agent_route(
             has_kb=has_kb,
             has_routable_kbs=not has_kb and bool(runtime.kb_candidates),
@@ -280,7 +323,10 @@ def build_supervisor_graph(
             complex_llm_cfg=runtime.complex_llm_cfg,
             default_llm_cfg=runtime.llm_cfg,
             mode=getattr(settings, "agent_route_mode", "layered"),
-            pending_refund_followup=_has_pending_refund_followup(messages),
+            pending_refund_followup=(
+                _has_pending_refund_followup(messages) or bool(human_inputs)
+            ),
+            provided_human_inputs=human_inputs,
         )
         dag: TaskDag = {
             "tasks": list(decision.get("tasks") or []),
@@ -325,6 +371,8 @@ def build_supervisor_graph(
             "active_task_id": None,
             "active_tasks": [],
             "active_agent": None,
+            "human_required_slots": [],
+            "human_gate_resumed": False,
             "route_reason": reason,
             "route_source": decision["source"],
             "route_confidence": decision["confidence"],
@@ -338,6 +386,57 @@ def build_supervisor_graph(
             "cost_usd": (
                 parent_cost.total_usd if parent_cost.calls else state.get("cost_usd")
             ),
+        }
+
+    @traced("supervisor_human_input_gate")
+    async def human_input_gate(state: SupervisorState) -> SupervisorState:
+        """Pause the parent graph until each required human field is supplied."""
+        intent = state.get("intent_assessment") or {}
+        confirmation = state.get("pending_confirmation")
+        required = list(state.get("human_required_slots") or [])
+        if not required:
+            if isinstance(confirmation, dict):
+                required = ["refund_confirmation"]
+            elif isinstance(intent.get("missing_slots"), list):
+                required = [str(slot) for slot in intent["missing_slots"]]
+        inputs = dict(state.get("human_inputs") or {})
+        remaining = [slot for slot in required if not str(inputs.get(slot) or "").strip()]
+        if not remaining:
+            return {
+                **state,
+                "human_required_slots": [],
+                "human_gate_resumed": bool(required),
+            }
+
+        slot = remaining[0]
+        answer = interrupt(
+            {
+                "kind": "human_input_required",
+                "slot": slot,
+                "required_slots": remaining,
+                "prompt": _human_slot_prompt(slot, confirmation if isinstance(confirmation, dict) else None),
+                "approval_id": confirmation.get("approval_id") if isinstance(confirmation, dict) else None,
+                "confirmation_phrase": confirmation.get("confirmation_phrase") if isinstance(confirmation, dict) else None,
+                "order_id": confirmation.get("order_id") if isinstance(confirmation, dict) else None,
+                "amount_minor": confirmation.get("amount_minor") if isinstance(confirmation, dict) else None,
+                "currency": confirmation.get("currency") if isinstance(confirmation, dict) else None,
+            }
+        )
+        value = answer.get("value") or answer.get(slot) or "" if isinstance(answer, dict) else answer
+        text = str(value or "").strip()
+        inputs[slot] = text
+        messages = list(state.get("messages") or [])
+        messages.append({"role": "user", "content": text})
+        base_messages = list(state.get("base_messages") or messages[:-1])
+        base_messages.append({"role": "user", "content": text})
+        return {
+            **state,
+            "messages": messages,
+            "base_messages": base_messages,
+            "human_inputs": inputs,
+            "human_required_slots": required,
+            "human_gate_resumed": True,
+            "pending_confirmation": None if slot == "refund_confirmation" else confirmation,
         }
 
     async def _complete_kb_router(
@@ -598,6 +697,7 @@ def build_supervisor_graph(
             merged_logs = list(state.get("tool_call_log") or [])
             reports: list[tuple[str, str, dict[str, Any]]] = []
             costs: list[float] = []
+            pending_confirmation: dict[str, Any] | None = None
             messages = list(state.get("messages") or [])
             for task, child_agent_id, sub_out in outcomes:
                 child_task_id = str(task.get("id") or "")
@@ -617,6 +717,9 @@ def build_supervisor_graph(
                     if item not in merged_citations:
                         merged_citations.append(item)
                 merged_logs = _merge_tool_logs(merged_logs, sub_out.get("tool_call_log"))
+                pending_confirmation = pending_confirmation or _extract_pending_confirmation(
+                    sub_out.get("tool_call_log")
+                )
                 report = str(sub_out.get("final_report") or "").strip()
                 if report:
                     reports.append((child_task_id, child_agent_id, sub_out))
@@ -663,6 +766,7 @@ def build_supervisor_graph(
                 "agent_results": results,
                 "supervisor_trace": trace,
                 "task_status": status,
+                "pending_confirmation": pending_confirmation,
             }
 
         async def tagged_emit(evt: dict[str, Any]) -> None:
@@ -720,6 +824,8 @@ def build_supervisor_graph(
             if item not in merged_citations:
                 merged_citations.append(item)
 
+        pending_confirmation = _extract_pending_confirmation(sub_out.get("tool_call_log"))
+
         return {
             **state,
             "messages": list(sub_out.get("messages") or state.get("messages") or []),
@@ -772,6 +878,7 @@ def build_supervisor_graph(
             "agent_results": results,
             "supervisor_trace": trace,
             "task_status": status,
+            "pending_confirmation": pending_confirmation or state.get("pending_confirmation"),
         }
 
     @traced("supervisor_review")
@@ -785,6 +892,14 @@ def build_supervisor_graph(
         dag = state.get("task_dag") or {"tasks": []}
         status = dict(state.get("task_status") or {})
         has_kb = runtime.kb is not None or bool(state.get("kb_id"))
+
+        if isinstance(state.get("pending_confirmation"), dict):
+            trace.append({"event": "await_confirmation", "approval_id": state["pending_confirmation"].get("approval_id")})
+            return {
+                **state,
+                "supervisor_decision": "human_input",
+                "supervisor_trace": trace,
+            }
 
         if do_handoff:
             extended = append_chat_followup(dag, reason=reason)
@@ -835,7 +950,16 @@ def build_supervisor_graph(
         }
 
     def after_route(_state: SupervisorState) -> str:
-        return "schedule"
+        return "human_gate"
+
+    def after_human_gate(state: SupervisorState) -> str:
+        if not state.get("human_gate_resumed"):
+            return "schedule"
+        required = list(state.get("human_required_slots") or [])
+        inputs = dict(state.get("human_inputs") or {})
+        if any(not str(inputs.get(slot) or "").strip() for slot in required):
+            return "human_gate"
+        return "route"
 
     def after_schedule(state: SupervisorState) -> str:
         if state.get("supervisor_decision") == "dispatch" and state.get("active_agent"):
@@ -846,17 +970,25 @@ def build_supervisor_graph(
         return "review"
 
     def after_review(state: SupervisorState) -> str:
+        if state.get("supervisor_decision") == "human_input":
+            return "human_gate"
         if state.get("supervisor_decision") == "dispatch":
             return "schedule"
         return "end"
 
     g = StateGraph(SupervisorState)
     g.add_node("route", route_node)
+    g.add_node("human_gate", human_input_gate)
     g.add_node("schedule", schedule_node)
     g.add_node("dispatch", dispatch_node)
     g.add_node("review", review_node)
     g.set_entry_point("route")
-    g.add_conditional_edges("route", after_route, {"schedule": "schedule"})
+    g.add_conditional_edges("route", after_route, {"human_gate": "human_gate"})
+    g.add_conditional_edges(
+        "human_gate",
+        after_human_gate,
+        {"schedule": "schedule", "route": "route", "human_gate": "human_gate"},
+    )
     g.add_conditional_edges(
         "schedule",
         after_schedule,
@@ -866,6 +998,6 @@ def build_supervisor_graph(
     g.add_conditional_edges(
         "review",
         after_review,
-        {"schedule": "schedule", "end": END},
+        {"schedule": "schedule", "human_gate": "human_gate", "end": END},
     )
-    return g.compile(), parent_cost
+    return g.compile(checkpointer=checkpointer), parent_cost

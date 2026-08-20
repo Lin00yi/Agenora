@@ -41,6 +41,7 @@ const NAME_LABEL: Record<string, string> = {
   prepare_refund: "创建退款确认单",
   confirm_refund: "执行退款",
   intent_ready: "识别任务意图",
+  human_input_required: "等待你补充信息",
   dag_ready: "处理计划",
   agent_route: "选择处理方式",
   agent_handoff: "切换处理方式",

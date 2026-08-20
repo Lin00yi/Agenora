@@ -37,6 +37,7 @@ import {
   ChatTopBar,
   ChatMessage,
   Composer,
+  HumanInputPanel,
   EmptyWorkbench,
   DEFAULT_TITLE,
   formatMessageStats,
@@ -355,7 +356,7 @@ export function ChatPage({
     []
   );
 
-  const { busy, handleSend, handleStop, abortStreaming } = useChatSend({
+  const { busy, humanInput, handleSend, handleStop, abortStreaming } = useChatSend({
     currentId,
     currentKbId,
     currentMessages,
@@ -737,33 +738,43 @@ export function ChatPage({
                       currentKbName={currentKb?.name ?? null}
                       onPick={handleSendWithLlmGuard}
                     />
-                    <Composer
-                      centered
-                      value={composerValue}
-                      textareaRef={textareaRef}
-                      busy={busy}
-                      currentKbId={currentKbId}
-                      currentKbName={currentKb?.name ?? null}
-                      kbs={kbs}
-                      currentModel={currentModel}
-                      currentProfileId={currentProfileId}
-                      modelOptions={modelOptions}
-                      modelLabels={modelLabels}
-                      modelProfiles={modelProfiles}
-                      modelConnections={modelConnections}
-                      llmSource={llmSource}
-                      contextStatus={currentContextStatus}
-                      contextStatusLoading={contextStatusLoading}
-                      promptTrace={currentPromptTrace}
-                      kbLocked={false}
-                      kbPickerEnabled={chatKbPickerEnabled}
-                      onChange={setComposerValue}
-                      onSubmit={submitComposerWithLlmGuard}
-                      onStop={handleStop}
-                      onSelectKb={handleKbChange}
-                      onModelChange={handleModelChange}
-                      onManageModels={openLlmSettings}
-                    />
+                    {humanInput ? (
+                      <HumanInputPanel
+                        request={humanInput}
+                        value={composerValue}
+                        busy={busy}
+                        onChange={setComposerValue}
+                        onSubmit={submitComposerWithLlmGuard}
+                      />
+                    ) : (
+                      <Composer
+                        centered
+                        value={composerValue}
+                        textareaRef={textareaRef}
+                        busy={busy}
+                        currentKbId={currentKbId}
+                        currentKbName={currentKb?.name ?? null}
+                        kbs={kbs}
+                        currentModel={currentModel}
+                        currentProfileId={currentProfileId}
+                        modelOptions={modelOptions}
+                        modelLabels={modelLabels}
+                        modelProfiles={modelProfiles}
+                        modelConnections={modelConnections}
+                        llmSource={llmSource}
+                        contextStatus={currentContextStatus}
+                        contextStatusLoading={contextStatusLoading}
+                        promptTrace={currentPromptTrace}
+                        kbLocked={false}
+                        kbPickerEnabled={chatKbPickerEnabled}
+                        onChange={setComposerValue}
+                        onSubmit={submitComposerWithLlmGuard}
+                        onStop={handleStop}
+                        onSelectKb={handleKbChange}
+                        onModelChange={handleModelChange}
+                        onManageModels={openLlmSettings}
+                      />
+                    )}
                   </div>
                 </div>
               ) : (
@@ -799,32 +810,42 @@ export function ChatPage({
                       </div>
                     ) : null}
                     <div className="pointer-events-auto">
-                      <Composer
-                        value={composerValue}
-                        textareaRef={textareaRef}
-                        busy={busy}
-                        currentKbId={currentKbId}
-                        currentKbName={currentKb?.name ?? null}
-                        kbs={kbs}
-                        currentModel={currentModel}
-                        currentProfileId={currentProfileId}
-                        modelOptions={modelOptions}
-                        modelLabels={modelLabels}
-                        modelProfiles={modelProfiles}
-                        modelConnections={modelConnections}
-                        llmSource={llmSource}
-                        contextStatus={currentContextStatus}
-                        contextStatusLoading={contextStatusLoading}
-                        promptTrace={currentPromptTrace}
-                        kbLocked={!!currentKbId && hasConversationMessages}
-                        kbPickerEnabled={chatKbPickerEnabled}
-                        onChange={setComposerValue}
-                        onSubmit={submitComposerWithLlmGuard}
-                        onStop={handleStop}
-                        onSelectKb={handleKbChange}
-                        onModelChange={handleModelChange}
-                        onManageModels={openLlmSettings}
-                      />
+                      {humanInput ? (
+                        <HumanInputPanel
+                          request={humanInput}
+                          value={composerValue}
+                          busy={busy}
+                          onChange={setComposerValue}
+                          onSubmit={submitComposerWithLlmGuard}
+                        />
+                      ) : (
+                        <Composer
+                          value={composerValue}
+                          textareaRef={textareaRef}
+                          busy={busy}
+                          currentKbId={currentKbId}
+                          currentKbName={currentKb?.name ?? null}
+                          kbs={kbs}
+                          currentModel={currentModel}
+                          currentProfileId={currentProfileId}
+                          modelOptions={modelOptions}
+                          modelLabels={modelLabels}
+                          modelProfiles={modelProfiles}
+                          modelConnections={modelConnections}
+                          llmSource={llmSource}
+                          contextStatus={currentContextStatus}
+                          contextStatusLoading={contextStatusLoading}
+                          promptTrace={currentPromptTrace}
+                          kbLocked={!!currentKbId && hasConversationMessages}
+                          kbPickerEnabled={chatKbPickerEnabled}
+                          onChange={setComposerValue}
+                          onSubmit={submitComposerWithLlmGuard}
+                          onStop={handleStop}
+                          onSelectKb={handleKbChange}
+                          onModelChange={handleModelChange}
+                          onManageModels={openLlmSettings}
+                        />
+                      )}
                     </div>
                   </div>
                 </div>

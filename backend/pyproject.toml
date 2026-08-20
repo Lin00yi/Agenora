@@ -28,11 +28,11 @@ dependencies = [
   # v2-M1 — Fernet symmetric encryption for at-rest API keys
   "cryptography>=43.0",
   # M2 — KB document parsers
-  "pymupdf>=1.24",          # PDF
-  "python-docx>=1.1",       # .docx
-  "trafilatura>=1.12",      # HTML → clean text from URLs
+  "pymupdf>=1.24", # PDF
+  "python-docx>=1.1", # .docx
+  "trafilatura>=1.12", # HTML → clean text from URLs
   # v2-M5 — web search for unbound chat
-  "ddgs>=4.0",              # DuckDuckGo search (no API key required)
+  "ddgs>=4.0", # DuckDuckGo search (no API key required)
   # Context budgeting — OpenAI/DeepSeek/Claude proxy via tiktoken
   "tiktoken>=0.7",
   # Observability — Langfuse export (internal traces use app DB; Logfire removed)
@@ -42,6 +42,7 @@ dependencies = [
   # Production schema ownership is Alembic (Compose runs a one-shot migrate job).
   "alembic>=1.13",
   "mcp>=1.0",
+  "langgraph-checkpoint-sqlite>=2.0",
 ]
 
 [project.optional-dependencies]

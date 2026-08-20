@@ -5,7 +5,7 @@ from typing import Any, Literal, TypedDict
 
 from .dag import TaskDag
 
-SupervisorDecision = Literal["dispatch", "finish"]
+SupervisorDecision = Literal["dispatch", "finish", "human_input"]
 
 
 class SupervisorState(TypedDict, total=False):
@@ -40,6 +40,10 @@ class SupervisorState(TypedDict, total=False):
     route_source: str
     route_confidence: str
     intent_assessment: dict[str, Any]
+    human_inputs: dict[str, str]
+    human_required_slots: list[str]
+    human_gate_resumed: bool
+    pending_confirmation: dict[str, Any] | None
     handoff_count: int
     supervisor_trace: list[dict[str, Any]]
     supervisor_decision: SupervisorDecision

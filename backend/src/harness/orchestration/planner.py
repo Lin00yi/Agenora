@@ -734,6 +734,7 @@ async def resolve_agent_route(
     default_llm_cfg: "UserLLMConfig | None" = None,
     mode: str | None = None,
     pending_refund_followup: bool = False,
+    provided_human_inputs: dict[str, str] | None = None,
 ) -> RouteDecision:
     """Cascade: rule → triage → complex → fallback. Always a validated DAG."""
     settings = get_settings()
@@ -745,27 +746,37 @@ async def resolve_agent_route(
         registry=registry,
         user_query=user_query,
     )
+    if pending_refund_followup:
+        # A refund can continue from a prior list/select turn as well as from
+        # an interrupt resume. Only an exact confirmation can become
+        # refund_confirm; an order ID alone must not degrade to order_lookup.
+        if not (
+            rule is not None
+            and str((rule.get("intent") or {}).get("intent") or "") == "refund_confirm"
+        ):
+            understanding = understand_query(user_query)
+            supplied = provided_human_inputs or {}
+            missing_slots: list[str] = []
+            if not understanding.order_ids and not str(supplied.get("order_id") or "").strip():
+                missing_slots.append("order_id")
+            if not understanding.refund_reason and not str(supplied.get("refund_reason") or "").strip():
+                missing_slots.append("refund_reason")
+            return _plan_from_intent(
+                IntentAssessment(
+                    domain="orders",
+                    intent="refund_prepare",
+                    risk="write",
+                    missing_slots=tuple(missing_slots),
+                    confidence="medium",
+                    source="rule",
+                    rationale="pending_refund_followup",
+                ),
+                has_kb=has_kb,
+                has_routable_kbs=has_routable_kbs,
+                registry=registry,
+            )
     if rule is not None:
         return rule
-
-    # The conversation may be paused while the orders agent asks for a missing
-    # reason or waits for the exact confirmation.  The follow-up itself often
-    # contains only “不想要了” / “好的”, so retain the execution domain without
-    # inventing missing data. Explicit current-turn rules above always win.
-    if pending_refund_followup:
-        return _plan_from_intent(
-            IntentAssessment(
-                domain="orders",
-                intent="refund_prepare",
-                risk="write",
-                confidence="medium",
-                source="rule",
-                rationale="pending_refund_followup",
-            ),
-            has_kb=has_kb,
-            has_routable_kbs=has_routable_kbs,
-            registry=registry,
-        )
 
     if route_mode == "rule_only":
         return _plan_from_intent(

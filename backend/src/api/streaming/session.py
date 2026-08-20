@@ -11,14 +11,19 @@ from typing import Any, AsyncGenerator
 
 import structlog
 from fastapi import HTTPException
+from langgraph.types import Command
 from sse_starlette.sse import EventSourceResponse
 
 from src.harness.agents.supervisor import build_supervisor_graph
+from src.harness.runtime.checkpoints import checkpoint_config, open_agent_checkpointer
 from src.harness.contracts.runtime import RunContext, RunIdentity
 from src.harness.runtime.agent_loop import EMPTY_ANSWER_FALLBACK
 from src.capabilities.identity.models import User
 from src.platform.runtime import generation_lock
-from src.platform.runtime.rate_limit import check as rate_check
+from src.platform.runtime.rate_limit import (
+    check as rate_check,
+    retry_after_seconds,
+)
 from src.capabilities.knowledge.domain.models import KB
 from src.platform.observability import get_current_trace_id, preview_text, start_trace
 from src.harness.policy.input_filter import sanitize_user_input
@@ -56,7 +61,17 @@ def run_chat_session(
     settings = get_settings()
     allowed, remaining = rate_check(rate_key, settings.rate_limit_per_hour)
     if not allowed:
-        raise HTTPException(status_code=429, detail="rate_limit_exceeded")
+        retry_after = retry_after_seconds(rate_key)
+        retry_minutes = max(1, (retry_after + 59) // 60)
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "code": "rate_limit_exceeded",
+                "message": f"操作过于频繁，请约 {retry_minutes} 分钟后再试。",
+                "retry_after_seconds": retry_after,
+            },
+            headers={"Retry-After": str(retry_after)},
+        )
 
     if not messages or messages[-1]["role"] != "user":
         raise HTTPException(
@@ -141,22 +156,29 @@ def run_chat_session(
         ),
         emit=emit,
     )
-    graph, _cost = build_supervisor_graph(
-        emit=emit,
-        kb=kb,
-        llm_cfg=llm_cfg,
-        complex_llm_cfg=complex_llm_cfg_override,
-        fallback_llm_cfg=fallback_llm_cfg_override,
-        triage_llm_cfg=triage_llm_cfg,
-        embedding_cfg=embedding_cfg,
-        reranker_cfg=reranker_cfg,
-        kb_web_search_enabled=kb_web_search_enabled,
-        kb_candidates=kb_candidates,
-        configure_routed_kb=configure_routed_kb if kb_candidates else None,
-        kb_route_scope=kb_route_scope,
-        run_context=run_context,
-        allow_rag_chat_handoff=bool(settings.agent_allow_rag_chat_handoff),
+    workflow_config = (
+        checkpoint_config(user_id=user.id if user is not None else None, conversation_id=conversation_id)
+        if conversation_id
+        else None
     )
+    def build_graph(*, checkpointer=None):
+        return build_supervisor_graph(
+            emit=emit,
+            kb=kb,
+            llm_cfg=llm_cfg,
+            complex_llm_cfg=complex_llm_cfg_override,
+            fallback_llm_cfg=fallback_llm_cfg_override,
+            triage_llm_cfg=triage_llm_cfg,
+            embedding_cfg=embedding_cfg,
+            reranker_cfg=reranker_cfg,
+            kb_web_search_enabled=kb_web_search_enabled,
+            kb_candidates=kb_candidates,
+            configure_routed_kb=configure_routed_kb if kb_candidates else None,
+            kb_route_scope=kb_route_scope,
+            run_context=run_context,
+            allow_rag_chat_handoff=bool(settings.agent_allow_rag_chat_handoff),
+            checkpointer=checkpointer,
+        )
 
     # The browser gets this safe, user-owned snapshot before the agent begins.
     # Never place raw system prompts, tool schemas, credentials, or prompt-guard
@@ -219,8 +241,50 @@ def run_chat_session(
                 "agent_results": {},
                 "handoff_count": 0,
                 "supervisor_trace": [],
+                "human_inputs": {},
+                "human_required_slots": [],
+                "human_gate_resumed": False,
+                "pending_confirmation": None,
             }
-            final_state = await graph.ainvoke(initial_state)
+            if workflow_config is not None:
+                async with open_agent_checkpointer() as checkpointer:
+                    graph, _cost = build_graph(checkpointer=checkpointer)
+                    snapshot = await graph.aget_state(workflow_config)
+                    pending_interrupt = any(
+                        bool(getattr(task, "interrupts", ())) for task in (snapshot.tasks or ())
+                    )
+                    final_state = await graph.ainvoke(
+                        Command(resume=cleaned) if pending_interrupt else initial_state,
+                        config=workflow_config,
+                    )
+            else:
+                graph, _cost = build_graph()
+                final_state = await graph.ainvoke(initial_state)
+
+            interrupts = final_state.get("__interrupt__") if isinstance(final_state, dict) else None
+            if isinstance(interrupts, list) and interrupts:
+                first = interrupts[0]
+                payload = getattr(first, "value", None)
+                if not isinstance(payload, dict):
+                    payload = {"kind": "human_input_required", "prompt": "请补充继续处理所需的信息。"}
+                await queue.put({"event": "human_input_required", **payload})
+                if trace is not None:
+                    await asyncio.shield(
+                        trace.finish(
+                            status="ok",
+                            output=str(payload.get("prompt") or ""),
+                            metadata={"interrupted": True, "human_slot": payload.get("slot")},
+                        )
+                    )
+                await queue.put(
+                    {
+                        "event": "done",
+                        "interrupted": True,
+                        "rate_remaining": remaining,
+                        "trace_id": (trace.id if trace is not None else get_current_trace_id()),
+                    }
+                )
+                return
             final_kb_id = final_state.get("kb_id") or (kb.id if kb else None)
             final_kb_route = final_state.get("kb_auto_route")
             prompt_trace = final_state.get("prompt_trace")
