@@ -28,10 +28,31 @@ async def test_stdio_mcp_refund_is_owned_confirmed_and_idempotent(tmp_path) -> N
     try:
         listing = await client.call("list_orders", {})
         assert listing["status"] == "ok"
+        assert listing["total"] == 5
         order_id = listing["orders"][0]["order_id"]
+        first_order = listing["orders"][0]
+        assert first_order["items"][0]["product_name"]
+        assert first_order["items"][0]["product_url"].startswith("https://demo.agenora.local/")
+        assert first_order["payment"]["transaction_masked"]
+        assert first_order["refund_eligibility"]["eligible"] is True
+
+        detail = await client.call("get_order", {"order_id": order_id})
+        assert detail["status"] == "ok"
+        assert detail["order"]["fulfillment"]["recipient_phone_masked"] == "138****0621"
+        assert detail["order"]["items"][0]["specifications"]
+
+        refunds = await client.call("list_refunds", {})
+        assert refunds["status"] == "ok"
+        assert refunds["total"] == 2
+        historical = await client.call("get_refund", {"refund_id": refunds["refunds"][0]["refund_no"]})
+        assert historical["status"] == "ok"
+        assert historical["refund"]["timeline"]
 
         pending = await client.call("prepare_refund", {"order_id": order_id, "reason": "本地测试"})
         assert pending["status"] == "awaiting_confirmation"
+        assert pending["refund_to"]
+        repeated_pending = await client.call("prepare_refund", {"order_id": order_id, "reason": "本地测试"})
+        assert repeated_pending["approval_id"] == pending["approval_id"]
 
         wrong_user = OrdersMCPClient(
             actor_id="user-beta",
@@ -47,6 +68,8 @@ async def test_stdio_mcp_refund_is_owned_confirmed_and_idempotent(tmp_path) -> N
             {"approval_id": pending["approval_id"], "confirmation_text": pending["confirmation_phrase"]},
         )
         assert completed["status"] == "completed"
+        assert completed["refund_no"]
+        assert completed["estimated_arrival_at"]
         repeated = await client.call(
             "confirm_refund",
             {"approval_id": pending["approval_id"], "confirmation_text": pending["confirmation_phrase"]},

@@ -107,6 +107,28 @@ class GetOrderTool(_OrdersMCPTool):
     }
 
 
+class ListRefundsTool(_OrdersMCPTool):
+    name = "list_refunds"
+    tool_name = "list_refunds"
+    description = "查询当前登录用户的退款记录；可按订单号筛选。"
+    input_schema = {
+        "type": "object",
+        "properties": {"order_id": {"type": "string", "description": "可选的订单号"}},
+        "required": [],
+    }
+
+
+class GetRefundTool(_OrdersMCPTool):
+    name = "get_refund"
+    tool_name = "get_refund"
+    description = "按退款单号或退款确认单号查询退款状态和时间线。"
+    input_schema = {
+        "type": "object",
+        "properties": {"refund_id": {"type": "string", "description": "退款单号或确认单号"}},
+        "required": ["refund_id"],
+    }
+
+
 class PrepareRefundTool(_OrdersMCPTool):
     name = "prepare_refund"
     tool_name = "prepare_refund"
@@ -150,6 +172,8 @@ def build_orders_registry(*, user_id: str | None) -> ToolRegistry:
     )
     registry.register(ListOrdersTool(client))
     registry.register(GetOrderTool(client))
+    registry.register(ListRefundsTool(client))
+    registry.register(GetRefundTool(client))
     registry.register(PrepareRefundTool(client))
     registry.register(ConfirmRefundTool(client))
     return registry

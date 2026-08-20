@@ -41,6 +41,26 @@ def get_order(actor_id: str, service_token: str, order_id: str) -> dict[str, Any
     return {"status": "unauthorized", "message": error} if error else _service().get_order(actor_id, order_id)
 
 
+@server.tool(description="List the authenticated user's refund records; order_id is optional.", structured_output=True)
+def list_refunds(actor_id: str, service_token: str, order_id: str | None = None) -> dict[str, Any]:
+    error = _authorize(actor_id, service_token)
+    return (
+        {"status": "unauthorized", "message": error}
+        if error
+        else _service().list_refunds(actor_id, order_id)
+    )
+
+
+@server.tool(description="Read one refund record by its approval id or refund number.", structured_output=True)
+def get_refund(actor_id: str, service_token: str, refund_id: str) -> dict[str, Any]:
+    error = _authorize(actor_id, service_token)
+    return (
+        {"status": "unauthorized", "message": error}
+        if error
+        else _service().get_refund(actor_id, refund_id)
+    )
+
+
 @server.tool(description="Prepare but never execute a refund; returns a confirmation phrase.", structured_output=True)
 def prepare_refund(
     actor_id: str,

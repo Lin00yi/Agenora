@@ -38,6 +38,8 @@ const NAME_LABEL: Record<string, string> = {
   get_current_time: "获取当前时间",
   list_orders: "查询我的订单",
   get_order: "查询订单详情",
+  list_refunds: "查询退款记录",
+  get_refund: "查询退款详情",
   prepare_refund: "创建退款确认单",
   confirm_refund: "执行退款",
   intent_ready: "识别任务意图",
