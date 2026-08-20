@@ -46,7 +46,26 @@ class _RefundApprovalGraph:
                 "final_report": "退款已完成",
                 "report_streamed": False,
                 "citations": [],
-                "tool_call_log": [],
+                # A real resumed orders graph receives the old prepare entry
+                # and appends the completed confirmation to it. This used to
+                # make Supervisor rediscover the old pending confirmation and
+                # dispatch forever.
+                "tool_call_log": [
+                    {
+                        "name": "prepare_refund",
+                        "result": json.dumps(
+                            {
+                                "status": "awaiting_confirmation",
+                                "approval_id": "RFD-TEST-1",
+                                "confirmation_phrase": "确认退款 RFD-TEST-1",
+                            }
+                        ),
+                    },
+                    {
+                        "name": "confirm_refund",
+                        "result": json.dumps({"status": "completed", "approval_id": "RFD-TEST-1"}),
+                    },
+                ],
                 "retrieved_evidence": [],
                 "cost_usd": 0.0,
             }

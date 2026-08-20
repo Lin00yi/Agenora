@@ -354,6 +354,11 @@ def run_chat_session(
                     user=user,
                     content=_human_interrupt_content(payload),
                     tools=[human_tool],
+                    # ``context_ready`` has already reached the live browser,
+                    # but a paused HITL turn must retain that same snapshot in
+                    # the assistant row. Otherwise a refresh restores only
+                    # the form/tool and loses the visible context trace.
+                    memory_trace=memory_trace,
                 )
                 await queue.put({"event": "human_input_required", **payload})
                 if trace is not None:

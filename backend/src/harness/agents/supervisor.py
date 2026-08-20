@@ -95,6 +95,21 @@ def _has_pending_refund_followup(messages: list[dict[str, Any]] | None) -> bool:
 def _extract_pending_confirmation(tool_log: list[dict[str, Any]] | None) -> dict[str, Any] | None:
     """Read only the structured prepare-refund result needed for the gate."""
     for entry in reversed(tool_log or []):
+        if entry.get("name") == "confirm_refund" and not entry.get("error"):
+            raw_result = entry.get("result")
+            if isinstance(raw_result, str):
+                try:
+                    completed = json.loads(raw_result)
+                except json.JSONDecodeError:
+                    completed = None
+                if isinstance(completed, dict) and completed.get("status") in {
+                    "completed",
+                    "already_completed",
+                }:
+                    # A resumed graph includes the old prepare entry in its
+                    # carried tool log. Never rediscover that stale entry once
+                    # its confirmation has reached the MCP source of truth.
+                    return None
         if entry.get("name") != "prepare_refund" or entry.get("error"):
             continue
         raw = entry.get("result")
@@ -715,6 +730,7 @@ def build_supervisor_graph(
             reports: list[tuple[str, str, dict[str, Any]]] = []
             costs: list[float] = []
             pending_confirmation: dict[str, Any] | None = None
+            completed_refund_confirmation = False
             messages = list(state.get("messages") or [])
             for task, child_agent_id, sub_out in outcomes:
                 child_task_id = str(task.get("id") or "")
@@ -734,9 +750,15 @@ def build_supervisor_graph(
                     if item not in merged_citations:
                         merged_citations.append(item)
                 merged_logs = _merge_tool_logs(merged_logs, sub_out.get("tool_call_log"))
-                pending_confirmation = pending_confirmation or _extract_pending_confirmation(
-                    sub_out.get("tool_call_log")
-                )
+                current_confirmation = _extract_pending_confirmation(sub_out.get("tool_call_log"))
+                if current_confirmation is None and any(
+                    entry.get("name") == "confirm_refund" and not entry.get("error")
+                    for entry in (sub_out.get("tool_call_log") or [])
+                    if isinstance(entry, dict)
+                ):
+                    completed_refund_confirmation = True
+                if not completed_refund_confirmation:
+                    pending_confirmation = pending_confirmation or current_confirmation
                 report = str(sub_out.get("final_report") or "").strip()
                 if report:
                     reports.append((child_task_id, child_agent_id, sub_out))
@@ -783,7 +805,7 @@ def build_supervisor_graph(
                 "agent_results": results,
                 "supervisor_trace": trace,
                 "task_status": status,
-                "pending_confirmation": pending_confirmation,
+                "pending_confirmation": None if completed_refund_confirmation else pending_confirmation,
             }
 
         async def tagged_emit(evt: dict[str, Any]) -> None:
@@ -841,7 +863,14 @@ def build_supervisor_graph(
             if item not in merged_citations:
                 merged_citations.append(item)
 
-        pending_confirmation = _extract_pending_confirmation(sub_out.get("tool_call_log"))
+        child_tool_log = sub_out.get("tool_call_log")
+        pending_confirmation = _extract_pending_confirmation(child_tool_log)
+        completed_refund_confirmation = pending_confirmation is None and any(
+            isinstance(entry, dict)
+            and entry.get("name") == "confirm_refund"
+            and not entry.get("error")
+            for entry in (child_tool_log or [])
+        )
 
         return {
             **state,
@@ -895,7 +924,11 @@ def build_supervisor_graph(
             "agent_results": results,
             "supervisor_trace": trace,
             "task_status": status,
-            "pending_confirmation": pending_confirmation or state.get("pending_confirmation"),
+            "pending_confirmation": (
+                None
+                if completed_refund_confirmation
+                else pending_confirmation or state.get("pending_confirmation")
+            ),
         }
 
     @traced("supervisor_review")
