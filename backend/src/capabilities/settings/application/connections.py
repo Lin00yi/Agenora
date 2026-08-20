@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlalchemy import select
 
-from src.infra.crypto import encrypt
+from src.platform.security.crypto import encrypt
 from src.capabilities.settings.domain.models import LLMConnection, LLMModelProfile
 
 

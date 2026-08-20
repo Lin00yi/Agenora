@@ -6,9 +6,9 @@ import re
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any
 
-from src.conversations.models import Message
+from src.capabilities.conversations.models import Message
 
-from src.context.constants import (
+from src.harness.context.constants import (
     MAX_MEMORY_EXTRACTION_SOURCE_CHARS,
     SENSITIVE_PATTERNS,
     MemoryCandidate,
@@ -473,7 +473,7 @@ async def extract_conversation_memory_candidates_with_llm(
     pass can spend a small no-tool LLM call to improve recall after a
     conversation is done or idle.
     """
-    from src.models.gateway import get_client, pick_model, with_cache_control
+    from src.platform.llm.gateway import get_client, pick_model, with_cache_control
     from src.settings import get_settings
 
     source = _memory_extraction_source(messages)

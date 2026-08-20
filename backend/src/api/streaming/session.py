@@ -13,17 +13,17 @@ import structlog
 from fastapi import HTTPException
 from sse_starlette.sse import EventSourceResponse
 
-from src.agents.supervisor import build_supervisor_graph
+from src.harness.agents.supervisor import build_supervisor_graph
 from src.harness.contracts.runtime import RunContext, RunIdentity
-from src.runtime.agent_loop import EMPTY_ANSWER_FALLBACK
-from src.auth.models import User
-from src.infra import generation_lock
-from src.infra.rate_limit import check as rate_check
+from src.harness.runtime.agent_loop import EMPTY_ANSWER_FALLBACK
+from src.capabilities.identity.models import User
+from src.platform.runtime import generation_lock
+from src.platform.runtime.rate_limit import check as rate_check
 from src.capabilities.knowledge.domain.models import KB
-from src.adapters.observability import get_current_trace_id, preview_text, start_trace
-from src.safety.input_filter import sanitize_user_input
-from src.safety.output_filter import redact_sensitive_output
-from src.safety.prompt_injection import assess_prompt_injection
+from src.platform.observability import get_current_trace_id, preview_text, start_trace
+from src.harness.policy.input_filter import sanitize_user_input
+from src.harness.policy.output_filter import redact_sensitive_output
+from src.harness.policy.prompt_injection import assess_prompt_injection
 from src.settings import get_settings
 from src.capabilities.settings.domain.models import (
     resolve_system_llm,
@@ -174,7 +174,7 @@ def run_chat_session(
 
     async def run_agent() -> None:
         nonlocal memory_trace
-        from src.adapters.observability import get_current_trace
+        from src.platform.observability import get_current_trace
 
         trace = get_current_trace()
         if trace is None:

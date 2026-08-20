@@ -1,6 +1,6 @@
 """Knowledge capability's vector operations through the adapter port."""
 
-from src.adapters.vector import (
+from src.platform.vector import (
     configured_vector_size,
     default_embedding_model,
     get_vector_store,

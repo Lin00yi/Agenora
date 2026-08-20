@@ -9,7 +9,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Intentionally empty: tables are created by init_db()/create_all today.
+    # Intentionally empty: local disposable schemas use bootstrap initialization.
     pass
 
 

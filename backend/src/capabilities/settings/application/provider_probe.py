@@ -1,6 +1,6 @@
 """Provider-probe use cases behind the settings capability boundary."""
 
-from src.adapters.llm.probe import (
+from src.platform.llm.probe import (
     EmbeddingProbeResult,
     ProbeError,
     _probe_openai_compat_models,

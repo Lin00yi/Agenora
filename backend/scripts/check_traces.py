@@ -1,10 +1,11 @@
 import asyncio
 from sqlalchemy import text, select, func
-from src.storage.database import get_session_factory, init_db
-from src.observability.models import Trace, Observation
+from src.bootstrap.database import initialize_database
+from src.platform.persistence.database import get_session_factory
+from src.platform.observability.models import Trace, Observation
 
 async def main():
-    await init_db()
+    await initialize_database()
     f = get_session_factory()
     async with f() as s:
         tables = (await s.execute(text(

@@ -7,16 +7,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import structlog
 
-from src.adapters.files import get_object_storage
-from src.adapters.vector import get_vector_store
+from src.platform.files.object_storage import get_object_storage
+from src.platform.vector import get_vector_store
 from src.capabilities.knowledge.application.chunks import (
     chunk_document_text,
     clear_document_chunks,
     persist_ingested_chunks,
 )
 from src.capabilities.knowledge.domain.models import Document, KB
-from src.adapters.document_parsers import dispatch, parse_url
-from src.storage.database import get_session_factory
+from src.platform.files.parsers import dispatch, parse_url
+from src.platform.persistence.database import get_session_factory
 
 from .documents import upload_key
 
@@ -27,14 +27,14 @@ log = structlog.get_logger()
 
 async def enqueue_documents(session: AsyncSession, document_ids: list[str]) -> list[Any]:
     """Durably enqueue documents before any in-process background handoff."""
-    from src.storage.jobs.ingestion import enqueue_ingestion
+    from src.capabilities.knowledge.application.jobs import enqueue_ingestion
 
     return [await enqueue_ingestion(session, document_id=document_id) for document_id in document_ids]
 
 
 def handoff_ingestion(background: Any, jobs: list[Any]) -> None:
     """Schedule best-effort execution; the durable queue remains authoritative."""
-    from src.storage.jobs.ingestion import run_ingestion_job
+    from src.capabilities.knowledge.application.jobs import run_ingestion_job
 
     for job in jobs:
         background.add_task(run_ingestion_job, job.id)
@@ -67,7 +67,7 @@ async def ingest_document(
             "collection_name": kb.collection_name,
         }
         if embedding_cfg is None:
-            from src.auth.models import User
+            from src.capabilities.identity.models import User
             from src.capabilities.knowledge.application.configuration import resolve_kb_embedding
 
             owner = await session.get(User, kb.user_id)
@@ -141,7 +141,7 @@ async def ingest_document(
 
     if new_status == "done" and kg_enabled:
         try:
-            from src.kg.sync import sync_document_to_lightrag
+            from src.capabilities.knowledge.graph.sync import sync_document_to_lightrag
 
             await sync_document_to_lightrag(doc_id)
         except Exception as exc:  # noqa: BLE001 - vector ingest already succeeded

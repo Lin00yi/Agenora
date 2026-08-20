@@ -24,12 +24,12 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.auth.middleware import CurrentUser
-from src.auth.models import User
-from src.context import resolve_context_window
-from src.infra.crypto import decrypt, encrypt
-from src.adapters.persistence import get_session
-from src.adapters.llm import normalize_model_name
+from src.capabilities.identity.middleware import CurrentUser
+from src.capabilities.identity.models import User
+from src.harness.context import resolve_context_window
+from src.platform.security.crypto import decrypt, encrypt
+from src.platform.persistence import get_session
+from src.platform.llm import normalize_model_name
 from src.capabilities.settings.domain.models import (LLMConnection, LLMModelProfile,
                                       ensure_legacy_llm_model_profiles,
                                       list_llm_connections,

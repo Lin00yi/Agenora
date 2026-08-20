@@ -6,7 +6,7 @@ from typing import Any, Awaitable, Callable, Literal, TYPE_CHECKING
 
 from src.harness.contracts.events import EventEmitter
 from src.harness.contracts.runtime import RunContext
-from src.adapters.llm import CostTracker
+from src.platform.llm import CostTracker
 
 if TYPE_CHECKING:
     from src.capabilities.settings.domain.models import (
@@ -92,9 +92,9 @@ class AgentRegistry:
 
 def build_default_agent_registry() -> AgentRegistry:
     """Register the built-in chat, retrieval, and KB-routing capabilities."""
-    from src.agents.chat import build_chat_graph
-    from src.agents.kb_router import build_kb_router_graph
-    from src.agents.rag import build_rag_graph
+    from src.harness.agents.chat import build_chat_graph
+    from src.harness.agents.kb_router import build_kb_router_graph
+    from src.harness.agents.rag import build_rag_graph
 
     registry = AgentRegistry()
 

@@ -10,10 +10,10 @@ from typing import TYPE_CHECKING, Any, Literal
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.adapters.llm import CostTracker, get_client, pick_model, with_cache_control
-from src.adapters.observability import ageneration, traced
+from src.platform.llm import CostTracker, get_client, pick_model, with_cache_control
+from src.platform.observability import ageneration, traced
 from src.capabilities.knowledge.domain.models import KB, KBMember
-from src.safety.prompt_injection import assess_prompt_injection
+from src.harness.policy.prompt_injection import assess_prompt_injection
 
 if TYPE_CHECKING:
     from src.capabilities.settings.domain.models import UserLLMConfig

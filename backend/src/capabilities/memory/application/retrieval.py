@@ -10,9 +10,9 @@ from typing import Iterable
 from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.conversations.models import UserMemory
-from src.context.token_budget import estimate_tokens, truncate_text_to_token_budget
-from src.context.constants import (
+from src.capabilities.conversations.models import UserMemory
+from src.harness.context.token_budget import estimate_tokens, truncate_text_to_token_budget
+from src.harness.context.constants import (
     MAX_MEMORY_CONTEXT_TOKENS,
     MEMORY_CONFIDENCE_WEIGHT,
     MEMORY_IMPORTANCE_WEIGHT,
@@ -176,7 +176,7 @@ async def _memory_query_vector(query: str, embedding_cfg) -> tuple[list[float] |
     if not query.strip():
         return None, None
     try:
-        from src.storage.vector.embedding import embed, embedding_fingerprint
+        from src.platform.vector.embedding import embed, embedding_fingerprint
         if not memory_embedding_is_available(embedding_cfg):
             return None, None
 
@@ -210,7 +210,7 @@ async def _backfill_memory_embeddings(
     if not missing:
         return False
     try:
-        from src.storage.vector.embedding import embed_batch
+        from src.platform.vector.embedding import embed_batch
 
         vectors = await embed_batch([row.content for row in missing], cfg=embedding_cfg)
         changed = False
@@ -227,7 +227,7 @@ async def _backfill_memory_embeddings(
 async def refresh_memory_embedding(row: UserMemory, *, embedding_cfg=None) -> bool:
     """Refresh one row after capture/edit; returns False without raising on IO errors."""
     try:
-        from src.storage.vector.embedding import embed, embedding_fingerprint
+        from src.platform.vector.embedding import embed, embedding_fingerprint
 
         vector = await embed(row.content, cfg=embedding_cfg)
         if not vector:
@@ -254,7 +254,7 @@ async def backfill_user_memory_embeddings(
     if limit <= 0 or not memory_embedding_is_available(embedding_cfg):
         return 0
     try:
-        from src.storage.vector.embedding import embedding_fingerprint
+        from src.platform.vector.embedding import embedding_fingerprint
 
         fingerprint = embedding_fingerprint(embedding_cfg)
         rows = list(

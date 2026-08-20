@@ -2,11 +2,12 @@ import asyncio
 
 from sqlalchemy import text
 
-from src.storage.database import get_session_factory, init_db
+from src.bootstrap.database import initialize_database
+from src.platform.persistence.database import get_session_factory
 
 
 async def main() -> None:
-    await init_db()
+    await initialize_database()
     async with get_session_factory()() as s:
         r = await s.execute(
             text(

@@ -9,15 +9,15 @@ from sse_starlette.sse import EventSourceResponse
 
 from src.api.schemas.chat import ChatRequest
 from src.api.streaming.session import run_chat_session
-from src.auth.middleware import CurrentUser
-from src.context import build_context_for_conversation
-from src.conversations.models import Conversation
-from src.infra import generation_lock
-from src.adapters.persistence import get_session
-from src.adapters.llm import normalize_model_name
+from src.capabilities.identity.middleware import CurrentUser
+from src.harness.context import build_context_for_conversation
+from src.capabilities.conversations.models import Conversation
+from src.platform.runtime import generation_lock
+from src.platform.persistence import get_session
+from src.platform.llm import normalize_model_name
 from src.capabilities.knowledge.domain.models import KB
 from src.capabilities.knowledge.application.routing import list_readable_routable_kbs
-from src.adapters.observability import start_trace
+from src.platform.observability import start_trace
 from src.settings import get_settings
 from src.capabilities.settings.domain.models import (
     configured_context_window_for_model,
@@ -134,7 +134,7 @@ async def chat_post(
             if not kb.is_system and not bool(getattr(kb, "embedding_provider", None)):
                 require_user_embedding(user)
 
-        from src.adapters.observability import aspan
+        from src.platform.observability import aspan
 
         # Root trace covers context assembly + agent run (flushed in run_agent).
         start_trace(
@@ -184,7 +184,7 @@ async def chat_post(
             """Persist only a supervisor-accepted, ACL-scoped selection."""
             if conv is None:
                 return
-            from src.adapters.persistence import get_session_factory
+            from src.platform.persistence import get_session_factory
 
             factory = get_session_factory()
             async with factory() as write_session:
@@ -213,7 +213,7 @@ async def chat_post(
     except Exception:
         if conversation_lock_id:
             await generation_lock.release(conversation_lock_id)
-        from src.adapters.observability import get_current_trace
+        from src.platform.observability import get_current_trace
 
         orphan = get_current_trace()
         if orphan is not None and not orphan._finished:

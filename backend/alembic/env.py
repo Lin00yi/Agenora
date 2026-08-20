@@ -22,14 +22,14 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from src.storage.database import Base
+from src.platform.persistence.database import Base
 from src.settings import get_settings
 
 # Import models so Base.metadata is complete for autogenerate.
-from src.auth import models as _auth_models  # noqa: F401
-from src.conversations import models as _conv_models  # noqa: F401
+from src.capabilities.identity import models as _auth_models  # noqa: F401
+from src.capabilities.conversations import models as _conv_models  # noqa: F401
 from src.capabilities.knowledge.domain import models as _kb_models  # noqa: F401
-from src.observability import models as _obs_models  # noqa: F401
+from src.platform.observability import models as _obs_models  # noqa: F401
 from src.capabilities.settings.domain import models as _settings_user_models  # noqa: F401
 
 config = context.config

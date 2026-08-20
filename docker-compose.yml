@@ -181,7 +181,7 @@ services:
   ingestion-worker:
     extends:
       service: backend
-    command: ["python", "-m", "src.storage.jobs.ingestion"]
+    command: ["python", "-m", "src.capabilities.knowledge.application.jobs"]
     healthcheck:
       disable: true
 
@@ -190,7 +190,7 @@ services:
   rag-monitor:
     extends:
       service: backend
-    command: ["python", "-m", "src.observability.rag_monitor"]
+    command: ["python", "-m", "src.bootstrap.workers.rag_monitor"]
     healthcheck:
       disable: true
 

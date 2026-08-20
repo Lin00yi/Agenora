@@ -19,12 +19,13 @@ async def main() -> None:
 
     get_settings.cache_clear()
 
-    from src.storage.database import init_db, get_session_factory
-    from src.observability import start_trace, get_current_trace_id
-    from src.observability.models import Trace, Observation
+    from src.bootstrap.database import initialize_database
+    from src.platform.persistence.database import get_session_factory
+    from src.platform.observability import start_trace, get_current_trace_id
+    from src.platform.observability.models import Trace, Observation
     from sqlalchemy import select, func
 
-    await init_db()
+    await initialize_database()
 
     trace = start_trace(
         "chat",
@@ -60,10 +61,10 @@ async def main() -> None:
     # Toggle off
     os.environ["TRACE_ENABLED"] = "false"
     get_settings.cache_clear()
-    from src.observability.langfuse_client import reset_langfuse_for_tests
+    from src.platform.observability.langfuse_client import reset_langfuse_for_tests
 
     reset_langfuse_for_tests()
-    from src.observability import tracing_active, start_trace as st2
+    from src.platform.observability import tracing_active, start_trace as st2
 
     assert tracing_active() is False
     assert st2("chat") is None

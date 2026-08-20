@@ -11,9 +11,9 @@ from typing import Any, Iterable, Protocol
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.auth.models import User
+from src.capabilities.identity.models import User
 from src.capabilities.knowledge.domain.models import KB, KbEvalConfig, KbEvalRun
-from src.evals.metrics import (
+from src.harness.evaluation.metrics import (
     EvaluationGateError,
     RAGGoldenCase,
     assert_quality_gate,
@@ -203,7 +203,7 @@ async def retrieve_predictions(
 ) -> list[dict[str, Any]]:
     """Run in-process KB search for golden queries. Returns metadata only."""
     from src.capabilities.knowledge.application.configuration import resolve_kb_embedding, resolve_kb_reranker
-    from src.tools.kb_search import KBSearchTool
+    from src.harness.tools.kb_search import KBSearchTool
 
     owner = await session.get(User, kb.user_id)
     tool = KBSearchTool(

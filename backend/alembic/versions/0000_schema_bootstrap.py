@@ -10,12 +10,12 @@ from typing import Sequence, Union
 
 from alembic import op
 
-from src.auth import models as _auth_models  # noqa: F401
-from src.conversations import models as _conv_models  # noqa: F401
+from src.capabilities.identity import models as _auth_models  # noqa: F401
+from src.capabilities.conversations import models as _conv_models  # noqa: F401
 from src.capabilities.knowledge.domain import models as _kb_models  # noqa: F401
-from src.observability import models as _obs_models  # noqa: F401
+from src.platform.observability import models as _obs_models  # noqa: F401
 from src.capabilities.settings.domain import models as _settings_user_models  # noqa: F401
-from src.storage.database import Base
+from src.platform.persistence.database import Base
 
 revision: str = "0000_schema_bootstrap"
 down_revision: Union[str, Sequence[str], None] = None

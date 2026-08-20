@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import select
 
 from src.capabilities.knowledge.application import configured_vector_size
-from src.infra.crypto import encrypt
+from src.platform.security.crypto import encrypt
 from src.capabilities.knowledge.domain.models import KB
 
 

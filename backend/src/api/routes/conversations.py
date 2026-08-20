@@ -12,8 +12,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.auth.middleware import CurrentUser
-from src.context import (
+from src.capabilities.identity.middleware import CurrentUser
+from src.harness.context import (
     compute_budget,
     consolidate_user_memories,
     context_status_payload,
@@ -26,9 +26,9 @@ from src.context import (
     run_summary_prepare_background,
     store_user_memories,
 )
-from src.conversations.models import Conversation, Message, UserMemory
-from src.adapters.persistence import get_session
-from src.adapters.llm import normalize_model_name
+from src.capabilities.conversations.models import Conversation, Message, UserMemory
+from src.platform.persistence import get_session
+from src.platform.llm import normalize_model_name
 from src.capabilities.settings.domain.models import (
     configured_context_window_for_model,
     list_llm_model_profiles,
@@ -129,7 +129,7 @@ async def _build_context_status(
     # compressed before the normal 72% activation threshold is reached.
     if summary is not None and summary.is_prepared:
         summary = None
-    from src.models.tokenizer import token_model_scope
+    from src.platform.llm.tokenizer import token_model_scope
 
     with token_model_scope(conv.llm_model):
         effective = estimate_effective_context_tokens(

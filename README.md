@@ -73,7 +73,7 @@ npm run sync:model-catalog
 
 ```bash
 cd backend
-.venv/bin/python -m src.storage.jobs.ingestion
+.venv/bin/python -m src.capabilities.knowledge.application.jobs
 ```
 
 ### RAG 评测与监控闭环
@@ -84,13 +84,13 @@ cd backend
 cd backend
 cp config/rag_eval_cases.example.jsonl config/rag_eval_cases.jsonl
 # 回放已有结果，并以显式阈值作为 CI / 发布门禁
-.venv/bin/python -m src.evals.cli \
+.venv/bin/python -m src.harness.evaluation.cli \
   --dataset config/rag_eval_cases.jsonl \
   --results config/rag_eval_results.example.jsonl \
   --k 3 --min-recall-at-k 0.80 --min-mrr 0.70 --min-ndcg-at-k 0.70
 
 # 对真实索引执行检索并产出可审查的结果快照
-.venv/bin/python -m src.evals.cli \
+.venv/bin/python -m src.harness.evaluation.cli \
   --dataset config/rag_eval_cases.jsonl --kb-id <kb-id> \
   --write-results artifacts/rag-retrieval.jsonl --report artifacts/rag-report.json
 ```
@@ -98,7 +98,7 @@ cp config/rag_eval_cases.example.jsonl config/rag_eval_cases.jsonl
 若本地正在运行使用 Milvus Lite 的后端，不能另起进程直接打开同一个向量文件；管理员可让 CLI 复用运行中的服务（`api-token` 不要提交到仓库）：
 
 ```bash
-.venv/bin/python -m src.evals.cli \
+.venv/bin/python -m src.harness.evaluation.cli \
   --dataset config/rag_eval_cases.jsonl --kb-id <kb-id> \
   --api-base-url http://127.0.0.1:8000 --api-token <admin-bearer-token> \
   --write-results artifacts/rag-retrieval.jsonl --report artifacts/rag-report.json
@@ -107,7 +107,7 @@ cp config/rag_eval_cases.example.jsonl config/rag_eval_cases.jsonl
 每个生产知识库应将实际运行的基线和允许回退阈值保存为可审查的 JSON；Roogoo 见 `backend/config/rag_eval_roogoo_gate.json`。检索按 **文档 ID 去重** 后计算 Recall@K / MRR / nDCG；每条用例默认只标 canonical 一篇文档（与 `source_url` / `expected_citation_document_ids` 一致），不要把相关文章塞进召回分母。只有真正需要多篇才能答全的问题，才标多个 `expected_document_ids`。CLI 可直接读门禁：
 
 ```bash
-.venv/bin/python -m src.evals.cli \
+.venv/bin/python -m src.harness.evaluation.cli \
   --gate config/rag_eval_roogoo_gate.json \
   --api-base-url http://127.0.0.1:8000 --api-token <admin-bearer-token> \
   --write-results artifacts/rag-retrieval.jsonl --report artifacts/rag-report.json
@@ -119,7 +119,7 @@ cp config/rag_eval_cases.example.jsonl config/rag_eval_cases.jsonl
 
 ```bash
 cd backend
-.venv/bin/python -m src.observability.rag_monitor --once --fail-on-alert
+.venv/bin/python -m src.bootstrap.workers.rag_monitor --once --fail-on-alert
 ```
 
 ### 方式二：Docker 本地调试（基础 RAG）

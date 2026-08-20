@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
 
-from src.infra.crypto import decrypt
+from src.platform.security.crypto import decrypt
 from src.capabilities.settings.domain.models import (
     UserEmbeddingConfig,
     UserRerankerConfig,
@@ -27,7 +27,7 @@ from src.capabilities.settings.domain.models import (
 )
 
 if TYPE_CHECKING:
-    from src.auth.models import User
+    from src.capabilities.identity.models import User
     from src.capabilities.knowledge.domain.models import KB
 
 

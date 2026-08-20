@@ -6,7 +6,7 @@ the legacy ingestion worker or its on-disk layout directly.
 """
 from __future__ import annotations
 
-from src.adapters.files import get_object_storage
+from src.platform.files.object_storage import get_object_storage
 def upload_key(kb_id: str, doc_id: str, filename: str) -> str:
     ext = filename.rsplit(".", 1)[-1] if "." in filename else "bin"
     ext = "".join(char for char in ext if char.isalnum())[:16] or "bin"

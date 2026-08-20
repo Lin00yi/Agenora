@@ -10,11 +10,11 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
-from src.auth.middleware import CurrentUser
-from src.auth.models import User
-from src.auth.password import hash_password, verify_password
-from src.auth.tokens import issue_token
-from src.adapters.persistence import get_session
+from src.capabilities.identity.middleware import CurrentUser
+from src.capabilities.identity.models import User
+from src.capabilities.identity.password import hash_password, verify_password
+from src.capabilities.identity.tokens import issue_token
+from src.platform.persistence import get_session
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 log = structlog.get_logger()
@@ -140,10 +140,10 @@ async def purge_user(session: AsyncSession, user: User) -> None:
     idempotent; if a provider is temporarily unavailable, the user row and
     remaining metadata stay in place and the same DELETE can be retried.
     """
-    from src.conversations.models import Conversation, ConversationSummary, Message, UserMemory
+    from src.capabilities.conversations.models import Conversation, ConversationSummary, Message, UserMemory
     from src.capabilities.knowledge.domain.models import KB, KBMember
     from src.capabilities.knowledge.application.lifecycle import purge_kb
-    from src.adapters.observability import Observation, Trace
+    from src.platform.observability import Observation, Trace
     from src.capabilities.settings.domain.models import LLMConnection, LLMModelProfile
 
     user_id = user.id

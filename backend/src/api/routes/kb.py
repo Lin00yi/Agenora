@@ -41,9 +41,9 @@ from pydantic import BaseModel, EmailStr, Field, HttpUrl
 from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.auth.middleware import CurrentUser
-from src.auth.models import User
-from src.adapters.persistence import get_session
+from src.capabilities.identity.middleware import CurrentUser
+from src.capabilities.identity.models import User
+from src.platform.persistence import get_session
 from src.capabilities.knowledge.application import (
     configured_vector_size as get_vector_size,
     default_embedding_model,
@@ -66,7 +66,7 @@ from src.capabilities.knowledge.domain.models import (
     KBMember,
     KbEvalRun,
 )
-from src.adapters.document_parsers import SUPPORTED_EXTS
+from src.platform.files.parsers import SUPPORTED_EXTS
 from src.capabilities.settings.application.gate import require_user_embedding
 from src.capabilities.settings.domain.models import resolve_user_embedding
 from src.capabilities.knowledge.application.configuration import resolve_kb_embedding
@@ -230,7 +230,7 @@ async def _email_map(session: AsyncSession, user_ids: list[str]) -> dict[str, di
 
 
 def _eval_http_error(exc: Exception) -> HTTPException:
-    from src.evals.metrics import EvaluationGateError
+    from src.harness.evaluation.metrics import EvaluationGateError
 
     if isinstance(exc, EvaluationGateError):
         return HTTPException(status_code=400, detail=str(exc))
@@ -301,7 +301,7 @@ async def _kb_embedding_cfg_from_body(
     """Return (UserEmbeddingConfig | None) for vector-size probing if body
     carries a full KB-level embedding override; else None."""
     from src.capabilities.settings.domain.models import UserEmbeddingConfig
-    from src.infra.crypto import decrypt
+    from src.platform.security.crypto import decrypt
     if not (req.embedding_provider and req.embedding_base_url and req.embedding_model):
         return None
     api_key = req.embedding_api_key or ""
@@ -388,11 +388,11 @@ async def create_kb(
             and u.reranker_provider == req.reranker_provider
             and (u.reranker_base_url or "").rstrip("/") == (req.reranker_base_url or "").rstrip("/")
         ):
-            from src.infra.crypto import decrypt as _dec
+            from src.platform.security.crypto import decrypt as _dec
             req.reranker_api_key = _dec(u.reranker_api_key_enc)
 
     # v3-M7: encrypt KB-level api_keys before persistence.
-    from src.infra.crypto import encrypt
+    from src.platform.security.crypto import encrypt
     enc_embedding_key = (
         encrypt(req.embedding_api_key)
         if (kb_ecfg is not None and req.embedding_api_key)
@@ -564,7 +564,7 @@ async def patch_kb(
     await session.refresh(kb)
 
     if sync_doc_ids:
-        from src.kg.sync import sync_document_to_lightrag
+        from src.capabilities.knowledge.graph.sync import sync_document_to_lightrag
 
         for did in sync_doc_ids:
             background.add_task(sync_document_to_lightrag, did)
@@ -780,7 +780,7 @@ async def get_kb_eval_monitor(
     hours: int | None = Query(None, ge=1, le=24 * 31),
 ) -> dict:
     kb = await _load_readable_kb(session, kb_id, user.id)
-    from src.adapters.observability import build_rag_monitor_snapshot
+    from src.platform.observability import build_rag_monitor_snapshot
 
     snapshot = await build_rag_monitor_snapshot(session, hours=hours, kb_id=kb.id)
     snapshot["kb_id"] = kb.id
@@ -925,7 +925,7 @@ async def delete_document(
     # happen while the Document still retains the LightRAG identifiers, so the
     # caller can retry a transient failure without losing that metadata.
     if kg_enabled_snap and (kg_doc_id_snap or kg_track_id_snap):
-        from src.kg.sync import delete_document_from_lightrag
+        from src.capabilities.knowledge.graph.sync import delete_document_from_lightrag
 
         await delete_document_from_lightrag(
             kb_id=kb_id,

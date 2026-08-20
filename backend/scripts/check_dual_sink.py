@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 
 
 async def main() -> None:
@@ -21,12 +20,13 @@ async def main() -> None:
         },
     )
 
-    from src.storage.database import get_session_factory, init_db
-    from src.observability import start_trace
-    from src.observability.langfuse_client import get_langfuse
+    from src.bootstrap.database import initialize_database
+    from src.platform.persistence.database import get_session_factory
+    from src.platform.observability import start_trace
+    from src.platform.observability.langfuse_client import get_langfuse
     from sqlalchemy import text
 
-    await init_db()
+    await initialize_database()
     lf = get_langfuse()
     print("langfuse_client", type(lf).__name__ if lf else None)
 

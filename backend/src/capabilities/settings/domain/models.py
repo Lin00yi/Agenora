@@ -26,12 +26,12 @@ from sqlalchemy import Boolean, DateTime, Float, Integer, String, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.infra.crypto import decrypt
-from src.storage.database import Base
+from src.platform.security.crypto import decrypt
+from src.platform.persistence.database import Base
 from src.settings import get_settings
 
 if TYPE_CHECKING:
-    from src.auth.models import User
+    from src.capabilities.identity.models import User
 
 
 @dataclass(frozen=True, slots=True)

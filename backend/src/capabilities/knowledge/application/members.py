@@ -5,7 +5,7 @@ from typing import Any
 
 from sqlalchemy import select
 
-from src.auth.models import User
+from src.capabilities.identity.models import User
 from src.capabilities.knowledge.domain.models import KBMember
 
 

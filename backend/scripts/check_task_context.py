@@ -2,17 +2,15 @@
 from __future__ import annotations
 
 import asyncio
-import json
-import os
 
-import httpx
 from sqlalchemy import text
 
 
 async def main() -> None:
-    from src.storage.database import get_session_factory, init_db
+    from src.bootstrap.database import initialize_database
+    from src.platform.persistence.database import get_session_factory
 
-    await init_db()
+    await initialize_database()
     email = None
     async with get_session_factory()() as s:
         row = (
@@ -30,7 +28,7 @@ async def main() -> None:
 
     # Password unknown — use internal smoke that mirrors chat finish path instead.
     # Simulate the exact create_task + contextvar pattern from app.py.
-    from src.observability import get_current_trace, start_trace
+    from src.platform.observability import get_current_trace, start_trace
 
     handle = start_trace(
         "chat_task_sim",

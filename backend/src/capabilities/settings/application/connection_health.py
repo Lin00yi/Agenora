@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from src.storage.database import get_session_factory
+from src.platform.persistence.database import get_session_factory
 from src.capabilities.settings.domain.models import LLMConnection
 
 FAILURE_THRESHOLD = 3

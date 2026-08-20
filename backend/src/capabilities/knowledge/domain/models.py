@@ -28,7 +28,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, sel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.storage.database import Base
+from src.platform.persistence.database import Base
 
 
 def _utcnow() -> datetime:

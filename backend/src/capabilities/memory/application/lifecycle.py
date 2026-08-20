@@ -10,9 +10,9 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.conversations.models import Message, UserMemory
+from src.capabilities.conversations.models import Message, UserMemory
 
-from src.context.constants import MEMORY_CONSOLIDATE_SEMANTIC, MemoryCandidate
+from src.harness.context.constants import MEMORY_CONSOLIDATE_SEMANTIC, MemoryCandidate
 from src.capabilities.memory.domain.extraction import (
     _constraint_topic_for_candidate,
     constraint_topic_from_memory_key,
@@ -253,7 +253,7 @@ async def run_memory_heavy_background(
     embedding_cfg=None,
 ) -> None:
     """Open a fresh session for post-append memory embedding / consolidation."""
-    from src.storage.database import get_session_factory
+    from src.platform.persistence.database import get_session_factory
 
     if not memory_ids:
         return

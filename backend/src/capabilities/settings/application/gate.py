@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException, status
 
-from src.auth.models import User
+from src.capabilities.identity.models import User
 from src.settings import get_settings
 
 from src.capabilities.settings.domain.models import resolve_user_embedding, resolve_user_llm

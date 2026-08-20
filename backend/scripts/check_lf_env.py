@@ -1,4 +1,4 @@
-from src.observability.langfuse_client import (
+from src.platform.observability.langfuse_client import (
     get_langfuse,
     reset_langfuse_for_tests,
     resolve_langfuse_environment,

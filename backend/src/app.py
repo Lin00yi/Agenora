@@ -5,10 +5,6 @@ and routers. Uvicorn still loads ``src.app:app``.
 """
 from __future__ import annotations
 
-import logging
-from contextlib import asynccontextmanager
-
-import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -16,37 +12,16 @@ from src.api.routes.admin import router as admin_router
 from src.api.routes.chat import router as chat_router
 from src.api.routes.auth import router as auth_router
 from src.api.routes.conversations import router as conversations_router
-from src.storage.database import init_db
 from src.api.routes.kb import router as kb_router
+from src.bootstrap.lifecycle import application_lifespan
 from src.settings import get_settings
 from src.api.routes.settings import router as settings_router
-
-logging.basicConfig(level=logging.INFO)
-log = structlog.get_logger()
 
 APP_VERSION = "3.1.0"
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):  # noqa: ARG001
-    log.info("startup", env=get_settings().app_env)
-    await init_db()
-    log.info("db_ready")
-    from src.capabilities.knowledge.application.system_seed import seed_system_kbs
-
-    await seed_system_kbs()
-    log.info("system_kbs_ready")
-
-    from src.auth.admin_seed import seed_admins
-
-    await seed_admins()
-    log.info("admins_seeded")
-    yield
-    log.info("shutdown")
-
-
 def create_app() -> FastAPI:
-    application = FastAPI(title="Agenora", version=APP_VERSION, lifespan=lifespan)
+    application = FastAPI(title="Agenora", version=APP_VERSION, lifespan=application_lifespan)
     settings = get_settings()
     application.add_middleware(
         CORSMiddleware,

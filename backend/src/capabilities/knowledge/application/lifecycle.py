@@ -9,7 +9,7 @@ from __future__ import annotations
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.adapters.vector import get_vector_store
+from src.platform.vector import get_vector_store
 from src.capabilities.knowledge.domain.models import Document, IngestionJob, KB
 
 from . import documents, evaluation
@@ -25,7 +25,7 @@ async def purge_kb(session: AsyncSession, kb: KB) -> None:
     docs = list((await session.execute(select(Document).where(Document.kb_id == kb_id))).scalars())
 
     if bool(getattr(kb, "kg_enabled", False)):
-        from src.kg.sync import delete_document_from_lightrag
+        from src.capabilities.knowledge.graph.sync import delete_document_from_lightrag
 
         for doc in docs:
             await delete_document_from_lightrag(

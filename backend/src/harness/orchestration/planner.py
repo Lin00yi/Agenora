@@ -16,13 +16,13 @@ from src.harness.orchestration.dag import (
     primary_agent,
 )
 from src.harness.orchestration.validation import DagValidationError, validate_and_bind
-from src.runtime.agent_loop.constants import (
+from src.harness.runtime.agent_loop.constants import (
     _RULE_MULTI_INTENT_KEYWORDS,
     _RULE_SKIP_KEYWORDS,
 )
 from src.harness.orchestration.registry import AgentRegistry
-from src.adapters.llm import CostTracker, get_client, pick_model, with_cache_control
-from src.adapters.observability import ageneration, traced
+from src.platform.llm import CostTracker, get_client, pick_model, with_cache_control
+from src.platform.observability import ageneration, traced
 from src.settings import get_settings
 
 if TYPE_CHECKING:
