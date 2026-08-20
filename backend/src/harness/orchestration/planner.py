@@ -124,10 +124,28 @@ def _plan_from_intent(
         task_type = "kb_route"
     else:
         task_type = "qa_chat"
+
+    # ``assessment.rationale`` describes the classifier's hypothesis, not
+    # necessarily the plan that is executable in this turn.  In particular a
+    # knowledge hypothesis must fall back to chat when no readable/routable KB
+    # exists.  The DAG reason is streamed to the user, so it must describe the
+    # actual plan; the original rationale remains in ``intent`` trace metadata.
+    if task_type == "qa_chat":
+        reason = (
+            "orders_unavailable_general_fallback"
+            if assessment.domain == "orders"
+            else "general_chat"
+        )
+    elif task_type == "kb_route":
+        reason = "checking_kb_relevance"
+    elif task_type == "qa_kb":
+        reason = "needs_kb_fact"
+    else:
+        reason = assessment.rationale or assessment.intent
     return _decision_from_dag(
         dag_single(
             task_type=task_type,
-            reason=assessment.rationale or assessment.intent,
+            reason=reason,
             source=assessment.source,
             confidence=assessment.confidence,
             latency_ms=assessment.latency_ms,

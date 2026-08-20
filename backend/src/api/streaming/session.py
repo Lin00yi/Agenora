@@ -591,6 +591,17 @@ async def run_chat_session(
                     # the total or double-count them.
                 memory_trace = {
                     **memory_trace,
+                    "runtime": {
+                        **(
+                            memory_trace.get("runtime")
+                            if isinstance(memory_trace.get("runtime"), dict)
+                            else {}
+                        ),
+                        # An automatic KB route is turn-scoped, but the trace
+                        # must still describe the provider request that just
+                        # completed instead of its pre-routing starting mode.
+                        "mode": "knowledge_base" if final_kb_id else "general",
+                    },
                     "prompt": prompt_trace,
                     **({"kb_route": final_kb_route} if isinstance(final_kb_route, dict) else {}),
                 }

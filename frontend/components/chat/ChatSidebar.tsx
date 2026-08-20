@@ -27,7 +27,7 @@ import {
   sortConversationsByPin,
   togglePinnedConversationId,
 } from "./pinnedConversations";
-import { formatConversationTime, getConversationStatusView } from "./utils";
+import { formatConversationTime, getConversationStatusDotClass } from "./utils";
 
 export function ChatSidebar({
   open,
@@ -37,7 +37,6 @@ export function ChatSidebar({
   conversationLoadingMore,
   currentId,
   user,
-  busy,
   onClose,
   onNew,
   onSelectConversation,
@@ -54,7 +53,6 @@ export function ChatSidebar({
   conversationLoadingMore: boolean;
   currentId: string | null;
   user: User | null;
-  busy: boolean;
   onClose: () => void;
   onNew: (kbId?: string | null) => void;
   onSelectConversation: (id: string) => void;
@@ -178,7 +176,6 @@ export function ChatSidebar({
                 key={conversation.id}
                 conversation={conversation}
                 currentId={currentId}
-                busy={busy}
                 pinned={pinnedIds.includes(conversation.id)}
                 onSelect={() => onSelectConversation(conversation.id)}
                 onTogglePin={() => handleTogglePin(conversation.id)}
@@ -308,7 +305,6 @@ export function ChatSidebar({
 function ConversationRow({
   conversation,
   currentId,
-  busy,
   pinned,
   onSelect,
   onTogglePin,
@@ -316,16 +312,14 @@ function ConversationRow({
 }: {
   conversation: Conversation;
   currentId: string | null;
-  busy: boolean;
   pinned: boolean;
   onSelect: () => void;
   onTogglePin: () => void;
   onDelete: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
-  const statusView = getConversationStatusView(conversation, currentId, busy);
+  const statusDotClass = getConversationStatusDotClass(conversation, currentId);
   const messageCount = conversation.messages.length || conversation.message_count || 0;
-  const showBusy = conversation.id === currentId && busy && !hovered;
   const active = conversation.id === currentId;
   const showActions = hovered || pinned;
 
@@ -350,7 +344,7 @@ function ConversationRow({
           scrolling={hovered}
         />
         <span className="kf-sidebar-meta mt-0.5 flex items-center gap-2 text-[11px]">
-          <span className={cn("h-1.5 w-1.5 rounded-sm", statusView.dot)} />
+          <span className={cn("h-1.5 w-1.5 rounded-sm", statusDotClass)} />
           <span>{formatConversationTime(conversation.updated_at)}</span>
           <span className="kf-sidebar-meta-separator h-1 w-1 rounded-sm" />
           <span>
@@ -359,16 +353,6 @@ function ConversationRow({
           </span>
         </span>
       </button>
-      {showBusy && (
-        <span
-          className={cn(
-            "kf-sidebar-status-badge mr-0.5 shrink-0 rounded-md border px-1.5 py-0.5 text-[10px]",
-            statusView.tone
-          )}
-        >
-          {statusView.label}
-        </span>
-      )}
       <div
         className={cn(
           "flex shrink-0 items-center gap-0.5",

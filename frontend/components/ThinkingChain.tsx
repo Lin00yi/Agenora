@@ -307,7 +307,10 @@ export function formatToolAction(event: ToolEvent): string {
 function formatToolDetail(event: ToolEvent): string {
   if (event.name === "dag_ready" || event.name === "agent_route" || event.name === "agent_handoff") {
     const reason = typeof event.input?.reason === "string" ? event.input.reason : event.reason;
-    return typeof reason === "string" ? formatRouteReason(reason.trim()) : "";
+    if (typeof reason !== "string") return "";
+    return event.name === "dag_ready"
+      ? formatDagRouteReason(event.input?.tasks, reason.trim())
+      : formatRouteReason(reason.trim());
   }
   const displayDetail = event.display?.detail?.trim();
   if (displayDetail) return truncate(displayDetail, 72);
@@ -339,6 +342,10 @@ export function formatRouteReason(reason: string): string {
     empty_query_kb_bound: "空问题",
     single_available: "仅一条可用通路",
     first_available: "默认通路",
+    checking_kb_relevance: "判断是否需要查阅知识库",
+    kb_selected_for_retrieval: "已选择知识库进行检索",
+    no_matching_kb_general_fallback: "未匹配到知识库，按通用对话回答",
+    orders_unavailable_general_fallback: "订单能力暂不可用，按通用对话回答",
     needs_kb_fact: "需要查阅知识库",
     needs_kb: "需要查阅知识库",
     kb_fact: "知识库事实问题",
@@ -355,14 +362,42 @@ export function formatRouteReason(reason: string): string {
   if (lower.includes("chitchat") || lower.includes("greeting")) return "闲聊";
   if (lower.includes("non_kb") || lower.includes("not_kb")) return "非知识库问题";
   if (lower.includes("web") || lower.includes("search")) return "需要联网";
-  if (lower.includes("kb") || lower.includes("rag") || lower.includes("fact")) {
-    return "需要查阅知识库";
-  }
   // Opaque model tokens (snake_case / truncated) stay hidden for end users.
   if (/^[a-z0-9_]+$/i.test(reason) || reason.includes("_") || reason.includes("[")) {
     return "";
   }
   return reason.length > 24 ? `${reason.slice(0, 24)}…` : reason;
+}
+
+/**
+ * Persisted histories can contain plans emitted before the backend began
+ * separating classifier rationale from executable-plan rationale.  Make the
+ * renderer defensive so a chat plan never claims that it queried a KB.
+ */
+export function formatDagRouteReason(tasks: unknown, reason: string): string {
+  if (!Array.isArray(tasks)) return formatRouteReason(reason);
+  const taskTypes = tasks
+    .map((raw) => String((raw as DagTask | null)?.type ?? ""))
+    .filter(Boolean);
+  if (taskTypes.length === 1 && taskTypes[0] === "kb_route") {
+    return "判断是否需要查阅知识库";
+  }
+  if (taskTypes.length === 1 && taskTypes[0] === "qa_chat") {
+    const lower = reason.toLowerCase();
+    if (
+      reason === "needs_kb_fact" ||
+      reason === "needs_kb" ||
+      reason === "kb_fact" ||
+      lower.includes("kb") ||
+      lower.includes("rag") ||
+      lower.includes("fact") ||
+      lower.includes("query_about") ||
+      lower.includes("about_")
+    ) {
+      return "通用对话即可";
+    }
+  }
+  return formatRouteReason(reason);
 }
 
 function formatEventDuration(event: ToolEvent, now: number): string | null {

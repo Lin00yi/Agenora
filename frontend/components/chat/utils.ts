@@ -16,35 +16,11 @@ export function formatConversationTime(value?: number | null) {
   return new Date(value).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" });
 }
 
-export function getConversationStatusView(conversation: Conversation, currentId: string | null, busy: boolean) {
+export function getConversationStatusDotClass(conversation: Conversation, currentId: string | null) {
   const active = conversation.id === currentId;
   const messageCount = conversation.messages.length || conversation.message_count || 0;
-  if (active && busy) {
-    return {
-      label: "\u751f\u6210\u4e2d",
-      dot: "bg-amber-300",
-      tone: "border-amber-300/20 bg-amber-300/10 text-amber-200",
-    };
-  }
-  if (active) {
-    return {
-      label: "\u5f53\u524d",
-      dot: "kf-status-dot-accent",
-      tone: "kf-status-badge-current",
-    };
-  }
-  if (messageCount === 0) {
-    return {
-      label: "\u7a7a\u4f1a\u8bdd",
-      dot: "kf-status-dot-muted",
-      tone: "kf-sidebar-status-muted",
-    };
-  }
-  return {
-    label: "\u5df2\u4fdd\u5b58",
-    dot: "kf-status-dot-accent",
-    tone: "kf-status-badge-saved",
-  };
+  if (active) return "kf-status-dot-accent";
+  return messageCount === 0 ? "kf-status-dot-muted" : "kf-status-dot-accent";
 }
 
 export function getAssistantStreamingStatus(
@@ -280,7 +256,7 @@ export function formatMemoryTraceSummary(trace: MemoryTrace): string {
     parts.push("含会话摘要");
   }
   if (trace.prompt) {
-    parts.push(`${formatTokenCount(trace.prompt.tokens.total_input)} 输入`);
+    parts.push(`模型总输入 ${formatTokenCount(trace.prompt.tokens.total_input)}`);
   }
   return parts.join(" · ") || "本轮上下文";
 }

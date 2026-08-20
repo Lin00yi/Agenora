@@ -678,7 +678,6 @@ export function ChatPage({
           conversationLoadingMore={conversationLoadingMore}
           currentId={currentId}
           user={user}
-          busy={busy}
           onClose={() => setSidebarOpen(false)}
           onNew={handleNew}
           onSelectConversation={handleSelect}

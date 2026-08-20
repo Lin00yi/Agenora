@@ -554,7 +554,14 @@ def build_supervisor_graph(
                         "on_fail": "abort",
                     }
                 ],
-                "reason": "kb_router_selected" if selected_kb is not None else "kb_router_general_fallback",
+                # This is public plan metadata.  It describes the result of
+                # the KB-selection step, rather than merely the fact that the
+                # router considered a KB.
+                "reason": (
+                    "kb_selected_for_retrieval"
+                    if selected_kb is not None
+                    else "no_matching_kb_general_fallback"
+                ),
                 "source": "supervisor",
                 "confidence": route_metadata.get("confidence") or "medium",
                 "latency_ms": int(route_metadata.get("latency_ms") or 0),
