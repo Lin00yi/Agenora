@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
 from src.api.schemas.chat import ChatRequest
-from src.api.streaming.session import run_chat_session
+from src.api.streaming.session import check_chat_rate_limit, run_chat_session
 from src.capabilities.identity.middleware import CurrentUser
 from src.harness.context import build_context_for_conversation
 from src.capabilities.conversations.models import Conversation
@@ -138,6 +138,13 @@ async def chat_post(
 
         from src.platform.observability import aspan
 
+        # Check before context assembly: a rejected request must not trigger
+        # summaries, memory retrieval usage writes, or embedding backfills.
+        rate_remaining = await check_chat_rate_limit(
+            rate_key=f"user:{user.id}",
+            limit_per_hour=settings.rate_limit_per_hour,
+        )
+
         # Root trace covers context assembly + agent run (flushed in run_agent).
         start_trace(
             "chat",
@@ -199,6 +206,7 @@ async def chat_post(
             conversation_lock_id=conversation_lock_id,
             conversation_id=conv.id if conv else None,
             llm_cfg_override=context_llm_cfg,
+            rate_remaining=rate_remaining,
             complex_llm_cfg_override=None if selected_model else (routing_cfgs.complex if routing_cfgs else None),
             triage_llm_cfg_override=None if selected_model else (routing_cfgs.triage if routing_cfgs else None),
             fallback_llm_cfg_override=None if selected_model else (routing_cfgs.fallback if routing_cfgs else None),

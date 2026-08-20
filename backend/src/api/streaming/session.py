@@ -48,6 +48,24 @@ from src.capabilities.settings.domain.models import (
 log = structlog.get_logger()
 
 
+async def check_chat_rate_limit(*, rate_key: str, limit_per_hour: int) -> int:
+    """Consume one chat quota slot or raise the shared SSE/API response shape."""
+    allowed, remaining = await rate_check(rate_key, limit_per_hour)
+    if allowed:
+        return remaining
+    retry_after = await retry_after_seconds(rate_key)
+    retry_minutes = max(1, (retry_after + 59) // 60)
+    raise HTTPException(
+        status_code=429,
+        detail={
+            "code": "rate_limit_exceeded",
+            "message": f"操作过于频繁，请约 {retry_minutes} 分钟后再试。",
+            "retry_after_seconds": retry_after,
+        },
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
 def _persisted_tool_events(
     tool_log: list[dict[str, Any]] | None,
     *,
@@ -247,6 +265,7 @@ async def run_chat_session(
     user: User | None = None,
     model_override: str | None = None,
     memory_trace: dict[str, Any] | None = None,
+    rate_remaining: int | None = None,
     conversation_lock_id: str | None = None,
     conversation_id: str | None = None,
     llm_cfg_override=None,
@@ -264,19 +283,13 @@ async def run_chat_session(
 
     active_mcp_manager = await refresh_mcp_manager()
     settings = container.settings if container is not None else get_settings()
-    allowed, remaining = await rate_check(rate_key, settings.rate_limit_per_hour)
-    if not allowed:
-        retry_after = await retry_after_seconds(rate_key)
-        retry_minutes = max(1, (retry_after + 59) // 60)
-        raise HTTPException(
-            status_code=429,
-            detail={
-                "code": "rate_limit_exceeded",
-                "message": f"操作过于频繁，请约 {retry_minutes} 分钟后再试。",
-                "retry_after_seconds": retry_after,
-            },
-            headers={"Retry-After": str(retry_after)},
+    remaining = (
+        rate_remaining
+        if rate_remaining is not None
+        else await check_chat_rate_limit(
+            rate_key=rate_key, limit_per_hour=settings.rate_limit_per_hour
         )
+    )
 
     if not messages or messages[-1]["role"] != "user":
         raise HTTPException(
