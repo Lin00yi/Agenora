@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import uuid
 from dataclasses import replace as dc_replace
 from typing import Any, AsyncGenerator
 
@@ -19,6 +20,8 @@ from src.harness.runtime.checkpoints import checkpoint_config, open_agent_checkp
 from src.harness.contracts.runtime import RunContext, RunIdentity
 from src.harness.runtime.agent_loop import EMPTY_ANSWER_FALLBACK
 from src.capabilities.identity.models import User
+from src.capabilities.conversations.models import Conversation, Message
+from src.platform.persistence import get_session_factory
 from src.platform.runtime import generation_lock
 from src.platform.runtime.rate_limit import (
     check as rate_check,
@@ -38,6 +41,66 @@ from src.capabilities.settings.domain.models import (
 )
 
 log = structlog.get_logger()
+
+
+def _persisted_tool_events(tool_log: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Convert server-side tool records to the safe timeline shape stored in chat.
+
+    The browser can disconnect at any point; a durable assistant row must not
+    depend on its transient SSE timeline. Deliberately omit raw tool results so
+    service internals never become conversation content.
+    """
+    events: list[dict[str, Any]] = []
+    for index, entry in enumerate(tool_log or []):
+        name = entry.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        events.append(
+            {
+                "id": str(entry.get("id") or f"persisted-tool-{index}"),
+                "name": name,
+                "status": "error" if entry.get("error") else "ok",
+                "latency_ms": entry.get("latency_ms"),
+                "error": entry.get("error"),
+            }
+        )
+    return events
+
+
+async def _persist_assistant_turn(
+    *,
+    conversation_id: str | None,
+    user: User | None,
+    content: str,
+    tools: list[dict[str, Any]],
+    cost_usd: float | None = None,
+    memory_trace: dict[str, Any] | None = None,
+    citations: list[dict[str, Any]] | None = None,
+) -> str | None:
+    """Persist an agent outcome before sending the terminal SSE event.
+
+    This is intentionally server-owned: a tab reload cannot otherwise lose a
+    completed refund result between the tool call and the frontend's own
+    message-write request.
+    """
+    if not conversation_id or user is None:
+        return None
+    factory = get_session_factory()
+    async with factory() as session:
+        conversation = await session.get(Conversation, conversation_id)
+        if conversation is None or conversation.user_id != user.id:
+            return None
+        message = Message(
+            id=str(uuid.uuid4()),
+            conversation_id=conversation.id,
+            role="assistant",
+            content=content,
+            tool_call_log=Message.encode_tool_call_log(tools, memory_trace=memory_trace, citations=citations),
+            cost_usd=cost_usd,
+        )
+        session.add(message)
+        await session.commit()
+        return message.id
 
 
 def run_chat_session(
@@ -267,6 +330,18 @@ def run_chat_session(
                 payload = getattr(first, "value", None)
                 if not isinstance(payload, dict):
                     payload = {"kind": "human_input_required", "prompt": "请补充继续处理所需的信息。"}
+                human_tool = {
+                    "id": f"human-input-{uuid.uuid4()}",
+                    "name": "human_input_required",
+                    "status": "ok",
+                    "input": payload,
+                }
+                persisted_message_id = await _persist_assistant_turn(
+                    conversation_id=conversation_id,
+                    user=user,
+                    content="",
+                    tools=[human_tool],
+                )
                 await queue.put({"event": "human_input_required", **payload})
                 if trace is not None:
                     await asyncio.shield(
@@ -280,6 +355,7 @@ def run_chat_session(
                     {
                         "event": "done",
                         "interrupted": True,
+                        "message_id": persisted_message_id,
                         "rate_remaining": remaining,
                         "trace_id": (trace.id if trace is not None else get_current_trace_id()),
                     }
@@ -357,10 +433,20 @@ def run_chat_session(
                 for piece in _chunks(report, size=8):
                     await queue.put({"event": "token", "text": piece})
                     await asyncio.sleep(0.02)
+            persisted_message_id = await _persist_assistant_turn(
+                conversation_id=conversation_id,
+                user=user,
+                content=report,
+                tools=_persisted_tool_events(final_state.get("tool_call_log")),
+                cost_usd=cost_usd,
+                memory_trace=memory_trace,
+                citations=list(final_state.get("citations") or []),
+            )
             await queue.put(
                 {
                     "event": "done",
                     "cost_usd": cost_usd,
+                    "message_id": persisted_message_id,
                     "rate_remaining": remaining,
                     "kb_id": final_kb_id,
                     "memory_trace": memory_trace,
@@ -403,6 +489,8 @@ def run_chat_session(
             await queue.put({"event": "error", "message": str(exc)})
         finally:
             await queue.put(None)
+            if conversation_lock_id:
+                await generation_lock.release(conversation_lock_id)
 
     task = asyncio.create_task(run_agent())
 
@@ -414,10 +502,12 @@ def run_chat_session(
                     break
                 yield {"event": "message", "data": json.dumps(evt, ensure_ascii=False)}
         finally:
-            if conversation_lock_id:
-                await generation_lock.release(conversation_lock_id)
-            if not task.done():
-                task.cancel()
+            # Do not cancel the agent when the browser refreshes. In particular,
+            # refund confirmation is a high-risk write that must finish and
+            # persist its outcome even if the SSE client reconnects later.
+            # ``run_agent`` releases the generation lock after it has finished.
+            if task.done() and not task.cancelled():
+                task.exception()
 
     return EventSourceResponse(event_gen(), ping=15)
 

@@ -1,9 +1,10 @@
 "use client";
 
-import { Check, CircleAlert, FileText, LoaderCircle, ShieldCheck } from "lucide-react";
+import { Check, CircleAlert, LoaderCircle, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 export type HumanInputRequest = {
+  phase?: "awaiting" | "processing";
   slot?: string;
   requiredSlots?: string[];
   prompt: string;
@@ -45,8 +46,9 @@ export function HumanInputPanel({
     placeholder: "请输入继续处理所需的信息",
   };
   const isConfirmation = slot === "refund_confirmation";
+  const isProcessing = request.phase === "processing";
   const amount = formatAmount(request.amountMinor, request.currency);
-  const canSubmit = value.trim().length > 0 && !busy;
+  const canSubmit = value.trim().length > 0 && !busy && !isProcessing;
 
   return (
     <section
@@ -69,9 +71,11 @@ export function HumanInputPanel({
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-ink">
-            {isConfirmation ? "请确认退款操作" : `请补充${field.label}`}
+            {isProcessing ? "退款正在执行" : isConfirmation ? "请确认退款操作" : `请补充${field.label}`}
           </p>
-          <p className="mt-1 text-sm leading-6 text-muted">{request.prompt}</p>
+          <p className="mt-1 text-sm leading-6 text-muted">
+            {isProcessing ? "退款确认已提交，正在处理。请勿重复发送或再次确认。" : request.prompt}
+          </p>
         </div>
       </div>
 
@@ -82,7 +86,7 @@ export function HumanInputPanel({
             {amount ? <span>退款金额：{amount}</span> : null}
             {request.approvalId ? <span>确认单：{request.approvalId}</span> : null}
           </div>
-          {request.confirmationPhrase ? (
+          {request.confirmationPhrase && !isProcessing ? (
             <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
               <code className="min-w-0 flex-1 overflow-x-auto rounded-lg bg-surface px-2.5 py-2 text-xs text-ink">
                 {request.confirmationPhrase}
@@ -99,9 +103,15 @@ export function HumanInputPanel({
         </div>
       ) : null}
 
-      <label className="mt-4 block" htmlFor="human-input-value">
-        <span className="sr-only">{field.label}</span>
-        {slot === "refund_reason" ? (
+      {isProcessing ? (
+        <div className="mt-4 flex items-center gap-2 rounded-xl border border-surface-border bg-surface px-3 py-3 text-sm text-muted">
+          <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" />
+          正在等待服务端完成并同步结果…
+        </div>
+      ) : (
+        <label className="mt-4 block" htmlFor="human-input-value">
+          <span className="sr-only">{field.label}</span>
+          {slot === "refund_reason" ? (
           <textarea
             id="human-input-value"
             value={value}
@@ -116,7 +126,7 @@ export function HumanInputPanel({
             rows={2}
             className="block w-full resize-none rounded-xl border border-surface-border bg-surface px-3 py-2.5 text-sm leading-6 text-ink outline-none placeholder:text-muted focus:border-brand focus:ring-2 focus:ring-brand/15 disabled:cursor-not-allowed disabled:opacity-70"
           />
-        ) : (
+          ) : (
           <input
             id="human-input-value"
             value={value}
@@ -131,12 +141,15 @@ export function HumanInputPanel({
             autoComplete="off"
             className="block h-11 w-full rounded-xl border border-surface-border bg-surface px-3 text-sm text-ink outline-none placeholder:text-muted focus:border-brand focus:ring-2 focus:ring-brand/15 disabled:cursor-not-allowed disabled:opacity-70"
           />
-        )}
-      </label>
+          )}
+        </label>
+      )}
 
       <div className="mt-3 flex items-center justify-between gap-3">
-        <p className="text-xs text-muted">会话已暂停，提交后会从当前工作流继续。</p>
-        <button
+        <p className="text-xs text-muted">
+          {isProcessing ? "即使刷新页面，服务端也会继续处理并保存结果。" : "会话已暂停，提交后会从当前工作流继续。"}
+        </p>
+        {!isProcessing ? <button
           className={cn(
             "kf-human-input-submit kf-press inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-white",
             isConfirmation && "kf-human-input-submit-confirmation"
@@ -147,7 +160,7 @@ export function HumanInputPanel({
         >
           {busy ? <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" /> : <Check className="size-4" />}
           {busy ? "正在继续" : isConfirmation ? "确认并继续" : "提交"}
-        </button>
+        </button> : null}
       </div>
     </section>
   );

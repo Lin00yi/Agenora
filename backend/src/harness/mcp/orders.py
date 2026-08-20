@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -29,22 +28,20 @@ class OrdersMCPClient:
 
     async def call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         server_root = Path(self.server_path).resolve()
-        server_source = server_root / "src"
-        if not server_source.is_dir():
-            raise RuntimeError(f"Orders MCP server source is missing: {server_source}")
+        if not (server_root / "pyproject.toml").is_file():
+            raise RuntimeError(f"Orders MCP project is missing: {server_root}")
         env = dict(os.environ)
         env.update(
             {
                 "ORDERS_MCP_DB_PATH": self.db_path,
                 "ORDERS_MCP_SERVICE_TOKEN": self.service_token,
-                "PYTHONPATH": os.pathsep.join(
-                    item for item in (str(server_source), env.get("PYTHONPATH", "")) if item
-                ),
             }
         )
         params = StdioServerParameters(
-            command=sys.executable,
-            args=["-m", "mock_orders_mcp.server"],
+            # Keep the mock server's dependencies and lockfile outside the
+            # backend environment. The Host only owns the MCP client protocol.
+            command="uv",
+            args=["run", "--directory", str(server_root), "python", "-m", "mock_orders_mcp.server"],
             env=env,
             cwd=str(server_root),
         )

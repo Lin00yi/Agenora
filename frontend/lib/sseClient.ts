@@ -147,6 +147,8 @@ export type ChatEvent = {
   amount_minor?: number;
   currency?: string;
   interrupted?: boolean;
+  /** Server-owned assistant message persisted before the terminal SSE event. */
+  message_id?: string | null;
   /** `turn` is automatic for this response only; `pinned` is a conversation scope. */
   scope?: "turn" | "pinned";
   tasks?: Array<{

@@ -19,7 +19,7 @@ def _authorize(actor_id: str, service_token: str) -> str | None:
 
 
 def _service() -> OrdersService:
-    return OrdersService(os.getenv("ORDERS_MCP_DB_PATH", "data/orders_mcp.db"))
+    return OrdersService(os.getenv("ORDERS_MCP_DB_PATH", "data/orders.db"))
 
 
 server = MCPServer(

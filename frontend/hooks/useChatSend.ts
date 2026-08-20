@@ -11,6 +11,7 @@ import {
   appendAssistantMessage,
   appendUserMessage,
   createConversation,
+  getConversation,
   getConversationContextStatus,
   patchConversation,
   type ConversationContextStatus,
@@ -80,13 +81,28 @@ type Args = {
   ) => void;
 };
 
-function pendingHumanInput(messages: Message[]): HumanInputRequest | null {
-  const last = messages.at(-1);
-  if (!last || last.role !== "assistant") return null;
-  const event = [...last.tools].reverse().find((tool) => tool.name === "human_input_required");
-  if (!event) return null;
+export function pendingHumanInput(messages: Message[]): HumanInputRequest | null {
+  let assistantIndex = -1;
+  let event: ToolEvent | undefined;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const candidate = messages[index];
+    if (candidate.role !== "assistant") continue;
+    const humanEvent = [...candidate.tools].reverse().find((tool) => tool.name === "human_input_required");
+    if (!humanEvent) continue;
+    assistantIndex = index;
+    event = humanEvent;
+    break;
+  }
+  if (!event || assistantIndex < 0) return null;
+  // A later assistant reply settles the request. A later user reply means
+  // the dedicated input has already been submitted and must never be shown
+  // again as an enabled confirmation control after a page refresh.
+  const tail = messages.slice(assistantIndex + 1);
+  if (tail.some((message) => message.role === "assistant")) return null;
+  const phase = tail.some((message) => message.role === "user") ? "processing" : "awaiting";
   const input = event.input ?? {};
   return {
+    phase,
     slot: typeof input.slot === "string" ? input.slot : undefined,
     requiredSlots: Array.isArray(input.required_slots)
       ? input.required_slots.filter((value): value is string => typeof value === "string")
@@ -145,6 +161,34 @@ export function useChatSend({
   useEffect(() => {
     if (!busy) setHumanInput(pendingHumanInput(currentMessages));
   }, [busy, currentId, currentMessages]);
+
+  // If a confirmation was submitted just before a reload, the running graph
+  // finishes server-side and writes its result itself. Poll only that narrow
+  // recovery state; normal conversations continue to use SSE.
+  useEffect(() => {
+    const pending = pendingHumanInput(currentMessages);
+    if (!currentId || pending?.phase !== "processing") return;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const detail = await getConversation(currentId);
+        if (cancelled) return;
+        const restored = detail.messages.map(serverMsgToLocal);
+        const unchanged =
+          restored.length === currentMessages.length &&
+          restored.every((message, index) => message.id === currentMessages[index]?.id);
+        if (!unchanged) setMessagesForCurrent(restored);
+      } catch {
+        // Keep the safe disabled surface; the next retry will reconcile it.
+      }
+    };
+    void refresh();
+    const interval = window.setInterval(() => void refresh(), 1200);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [currentId, currentMessages, setMessagesForCurrent]);
 
   const releaseSendLock = useCallback(() => {
     sendLockRef.current = false;
@@ -287,7 +331,7 @@ export function useChatSend({
         { role: "user", content: trimmed },
       ];
 
-      const persistFinal = async (opts: { error?: string; costUsd?: number }) => {
+      const persistFinal = async (opts: { error?: string; costUsd?: number; messageId?: string | null }) => {
         const snap = streamingRef.current;
         streamingRef.current = null;
         if (!snap || snap.convId !== convId) return;
@@ -301,6 +345,22 @@ export function useChatSend({
           return;
         }
         try {
+          if (opts.messageId) {
+            setMessagesForCurrent((prev) =>
+              prev.map((m) =>
+                m.id === snap.msgId
+                  ? {
+                      ...m,
+                      id: opts.messageId!,
+                      streaming: false,
+                      cost_usd: opts.costUsd,
+                    }
+                  : m
+              )
+            );
+            bumpSummary(snap.convId, {}, 1, true);
+            return;
+          }
           const result = await appendAssistantMessage(snap.convId, {
             content: joined,
             tools: flatTools,
@@ -775,7 +835,7 @@ export function useChatSend({
                       }
                     : m
                 );
-                void persistFinal({ costUsd });
+                void persistFinal({ costUsd, messageId: evt.message_id });
                 cleanupRef.current = null;
                 releaseSendLock();
                 break;
@@ -795,7 +855,7 @@ export function useChatSend({
                       }
                     : m
                 );
-                void persistFinal({ error: EMPTY_ASSISTANT_RESPONSE, costUsd });
+              void persistFinal({ error: EMPTY_ASSISTANT_RESPONSE, costUsd, messageId: evt.message_id });
                 cleanupRef.current = null;
                 releaseSendLock();
                 break;
@@ -811,7 +871,7 @@ export function useChatSend({
                     }
                   : m
               );
-              void persistFinal({ costUsd });
+              void persistFinal({ costUsd, messageId: evt.message_id });
               cleanupRef.current = null;
               releaseSendLock();
               break;
