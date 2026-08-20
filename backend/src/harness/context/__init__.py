@@ -19,6 +19,7 @@ from src.capabilities.memory.domain.extraction import (
 )
 from src.capabilities.memory.application.lifecycle import (
     consolidate_user_memories,
+    enforce_memory_capacity,
     extract_conversation_memories,
     finalize_memory_rows_heavy,
     run_memory_heavy_background,
@@ -139,6 +140,7 @@ __all__ = [
     "build_user_memory_profile",
     "compute_budget",
     "consolidate_user_memories",
+    "enforce_memory_capacity",
     "contains_sensitive_memory_content",
     "context_status_payload",
     "context_window_for_model",

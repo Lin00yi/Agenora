@@ -1,11 +1,25 @@
 """Shared constants and dataclasses for conversation context assembly."""
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
 from src.capabilities.conversations.models import ConversationSummary
+from src.capabilities.memory.domain.policy import (
+    MAX_ACTIVE_MEMORIES_PER_SCOPE as MAX_ACTIVE_MEMORIES_PER_SCOPE,
+    MAX_MEMORY_CONTEXT_TOKENS as MAX_MEMORY_CONTEXT_TOKENS,
+    MAX_MEMORY_EXTRACTION_SOURCE_CHARS as MAX_MEMORY_EXTRACTION_SOURCE_CHARS,
+    MAX_PROFILE_MEMORY_ROWS as MAX_PROFILE_MEMORY_ROWS,
+    MEMORY_CONFIDENCE_WEIGHT as MEMORY_CONFIDENCE_WEIGHT,
+    MEMORY_CONSOLIDATE_SEMANTIC as MEMORY_CONSOLIDATE_SEMANTIC,
+    MEMORY_IMPORTANCE_WEIGHT as MEMORY_IMPORTANCE_WEIGHT,
+    MEMORY_INJECT_DEDUPE_COSINE as MEMORY_INJECT_DEDUPE_COSINE,
+    MEMORY_RETRIEVAL_LIMIT as MEMORY_RETRIEVAL_LIMIT,
+    MEMORY_SEMANTIC_MIN as MEMORY_SEMANTIC_MIN,
+    MemoryCandidate as MemoryCandidate,
+    PROFILE_PREFERENCE_KEYS as PROFILE_PREFERENCE_KEYS,
+    SENSITIVE_PATTERNS as SENSITIVE_PATTERNS,
+)
 
 # BYOK accepts arbitrary model identifiers. Treat an unknown model
 # conservatively instead of assuming DeepSeek's 64k window and overflowing a
@@ -23,12 +37,13 @@ OUTPUT_TASK_TARGETS: dict[str, int] = {
 SYSTEM_AND_TOOL_RESERVE = 6_000
 RAG_RESERVE = 8_000
 SAFETY_RESERVE = 2_000
-MAX_MEMORY_CONTEXT_TOKENS = 1_200
 MAX_PROFILE_CONTEXT_TOKENS = 700
 MAX_SUMMARY_CONTEXT_TOKENS = 2_600
 MAX_SUMMARY_SOURCE_CHARS = 12_000
-MAX_MEMORY_EXTRACTION_SOURCE_CHARS = 16_000
-MAX_PROFILE_MEMORY_ROWS = 40
+# A user can keep a much larger archive, but only this many current records may
+# remain eligible for prompt recall in one scope.  Without an explicit active
+# set limit, ``retrieve_user_memories`` silently stopped considering old rows
+# after its bounded candidate query.
 PREPARE_SUMMARY_RATIO = 0.60
 SUMMARY_TRIGGER_RATIO = 0.72
 FORCE_SUMMARY_RATIO = 0.85
@@ -38,30 +53,6 @@ FORCE_SUMMARY_RATIO = 0.85
 # this constant must not drop rows that are not yet in the summary.
 RECENT_TURNS = 20
 MIN_RECENT_TURNS_ON_PRESSURE = 10
-# Stable response preferences that belong in the always-on profile block.
-# Query-retrieved memories exclude these ids so the same fact is not injected twice.
-PROFILE_PREFERENCE_KEYS = frozenset(
-    {"response_language", "response_style", "response_max_chars"}
-)
-# Hybrid memory recall: keep the gate strict so short off-topic queries
-# (e.g. "还有什么卡？") do not pull high-importance unrelated facts.
-MEMORY_SEMANTIC_MIN = 0.55
-MEMORY_RETRIEVAL_LIMIT = 4
-MEMORY_IMPORTANCE_WEIGHT = 0.25
-MEMORY_CONFIDENCE_WEIGHT = 0.25
-MEMORY_INJECT_DEDUPE_COSINE = 0.88
-MEMORY_CONSOLIDATE_SEMANTIC = 0.88
-
-SENSITIVE_PATTERNS = [
-    re.compile(r"sk-[A-Za-z0-9_\-]{16,}"),
-    re.compile(r"(?i)(api[_-]?key|token|password|secret)\s*[:=]\s*\S+"),
-    re.compile(r"(?i)bearer\s+[A-Za-z0-9._\-]{12,}"),
-    re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"),
-    re.compile(r"(?:密码|口令|验证码|动态码).{0,8}(?:是|为|[:：=])\s*\S{4,}"),
-    re.compile(r"\b\d{15,18}[\dXx]\b"),
-    re.compile(r"\b\d{13,19}\b"),
-]
-
 
 @dataclass
 class ContextBudget:
@@ -82,18 +73,3 @@ class BuiltContext:
     summary: ConversationSummary | None
     injected_memory_count: int
     memory_trace: dict[str, Any]
-
-
-@dataclass(frozen=True)
-class MemoryCandidate:
-    """A high-confidence memory inferred from one user-authored message."""
-
-    type: str
-    key: str
-    value: str
-    content: str
-    confidence: float
-    importance: float
-    source: str
-    scope: str = "personal"
-    expires_in_days: int | None = None

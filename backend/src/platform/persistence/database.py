@@ -408,6 +408,10 @@ def _migrate_additive_columns(sync_conn) -> None:
             ("supersedes_memory_id", "VARCHAR(36)"),
             ("embedding_json", "TEXT"),
             ("embedding_fingerprint", "VARCHAR(64)"),
+            ("extractor_model", "VARCHAR(128)"),
+            ("extractor_version", "VARCHAR(64)"),
+            ("last_accessed_at", "TIMESTAMP"),
+            ("recall_count", "INTEGER NOT NULL DEFAULT 0"),
         ]
         for col_name, col_type in memory_new_cols:
             if col_name not in memory_cols:
@@ -421,6 +425,12 @@ def _migrate_additive_columns(sync_conn) -> None:
             text(
                 "CREATE INDEX IF NOT EXISTS ix_user_memories_retrieval "
                 "ON user_memories (user_id, status, expires_at, updated_at)"
+            )
+        )
+        sync_conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_user_memories_active_scope_capacity "
+                "ON user_memories (user_id, status, scope, scope_id, importance, updated_at)"
             )
         )
         sync_conn.execute(

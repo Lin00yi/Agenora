@@ -18,6 +18,7 @@ from src.capabilities.identity.models import User
 from src.harness.context import (
     backfill_user_memory_embeddings,
     consolidate_user_memories,
+    enforce_memory_capacity,
     extract_conversation_memories,
 )
 from src.capabilities.conversations.models import Conversation
@@ -34,6 +35,7 @@ class MemoryMaintenanceResult:
     expired: int = 0
     superseded: int = 0
     deduplicated: int = 0
+    archived: int = 0
     embeddings_backfilled: int = 0
     idle_conversations_scanned: int = 0
     idle_conversations_finalized: int = 0
@@ -80,6 +82,7 @@ async def run_memory_maintenance(
             result.expired += stats["expired"]
             result.superseded += stats["superseded"]
             result.deduplicated += stats["deduplicated"]
+            result.archived += await enforce_memory_capacity(session, user_id=user.id)
             result.embeddings_backfilled += await backfill_user_memory_embeddings(
                 session,
                 user_id=user.id,

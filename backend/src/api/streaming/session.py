@@ -568,11 +568,17 @@ async def run_chat_session(
             prompt_trace = final_state.get("prompt_trace")
             if memory_trace is not None and isinstance(prompt_trace, dict):
                 block_trace = memory_trace.get("context_blocks") or {}
+                final_plan = prompt_trace.get("context_plan") or {}
                 tokens = prompt_trace.get("tokens")
                 truncation = prompt_trace.get("truncation")
                 if isinstance(tokens, dict) and isinstance(truncation, dict):
                     for name in ("profile", "memory", "summary"):
+                        final_block = final_plan.get(name)
                         block = block_trace.get(name)
+                        if isinstance(final_block, dict):
+                            tokens[name] = int(final_block.get("admitted_tokens") or 0)
+                            truncation[name] = bool(final_block.get("dropped"))
+                            continue
                         if not isinstance(block, dict):
                             continue
                         injected_tokens = int(block.get("injected_tokens") or 0)

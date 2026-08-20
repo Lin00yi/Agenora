@@ -14,6 +14,7 @@ from sqlalchemy import delete, desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.capabilities.identity.middleware import CurrentUser
+from src.capabilities.memory.domain.extraction import memory_content_rejection_reason
 from src.harness.context import (
     compute_budget,
     consolidate_user_memories,
@@ -80,7 +81,7 @@ class PatchMemoryRequest(BaseModel):
     content: str | None = Field(default=None, min_length=4, max_length=500)
     value: str | None = Field(default=None, min_length=1, max_length=500)
     importance: float | None = Field(default=None, ge=0, le=1)
-    status: Literal["active", "deleted"] | None = None
+    status: Literal["active", "deleted", "archived", "pending_review"] | None = None
     # Explicit null clears expiry (long-lived). Omitted field leaves it unchanged.
     expires_at: datetime | None = None
 
@@ -455,7 +456,7 @@ async def export_conversations(
 @router.get("/memories")
 async def list_memories(
     user: CurrentUser,
-    status_filter: Literal["active", "superseded", "deleted", "expired", "all"] = Query(
+    status_filter: Literal["active", "pending_review", "superseded", "deleted", "expired", "archived", "all"] = Query(
         default="active", alias="status"
     ),
     session: AsyncSession = Depends(get_session),
@@ -474,7 +475,7 @@ async def list_memories(
 @router.get("/memories/export")
 async def export_memories(
     user: CurrentUser,
-    status_filter: Literal["active", "superseded", "deleted", "expired", "all"] = Query(
+    status_filter: Literal["active", "pending_review", "superseded", "deleted", "expired", "archived", "all"] = Query(
         default="all", alias="status"
     ),
     session: AsyncSession = Depends(get_session),
@@ -542,12 +543,16 @@ async def patch_memory(
     if row is None or row.user_id != user.id:
         raise HTTPException(status_code=404, detail="memory not found")
     if req.content is not None:
+        if memory_content_rejection_reason(req.content):
+            raise HTTPException(status_code=422, detail="memory content violates the retention policy")
         row.content = req.content.strip()
         row.source = "user_edited"
         row.confidence = 1.0
         row.embedding_json = None
         row.embedding_fingerprint = None
     if req.value is not None:
+        if memory_content_rejection_reason(req.value):
+            raise HTTPException(status_code=422, detail="memory value violates the retention policy")
         row.memory_value = req.value.strip()
         row.source = "user_edited"
         row.confidence = 1.0
@@ -857,6 +862,7 @@ async def append_message(
         summary_model,
         configured_context_window_for_model(summary_llm_cfg, summary_model),
         summary_llm_cfg,
+        conv.kb_id,
     )
     return msg.to_public_dict()
 

@@ -11,8 +11,8 @@ from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.capabilities.conversations.models import UserMemory
-from src.harness.context.token_budget import estimate_tokens, truncate_text_to_token_budget
-from src.harness.context.constants import (
+from src.platform.llm.tokenizer import count_tokens, truncate_to_token_budget
+from src.capabilities.memory.domain.policy import (
     MAX_MEMORY_CONTEXT_TOKENS,
     MEMORY_CONFIDENCE_WEIGHT,
     MEMORY_IMPORTANCE_WEIGHT,
@@ -21,6 +21,15 @@ from src.harness.context.constants import (
     MEMORY_SEMANTIC_MIN,
     PROFILE_PREFERENCE_KEYS,
 )
+from src.capabilities.memory.domain.extraction import memory_content_rejection_reason
+
+
+def estimate_tokens(text: str) -> int:
+    return count_tokens(text)
+
+
+def truncate_text_to_token_budget(text: str, token_budget: int, *, suffix: str = "…[已截断]") -> str:
+    return truncate_to_token_budget(text, token_budget, suffix=suffix)
 
 def _memory_terms(text: str) -> set[str]:
     lowered = text.lower()
@@ -57,7 +66,11 @@ async def retrieve_user_memories(
         .order_by(desc(UserMemory.updated_at))
         .limit(50)
     )
-    rows = [row for row in result.scalars().all() if row.id not in excluded]
+    rows = [
+        row
+        for row in result.scalars().all()
+        if row.id not in excluded and not memory_content_rejection_reason(row.content or "")
+    ]
     if not rows:
         return []
 
@@ -117,7 +130,13 @@ async def retrieve_user_memories(
         scored.append((score, row))
     scored.sort(key=lambda item: item[0], reverse=True)
     deduped = _dedupe_scored_memories(scored)
-    return [row for _, row in deduped[:limit]]
+    selected = [row for _, row in deduped[:limit]]
+    if selected:
+        now = datetime.now(timezone.utc)
+        for row in selected:
+            row.last_accessed_at = now
+            row.recall_count = int(row.recall_count or 0) + 1
+    return selected
 
 
 def _dedupe_scored_memories(

@@ -113,9 +113,13 @@ export type UserMemory = {
   source: "explicit" | "auto_rule" | "user_edited" | string;
   confidence: number;
   importance: number;
-  status: "active" | "superseded" | "deleted" | string;
+  status: "active" | "pending_review" | "archived" | "superseded" | "deleted" | "expired" | string;
   expires_at: string | null;
   supersedes_memory_id: string | null;
+  extractor_model: string | null;
+  extractor_version: string | null;
+  last_accessed_at: string | null;
+  recall_count: number;
   has_embedding: boolean;
   created_at: string | null;
   updated_at: string | null;
@@ -254,7 +258,7 @@ export async function patchMemory(
     content?: string;
     value?: string;
     importance?: number;
-    status?: "active" | "deleted";
+    status?: "active" | "pending_review" | "archived" | "deleted";
     /** ISO timestamp, or null to clear expiry (long-lived). */
     expires_at?: string | null;
   }

@@ -1,7 +1,3 @@
-# Local dev override (auto-merged by docker compose).
-# - Expose backend/frontend directly on localhost
-# - Skip production nginx (needs Let's Encrypt certs on :443)
-
 services:
   # Debug ports stay local-only. Production uses the internal Compose network
   # and exposes only nginx on 80/443.

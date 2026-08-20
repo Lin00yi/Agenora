@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.capabilities.conversations.models import UserMemory
 
 from src.capabilities.memory.application.lifecycle import _memory_trace_item
+from src.capabilities.memory.domain.extraction import memory_content_rejection_reason
 
 from .constants import MAX_PROFILE_CONTEXT_TOKENS, MAX_PROFILE_MEMORY_ROWS, PROFILE_PREFERENCE_KEYS
 from .token_budget import truncate_text_to_token_budget
@@ -44,9 +45,13 @@ async def build_user_memory_profile(
     )
     # One row per preference key; importance ordering already applied.
     preferences: list[UserMemory] = []
+    rejected_count = 0
     seen_keys: set[str] = set()
     for row in result.scalars().all():
         key = row.memory_key or ""
+        if memory_content_rejection_reason(row.content or ""):
+            rejected_count += 1
+            continue
         if key in seen_keys:
             continue
         seen_keys.add(key)
@@ -63,6 +68,7 @@ async def build_user_memory_profile(
             "constraints": 0,
             "facts": 0,
             "total": len(preferences),
+            "rejected": rejected_count,
         },
         "items": [_memory_trace_item(row) for row in preferences],
         "memory_ids": {row.id for row in preferences},

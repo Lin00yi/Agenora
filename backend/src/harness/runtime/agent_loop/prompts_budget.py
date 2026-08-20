@@ -15,6 +15,17 @@ from src.harness.context import (
 from .constants import _TRUSTED_CONTEXT_SOURCES, _latest_user_text
 
 
+def escape_untrusted_context_text(text: str) -> str:
+    """Keep untrusted context from impersonating an envelope boundary.
+
+    The model still sees the original semantic text, but tag-shaped payloads
+    cannot close the server-authored XML-like delimiters used to explain trust
+    and provenance.  This applies equally to saved memory, summaries and
+    retrieved evidence.
+    """
+    return (text or "").replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
+
+
 def build_effective_system_prompt(
     base_prompt: str, messages: list[dict[str, Any]]
 ) -> tuple[str, list[dict[str, Any]], dict[str, str]]:

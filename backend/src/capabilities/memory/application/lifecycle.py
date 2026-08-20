@@ -7,12 +7,16 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.capabilities.conversations.models import Message, UserMemory
 
-from src.harness.context.constants import MEMORY_CONSOLIDATE_SEMANTIC, MemoryCandidate
+from src.capabilities.memory.domain.policy import (
+    MAX_ACTIVE_MEMORIES_PER_SCOPE,
+    MEMORY_CONSOLIDATE_SEMANTIC,
+    MemoryCandidate,
+)
 from src.capabilities.memory.domain.extraction import (
     _constraint_topic_for_candidate,
     constraint_topic_from_memory_key,
@@ -20,6 +24,7 @@ from src.capabilities.memory.domain.extraction import (
     extract_explicit_memory_candidate,
     extract_memory_candidates,
     infer_constraint_topic,
+    memory_content_rejection_reason,
 )
 from src.capabilities.memory.application.retrieval import (
     _cosine_similarity,
@@ -112,7 +117,7 @@ async def consolidate_user_memories(
     expired_result = await session.execute(
         select(UserMemory).where(
             UserMemory.user_id == user_id,
-            UserMemory.status == "active",
+            UserMemory.status.in_(("active", "pending_review")),
             UserMemory.expires_at.is_not(None),
             UserMemory.expires_at <= now,
         )
@@ -217,6 +222,56 @@ async def consolidate_user_memories(
     return {"expired": len(expired), "superseded": superseded, "deduplicated": deduplicated}
 
 
+async def enforce_memory_capacity(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    limit_per_scope: int = MAX_ACTIVE_MEMORIES_PER_SCOPE,
+) -> int:
+    """Archive excess inferred memory instead of silently making it unrecallable.
+
+    Archived rows remain visible/exportable and can be reactivated by the user.
+    Explicit and user-edited memories are retained ahead of model-inferred facts;
+    the archive is a transparent recall-capacity policy, never data deletion.
+    """
+    if limit_per_scope <= 0:
+        return 0
+    rows = list(
+        (
+            await session.execute(
+                select(UserMemory)
+                .where(UserMemory.user_id == user_id, UserMemory.status == "active")
+                .order_by(desc(UserMemory.updated_at))
+            )
+        ).scalars()
+    )
+    by_scope: dict[tuple[str, str | None], list[UserMemory]] = {}
+    for row in rows:
+        by_scope.setdefault((row.scope, row.scope_id), []).append(row)
+    archived = 0
+    now = datetime.now(timezone.utc)
+    for scope_rows in by_scope.values():
+        if len(scope_rows) <= limit_per_scope:
+            continue
+        ranked = sorted(
+            scope_rows,
+            key=lambda row: (
+                row.source in {"explicit", "user_edited"},
+                row.type in {"preference", "constraint"},
+                float(row.importance or 0),
+                float(row.confidence or 0),
+                row.updated_at or row.created_at,
+                row.id,
+            ),
+            reverse=True,
+        )
+        for row in ranked[limit_per_scope:]:
+            row.status = "archived"
+            row.updated_at = now
+            archived += 1
+    return archived
+
+
 async def finalize_memory_rows_heavy(
     session: AsyncSession,
     *,
@@ -301,6 +356,10 @@ async def store_memory_candidates(
         return stored
     unique_candidates = list({candidate.key: candidate for candidate in candidates}.values())
     for candidate in unique_candidates:
+        if memory_content_rejection_reason(candidate.value) or memory_content_rejection_reason(
+            candidate.content
+        ):
+            continue
         scope = candidate.scope if candidate.scope != "kb" or kb_id else "personal"
         scope_id = kb_id if scope == "kb" else None
         lock_key = candidate.key
@@ -357,14 +416,19 @@ async def store_memory_candidates(
                 if topic_conflicts:
                     existing = _newer_memory(topic_conflicts)
 
+        candidate_source_ids = list(candidate.evidence_message_ids) or source_ids
         if existing and existing.memory_value == candidate.value:
             ids = _source_message_ids(existing)
-            ids = list(dict.fromkeys([*ids, *source_ids]))
+            ids = list(dict.fromkeys([*ids, *candidate_source_ids]))
             existing.source_message_ids = json.dumps(ids, ensure_ascii=False)
             existing.confidence = max(existing.confidence, candidate.confidence)
             existing.importance = max(existing.importance, candidate.importance)
             existing.memory_key = candidate.key
             existing.content = candidate.content
+            existing.extractor_model = candidate.extractor_model
+            existing.extractor_version = candidate.extractor_version or (
+                "memory-rule-v1" if candidate.source == "auto_rule" else "memory-explicit-v1"
+            )
             if candidate.expires_in_days is not None:
                 existing.expires_at = datetime.now(timezone.utc) + timedelta(
                     days=candidate.expires_in_days
@@ -396,11 +460,15 @@ async def store_memory_candidates(
             memory_key=candidate.key,
             memory_value=candidate.value,
             content=candidate.content,
-            source_message_ids=json.dumps(source_ids, ensure_ascii=False),
+            source_message_ids=json.dumps(candidate_source_ids, ensure_ascii=False),
             source=candidate.source,
             confidence=candidate.confidence,
             importance=candidate.importance,
-            status="active",
+            # A whole-session model inference is useful as a suggestion, not
+            # a silent authority to steer every later conversation.  It is
+            # reviewable in Memory Settings and cannot be recalled until the
+            # user edits/saves it (which promotes it to ``active``).
+            status="pending_review" if candidate.source == "auto_session" else "active",
             supersedes_memory_id=existing.id if existing else None,
             expires_at=(
                 datetime.now(timezone.utc) + timedelta(days=candidate.expires_in_days)
@@ -409,6 +477,9 @@ async def store_memory_candidates(
             ),
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
+            extractor_model=candidate.extractor_model,
+            extractor_version=candidate.extractor_version
+            or ("memory-rule-v1" if candidate.source == "auto_rule" else "memory-explicit-v1"),
         )
         session.add(row)
         stored.append(row)
@@ -420,6 +491,7 @@ async def store_memory_candidates(
             for row in stored:
                 await refresh_memory_embedding(row, embedding_cfg=embedding_cfg)
             await consolidate_user_memories(session, user_id=user_id)
+        await enforce_memory_capacity(session, user_id=user_id)
     return stored
 
 

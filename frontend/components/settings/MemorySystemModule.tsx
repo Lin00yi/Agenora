@@ -33,12 +33,14 @@ import {
 } from "@/lib/conversations-api";
 import { cn } from "@/lib/utils";
 
-type StatusFilter = "active" | "superseded" | "deleted" | "expired" | "all";
+type StatusFilter = "active" | "pending_review" | "archived" | "superseded" | "deleted" | "expired" | "all";
 type TypeFilter = "all" | "fact" | "explicit" | "preference" | "constraint";
 type ScopeFilter = "all" | "personal" | "kb";
 
 const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: "active", label: "当前有效" },
+  { value: "pending_review", label: "待确认" },
+  { value: "archived", label: "已归档" },
   { value: "all", label: "全部状态" },
   { value: "superseded", label: "已覆盖" },
   { value: "deleted", label: "已删除" },
@@ -404,6 +406,9 @@ function MemoryRow({
               <DetailItem label="来源" value={memorySourceLabel(memory.source)} />
               <DetailItem label="重要度" value={memory.importance.toFixed(2)} />
               <DetailItem label="置信度" value={`${Math.round(memory.confidence * 100)}%`} />
+              <DetailItem label="证据消息" value={`${memory.source_message_ids.length} 条`} />
+              <DetailItem label="提取器" value={memory.extractor_model || memory.extractor_version || "—"} />
+              <DetailItem label="召回次数" value={String(memory.recall_count)} />
               <DetailItem label="过期" value={expiryLabel} />
               <DetailItem label="向量" value={memory.has_embedding ? "已向量化" : "未向量化"} />
             </div>
@@ -504,6 +509,7 @@ function statusTone(
   if (status === "active") return "success";
   if (status === "deleted") return "danger";
   if (status === "expired") return "warning";
+  if (status === "pending_review") return "warning";
   return "muted";
 }
 
@@ -723,6 +729,8 @@ function statusLabel(status: UserMemory["status"]) {
   if (status === "superseded") return "已覆盖";
   if (status === "deleted") return "已删除";
   if (status === "expired") return "已过期";
+  if (status === "pending_review") return "待确认";
+  if (status === "archived") return "已归档";
   return status;
 }
 
