@@ -9,7 +9,7 @@ from langgraph.graph import END, StateGraph
 from src.harness.contracts.state import AgentState
 from src.harness.runtime.agent_loop import call_tools_node, reason_node, should_continue
 from src.harness.tools.base import ToolRegistry
-from src.harness.tools.mcp_orders import build_orders_registry
+from src.harness.mcp.orders import build_orders_registry
 from src.platform.llm.gateway import CostTracker
 
 if TYPE_CHECKING:

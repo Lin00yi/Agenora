@@ -73,11 +73,11 @@ npm run sync:model-catalog
 
 ### 订单与退款 MCP 执行示例
 
-后端包含一个本地 SQLite 演示订单服务，通过 stdio MCP 由 `orders` 子 agent 调用。它不是支付渠道生产接入：演示订单会按当前登录用户首次查询时创建，数据位于 `backend/data/orders_mcp.db`。当输入“查我的订单”“申请退款，订单号是 …”或“确认退款 …”时，Planner 会优先路由到该执行 agent，不会把操作请求交给知识库。
+仓库根目录的 `mock-mcp/orders` 是一个独立的本地 SQLite 演示订单 MCP 服务；`backend/src/harness/mcp/orders.py` 是系统作为 MCP Host/Client 的适配层，和 `harness/skills` 平级。`orders` 子 agent 只通过这个 stdio MCP 客户端调用服务。它不是支付渠道生产接入：演示订单会按当前登录用户首次查询时创建，数据位于 `mock-mcp/orders/data/orders.db`。当输入“查我的订单”“申请退款，订单号是 …”或“确认退款 …”时，Planner 会优先路由到该执行 agent，不会把操作请求交给知识库。
 
 退款严格分两轮：agent 先收集订单号和退款原因，调用 `prepare_refund` 只生成 10 分钟有效的确认单；界面回复确认单号、金额和原因。用户必须在下一条消息单独精确输入 `确认退款 <approval_id>`，系统会在调用工具节点再次比对“最新用户消息”和工具参数，匹配后才允许 MCP 服务执行。服务端还会校验当前用户归属、确认文本、过期时间和状态，并以 `approval_id` 保证重复确认不会重复退款。
 
-本地默认已开启。生产部署至少应设置随机的 `ORDERS_MCP_SERVICE_TOKEN`、将 `ORDERS_MCP_DB_PATH` 换为真实订单适配器的数据边界，并把 `prepare_refund` / `confirm_refund` 对接到支付系统的审计、权限、风控和回调链路；不要将演示 SQLite 实现直接当作支付生产系统。
+本地默认已开启；Docker Compose 默认关闭这个 mock 服务。生产部署至少应设置随机的 `ORDERS_MCP_SERVICE_TOKEN`、将 `ORDERS_MCP_SERVER_PATH` 和 `ORDERS_MCP_DB_PATH` 换为真实订单服务的连接与数据边界，并把 `prepare_refund` / `confirm_refund` 对接到支付系统的审计、权限、风控和回调链路；不要将演示 SQLite 实现直接当作支付生产系统。
 
 ### 多 Agent 编排链路
 

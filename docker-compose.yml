@@ -139,6 +139,10 @@ services:
       LOG_LEVEL: INFO
       CORS_ORIGINS: ${PUBLIC_URL:-http://localhost}
       RATE_LIMIT_PER_HOUR: ${RATE_LIMIT_PER_HOUR:-60}
+      # The repository's stdio order service is a development mock and is not
+      # baked into the production backend image. Use a real adapter before
+      # enabling order execution in a deployed environment.
+      ORDERS_MCP_ENABLED: ${ORDERS_MCP_ENABLED:-false}
       RAG_MONITOR_WINDOW_HOURS: ${RAG_MONITOR_WINDOW_HOURS:-24}
       RAG_MONITOR_INTERVAL_SECONDS: ${RAG_MONITOR_INTERVAL_SECONDS:-300}
       RAG_MONITOR_MIN_CALLS: ${RAG_MONITOR_MIN_CALLS:-20}

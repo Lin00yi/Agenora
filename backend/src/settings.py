@@ -33,6 +33,7 @@ _ENV_FILE = _BACKEND_DIR / f".env.{_ENV_SUFFIX}"
 if not _ENV_FILE.exists():
     _ENV_FILE = _BACKEND_DIR / ".env"
 _DATA_DIR = _BACKEND_DIR / "data"
+_PROJECT_ROOT = _BACKEND_DIR.parent
 
 # SQLAlchemy URLs use POSIX-style slashes; absolute path renders as
 # `sqlite+aiosqlite:///C:/.../app.db` on Windows and
@@ -112,11 +113,12 @@ class Settings(BaseSettings):
     bing_search_api_key: str = ""
     tavily_api_key: str = ""
 
-    # ===== Local Orders MCP demo =====
-    # The API server starts this stdio MCP service as a child process for each
-    # tool call.  Keep the token unique outside local development.
+    # ===== Mock Orders MCP service =====
+    # The Host starts this separate stdio MCP service as a child process for
+    # each tool call. Keep the token unique outside local development.
     orders_mcp_enabled: bool = True
-    orders_mcp_db_path: str = str(_DATA_DIR / "orders_mcp.db")
+    orders_mcp_server_path: str = str(_PROJECT_ROOT / "mock-mcp" / "orders")
+    orders_mcp_db_path: str = str(_PROJECT_ROOT / "mock-mcp" / "orders" / "data" / "orders.db")
     orders_mcp_service_token: str = "local-dev-orders-mcp-change-me"
     orders_mcp_timeout_seconds: float = 15.0
 

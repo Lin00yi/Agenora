@@ -18,26 +18,35 @@ from src.settings import get_settings
 class OrdersMCPClient:
     """Small stdio client. Identity and service token are injected server-side."""
 
-    def __init__(self, *, actor_id: str, db_path: str, service_token: str, timeout_s: float) -> None:
+    def __init__(
+        self, *, actor_id: str, server_path: str, db_path: str, service_token: str, timeout_s: float
+    ) -> None:
         self.actor_id = actor_id
+        self.server_path = server_path
         self.db_path = db_path
         self.service_token = service_token
         self.timeout_s = timeout_s
 
     async def call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        backend_root = Path(__file__).resolve().parents[3]
+        server_root = Path(self.server_path).resolve()
+        server_source = server_root / "src"
+        if not server_source.is_dir():
+            raise RuntimeError(f"Orders MCP server source is missing: {server_source}")
         env = dict(os.environ)
         env.update(
             {
                 "ORDERS_MCP_DB_PATH": self.db_path,
                 "ORDERS_MCP_SERVICE_TOKEN": self.service_token,
+                "PYTHONPATH": os.pathsep.join(
+                    item for item in (str(server_source), env.get("PYTHONPATH", "")) if item
+                ),
             }
         )
         params = StdioServerParameters(
             command=sys.executable,
-            args=["-m", "src.integrations.orders_mcp.server"],
+            args=["-m", "mock_orders_mcp.server"],
             env=env,
-            cwd=str(backend_root),
+            cwd=str(server_root),
         )
         payload = {**arguments, "actor_id": self.actor_id, "service_token": self.service_token}
         async with stdio_client(params) as (read, write):
@@ -137,6 +146,7 @@ def build_orders_registry(*, user_id: str | None) -> ToolRegistry:
         return registry
     client = OrdersMCPClient(
         actor_id=user_id,
+        server_path=settings.orders_mcp_server_path,
         db_path=settings.orders_mcp_db_path,
         service_token=settings.orders_mcp_service_token,
         timeout_s=settings.orders_mcp_timeout_seconds,

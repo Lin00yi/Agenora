@@ -1,18 +1,21 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from src.harness.orchestration.planner import rule_route
 from src.harness.orchestration.registry import build_default_agent_registry
 from src.harness.runtime.agent_loop.call_tools import call_tools_node
 from src.harness.tools.base import Tool, ToolRegistry, ToolResult
-from src.harness.tools.mcp_orders import OrdersMCPClient
+from src.harness.mcp.orders import OrdersMCPClient
 
 
 @pytest.mark.asyncio
 async def test_stdio_mcp_refund_is_owned_confirmed_and_idempotent(tmp_path) -> None:
     client = OrdersMCPClient(
         actor_id="user-alpha",
+        server_path=str(Path(__file__).resolve().parents[2] / "mock-mcp" / "orders"),
         db_path=str(tmp_path / "orders.db"),
         service_token="test-mcp-token",
         timeout_s=10,
@@ -32,6 +35,7 @@ async def test_stdio_mcp_refund_is_owned_confirmed_and_idempotent(tmp_path) -> N
 
         wrong_user = OrdersMCPClient(
             actor_id="user-beta",
+            server_path=str(Path(__file__).resolve().parents[2] / "mock-mcp" / "orders"),
             db_path=str(tmp_path / "orders.db"),
             service_token="test-mcp-token",
             timeout_s=10,
