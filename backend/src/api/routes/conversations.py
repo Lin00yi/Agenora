@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.capabilities.identity.middleware import CurrentUser
 from src.capabilities.memory.domain.extraction import memory_content_rejection_reason
+from src.harness.policy.input_filter import sanitize_user_input
 from src.harness.context import (
     compute_budget,
     consolidate_user_memories,
@@ -105,6 +106,21 @@ class ImportConversation(BaseModel):
 
 class ImportRequest(BaseModel):
     conversations: list[ImportConversation] = Field(default_factory=list)
+
+
+def _validated_user_message_content(content: str) -> str:
+    """Apply the same admission boundary before a user message is persisted.
+
+    Chat context is constructed from durable conversation rows. Validating only
+    inside the later SSE runner leaves a rejected row available to memory
+    extraction and summary preparation, so this write boundary must reject it
+    first. The runner intentionally performs the same check again for legacy
+    rows and direct no-conversation requests.
+    """
+    cleaned, blocked = sanitize_user_input(content)
+    if blocked:
+        raise HTTPException(status_code=400, detail=f"input_blocked: {blocked}")
+    return cleaned
 
 
 def _human_refund_approval(message: Message) -> str | None:
@@ -784,6 +800,8 @@ async def append_message(
 ) -> dict:
     conv = await _load_owned_conversation(session, conv_id, user.id)
     content = req.content or ""
+    if req.role == "user":
+        content = _validated_user_message_content(content)
     tools = req.tools or []
     parts = req.parts or []
     error = req.error or None
@@ -827,8 +845,8 @@ async def append_message(
             heavy=False,
         )
         pending_memory_ids = [row.id for row in stored]
-        if _is_default_title(conv.title) and req.content.strip():
-            conv.title = _derive_title(req.content)
+        if _is_default_title(conv.title) and content:
+            conv.title = _derive_title(content)
 
     conv.updated_at = datetime.now(timezone.utc)
     conv.finalized_at = None
