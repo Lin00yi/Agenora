@@ -43,16 +43,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.middleware import CurrentUser
 from src.auth.models import User
-from src.storage.database import get_session
-from src.storage.vector.embedding import _resolve_config, get_vector_size, probe_vector_size
-from src.storage.jobs.ingestion import enqueue_ingestion, run_ingestion_job
-from src.storage.vector import get_store
-from src.kb.ingest import (
-    delete_document_chunks,
-    delete_kb_uploads,
-    delete_uploaded_file,
-    save_uploaded_file,
-    upload_path,
+from src.adapters.persistence import get_session
+from src.capabilities.knowledge.application import (
+    configured_vector_size as get_vector_size,
+    default_embedding_model,
+    get_vector_store as get_store,
+    probe_vector_dimension as probe_vector_size,
+    enqueue_documents,
+    chunks,
+    documents,
+    evaluation,
+    handoff_ingestion,
+    members,
 )
 from src.kb.models import (
     KB,
@@ -212,6 +214,19 @@ async def _load_owner_kb(session: AsyncSession, kb_id: str, user_id: str) -> KB:
     return kb
 
 
+async def _email_map(session: AsyncSession, user_ids: list[str]) -> dict[str, dict[str, str]]:
+    """Compatibility helper for the admin read model.
+
+    Membership presentation now lives in ``capabilities.knowledge``; the
+    admin route still uses this small projection until its own read model is
+    migrated.
+    """
+    rows = (
+        await session.execute(select(User.id, User.email).where(User.id.in_(user_ids)))
+    ).all()
+    return {row.id: {"email": row.email} for row in rows}
+
+
 def _eval_http_error(exc: Exception) -> HTTPException:
     from src.evals.metrics import EvaluationGateError
 
@@ -331,7 +346,7 @@ async def create_kb(
     if ecfg is not None:
         embedding_model = ecfg.model
     else:
-        embedding_model = _resolve_config()["model"]
+        embedding_model = default_embedding_model()
 
     # v3-M8.2: actually probe the embedding before persisting the KB row. The
     # frontend can already test the connection on its end (via /api/settings/
@@ -534,10 +549,8 @@ async def purge_kb(session: AsyncSession, kb: KB) -> None:
     await session.commit()
 
     # Clean up uploaded files on disk.
-    delete_kb_uploads(kb_id)
-    from src.kb.eval_service import delete_eval_run_files
-
-    delete_eval_run_files(kb_id)
+    await documents.delete_kb_uploads(kb_id)
+    evaluation.delete_run_files(kb_id)
 
 
 @router.delete("/{kb_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
@@ -671,10 +684,9 @@ async def rebuild_kb(
 
     # Persist all work before handing it to this process. A worker can resume
     # any unfinished job after a deploy/restart.
-    jobs = [await enqueue_ingestion(session, document_id=did) for did in doc_ids]
+    jobs = await enqueue_documents(session, doc_ids)
     await session.commit()
-    for job in jobs:
-        background.add_task(run_ingestion_job, job.id)
+    handoff_ingestion(background, jobs)
 
     return {
         "rebuilding": True,
@@ -693,9 +705,7 @@ async def list_kb_eval_templates(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     await _load_writable_kb(session, kb_id, user.id)
-    from src.kb.eval_service import list_eval_templates
-
-    return {"templates": list_eval_templates()}
+    return {"templates": evaluation.list_templates()}
 
 
 @router.get("/{kb_id}/eval/config")
@@ -705,10 +715,8 @@ async def get_kb_eval_config(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     kb = await _load_writable_kb(session, kb_id, user.id)
-    from src.kb.eval_service import config_public_dict, get_eval_config
-
     try:
-        return config_public_dict(await get_eval_config(session, kb.id))
+        return await evaluation.public_config(session, kb.id)
     except Exception as exc:
         raise _eval_http_error(exc) from exc
 
@@ -721,30 +729,16 @@ async def put_kb_eval_config(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     kb = await _load_writable_kb(session, kb_id, user.id)
-    from src.kb.eval_service import (
-        config_public_dict,
-        get_eval_config,
-        load_template,
-        upsert_eval_config,
-    )
-
     try:
-        if body.template:
-            golden_set_jsonl, gate_json = load_template(body.template)
-        else:
-            existing = await get_eval_config(session, kb.id)
-            golden_set_jsonl = body.golden_set_jsonl
-            if golden_set_jsonl is None:
-                golden_set_jsonl = existing.golden_set_jsonl if existing else ""
-            gate_json = body.gate_json
-            if gate_json is None:
-                gate_json = existing.gate_json if existing else ""
-            if not (golden_set_jsonl or "").strip():
-                raise HTTPException(status_code=400, detail="golden_set_jsonl or template is required")
-        config = await upsert_eval_config(
-            session, kb, golden_set_jsonl=golden_set_jsonl, gate_json=gate_json or ""
+        return await evaluation.save_config(
+            session,
+            kb,
+            golden_set_jsonl=body.golden_set_jsonl,
+            gate_json=body.gate_json,
+            template=body.template,
         )
-        return config_public_dict(config)
+    except evaluation.EvaluationInputError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except HTTPException:
         raise
     except Exception as exc:
@@ -758,13 +752,10 @@ async def run_kb_eval_regression(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     kb = await _load_writable_kb(session, kb_id, user.id)
-    from src.kb.eval_service import run_regression
-
     try:
-        run = await run_regression(session, kb, created_by=user.id)
+        return await evaluation.run_regression(session, kb, created_by=user.id)
     except Exception as exc:
         raise _eval_http_error(exc) from exc
-    return run.to_public_dict(include_report=True)
 
 
 @router.get("/{kb_id}/eval/runs")
@@ -776,15 +767,7 @@ async def list_kb_eval_runs(
     offset: int = Query(0, ge=0),
 ) -> dict:
     kb = await _load_writable_kb(session, kb_id, user.id)
-    from src.kb.eval_service import list_eval_runs
-
-    rows, total = await list_eval_runs(session, kb.id, limit=limit, offset=offset)
-    return {
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-        "runs": [row.to_public_dict() for row in rows],
-    }
+    return await evaluation.list_runs(session, kb.id, limit=limit, offset=offset)
 
 
 @router.get("/{kb_id}/eval/runs/{run_id}")
@@ -810,13 +793,6 @@ async def replay_kb_eval(
     retrieval_jsonl: UploadFile | None = File(default=None),
 ) -> dict:
     kb = await _load_writable_kb(session, kb_id, user.id)
-    from src.kb.eval_service import (
-        MAX_RETRIEVAL_JSONL_BYTES,
-        load_run_predictions,
-        parse_predictions_jsonl,
-        replay_predictions,
-    )
-
     has_file = retrieval_jsonl is not None and bool(retrieval_jsonl.filename)
     if bool(run_id) == has_file:
         raise HTTPException(
@@ -828,21 +804,18 @@ async def replay_kb_eval(
             source = await session.get(KbEvalRun, run_id)
             if source is None or source.kb_id != kb.id:
                 raise HTTPException(status_code=404, detail="eval run not found")
-            predictions = load_run_predictions(source)
+            predictions = evaluation.predictions_from_run(source)
         else:
             assert retrieval_jsonl is not None
             raw = await retrieval_jsonl.read()
-            if len(raw) > MAX_RETRIEVAL_JSONL_BYTES:
+            if len(raw) > evaluation.max_predictions_bytes():
                 raise HTTPException(status_code=400, detail="retrieval.jsonl is too large")
-            predictions = parse_predictions_jsonl(
-                raw.decode("utf-8"), source="retrieval.jsonl"
-            )
-        run = await replay_predictions(session, kb, predictions, created_by=user.id)
+            predictions = evaluation.parse_predictions(raw)
+        return await evaluation.replay(session, kb, predictions, created_by=user.id)
     except HTTPException:
         raise
     except Exception as exc:
         raise _eval_http_error(exc) from exc
-    return run.to_public_dict(include_report=True)
 
 
 @router.get("/{kb_id}/eval/monitor")
@@ -853,7 +826,7 @@ async def get_kb_eval_monitor(
     hours: int | None = Query(None, ge=1, le=24 * 31),
 ) -> dict:
     kb = await _load_readable_kb(session, kb_id, user.id)
-    from src.observability.rag_metrics import build_rag_monitor_snapshot
+    from src.adapters.observability import build_rag_monitor_snapshot
 
     snapshot = await build_rag_monitor_snapshot(session, hours=hours, kb_id=kb.id)
     snapshot["kb_id"] = kb.id
@@ -920,7 +893,13 @@ async def upload_document(
                 status_code=413,
                 detail=f"file too large ({len(content)} > {MAX_UPLOAD_BYTES})",
             )
-        save_uploaded_file(kb_id, doc_id, file.filename or f"upload.{ext}", content)
+        await documents.save_upload(
+            kb_id,
+            doc_id,
+            file.filename or f"upload.{ext}",
+            content,
+            content_type=file.content_type,
+        )
         doc = Document(
             id=doc_id,
             kb_id=kb_id,
@@ -946,10 +925,10 @@ async def upload_document(
         )
 
     session.add(doc)
-    job = await enqueue_ingestion(session, document_id=doc_id)
+    jobs = await enqueue_documents(session, [doc_id])
     await session.commit()
     await session.refresh(doc)
-    background.add_task(run_ingestion_job, job.id)
+    handoff_ingestion(background, jobs)
 
     return doc.to_public_dict(kb=kb)
 
@@ -1002,13 +981,13 @@ async def delete_document(
         )
 
     # Drop chunks from Qdrant (idempotent), then DB row, then on-disk file.
-    await delete_document_chunks(kb.collection_name, doc_id_snap)
+    await documents.remove_document_chunks(kb.collection_name, doc_id_snap)
     await session.execute(delete(IngestionJob).where(IngestionJob.document_id == doc_id_snap))
     await session.delete(doc)
     if chunks_to_subtract:
         kb.chunks_count = max(0, (kb.chunks_count or 0) - chunks_to_subtract)
     await session.commit()
-    delete_uploaded_file(kb_id, doc_id_snap, filename_snap)
+    await documents.delete_upload(kb_id, doc_id_snap, filename_snap)
 
 @router.get("/{kb_id}/documents/{doc_id}")
 async def get_document(
@@ -1049,12 +1028,10 @@ async def patch_document(
         doc.enabled = body.enabled
         enabled_changed = True
     if enabled_changed:
-        from src.kb.chunk_service import sync_document_vector_payloads
-
         store = get_store()
         if hasattr(store, "upsert"):
             ecfg = await _optional_doc_embedding_cfg(session, kb, user)
-            await sync_document_vector_payloads(session, store, kb, doc, ecfg)
+            await chunks.sync_document_vector_payloads(session, store, kb, doc, ecfg)
     await session.commit()
     await session.refresh(doc)
     return doc.to_public_dict(kb=kb)
@@ -1071,7 +1048,7 @@ async def download_document(
     doc = await _load_document(session, kb_id, doc_id)
     if doc.source_type != "file":
         raise HTTPException(status_code=400, detail="only file uploads can be downloaded")
-    path = upload_path(kb_id, doc_id, doc.filename)
+    path = documents.uploaded_path(kb_id, doc_id, doc.filename)
     if not path.exists():
         raise HTTPException(status_code=404, detail="original file not found on disk")
     return FileResponse(
@@ -1093,7 +1070,7 @@ async def reingest_document(
     doc = await _load_document(session, kb_id, doc_id)
     await _resolve_doc_embedding_cfg(session, kb, user)
     prev_chunks = doc.chunks_count or 0
-    await delete_document_chunks(kb.collection_name, doc.id)
+    await documents.remove_document_chunks(kb.collection_name, doc.id)
     doc.status = "pending"
     doc.chunks_count = 0
     doc.error = ""
@@ -1101,9 +1078,9 @@ async def reingest_document(
         kb.chunks_count = max(0, (kb.chunks_count or 0) - prev_chunks)
     await session.commit()
 
-    job = await enqueue_ingestion(session, document_id=doc.id)
+    jobs = await enqueue_documents(session, [doc.id])
     await session.commit()
-    background.add_task(run_ingestion_job, job.id)
+    handoff_ingestion(background, jobs)
     return doc.to_public_dict(kb=kb)
 
 
@@ -1120,10 +1097,8 @@ async def list_document_chunks(
 ) -> dict:
     kb = await _load_readable_kb(session, kb_id, user.id)
     doc = await _load_document(session, kb_id, doc_id)
-    from src.kb.chunk_service import list_document_chunks_with_backfill
-
     store = get_store()
-    rows, total = await list_document_chunks_with_backfill(
+    rows, total = await chunks.list_document_chunks_with_backfill(
         session,
         store,
         kb,
@@ -1165,15 +1140,13 @@ async def batch_patch_all_chunks(
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    from src.kb.chunk_service import batch_set_all_document_chunks_enabled
-
     kb = await _load_writable_kb(session, kb_id, user.id)
     doc = await _load_document(session, kb_id, doc_id)
     ecfg = await _optional_doc_embedding_cfg(session, kb, user)
     store = get_store()
     if not hasattr(store, "upsert"):
         raise HTTPException(status_code=500, detail="vector store unavailable")
-    total = await batch_set_all_document_chunks_enabled(
+    total = await chunks.batch_set_all_document_chunks_enabled(
         session, store, kb, doc, enabled=body.enabled, embedding_cfg=ecfg
     )
     await session.commit()
@@ -1188,15 +1161,13 @@ async def batch_patch_chunks(
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    from src.kb.chunk_service import batch_set_chunks_enabled
-
     kb = await _load_writable_kb(session, kb_id, user.id)
     doc = await _load_document(session, kb_id, doc_id)
     ecfg = await _optional_doc_embedding_cfg(session, kb, user)
     store = get_store()
     if not hasattr(store, "upsert"):
         raise HTTPException(status_code=500, detail="vector store unavailable")
-    rows = await batch_set_chunks_enabled(
+    rows = await chunks.batch_set_chunks_enabled(
         session,
         store,
         kb,
@@ -1221,8 +1192,6 @@ async def patch_chunk(
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    from src.kb.chunk_service import sync_chunk_payloads_only, upsert_single_chunk_vector
-
     kb = await _load_writable_kb(session, kb_id, user.id)
     doc = await _load_document(session, kb_id, doc_id)
     chunk = await session.get(Chunk, chunk_id)
@@ -1244,10 +1213,10 @@ async def patch_chunk(
         raise HTTPException(status_code=500, detail="vector store unavailable")
     if text_changed:
         ecfg = await _resolve_doc_embedding_cfg(session, kb, user)
-        await upsert_single_chunk_vector(session, store, kb, doc, chunk, ecfg)
+        await chunks.upsert_single_chunk_vector(session, store, kb, doc, chunk, ecfg)
     elif body.enabled is not None:
         ecfg = await _optional_doc_embedding_cfg(session, kb, user)
-        await sync_chunk_payloads_only(
+        await chunks.sync_chunk_payloads_only(
             session, store, kb, doc, [chunk], embedding_cfg=ecfg
         )
     await session.commit()
@@ -1267,15 +1236,13 @@ async def delete_chunk(
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ) -> None:
-    from src.kb.chunk_service import delete_single_chunk
-
     kb = await _load_writable_kb(session, kb_id, user.id)
     doc = await _load_document(session, kb_id, doc_id)
     chunk = await session.get(Chunk, chunk_id)
     if chunk is None or chunk.doc_id != doc_id:
         raise HTTPException(status_code=404, detail="chunk not found")
     store = get_store()
-    await delete_single_chunk(session, store, kb, doc, chunk)
+    await chunks.delete_single_chunk(session, store, kb, doc, chunk)
     await session.commit()
 
 
@@ -1288,8 +1255,6 @@ async def split_chunk_route(
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    from src.kb.chunk_service import split_chunk
-
     kb = await _load_writable_kb(session, kb_id, user.id)
     doc = await _load_document(session, kb_id, doc_id)
     chunk = await session.get(Chunk, chunk_id)
@@ -1298,7 +1263,7 @@ async def split_chunk_route(
     ecfg = await _resolve_doc_embedding_cfg(session, kb, user)
     store = get_store()
     try:
-        left, right = await split_chunk(
+        left, right = await chunks.split_chunk(
             session, store, kb, doc, chunk, body.offset, ecfg
         )
     except ValueError as exc:
@@ -1315,8 +1280,6 @@ async def merge_chunks_route(
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    from src.kb.chunk_service import merge_chunks
-
     kb = await _load_writable_kb(session, kb_id, user.id)
     doc = await _load_document(session, kb_id, doc_id)
     a = await session.get(Chunk, body.chunk_ids[0])
@@ -1335,7 +1298,7 @@ async def merge_chunks_route(
     ecfg = await _resolve_doc_embedding_cfg(session, kb, user)
     store = get_store()
     try:
-        merged = await merge_chunks(session, store, kb, doc, a, b, ecfg)
+        merged = await chunks.merge_chunks(session, store, kb, doc, a, b, ecfg)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     await session.commit()
@@ -1345,21 +1308,6 @@ async def merge_chunks_route(
 # ---------------------------------------------------------------------------
 # v2-M9: Members management
 # ---------------------------------------------------------------------------
-async def _email_map(session: AsyncSession, user_ids: list[str]) -> dict[str, dict]:
-    """Bulk lookup user_id → {email, display_name}. Missing ids absent from result."""
-    ids = [u for u in user_ids if u]
-    if not ids:
-        return {}
-    rows = (
-        await session.execute(
-            select(User.id, User.email, User.display_name).where(User.id.in_(ids))
-        )
-    ).all()
-    return {
-        r.id: {"email": r.email, "display_name": r.display_name or None} for r in rows
-    }
-
-
 @router.get("/{kb_id}/members")
 async def list_members(
     kb_id: str,
@@ -1375,38 +1323,7 @@ async def list_members(
       }
     """
     kb = await _load_readable_kb(session, kb_id, user.id)
-    members = list(kb.members) if kb.members is not None else []
-
-    # Bulk lookup user info for owner + members + invited_by
-    ids = {kb.user_id}
-    for m in members:
-        ids.add(m.user_id)
-        if m.invited_by:
-            ids.add(m.invited_by)
-    info = await _email_map(session, list(ids))
-
-    owner_info = info.get(kb.user_id)
-    out_owner = (
-        {"user_id": kb.user_id, **owner_info}
-        if owner_info and not kb.is_system
-        else None
-    )
-
-    members_out = []
-    for m in sorted(members, key=lambda x: x.created_at):
-        u = info.get(m.user_id, {"email": "(unknown)", "display_name": None})
-        inviter = info.get(m.invited_by, {"email": None}) if m.invited_by else {}
-        members_out.append(
-            {
-                "user_id": m.user_id,
-                "email": u["email"],
-                "display_name": u.get("display_name"),
-                "role": m.role,
-                "invited_by_email": inviter.get("email"),
-                "created_at": m.created_at.isoformat() if m.created_at else None,
-            }
-        )
-    return {"owner": out_owner, "members": members_out}
+    return await members.list_members(session, kb)
 
 
 @router.post("/{kb_id}/members", status_code=status.HTTP_201_CREATED)
@@ -1419,41 +1336,14 @@ async def invite_member(
     """Invite an existing user by email + role. Owner only."""
     kb = await _load_owner_kb(session, kb_id, user.id)
 
-    # Find target user by email (case-insensitive on most SQLite collations).
-    target = (
-        await session.execute(select(User).where(User.email == req.email.lower()))
-    ).scalar_one_or_none()
-    if target is None:
-        raise HTTPException(status_code=404, detail="user with that email not found")
-    if target.id == kb.user_id:
-        raise HTTPException(status_code=400, detail="owner cannot be invited as member")
-
-    # Upsert: if member row exists, update role; else insert.
-    existing = (
-        await session.execute(
-            select(KBMember).where(
-                KBMember.kb_id == kb.id, KBMember.user_id == target.id
-            )
+    try:
+        return await members.invite(
+            session, kb, email=req.email, role=req.role, invited_by=user.id
         )
-    ).scalar_one_or_none()
-    if existing is not None:
-        existing.role = req.role
-    else:
-        session.add(
-            KBMember(
-                kb_id=kb.id,
-                user_id=target.id,
-                role=req.role,
-                invited_by=user.id,
-            )
-        )
-    await session.commit()
-    return {
-        "user_id": target.id,
-        "email": target.email,
-        "display_name": target.display_name or None,
-        "role": req.role,
-    }
+    except members.MemberNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except members.InvalidMemberOperationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.patch("/{kb_id}/members/{user_id}")
@@ -1466,18 +1356,10 @@ async def patch_member(
 ) -> dict:
     """Change a member's role. Owner only."""
     kb = await _load_owner_kb(session, kb_id, user.id)
-    m = (
-        await session.execute(
-            select(KBMember).where(
-                KBMember.kb_id == kb.id, KBMember.user_id == user_id
-            )
-        )
-    ).scalar_one_or_none()
-    if m is None:
-        raise HTTPException(status_code=404, detail="member not found")
-    m.role = req.role
-    await session.commit()
-    return m.to_public_dict()
+    try:
+        return await members.update_role(session, kb.id, user_id=user_id, role=req.role)
+    except members.MemberNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.delete(
@@ -1498,15 +1380,7 @@ async def remove_member(
     is_self = user_id == user.id
     if not (is_owner or is_self):
         raise HTTPException(status_code=403, detail="owner or self only")
-    m = (
-        await session.execute(
-            select(KBMember).where(
-                KBMember.kb_id == kb.id, KBMember.user_id == user_id
-            )
-        )
-    ).scalar_one_or_none()
-    if m is None:
-        raise HTTPException(status_code=404, detail="member not found")
-    await session.delete(m)
-    await session.commit()
-
+    try:
+        await members.remove(session, kb.id, user_id=user_id)
+    except members.MemberNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

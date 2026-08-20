@@ -15,7 +15,7 @@ from src.runtime.agent_loop import (
     should_search_kb,
 )
 from src.prompts.system import build_kb_reason_system_prompt
-from src.runtime.state import AgentState
+from src.harness.contracts.state import AgentState
 from src.models.gateway import CostTracker
 from src.context.rag.policy import resolve_web_search_policy
 from src.tools.base import ToolRegistry, build_default_registry

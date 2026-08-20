@@ -506,9 +506,17 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
       title="文档管理"
       subtitle={`${kb.name}（${kb.id.slice(0, 8)}…）`}
       actions={
-        <Button asChild variant="outline">
-          <Link href="/kbs">返回知识库</Link>
-        </Button>
+        <>
+          <Button asChild>
+            <Link href={`/c?kb=${encodeURIComponent(id)}`}>
+              <Play className="h-4 w-4" />
+              基于此知识库提问
+            </Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/kbs">返回知识库</Link>
+          </Button>
+        </>
       }
     >
         {/* v2-M9: role banner for non-owner / non-system access */}

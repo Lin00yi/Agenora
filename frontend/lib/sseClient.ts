@@ -18,6 +18,15 @@ export type MemoryTrace = {
     agent_runtime?: string;
     safety?: "standard" | "heightened";
   };
+  kb_route?: {
+    needs_retrieval: boolean;
+    selected_kb_id: string | null;
+    source: "disabled" | "rule" | "llm" | "fallback";
+    confidence: "high" | "medium" | "low";
+    reason: string;
+    latency_ms: number;
+    candidate_count: number;
+  };
   profile?: {
     injected: boolean;
     counts?: {
@@ -98,6 +107,7 @@ export type Citation = {
 export type ChatEvent = {
   event:
     | "context_ready"
+    | "kb_routed"
     | "agent_route"
     | "agent_handoff"
     | "dag_ready"

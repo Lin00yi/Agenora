@@ -196,7 +196,10 @@ services:
 
   # ===== Frontend (Next.js standalone build) =====
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_CHAT_KB_SELECTION_MODE: ${NEXT_PUBLIC_CHAT_KB_SELECTION_MODE:-hidden}
     restart: unless-stopped
     depends_on:
       backend:
@@ -204,6 +207,7 @@ services:
     environment:
       BACKEND_URL: http://backend:8000
       NEXT_PUBLIC_APP_NAME: Agenora
+      NEXT_PUBLIC_CHAT_KB_SELECTION_MODE: ${NEXT_PUBLIC_CHAT_KB_SELECTION_MODE:-hidden}
       NEXT_TELEMETRY_DISABLED: "1"
     expose:
       - "3000"

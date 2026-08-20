@@ -1,7 +1,7 @@
 """Routing helpers for the LangGraph agent loop."""
 from __future__ import annotations
 
-from src.runtime.state import AgentState
+from src.harness.contracts.state import AgentState
 
 
 def should_continue(state: AgentState) -> str:

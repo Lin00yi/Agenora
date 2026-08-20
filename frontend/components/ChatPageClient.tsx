@@ -18,6 +18,7 @@ import { toast } from "@/lib/toast";
 import { APP_NAME } from "@/components/Brand";
 import { logout } from "@/lib/auth";
 import { cn } from "@/lib/cn";
+import { chatKbPickerEnabled } from "@/lib/chat-kb-policy";
 import {
   deleteConversation,
   finalizeConversation,
@@ -58,9 +59,12 @@ import {
 export function ChatPage({
   routeConversationId = null,
   startBlank = false,
+  initialKbId = null,
 }: {
   routeConversationId?: string | null;
   startBlank?: boolean;
+  /** Explicit KB entry from a KB page, never an implicit carry-over. */
+  initialKbId?: string | null;
 }) {
   const router = useRouter();
   const [panePhase, setPanePhase] = useState<"in" | "out">("in");
@@ -73,7 +77,9 @@ export function ChatPage({
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [currentMessages, setCurrentMessages] = useState<Message[]>([]);
   const [missingConversationId, setMissingConversationId] = useState<string | null>(null);
-  const [currentKbId, setCurrentKbId] = useState<string | null>(null);
+  const [currentKbId, setCurrentKbId] = useState<string | null>(
+    () => (startBlank ? initialKbId?.trim() || null : null)
+  );
   const [currentModel, setCurrentModel] = useState<string | null>(null);
   const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
   const [currentContextStatus, setCurrentContextStatus] =
@@ -250,6 +256,14 @@ export function ChatPage({
     setConversationPage,
     setConversationHasMore,
   });
+
+  // useChatBoot clears the initial workspace after it has loaded the
+  // conversation list. Restore only an explicit KB-page entry afterwards;
+  // ordinary new chats stay unbound.
+  useEffect(() => {
+    if (!startBlank || !initialLoadDone) return;
+    setCurrentKbId(initialKbId?.trim() || null);
+  }, [initialKbId, initialLoadDone, startBlank]);
 
   useEffect(() => {
     modelOptionsRef.current = modelOptions;
@@ -500,7 +514,7 @@ export function ChatPage({
     }
   }, [conversationHasMore, conversationLoadingMore, conversationPage]);
 
-  const handleNew = useCallback((kbId: string | null = currentKbId) => {
+  const handleNew = useCallback((kbId: string | null = null) => {
     if (currentId && hasConversationMessages && !busy) {
       finalizeSilently(currentId);
     }
@@ -511,7 +525,7 @@ export function ChatPage({
       setComposerValue("");
       window.history.pushState(null, "", "/c");
     });
-  }, [busy, clearActiveConversation, currentId, currentKbId, finalizeSilently, hasConversationMessages, runPaneTransition]);
+  }, [busy, clearActiveConversation, currentId, finalizeSilently, hasConversationMessages, runPaneTransition]);
 
   const handleSelect = useCallback(
     async (id: string) => {
@@ -528,7 +542,8 @@ export function ChatPage({
 
   const handleKbChange = useCallback(
     async (kbId: string | null) => {
-      if (currentId && hasConversationMessages) {
+      if (!chatKbPickerEnabled) return;
+      if (currentKbId && hasConversationMessages) {
         toast.info("\u5f53\u524d\u4f1a\u8bdd\u7684\u77e5\u8bc6\u5e93\u5df2\u9501\u5b9a\uff0c\u8bf7\u65b0\u5efa\u5bf9\u8bdd\u540e\u518d\u5207\u6362\u3002");
         return;
       }
@@ -543,7 +558,7 @@ export function ChatPage({
         toast.error((e as Error)?.message ?? "\u4fdd\u5b58\u77e5\u8bc6\u5e93\u7ed1\u5b9a\u5931\u8d25");
       }
     },
-    [currentId, hasConversationMessages]
+    [currentId, currentKbId, hasConversationMessages]
   );
 
   const handleModelChange = useCallback(
@@ -647,7 +662,6 @@ export function ChatPage({
           conversationHasMore={conversationHasMore}
           conversationLoadingMore={conversationLoadingMore}
           currentId={currentId}
-          currentKbId={currentKbId}
           user={user}
           busy={busy}
           onClose={() => setSidebarOpen(false)}
@@ -715,7 +729,7 @@ export function ChatPage({
                   <div className="mx-auto flex w-full max-w-[920px] flex-col">
                     <EmptyWorkbench
                       centered
-                      currentKbName={currentKb?.name ?? "\u901a\u7528\u5bf9\u8bdd"}
+                      currentKbName={currentKb?.name ?? null}
                       onPick={handleSendWithLlmGuard}
                     />
                     <Composer
@@ -724,6 +738,7 @@ export function ChatPage({
                       textareaRef={textareaRef}
                       busy={busy}
                       currentKbId={currentKbId}
+                      currentKbName={currentKb?.name ?? null}
                       kbs={kbs}
                       currentModel={currentModel}
                       currentProfileId={currentProfileId}
@@ -736,6 +751,7 @@ export function ChatPage({
                       contextStatusLoading={contextStatusLoading}
                       promptTrace={currentPromptTrace}
                       kbLocked={false}
+                      kbPickerEnabled={chatKbPickerEnabled}
                       onChange={setComposerValue}
                       onSubmit={submitComposerWithLlmGuard}
                       onStop={handleStop}
@@ -758,7 +774,7 @@ export function ChatPage({
                   >
                     <div className="kf-thread-inner mx-auto flex w-full max-w-[860px] flex-col gap-7 px-5 pt-5" data-kf-region="thread-inner">
                       {visibleMessages.length === 0 ? (
-                        <EmptyWorkbench currentKbName={currentKb?.name ?? "\u901a\u7528\u5bf9\u8bdd"} onPick={handleSendWithLlmGuard} />
+                        <EmptyWorkbench currentKbName={currentKb?.name ?? null} onPick={handleSendWithLlmGuard} />
                       ) : (
                         visibleMessages.map((message) => <ChatMessage key={message.id} message={message} />)
                       )}
@@ -783,6 +799,7 @@ export function ChatPage({
                         textareaRef={textareaRef}
                         busy={busy}
                         currentKbId={currentKbId}
+                        currentKbName={currentKb?.name ?? null}
                         kbs={kbs}
                         currentModel={currentModel}
                         currentProfileId={currentProfileId}
@@ -794,7 +811,8 @@ export function ChatPage({
                         contextStatus={currentContextStatus}
                         contextStatusLoading={contextStatusLoading}
                         promptTrace={currentPromptTrace}
-                        kbLocked={!!currentId && hasConversationMessages}
+                        kbLocked={!!currentKbId && hasConversationMessages}
+                        kbPickerEnabled={chatKbPickerEnabled}
                         onChange={setComposerValue}
                         onSubmit={submitComposerWithLlmGuard}
                         onStop={handleStop}
@@ -845,7 +863,12 @@ export function ChatPage({
 }
 function SearchParamChatPage() {
   const searchParams = useSearchParams();
-  return <ChatPage routeConversationId={searchParams.get("conversation")} />;
+  return <ChatPage routeConversationId={searchParams.get("conversation")} initialKbId={searchParams.get("kb")} />;
+}
+
+export function NewConversationChatPage() {
+  const searchParams = useSearchParams();
+  return <ChatPage startBlank initialKbId={searchParams.get("kb")} />;
 }
 
 export default function Page() {

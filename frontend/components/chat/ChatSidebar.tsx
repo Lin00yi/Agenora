@@ -36,7 +36,6 @@ export function ChatSidebar({
   conversationHasMore,
   conversationLoadingMore,
   currentId,
-  currentKbId,
   user,
   busy,
   onClose,
@@ -54,7 +53,6 @@ export function ChatSidebar({
   conversationHasMore: boolean;
   conversationLoadingMore: boolean;
   currentId: string | null;
-  currentKbId: string | null;
   user: User | null;
   busy: boolean;
   onClose: () => void;
@@ -139,7 +137,7 @@ export function ChatSidebar({
 
         <button
           className="kf-sidebar-new kf-sidebar-primary-action kf-press mt-5 flex h-[var(--control-h)] w-full items-center justify-center gap-2 rounded-lg border text-sm font-medium"
-          onClick={() => onNew(currentKbId)}
+          onClick={() => onNew()}
           type="button"
         >
           <Plus className="h-4 w-4" />

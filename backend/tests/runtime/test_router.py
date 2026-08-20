@@ -26,6 +26,19 @@ def test_rule_route_unbound_is_chat() -> None:
     assert decision["tasks"][0]["agent"] == "chat"
 
 
+def test_rule_route_unbound_with_routable_candidates_plans_kb_router() -> None:
+    reg = build_default_agent_registry()
+    decision = rule_route(
+        has_kb=False,
+        has_routable_kbs=True,
+        registry=reg,
+        user_query="公司的年假制度是什么？",
+    )
+    assert decision is not None
+    assert decision["target"] == "kb_router"
+    assert decision["tasks"][0]["type"] == "kb_route"
+
+
 def test_rule_route_chitchat_with_kb() -> None:
     reg = build_default_agent_registry()
     decision = rule_route(has_kb=True, registry=reg, user_query="你好")

@@ -5,7 +5,7 @@ Public re-exports preserve ``from src.runtime.agent_loop import X`` for graph, a
 from __future__ import annotations
 
 # Re-exported so tests can monkeypatch ``src.runtime.agent_loop.get_client`` as before.
-from src.models.gateway import get_client
+from src.adapters.llm import get_client
 
 from .call_tools import call_tools_node
 from .constants import EMPTY_ANSWER_FALLBACK, MAX_ITERATIONS

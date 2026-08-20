@@ -6,11 +6,11 @@ import logging
 import time
 from typing import Any
 
-from src.runtime.state import AgentState, RetrievedEvidence
+from src.harness.contracts.state import AgentState, RetrievedEvidence
 from src.context import RAG_RESERVE, estimate_tokens, truncate_text_to_token_budget
 from src.context.rag.assess import assessment_from_tool_raw, merge_assessments
 from src.context.rag.policy import resolve_kb_retrieval_policy
-from src.observability import traced
+from src.adapters.observability import traced
 from src.safety.prompt_injection import (
     enrich_filtered_rag_chunks,
     filter_untrusted_rag_text,

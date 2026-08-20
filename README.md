@@ -61,6 +61,14 @@ npm run sync:model-catalog
 
 `backend/.env` 中须配置可用的 LLM；知识库检索还须配置 Embedding。没有 Key 时前后端仍可启动并访问界面，但无法完成实际模型对话。本地示例未配置 `LIGHTRAG_BASE_URL`，因此不会启用图谱检索；需要该能力时请改为 Docker 模式，或自行启动 LightRAG 与 Neo4j 后配置该地址。
 
+### 聊天中的知识库入口
+
+`NEXT_PUBLIC_CHAT_KB_SELECTION_MODE` 控制输入框是否展示知识库下拉框，默认值为 `hidden`：新建会话不展示“通用对话”或知识库控件。服务端会先在当前用户有读取权限、且已有向量数据的知识库中进行意图路由；只有判断问题需要内部资料且能高/中置信度选出一个 KB 时，才会自动检索并将会话绑定到该 KB。闲聊、创作、翻译、低置信度或路由失败会保留为通用聊天。
+
+用户也可从知识库详情页点击「基于此知识库提问」，创建一个显式绑定该知识库的会话。只有需要让用户自行选择知识库时，才将该变量设为 `selectable`。一旦自动或显式绑定，后续请求始终沿用已保存的 `kb_id`，避免同一会话逐轮跳库。
+
+后端通过 `KB_AUTO_ROUTE_MODE=llm_fallback` 启用规则优先、轻量 LLM 兜底的自动路由；可改为 `off`、`rule_only` 或 `always_llm`。接口层只准备已授权且可检索的候选集；Planner 为未绑定会话生成 `kb_route` DAG 节点，Supervisor 委托 `kb_router` 后再动态展开为 RAG 或通用聊天任务。`KB_AUTO_ROUTE_MAX_CANDIDATES` 默认为 8，用于限制单轮交给路由器的已授权候选数。Docker 部署修改根目录 `.env` 后需重启后端；若同时修改前端选择器策略，使用 `docker compose up -d --build frontend` 重建前端。
+
 文档上传会先创建可恢复的入库任务，再由进程内任务立即尝试处理。Docker 模式会自动运行 `ingestion-worker`；本地开发若需要从重启前恢复未完成的入库，可另开终端执行：
 
 ```bash

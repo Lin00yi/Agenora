@@ -6,7 +6,7 @@ import logging
 from typing import Any, TYPE_CHECKING
 
 from src.prompts.system import SYSTEM_PROMPT
-from src.runtime.state import AgentState, RetrievedEvidence
+from src.harness.contracts.state import AgentState, RetrievedEvidence
 from src.context import (
     MAX_OUTPUT_TOKENS,
     RAG_RESERVE,
@@ -16,14 +16,14 @@ from src.context import (
     resolve_output_token_budget,
     truncate_text_to_token_budget,
 )
-from src.models.gateway import (
+from src.adapters.llm import (
     CostTracker,
     pick_model,
     resolve_empty_answer_fallback_model,
     should_route_to_complex,
 )
 from src.models.adapters import create_tool_adapter
-from src.observability import traced
+from src.adapters.observability import traced
 from src.settings import get_settings
 from src.settings_user import configured_context_window_for_model
 from src.tools.base import ToolRegistry

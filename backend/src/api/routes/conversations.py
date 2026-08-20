@@ -27,8 +27,8 @@ from src.context import (
     store_user_memories,
 )
 from src.conversations.models import Conversation, Message, UserMemory
-from src.storage.database import get_session
-from src.models.gateway import normalize_model_name
+from src.adapters.persistence import get_session
+from src.adapters.llm import normalize_model_name
 from src.settings_user import (
     configured_context_window_for_model,
     list_llm_model_profiles,

@@ -6,21 +6,29 @@ web_search stays a chat tool.
 """
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable, Literal, TypedDict
+import inspect
+import logging
+from typing import Any, Awaitable, Callable
 
 from langgraph.graph import END, StateGraph
 
-from src.planning.dag import TaskDag, append_chat_followup
+from src.harness.orchestration.dag import TaskDag, append_chat_followup
 from src.planning.planner import resolve_agent_route
-from src.planning.validate import ready_tasks, validate_and_bind
+from src.harness.orchestration.state import SupervisorState
+from src.harness.orchestration.validation import ready_tasks, validate_and_bind
 from src.context.rag.assess import is_empty_injected_evidence
-from src.agents.registry import AgentRegistry, RuntimeDeps, build_default_agent_registry
+from src.harness.orchestration.registry import (
+    AgentRegistry,
+    RuntimeDeps,
+    build_default_agent_registry,
+)
+from src.harness.contracts.runtime import RunContext
 from src.models.gateway import CostTracker
 from src.observability import traced
 
-Emitter = Callable[[dict[str, Any]], Awaitable[None]]
+log = logging.getLogger(__name__)
 
-SupervisorDecision = Literal["dispatch", "finish"]
+Emitter = Callable[[dict[str, Any]], Awaitable[None]]
 
 # Keys copied into each subgraph invoke (AgentState-compatible).
 _SUBGRAPH_INPUT_KEYS = (
@@ -41,43 +49,6 @@ _SUBGRAPH_INPUT_KEYS = (
 )
 
 
-class SupervisorState(TypedDict, total=False):
-    messages: list[dict[str, Any]]
-    iterations: int
-    tool_call_log: list[dict[str, Any]]
-    citations: list[dict[str, Any]]
-    prompt_injection_risk: str
-    prompt_injection_reasons: list[str]
-    rag_suspicious_chunks: int
-    rag_filtered_chunks: list[dict[str, Any]]
-    web_search_call_count: int
-    web_search_evidence_count: int
-    kb_queries: list[dict[str, Any]]
-    kb_context: str
-    retrieved_evidence: list[dict[str, Any]]
-    kb_search_done: bool
-    query_policy_action: str
-    query_policy_reason: str
-    query_policy_source: str
-    query_policy_latency_ms: int
-    final_report: str | None
-    report_streamed: bool
-    cost_usd: float | None
-    prompt_trace: dict[str, Any]
-    kb_id: str | None
-    base_messages: list[dict[str, Any]]
-    active_agent: str | None
-    last_agent: str | None
-    agent_results: dict[str, Any]
-    route_reason: str
-    route_source: str
-    route_confidence: str
-    handoff_count: int
-    supervisor_trace: list[dict[str, Any]]
-    supervisor_decision: SupervisorDecision
-    task_dag: TaskDag
-    task_status: dict[str, str]
-    active_task_id: str | None
 
 
 def _latest_user_text(messages: list[dict[str, Any]] | None) -> str:
@@ -196,6 +167,10 @@ def build_supervisor_graph(
     embedding_cfg=None,
     reranker_cfg: Any | None = None,
     kb_web_search_enabled: bool = False,
+    kb_candidates: list[Any] | None = None,
+    configure_routed_kb=None,
+    on_kb_routed=None,
+    run_context: RunContext | None = None,
 ):
     """Compile the multi-agent supervisor around a pluggable registry."""
     from src.settings import get_settings
@@ -207,6 +182,7 @@ def build_supervisor_graph(
     reg = registry or build_default_agent_registry()
     runtime = deps or RuntimeDeps(
         emit=em,
+        run=run_context,
         kb=kb,
         llm_cfg=llm_cfg,
         complex_llm_cfg=complex_llm_cfg,
@@ -215,10 +191,16 @@ def build_supervisor_graph(
         embedding_cfg=embedding_cfg,
         reranker_cfg=reranker_cfg,
         kb_web_search_enabled=kb_web_search_enabled,
+        kb_candidates=list(kb_candidates or []),
+        configure_routed_kb=configure_routed_kb,
+        on_kb_routed=on_kb_routed,
     )
     if deps is None:
         runtime.emit = em
         runtime.kb = kb if kb is not None else runtime.kb
+    if runtime.run is not None:
+        em = runtime.run.publish
+        runtime.emit = em
 
     settings = get_settings()
     if allow_rag_chat_handoff is None:
@@ -234,6 +216,7 @@ def build_supervisor_graph(
         user_query = _latest_user_text(state.get("messages") or state.get("base_messages"))
         decision = await resolve_agent_route(
             has_kb=has_kb,
+            has_routable_kbs=not has_kb and bool(runtime.kb_candidates),
             registry=reg,
             user_query=user_query,
             cost=parent_cost,
@@ -288,6 +271,138 @@ def build_supervisor_graph(
             "cost_usd": (
                 parent_cost.total_usd if parent_cost.calls else state.get("cost_usd")
             ),
+        }
+
+    async def _complete_kb_router(
+        state: SupervisorState,
+        *,
+        task_id: str,
+        sub_out: dict[str, Any],
+        next_cost: float | None,
+    ) -> SupervisorState:
+        """Accept a structured routing result, then expand the conditional DAG.
+
+        The Planner owns the initial `kb_route` node. Only the Supervisor may
+        turn its validated result into a concrete RAG or chat task.
+        """
+        decision = sub_out.get("kb_route_decision")
+        route_metadata = (
+            decision.trace_metadata()
+            if decision is not None and hasattr(decision, "trace_metadata")
+            else {
+                "needs_retrieval": False,
+                "selected_kb_id": None,
+                "source": "fallback",
+                "confidence": "low",
+                "reason": "invalid_router_result",
+                "latency_ms": 0,
+                "candidate_count": len(runtime.kb_candidates),
+            }
+        )
+        selected_kb = getattr(decision, "kb", None)
+        if selected_kb is not None:
+            try:
+                if runtime.configure_routed_kb is not None:
+                    config = runtime.configure_routed_kb(selected_kb)
+                    if inspect.isawaitable(config):
+                        config = await config
+                    if isinstance(config, dict):
+                        runtime.embedding_cfg = config.get("embedding_cfg", runtime.embedding_cfg)
+                        runtime.reranker_cfg = config.get("reranker_cfg", runtime.reranker_cfg)
+                        runtime.kb_web_search_enabled = bool(
+                            config.get("kb_web_search_enabled", runtime.kb_web_search_enabled)
+                        )
+                runtime.kb = selected_kb
+                if runtime.on_kb_routed is not None:
+                    await runtime.on_kb_routed(selected_kb, route_metadata)
+            except Exception:  # noqa: BLE001
+                log.exception("kb_router_activation_failed", extra={"kb_id": getattr(selected_kb, "id", None)})
+                selected_kb = None
+                route_metadata = {
+                    **route_metadata,
+                    "needs_retrieval": False,
+                    "selected_kb_id": None,
+                    "source": "fallback",
+                    "confidence": "low",
+                    "reason": "kb_activation_failed",
+                }
+
+        next_type = "qa_kb" if selected_kb is not None else "qa_chat"
+        next_dag = validate_and_bind(
+            {
+                "tasks": [
+                    {
+                        "id": "task_rag" if selected_kb is not None else "task_chat",
+                        "type": next_type,
+                        "depends_on": [],
+                        "on_fail": "abort",
+                    }
+                ],
+                "reason": "kb_router_selected" if selected_kb is not None else "kb_router_general_fallback",
+                "source": "supervisor",
+                "confidence": route_metadata.get("confidence") or "medium",
+                "latency_ms": int(route_metadata.get("latency_ms") or 0),
+            },
+            registry=reg,
+            has_kb=selected_kb is not None,
+        )
+        existing = state.get("task_dag") or {"tasks": []}
+        expanded_tasks = [dict(task) for task in (existing.get("tasks") or [])]
+        expanded_tasks.extend(
+            {
+                **task,
+                "depends_on": [task_id],
+            }
+            for task in (next_dag.get("tasks") or [])
+        )
+        expanded: TaskDag = {
+            **existing,
+            "tasks": expanded_tasks,
+            "reason": next_dag["reason"],
+            "source": next_dag["source"],
+            "confidence": next_dag["confidence"],
+            "latency_ms": next_dag["latency_ms"],
+        }
+        status = dict(state.get("task_status") or {})
+        status[task_id] = "done"
+        for task in next_dag.get("tasks") or []:
+            status[str(task.get("id"))] = "pending"
+
+        trace = list(state.get("supervisor_trace") or [])
+        trace.append(
+            {
+                "event": "kb_route_completed",
+                "task_id": task_id,
+                "selected_kb_id": route_metadata.get("selected_kb_id"),
+                "reason": route_metadata.get("reason"),
+            }
+        )
+        await em(_dag_ready_event(expanded))
+        if selected_kb is not None:
+            await em(
+                {
+                    "event": "kb_routed",
+                    "agent": "kb_router",
+                    "kb_id": selected_kb.id,
+                    "name": selected_kb.name,
+                    "source": route_metadata.get("source"),
+                    "confidence": route_metadata.get("confidence"),
+                }
+            )
+        return {
+            **state,
+            "task_dag": expanded,
+            "task_status": status,
+            "kb_id": selected_kb.id if selected_kb is not None else state.get("kb_id"),
+            "kb_auto_route": route_metadata,
+            "cost_usd": next_cost,
+            "last_agent": "kb_router",
+            "active_agent": "kb_router",
+            "agent_results": {
+                **dict(state.get("agent_results") or {}),
+                task_id: {"kb_route": route_metadata, "cost_usd": sub_out.get("cost_usd")},
+            },
+            "supervisor_trace": trace,
         }
 
     @traced("supervisor_schedule")
@@ -380,6 +495,14 @@ def build_supervisor_graph(
             state.get("handoff_count") or 0
         ) > 0
         next_cost = _merge_cost(prev_cost, sub_cost) if already_ran else sub_cost
+
+        if agent_id == "kb_router":
+            return await _complete_kb_router(
+                state,
+                task_id=str(task_id or "task_route"),
+                sub_out=sub_out,
+                next_cost=next_cost,
+            )
 
         results = dict(state.get("agent_results") or {})
         result_payload = {

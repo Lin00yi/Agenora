@@ -328,6 +328,16 @@ export function useChatSend({
         messagesForBackend,
         (evt: ChatEvent) => {
           switch (evt.event) {
+            case "kb_routed": {
+              if (!evt.kb_id) break;
+              setCurrentKbId(evt.kb_id);
+              setSummaries((prev) =>
+                prev.map((item) =>
+                  item.id === convId ? { ...item, kb_id: evt.kb_id ?? null } : item
+                )
+              );
+              break;
+            }
             case "context_ready": {
               const trace = evt.memory_trace;
               if (!trace) break;

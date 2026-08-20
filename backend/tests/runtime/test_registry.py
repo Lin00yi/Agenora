@@ -9,22 +9,24 @@ from src.agents import build_chat_graph, build_graph, build_rag_graph
 from src.planning.planner import choose_initial_agent
 from src.agents.supervisor import build_supervisor_graph, should_handoff_to_chat
 from src.agents.registry import AgentRegistry, AgentSpec, RuntimeDeps, build_default_agent_registry
+from src.kb.auto_routing import AutoKBRoute
 
 
-def test_default_registry_has_chat_and_rag() -> None:
+def test_default_registry_has_chat_rag_and_kb_router() -> None:
     reg = build_default_agent_registry()
-    assert set(reg.ids()) == {"chat", "rag"}
+    assert set(reg.ids()) == {"chat", "rag", "kb_router"}
     assert reg.get("chat").requires_kb is False
     assert reg.get("rag").requires_kb is True
     assert "chat" in reg.get("rag").handoff_targets
     assert set(reg.get("chat").provides) == {"chat", "web_search"}
     assert set(reg.get("rag").provides) == {"kb_read"}
+    assert set(reg.get("kb_router").provides) == {"kb_route"}
 
 
 def test_registry_available_filters_kb() -> None:
     reg = build_default_agent_registry()
-    assert reg.available(has_kb=False) == ["chat"]
-    assert set(reg.available(has_kb=True)) == {"chat", "rag"}
+    assert set(reg.available(has_kb=False)) == {"chat", "kb_router"}
+    assert set(reg.available(has_kb=True)) == {"chat", "rag", "kb_router"}
 
 
 def test_registry_rejects_duplicate() -> None:
@@ -149,6 +151,106 @@ async def test_supervisor_routes_unbound_to_chat(monkeypatch: pytest.MonkeyPatch
         and (e.get("tasks") or [{}])[0].get("agent") == "chat"
         for e in events
     )
+
+
+@pytest.mark.asyncio
+async def test_supervisor_expands_kb_router_task_to_rag_and_accepts_binding() -> None:
+    calls: list[str] = []
+    persisted: list[str] = []
+
+    class RouterGraph:
+        async def ainvoke(self, state: dict[str, Any]) -> dict[str, Any]:
+            calls.append("kb_router")
+            return {
+                **state,
+                "kb_route_decision": AutoKBRoute(kb, True, "rule", "high", "kb_name_mentioned", 1),
+                "cost_usd": 0.0,
+            }
+
+    class RagGraph:
+        async def ainvoke(self, state: dict[str, Any]) -> dict[str, Any]:
+            calls.append("rag")
+            return {**state, "final_report": "grounded", "cost_usd": 0.0, "citations": []}
+
+    class FakeKB:
+        id = "kb-1"
+        name = "员工手册"
+        description = ""
+
+    kb = FakeKB()
+    reg = build_default_agent_registry()
+    reg._builders["kb_router"] = lambda *_args, **_kwargs: (RouterGraph(), object())  # noqa: SLF001
+    reg._builders["rag"] = lambda *_args, **_kwargs: (RagGraph(), object())  # noqa: SLF001
+    events: list[dict[str, Any]] = []
+
+    async def emit(event: dict[str, Any]) -> None:
+        events.append(event)
+
+    async def persist(selected, _route) -> None:  # noqa: ANN001
+        persisted.append(selected.id)
+
+    graph, _ = build_supervisor_graph(
+        emit=emit,
+        registry=reg,
+        kb_candidates=[kb],
+        configure_routed_kb=lambda _kb: {"embedding_cfg": object()},
+        on_kb_routed=persist,
+        allow_rag_chat_handoff=False,
+    )
+    out = await graph.ainvoke(
+        {
+            "messages": [{"role": "user", "content": "员工手册里的年假规则"}],
+            "base_messages": [{"role": "user", "content": "员工手册里的年假规则"}],
+            "citations": [],
+            "agent_results": {},
+            "handoff_count": 0,
+            "supervisor_trace": [],
+        }
+    )
+
+    assert calls == ["kb_router", "rag"]
+    assert persisted == ["kb-1"]
+    assert out["kb_id"] == "kb-1"
+    assert [task["type"] for task in out["task_dag"]["tasks"]] == ["kb_route", "qa_kb"]
+    assert any(event.get("event") == "kb_routed" for event in events)
+
+
+@pytest.mark.asyncio
+async def test_supervisor_falls_back_to_chat_when_kb_router_has_no_match() -> None:
+    calls: list[str] = []
+
+    class RouterGraph:
+        async def ainvoke(self, state: dict[str, Any]) -> dict[str, Any]:
+            calls.append("kb_router")
+            return {
+                **state,
+                "kb_route_decision": AutoKBRoute(None, False, "llm", "low", "no_confident_kb_match", 1),
+                "cost_usd": 0.0,
+            }
+
+    class ChatGraph:
+        async def ainvoke(self, state: dict[str, Any]) -> dict[str, Any]:
+            calls.append("chat")
+            return {**state, "final_report": "general", "cost_usd": 0.0, "citations": []}
+
+    reg = build_default_agent_registry()
+    reg._builders["kb_router"] = lambda *_args, **_kwargs: (RouterGraph(), object())  # noqa: SLF001
+    reg._builders["chat"] = lambda *_args, **_kwargs: (ChatGraph(), object())  # noqa: SLF001
+    graph, _ = build_supervisor_graph(registry=reg, kb_candidates=[object()])
+    out = await graph.ainvoke(
+        {
+            "messages": [{"role": "user", "content": "地球有多大？"}],
+            "base_messages": [{"role": "user", "content": "地球有多大？"}],
+            "citations": [],
+            "agent_results": {},
+            "handoff_count": 0,
+            "supervisor_trace": [],
+        }
+    )
+
+    assert calls == ["kb_router", "chat"]
+    assert out["kb_id"] is None
+    assert [task["type"] for task in out["task_dag"]["tasks"]] == ["kb_route", "qa_chat"]
 
 
 @pytest.mark.asyncio

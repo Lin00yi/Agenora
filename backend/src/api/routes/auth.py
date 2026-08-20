@@ -14,7 +14,7 @@ from src.auth.middleware import CurrentUser
 from src.auth.models import User
 from src.auth.password import hash_password, verify_password
 from src.auth.tokens import issue_token
-from src.storage.database import get_session
+from src.adapters.persistence import get_session
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 log = structlog.get_logger()
@@ -143,7 +143,7 @@ async def purge_user(session: AsyncSession, user: User) -> None:
     from src.conversations.models import Conversation, ConversationSummary, Message, UserMemory
     from src.kb.models import KB, KBMember
     from src.api.routes.kb import purge_kb
-    from src.observability.models import Observation, Trace
+    from src.adapters.observability import Observation, Trace
     from src.settings_user.models import LLMConnection, LLMModelProfile
 
     user_id = user.id

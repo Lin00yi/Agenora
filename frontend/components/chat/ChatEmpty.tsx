@@ -8,23 +8,28 @@ export function EmptyWorkbench({
   onPick,
   centered = false,
 }: {
-  currentKbName: string;
+  currentKbName: string | null;
   onPick: (q: string) => void;
   centered?: boolean;
 }) {
+  const kbBound = Boolean(currentKbName);
   return (
     <div className={cn("flex items-center justify-center", centered ? "pt-12 sm:pt-20" : "min-h-full py-2")}>
       <section className="kf-empty-workbench w-full max-w-[720px] px-5 py-8 sm:px-10">
         <div className="text-center">
-          <div className="text-sm font-medium text-[color:var(--chat-muted)]">
-            {"\u5df2\u8fde\u63a5 "}
-            <span className="text-[color:var(--chat-ink)]">{currentKbName}</span>
-          </div>
-          <h1 className="kf-empty-heading mt-4 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">
+          {kbBound ? (
+            <div className="text-sm font-medium text-[color:var(--chat-muted)]">
+              {"\u5df2\u8fde\u63a5 "}
+              <span className="text-[color:var(--chat-ink)]">{currentKbName}</span>
+            </div>
+          ) : null}
+          <h1 className={cn("kf-empty-heading text-3xl font-semibold tracking-[-0.04em] sm:text-4xl", kbBound && "mt-4")}>
             {"\u628a\u95ee\u9898\u53d8\u6210"}<span>{"\u6e05\u6670\u7b54\u6848"}</span>
           </h1>
           <p className="kf-empty-description mx-auto mt-4 max-w-lg text-sm leading-6">
-            {"\u4ece\u77e5\u8bc6\u5e93\u4e2d\u68c0\u7d22\u3001\u63a8\u7406\u5e76\u5f15\u7528\u53ef\u8ffd\u6eaf\u7684\u7b54\u6848\u3002"}
+            {kbBound
+              ? "从知识库中检索、推理并引用可追溯的答案。"
+              : "直接开始对话，清晰地描述你的问题或目标。"}
           </p>
         </div>
 

@@ -30,8 +30,8 @@ from src.auth.models import User
 from src.auth.password import hash_password
 from src.api.routes.auth import purge_user
 from src.conversations.models import Conversation, Message
-from src.storage.database import get_session
-from src.storage.jobs.memory import run_memory_maintenance
+from src.adapters.persistence import get_session
+from src.capabilities.memory.application import run_maintenance as run_memory_maintenance
 from src.kb.models import KB, Document
 from src.api.routes.kb import _email_map, purge_kb
 
@@ -149,7 +149,7 @@ async def rag_monitor(
     hours: int | None = Query(None, ge=1, le=24 * 31),
 ) -> dict:
     """Operational RAG metrics and threshold alerts, derived from Trace spans."""
-    from src.observability.rag_metrics import build_rag_monitor_snapshot
+    from src.adapters.observability import build_rag_monitor_snapshot
 
     return await build_rag_monitor_snapshot(session, hours=hours)
 
@@ -407,7 +407,7 @@ async def list_traces(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> dict:
-    from src.observability.models import Observation, Trace
+    from src.adapters.observability import Observation, Trace
 
     filters = []
     if conversation_id:
@@ -465,7 +465,7 @@ async def get_trace(
     admin: AdminUser,  # noqa: ARG001
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    from src.observability.models import Observation, Trace
+    from src.adapters.observability import Observation, Trace
 
     trace = await session.get(Trace, trace_id)
     if trace is None:

@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     # Cap expand width — each extra query is another embed + Milvus (+ optional rerank).
     kb_query_policy_max_queries: int = 2
     kb_query_policy_llm_model: str = ""
+    # ===== Automatic KB routing for unbound conversations =====
+    # off | rule_only | llm_fallback | always_llm. The router receives only
+    # KBs the current user can read and selects at most one before RAG starts.
+    kb_auto_route_mode: str = "llm_fallback"
+    kb_auto_route_max_candidates: int = 8
     # Retrieval has three separate stages: candidates per retrieval route,
     # evidence returned to the agent, and evidence admitted by relevance.
     # Keep the defaults intentionally conservative for small support KBs.

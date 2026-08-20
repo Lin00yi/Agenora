@@ -19,6 +19,16 @@ def test_validate_single_chat() -> None:
     assert bound["tasks"][0]["capabilities"] == ["chat", "web_search"]
 
 
+def test_validate_kb_route_task() -> None:
+    reg = build_default_agent_registry()
+    bound = validate_and_bind(
+        dag_single(task_type="kb_route", reason="unbound_kb_candidates", source="rule"),
+        registry=reg,
+        has_kb=False,
+    )
+    assert bound["tasks"][0]["agent"] == "kb_router"
+
+
 def test_validate_kb_then_chat() -> None:
     reg = build_default_agent_registry()
     bound = validate_and_bind(

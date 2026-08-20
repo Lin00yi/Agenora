@@ -19,29 +19,31 @@ The user must delete those KBs (or accept the loss) before the change can land.
 """
 from __future__ import annotations
 
-import uuid
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth.middleware import CurrentUser
 from src.auth.models import User
-from src.conversations.models import Conversation
 from src.context import resolve_context_window
 from src.infra.crypto import decrypt, encrypt
-from src.storage.database import get_session
-from src.models.gateway import normalize_model_name
-from src.models.catalog import resolve_model_catalog_entry
-from src.kb.models import KB
+from src.adapters.persistence import get_session
+from src.adapters.llm import normalize_model_name
 from src.settings_user.models import (LLMConnection, LLMModelProfile,
-                                      ensure_legacy_llm_connection,
                                       ensure_legacy_llm_model_profiles,
                                       list_llm_connections,
                                       list_llm_model_profiles)
-from src.settings_user.probe import (EmbeddingProbeResult, ProbeError,
-                                     probe_embedding, probe_llm_models)
+from src.capabilities.settings.application.provider_probe import (
+    EmbeddingProbeResult,
+    ProbeError,
+    probe_embedding,
+    probe_llm_models,
+    probe_openai_compat_models,
+)
+from src.capabilities.settings.application import connections
+from src.capabilities.settings.application import model_profiles
+from src.capabilities.settings.application import kb_options
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -160,34 +162,14 @@ class KbOptionsBody(BaseModel):
 # GET /me — current saved + effective view
 # ---------------------------------------------------------------------------
 def _profile_to_public(profile: LLMModelProfile) -> dict:
-    """Expose the resolved automatic window without turning it into an override."""
-    context = resolve_context_window(profile.model_id, profile.context_window)
-    return {
-        **profile.to_public_dict(),
-        "context_window_resolved": context.value,
-        "context_window_source": context.source,
-        "catalog": (
-            entry.to_public_dict()
-            if (entry := resolve_model_catalog_entry(profile.model_id))
-            else None
-        ),
-    }
+    return model_profiles.to_public(profile)
 
 
 def _validate_profile_pricing(body: LLMModelProfileBody) -> None:
-    if (body.input_price_per_million is None) != (body.output_price_per_million is None):
-        raise HTTPException(
-            status_code=422,
-            detail="自定义价格必须同时填写输入和输出单价。",
-        )
-    if (
-        body.input_price_per_million is None
-        and (body.cache_read_price_per_million is not None or body.cache_write_price_per_million is not None)
-    ):
-        raise HTTPException(
-            status_code=422,
-            detail="缓存价格只能与输入、输出自定义价格一起填写。",
-        )
+    try:
+        model_profiles.validate_pricing(body)
+    except model_profiles.ModelProfileUseCaseError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
 def _to_public(
@@ -459,20 +441,13 @@ async def create_llm_connection(
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    if not body.api_key.strip():
-        raise HTTPException(status_code=400, detail="新增连接需要 API Key。")
-    connection = LLMConnection(
-        id=str(uuid.uuid4()),
-        user_id=user.id,
-        display_name=body.display_name.strip(),
-        provider=body.provider,
-        base_url=body.base_url.rstrip("/"),
-        api_key_enc=encrypt(body.api_key.strip()),
-        enabled=body.enabled,
-    )
-    session.add(connection)
-    await session.commit()
-    await session.refresh(connection)
+    try:
+        connection = await connections.create(
+            session, user_id=user.id, display_name=body.display_name,
+            provider=body.provider, base_url=body.base_url, api_key=body.api_key, enabled=body.enabled,
+        )
+    except connections.ConnectionUseCaseError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return connection.to_public_dict()
 
 
@@ -483,19 +458,13 @@ async def update_llm_connection(
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    connection = await session.get(LLMConnection, connection_id)
-    if connection is None or connection.user_id != user.id:
-        raise HTTPException(status_code=404, detail="llm connection not found")
-    if connection.is_legacy_default:
-        raise HTTPException(status_code=409, detail="默认连接请在基础连接配置中编辑。")
-    connection.display_name = body.display_name.strip()
-    connection.provider = body.provider
-    connection.base_url = body.base_url.rstrip("/")
-    connection.enabled = body.enabled
-    if body.api_key.strip():
-        connection.api_key_enc = encrypt(body.api_key.strip())
-    await session.commit()
-    await session.refresh(connection)
+    try:
+        connection = await connections.update(
+            session, connection_id=connection_id, user_id=user.id, display_name=body.display_name,
+            provider=body.provider, base_url=body.base_url, api_key=body.api_key, enabled=body.enabled,
+        )
+    except connections.ConnectionUseCaseError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return connection.to_public_dict()
 
 
@@ -505,18 +474,10 @@ async def delete_llm_connection(
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ) -> None:
-    connection = await session.get(LLMConnection, connection_id)
-    if connection is None or connection.user_id != user.id:
-        raise HTTPException(status_code=404, detail="llm connection not found")
-    if connection.is_legacy_default:
-        raise HTTPException(status_code=409, detail="默认连接不能删除，请清空基础连接配置。")
-    linked = await session.scalar(
-        select(LLMModelProfile.id).where(LLMModelProfile.connection_id == connection.id).limit(1)
-    )
-    if linked:
-        raise HTTPException(status_code=409, detail="该连接仍有关联模型，请先移除或迁移模型。")
-    await session.delete(connection)
-    await session.commit()
+    try:
+        await connections.delete(session, connection_id=connection_id, user_id=user.id)
+    except connections.ConnectionUseCaseError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
 @router.post("/llm/connections/{connection_id}/probe")
@@ -526,13 +487,10 @@ async def probe_saved_llm_connection(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     """Discover models through a saved connection without exposing its secret."""
-    connection = await session.get(LLMConnection, connection_id)
-    if connection is None or connection.user_id != user.id:
-        raise HTTPException(status_code=404, detail="llm connection not found")
-    if not connection.enabled:
-        raise HTTPException(status_code=422, detail="该服务连接已停用。")
-    if not connection.api_key_enc:
-        raise HTTPException(status_code=422, detail="该服务连接没有可用的 API Key。")
+    try:
+        connection = await connections.load_probeable(session, connection_id=connection_id, user_id=user.id)
+    except connections.ConnectionUseCaseError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     try:
         models = await probe_llm_models(
             connection.provider,
@@ -561,36 +519,10 @@ async def create_llm_model_profile(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     """Register an arbitrary chat model under the user's validated connection."""
-    _validate_profile_pricing(body)
-    await ensure_legacy_llm_connection(session, user)
-    connections = await _owned_llm_connections(session, user_id=user.id)
-    connection_id = body.connection_id
-    if connection_id is None:
-        connection_id = next((item.id for item in connections if item.is_legacy_default), None)
-    connection = next((item for item in connections if item.id == connection_id and item.enabled), None)
-    if connection is None:
-        raise HTTPException(status_code=422, detail="请选择一个已启用的模型连接。")
-    model_id = normalize_model_name(body.model_id) or ""
-    profiles = await _owned_llm_profiles(session, user_id=user.id)
-    if any(profile.model_id == model_id and profile.connection_id == connection.id for profile in profiles):
-        raise HTTPException(status_code=409, detail="该模型已经在可用模型列表中。")
-    profile = LLMModelProfile(
-        id=str(uuid.uuid4()),
-        user_id=user.id,
-        connection_id=connection.id,
-        display_name=body.display_name.strip(),
-        model_id=model_id,
-        context_window=body.context_window,
-        input_price_per_million=body.input_price_per_million,
-        output_price_per_million=body.output_price_per_million,
-        cache_read_price_per_million=body.cache_read_price_per_million,
-        cache_write_price_per_million=body.cache_write_price_per_million,
-        enabled=body.enabled,
-        supports_tools=body.supports_tools,
-    )
-    session.add(profile)
-    await session.commit()
-    await session.refresh(profile)
+    try:
+        profile = await model_profiles.create(session, user=user, body=body)
+    except model_profiles.ModelProfileUseCaseError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     return _profile_to_public(profile)
 
 
@@ -601,36 +533,12 @@ async def update_llm_model_profile(
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    profile = await session.get(LLMModelProfile, profile_id)
-    if profile is None or profile.user_id != user.id:
-        raise HTTPException(status_code=404, detail="model profile not found")
-    _validate_profile_pricing(body)
-    next_model_id = normalize_model_name(body.model_id) or ""
-    connections = await _owned_llm_connections(session, user_id=user.id)
-    connection_id = body.connection_id or profile.connection_id
-    connection = next((item for item in connections if item.id == connection_id and item.enabled), None)
-    if connection is None:
-        raise HTTPException(status_code=422, detail="请选择一个已启用的模型连接。")
-    profiles = await _owned_llm_profiles(session, user_id=user.id)
-    if any(
-        item.id != profile.id
-        and item.model_id == next_model_id
-        and item.connection_id == connection.id
-        for item in profiles
-    ):
-        raise HTTPException(status_code=409, detail="该模型已经在可用模型列表中。")
-    profile.display_name = body.display_name.strip()
-    profile.connection_id = connection.id
-    profile.model_id = next_model_id
-    profile.context_window = body.context_window
-    profile.input_price_per_million = body.input_price_per_million
-    profile.output_price_per_million = body.output_price_per_million
-    profile.cache_read_price_per_million = body.cache_read_price_per_million
-    profile.cache_write_price_per_million = body.cache_write_price_per_million
-    profile.enabled = body.enabled
-    profile.supports_tools = body.supports_tools
-    await session.commit()
-    await session.refresh(profile)
+    try:
+        profile = await model_profiles.update_profile(
+            session, profile_id=profile_id, user_id=user.id, body=body
+        )
+    except model_profiles.ModelProfileUseCaseError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     return _profile_to_public(profile)
 
 
@@ -641,61 +549,13 @@ async def delete_llm_model_profile(
     session: AsyncSession = Depends(get_session),
     body: DeleteLLMModelProfileBody | None = None,
 ) -> dict:
-    profile = await session.get(LLMModelProfile, profile_id)
-    if profile is None or profile.user_id != user.id:
-        raise HTTPException(status_code=404, detail="model profile not found")
-    protected = {
-        getattr(user, "llm_default_profile_id", None),
-        getattr(user, "llm_complex_profile_id", None) if getattr(user, "llm_complex_enabled", False) else None,
-        getattr(user, "llm_triage_profile_id", None),
-        getattr(user, "llm_fallback_profile_id", None),
-    }
-    if profile.id in protected:
-        raise HTTPException(status_code=409, detail="该模型正在被路由策略使用，请先调整策略。")
-
-    conversation_count = await session.scalar(
-        select(func.count())
-        .select_from(Conversation)
-        .where(
-            Conversation.user_id == user.id,
-            Conversation.llm_profile_id == profile.id,
+    try:
+        conversation_count = await model_profiles.delete_profile(
+            session, profile_id=profile_id, user=user,
+            replacement_id=body.replacement_profile_id if body else None,
         )
-    )
-    conversation_count = int(conversation_count or 0)
-    replacement_id = body.replacement_profile_id if body is not None else None
-    if conversation_count and not replacement_id:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "model_profile_in_use",
-                "conversation_count": conversation_count,
-                "message": f"该模型仍被 {conversation_count} 个历史会话使用，请选择替代模型后再移除。",
-            },
-        )
-    if replacement_id:
-        if replacement_id == profile.id:
-            raise HTTPException(status_code=422, detail="替代模型不能与待移除模型相同。")
-        replacement = await session.get(LLMModelProfile, replacement_id)
-        if (
-            replacement is None
-            or replacement.user_id != user.id
-            or not replacement.enabled
-        ):
-            raise HTTPException(status_code=422, detail="替代模型不可用，请选择一个已启用的模型。")
-        if conversation_count:
-            await session.execute(
-                update(Conversation)
-                .where(
-                    Conversation.user_id == user.id,
-                    Conversation.llm_profile_id == profile.id,
-                )
-                .values(
-                    llm_profile_id=replacement.id,
-                    llm_model=replacement.model_id,
-                )
-            )
-    await session.delete(profile)
-    await session.commit()
+    except model_profiles.ModelProfileUseCaseError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     return {"migrated_conversations": conversation_count}
 
 
@@ -708,35 +568,11 @@ async def save_llm_model_policy(
     user_row = await session.get(User, user.id)
     if user_row is None:
         raise HTTPException(status_code=404, detail="user not found")
+    try:
+        await model_profiles.save_policy(session, user=user_row, body=body)
+    except model_profiles.ModelProfileUseCaseError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     profiles = await _owned_llm_profiles(session, user_id=user.id, include_disabled=False)
-    allowed = {profile.id: profile for profile in profiles}
-    requested = [
-        body.default_profile_id,
-        body.complex_profile_id if body.complex_enabled else None,
-        body.triage_profile_id,
-        body.fallback_profile_id,
-    ]
-    if any(profile_id and profile_id not in allowed for profile_id in requested):
-        raise HTTPException(status_code=422, detail="路由策略只能使用已启用的模型档案。")
-
-    primary = allowed[body.default_profile_id]
-    complex_profile = allowed.get(body.complex_profile_id or "")
-    triage_profile = allowed.get(body.triage_profile_id or "")
-    fallback_profile = allowed.get(body.fallback_profile_id or "")
-    user_row.llm_default_profile_id = primary.id
-    user_row.llm_default_model = primary.model_id
-    user_row.llm_complex_enabled = body.complex_enabled
-    user_row.llm_complex_profile_id = complex_profile.id if body.complex_enabled and complex_profile else primary.id
-    user_row.llm_complex_model = (complex_profile or primary).model_id
-    user_row.llm_triage_profile_id = triage_profile.id if triage_profile else None
-    user_row.llm_triage_model = triage_profile.model_id if triage_profile else None
-    user_row.llm_fallback_profile_id = fallback_profile.id if fallback_profile else None
-    user_row.llm_fallback_model = fallback_profile.model_id if fallback_profile else None
-    # Keep old callers and the effective-config header accurate while the
-    # runtime itself reads the profile-level mapping.
-    user_row.llm_context_window = primary.context_window
-    await session.commit()
-    await session.refresh(user_row)
     connections = await _owned_llm_connections(session, user_id=user.id)
     return _to_public(user_row, profiles, connections)
 
@@ -753,46 +589,10 @@ async def save_embedding(
     user_row = await session.get(User, user.id)
     if user_row is None:
         raise HTTPException(status_code=404, detail="user not found")
-
-    # v3-M7: dim-conflict pre-check now ONLY flags KBs that fall back to the
-    # user-level embedding cfg. KBs that carry their own embedding_provider
-    # are unaffected by user-cfg changes (they keep using their own creds).
-    result = await session.execute(
-        select(KB).where(KB.user_id == user.id, KB.is_system.is_(False))
-    )
-    owned_kbs = result.scalars().all()
-    affected = [
-        {"id": kb.id, "name": kb.name, "vector_size": kb.vector_size}
-        for kb in owned_kbs
-        if kb.vector_size != body.dim
-        and not getattr(kb, "embedding_provider", None)
-    ]
-    if affected:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "embedding_dim_conflict",
-                "message": (
-                    f"切换到 {body.dim} 维 embedding 会让你已有的 {len(affected)} 个 KB（未单独配置 embedding 的）失效。"
-                    "请先为这些 KB 单独配置 embedding，或删除它们。"
-                ),
-                "new_dim": body.dim,
-                "affected_kbs": affected,
-            },
-        )
-
-    user_row.embedding_provider = body.provider
-    user_row.embedding_base_url = body.base_url.rstrip("/")
-    if body.api_key:
-        user_row.embedding_api_key_enc = encrypt(body.api_key)
-    elif not user_row.embedding_api_key_enc and body.provider != "ollama":
-        raise HTTPException(
-            status_code=400, detail="api_key required for first-time configuration"
-        )
-    user_row.embedding_model = body.model
-    user_row.embedding_dim = body.dim
-    await session.commit()
-    await session.refresh(user_row)
+    try:
+        user_row = await kb_options.save_embedding(session, user=user_row, body=body)
+    except kb_options.KBOptionsUseCaseError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     return _to_public(user_row)
 
 
@@ -804,43 +604,10 @@ async def clear_embedding(
     user_row = await session.get(User, user.id)
     if user_row is None:
         return
-    # Same conflict check applies — clearing user cfg means falling back to env dim.
-    # If env dim differs from owned KBs, downgrade still corrupts. Block.
-    from src.storage.vector.embedding import get_vector_size
-
     try:
-        env_dim = get_vector_size()
-    except Exception:
-        env_dim = None
-    if env_dim:
-        result = await session.execute(
-            select(KB).where(KB.user_id == user.id, KB.is_system.is_(False))
-        )
-        affected = [
-            {"id": kb.id, "name": kb.name, "vector_size": kb.vector_size}
-            for kb in result.scalars().all()
-            if kb.vector_size != env_dim
-            and not getattr(kb, "embedding_provider", None)
-        ]
-        if affected:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "embedding_dim_conflict",
-                    "message": (
-                        f"清空配置会回到 env 默认 ({env_dim} 维)，但你已有 {len(affected)} 个 KB（未单独配置 embedding 的）"
-                        "维度不同。请先为这些 KB 单独配置 embedding，或删除它们。"
-                    ),
-                    "new_dim": env_dim,
-                    "affected_kbs": affected,
-                },
-            )
-    user_row.embedding_provider = None
-    user_row.embedding_base_url = None
-    user_row.embedding_api_key_enc = None
-    user_row.embedding_model = None
-    user_row.embedding_dim = None
-    await session.commit()
+        await kb_options.clear_embedding(session, user=user_row)
+    except kb_options.KBOptionsUseCaseError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -925,9 +692,9 @@ async def save_kb_options(
     user_row = await session.get(User, user.id)
     if user_row is None:
         raise HTTPException(status_code=404, detail="user not found")
-    user_row.kb_web_search_enabled = bool(body.kb_web_search_enabled)
-    await session.commit()
-    await session.refresh(user_row)
+    user_row = await kb_options.save_kb_web_search(
+        session, user=user_row, enabled=body.kb_web_search_enabled
+    )
     return _to_public(user_row)
 
 
@@ -951,18 +718,10 @@ async def save_reranker(
     if user_row is None:
         raise HTTPException(status_code=404, detail="user not found")
 
-    user_row.reranker_provider = body.provider
-    user_row.reranker_base_url = body.base_url.rstrip("/")
-    if body.api_key:
-        user_row.reranker_api_key_enc = encrypt(body.api_key)
-    elif not user_row.reranker_api_key_enc and body.provider != "openai-compat":
-        raise HTTPException(
-            status_code=400, detail="api_key required for first-time configuration"
-        )
-    user_row.reranker_model = body.model
-    user_row.reranker_enabled = bool(body.enabled)
-    await session.commit()
-    await session.refresh(user_row)
+    try:
+        user_row = await kb_options.save_reranker(session, user=user_row, body=body)
+    except kb_options.KBOptionsUseCaseError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     return _to_public(user_row)
 
 
@@ -974,12 +733,7 @@ async def clear_reranker(
     user_row = await session.get(User, user.id)
     if user_row is None:
         return
-    user_row.reranker_provider = None
-    user_row.reranker_base_url = None
-    user_row.reranker_api_key_enc = None
-    user_row.reranker_model = None
-    user_row.reranker_enabled = False
-    await session.commit()
+    await kb_options.clear_reranker(session, user=user_row)
 
 
 @router.post("/probe/reranker")
@@ -998,8 +752,6 @@ async def probe_reranker(
     v3-M8: empty api_key + matching provider/base_url → fall back to user's
     stored decrypted key (same pattern as probe_llm / probe_embedding).
     """
-    from src.settings_user.probe import _probe_openai_compat_models
-
     base_url = (body.base_url or "").rstrip("/")
     if not base_url:
         raise HTTPException(status_code=400, detail="base_url 不能为空")
@@ -1019,7 +771,7 @@ async def probe_reranker(
     if not api_key and body.provider != "openai-compat":
         raise HTTPException(status_code=400, detail=f"{body.provider}: api_key 不能为空")
     try:
-        models = await _probe_openai_compat_models(base_url, api_key)
+        models = await probe_openai_compat_models(base_url, api_key)
     except ProbeError as e:
         raise HTTPException(status_code=502, detail=str(e))
     return {"models": models}

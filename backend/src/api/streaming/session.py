@@ -14,12 +14,13 @@ from fastapi import HTTPException
 from sse_starlette.sse import EventSourceResponse
 
 from src.agents.supervisor import build_supervisor_graph
+from src.harness.contracts.runtime import RunContext, RunIdentity
 from src.runtime.agent_loop import EMPTY_ANSWER_FALLBACK
 from src.auth.models import User
 from src.infra import generation_lock
 from src.infra.rate_limit import check as rate_check
 from src.kb.models import KB
-from src.observability import get_current_trace_id, start_trace
+from src.adapters.observability import get_current_trace_id, preview_text, start_trace
 from src.safety.input_filter import sanitize_user_input
 from src.safety.output_filter import redact_sensitive_output
 from src.safety.prompt_injection import assess_prompt_injection
@@ -49,6 +50,8 @@ def run_chat_session(
     complex_llm_cfg_override=None,
     triage_llm_cfg_override=None,
     fallback_llm_cfg_override=None,
+    kb_candidates: list[KB] | None = None,
+    on_kb_routed=None,
 ) -> EventSourceResponse:
     settings = get_settings()
     allowed, remaining = rate_check(rate_key, settings.rate_limit_per_hour)
@@ -108,6 +111,21 @@ def run_chat_session(
         reranker_cfg = resolve_user_reranker(user) if user is not None else None
     # v2-M6: per-user KB-mode web_search opt-in flag.
     kb_web_search_enabled = bool(getattr(user, "kb_web_search_enabled", False))
+
+    def configure_routed_kb(selected_kb: KB) -> dict[str, Any]:
+        """Switch runtime-only retrieval dependencies after DAG routing."""
+        if user is None:
+            return {}
+        from src.settings_user.kb_resolvers import (
+            resolve_kb_embedding,
+            resolve_kb_reranker,
+        )
+
+        return {
+            "embedding_cfg": resolve_kb_embedding(selected_kb, user),
+            "reranker_cfg": resolve_kb_reranker(selected_kb, user),
+            "kb_web_search_enabled": bool(getattr(user, "kb_web_search_enabled", False)),
+        }
     triage_llm_cfg = triage_llm_cfg_override
     if triage_llm_cfg is None and llm_cfg is not None and llm_cfg.triage_model:
         triage_llm_cfg = dc_replace(
@@ -116,6 +134,13 @@ def run_chat_session(
             complex_model=llm_cfg.triage_model,
             complex_enabled=False,
         )
+    run_context = RunContext(
+        identity=RunIdentity(
+            user_id=user.id if user is not None else None,
+            conversation_id=conversation_id,
+        ),
+        emit=emit,
+    )
     graph, _cost = build_supervisor_graph(
         emit=emit,
         kb=kb,
@@ -126,6 +151,10 @@ def run_chat_session(
         embedding_cfg=embedding_cfg,
         reranker_cfg=reranker_cfg,
         kb_web_search_enabled=kb_web_search_enabled,
+        kb_candidates=kb_candidates,
+        configure_routed_kb=configure_routed_kb if kb_candidates else None,
+        on_kb_routed=on_kb_routed,
+        run_context=run_context,
         allow_rag_chat_handoff=bool(settings.agent_allow_rag_chat_handoff),
     )
 
@@ -145,7 +174,7 @@ def run_chat_session(
 
     async def run_agent() -> None:
         nonlocal memory_trace
-        from src.observability import get_current_trace
+        from src.adapters.observability import get_current_trace
 
         trace = get_current_trace()
         if trace is None:
@@ -163,8 +192,6 @@ def run_chat_session(
         else:
             # Refresh input after sanitize when trace started earlier in chat_post.
             from src.settings import get_settings as _gs
-            from src.observability.preview import preview_text
-
             if cleaned:
                 trace.input_preview = preview_text(
                     cleaned, store_io=_gs().trace_store_io
@@ -194,6 +221,8 @@ def run_chat_session(
                 "supervisor_trace": [],
             }
             final_state = await graph.ainvoke(initial_state)
+            final_kb_id = final_state.get("kb_id") or (kb.id if kb else None)
+            final_kb_route = final_state.get("kb_auto_route")
             prompt_trace = final_state.get("prompt_trace")
             if memory_trace is not None and isinstance(prompt_trace, dict):
                 block_trace = memory_trace.get("context_blocks") or {}
@@ -212,7 +241,11 @@ def run_chat_session(
                     # their measured payload from history before this trace is
                     # emitted, so adding their own UI segments does not alter
                     # the total or double-count them.
-                memory_trace = {**memory_trace, "prompt": prompt_trace}
+                memory_trace = {
+                    **memory_trace,
+                    "prompt": prompt_trace,
+                    **({"kb_route": final_kb_route} if isinstance(final_kb_route, dict) else {}),
+                }
                 # Replace the early context snapshot before the answer is
                 # persisted so the in-chat trace and durable message agree.
                 await queue.put({"event": "context_ready", "memory_trace": memory_trace})
@@ -250,6 +283,7 @@ def run_chat_session(
                                 final_state.get("rag_filtered_chunks") or []
                             ),
                             "prompt_trace": prompt_trace if isinstance(prompt_trace, dict) else None,
+                            "kb_auto_route": final_kb_route,
                         },
                     )
                 )
@@ -264,7 +298,7 @@ def run_chat_session(
                     "event": "done",
                     "cost_usd": cost_usd,
                     "rate_remaining": remaining,
-                    "kb_id": kb.id if kb else None,
+                    "kb_id": final_kb_id,
                     "memory_trace": memory_trace,
                     "citations": list(final_state.get("citations") or []),
                     "trace_id": (trace.id if trace is not None else get_current_trace_id()),
@@ -279,6 +313,7 @@ def run_chat_session(
                         "prompt_injection_reasons": list(prompt_guard.reasons),
                         "rag_suspicious_chunks": 0,
                         "rag_filtered_chunks": [],
+                        "kb_auto_route": final_state.get("kb_auto_route") if isinstance(final_state, dict) else None,
                     }
                     if isinstance(final_state, dict):
                         err_meta = {
@@ -294,6 +329,7 @@ def run_chat_session(
                             "rag_filtered_chunks": list(
                                 final_state.get("rag_filtered_chunks") or []
                             ),
+                            "kb_auto_route": final_state.get("kb_auto_route"),
                         }
                     await asyncio.shield(
                         trace.finish(status="error", error=str(exc), metadata=err_meta)

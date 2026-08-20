@@ -4,8 +4,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any, TYPE_CHECKING
 
-from src.runtime.state import AgentState
-from src.observability import traced
+from src.harness.contracts.state import AgentState
+from src.adapters.observability import traced
 from src.safety.tool_guard import is_tool_allowed
 from src.tools.base import ToolRegistry
 from src.tools.citations import citations_from_tool_raw, merge_citations

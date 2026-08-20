@@ -9,34 +9,34 @@ import json
 import time
 from typing import Any, Literal, TypedDict, TYPE_CHECKING
 
-from src.planning.dag import (
+from src.harness.orchestration.dag import (
     TaskDag,
     dag_kb_then_chat,
     dag_single,
     primary_agent,
 )
-from src.planning.validate import DagValidationError, validate_and_bind
+from src.harness.orchestration.validation import DagValidationError, validate_and_bind
 from src.runtime.agent_loop.constants import (
     _RULE_MULTI_INTENT_KEYWORDS,
     _RULE_SKIP_KEYWORDS,
 )
-from src.agents.registry import AgentRegistry
-from src.models.gateway import CostTracker, get_client, pick_model, with_cache_control
-from src.observability import ageneration, traced
+from src.harness.orchestration.registry import AgentRegistry
+from src.adapters.llm import CostTracker, get_client, pick_model, with_cache_control
+from src.adapters.observability import ageneration, traced
 from src.settings import get_settings
 
 if TYPE_CHECKING:
     from src.settings_user import UserLLMConfig
 
-RouteTarget = Literal["chat", "rag"]
+RouteTarget = Literal["chat", "rag", "kb_router"]
 RouteSource = Literal["rule", "triage", "complex", "fallback"]
 RouteConfidence = Literal["high", "medium", "low"]
 RouteMode = Literal["rule_only", "rule_triage", "layered"]
 
-_ROUTE_TARGETS = frozenset({"chat", "rag"})
+_ROUTE_TARGETS = frozenset({"chat", "rag", "kb_router"})
 _ROUTE_CONFIDENCE = frozenset({"high", "medium", "low"})
 _ROUTE_MODES = frozenset({"rule_only", "rule_triage", "layered"})
-_TASK_TYPES_FROM_TARGET = {"chat": "qa_chat", "rag": "qa_kb"}
+_TASK_TYPES_FROM_TARGET = {"chat": "qa_chat", "rag": "qa_kb", "kb_router": "kb_route"}
 
 
 class RouteDecision(TypedDict):
@@ -94,7 +94,9 @@ def _decision_from_dag(dag: TaskDag, *, registry: AgentRegistry, has_kb: bool) -
 
 
 def fallback_route(*, has_kb: bool, registry: AgentRegistry) -> RouteDecision:
-    available = registry.available(has_kb=has_kb)
+    available = [
+        agent for agent in registry.available(has_kb=has_kb) if agent != "kb_router"
+    ]
     if has_kb and "rag" in available:
         return _decision_from_dag(
             dag_single(task_type="qa_kb", reason="kb_bound_default", source="fallback", confidence="medium"),
@@ -128,12 +130,27 @@ def rule_route(
     has_kb: bool,
     registry: AgentRegistry,
     user_query: str = "",
+    has_routable_kbs: bool = False,
 ) -> RouteDecision | None:
     """Return only high-confidence rule decisions; None means escalate."""
     available = registry.available(has_kb=has_kb)
+    if has_kb:
+        available = [agent for agent in available if agent != "kb_router"]
     text = " ".join((user_query or "").split())
 
     if not has_kb:
+        if has_routable_kbs and "kb_router" in available:
+            if text and not any(keyword in text for keyword in _RULE_SKIP_KEYWORDS):
+                return _decision_from_dag(
+                    dag_single(
+                        task_type="kb_route",
+                        reason="unbound_kb_candidates",
+                        source="rule",
+                        confidence="medium",
+                    ),
+                    registry=registry,
+                    has_kb=has_kb,
+                )
         if "chat" in available:
             return _decision_from_dag(
                 dag_single(
@@ -199,9 +216,15 @@ def choose_initial_agent(
     has_kb: bool,
     registry: AgentRegistry,
     user_query: str = "",
+    has_routable_kbs: bool = False,
 ) -> tuple[str, str]:
     """Sync rule/fallback helper for tests and callers that cannot await."""
-    decision = rule_route(has_kb=has_kb, registry=registry, user_query=user_query)
+    decision = rule_route(
+        has_kb=has_kb,
+        has_routable_kbs=has_routable_kbs,
+        registry=registry,
+        user_query=user_query,
+    )
     if decision is None:
         decision = fallback_route(has_kb=has_kb, registry=registry)
     return decision["target"], decision["reason"]
@@ -258,7 +281,11 @@ def _coerce_route_decision(
     target = str(payload.get("target") or "").strip().lower()
     if target not in _ROUTE_TARGETS:
         raise ValueError(f"invalid target: {target}")
+    if target == "kb_router" and has_kb:
+        raise ValueError("kb_router is only valid for an unbound conversation")
     available = registry.available(has_kb=has_kb)
+    if has_kb:
+        available = [agent for agent in available if agent != "kb_router"]
     if target not in available:
         raise ValueError(f"invalid target: {target}")
     task_type = _TASK_TYPES_FROM_TARGET[target]
@@ -335,6 +362,8 @@ async def llm_route(
     """Ask one model layer for a structured route / DAG decision."""
     start = time.perf_counter()
     available = registry.available(has_kb=has_kb)
+    if has_kb:
+        available = [agent for agent in available if agent != "kb_router"]
     if not available:
         raise RuntimeError("agent registry is empty")
     if len(available) == 1:
@@ -447,6 +476,7 @@ async def resolve_agent_route(
     registry: AgentRegistry,
     user_query: str,
     cost: CostTracker,
+    has_routable_kbs: bool = False,
     triage_llm_cfg: "UserLLMConfig | None" = None,
     complex_llm_cfg: "UserLLMConfig | None" = None,
     default_llm_cfg: "UserLLMConfig | None" = None,
@@ -456,7 +486,12 @@ async def resolve_agent_route(
     settings = get_settings()
     route_mode = normalize_route_mode(mode or getattr(settings, "agent_route_mode", "layered"))
 
-    rule = rule_route(has_kb=has_kb, registry=registry, user_query=user_query)
+    rule = rule_route(
+        has_kb=has_kb,
+        has_routable_kbs=has_routable_kbs,
+        registry=registry,
+        user_query=user_query,
+    )
     if rule is not None:
         return rule
 

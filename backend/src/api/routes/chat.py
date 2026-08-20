@@ -13,10 +13,11 @@ from src.auth.middleware import CurrentUser
 from src.context import build_context_for_conversation
 from src.conversations.models import Conversation
 from src.infra import generation_lock
-from src.storage.database import get_session
-from src.models.gateway import normalize_model_name
+from src.adapters.persistence import get_session
+from src.adapters.llm import normalize_model_name
 from src.kb.models import KB
-from src.observability import start_trace
+from src.kb.auto_routing import list_readable_routable_kbs
+from src.adapters.observability import start_trace
 from src.settings import get_settings
 from src.settings_user import (
     configured_context_window_for_model,
@@ -62,7 +63,12 @@ async def chat_post(
             )
 
     try:
-        effective_kb_id = req.kb_id if req.kb_id is not None else (conv.kb_id if conv else None)
+        # A persisted binding is authoritative. An unbound conversation may be
+        # bound by an explicit client choice. For automatic routing this
+        # endpoint only prepares ACL-scoped candidates; the Planner/Supervisor
+        # DAG owns semantic selection and agent delegation.
+        effective_kb_id = conv.kb_id if conv and conv.kb_id else req.kb_id
+        route_candidates: list[KB] = []
         selected_profile_id = req.model_profile_id or (conv.llm_profile_id if conv else None)
         selected_model = normalize_model_name(req.model or (conv.llm_model if conv else None))
         base_llm_cfg = (resolve_user_llm(user) if user is not None else None) or resolve_system_llm()
@@ -93,6 +99,24 @@ async def chat_post(
         else:
             context_llm_cfg = base_llm_cfg
 
+        if effective_kb_id is None and get_settings().kb_auto_route_mode.strip().lower() != "off":
+            readable_candidates = await list_readable_routable_kbs(
+                session,
+                user_id=user.id,
+                limit=get_settings().kb_auto_route_max_candidates,
+            )
+            user_embedding_cfg = resolve_user_embedding(user)
+            # A candidate whose embeddings cannot be produced for this user is
+            # not routable. This preserves the old explicit-KB BYOK contract
+            # without blocking ordinary chat merely because such a KB exists.
+            route_candidates = [
+                candidate
+                for candidate in readable_candidates
+                if candidate.is_system
+                or bool(getattr(candidate, "embedding_provider", None))
+                or user_embedding_cfg is not None
+            ]
+
         kb: KB | None = None
         if effective_kb_id:
             kb = await session.get(KB, effective_kb_id)
@@ -111,7 +135,7 @@ async def chat_post(
             if not kb.is_system and not bool(getattr(kb, "embedding_provider", None)):
                 require_user_embedding(user)
 
-        from src.observability import aspan
+        from src.adapters.observability import aspan
 
         # Root trace covers context assembly + agent run (flushed in run_agent).
         start_trace(
@@ -121,6 +145,7 @@ async def chat_post(
             input=(req.messages[-1].content if req.messages else None),
             metadata={
                 "kb_id": effective_kb_id,
+                "kb_auto_route_candidate_count": len(route_candidates),
                 "model": selected_model,
                 "user_email": user.email,
             },
@@ -135,7 +160,9 @@ async def chat_post(
                     conversation_id=conv.id,
                     user_id=user.id,
                     model=selected_model,
-                    kb_id=effective_kb_id,
+                    # Reserve RAG context for a route-capable unbound turn;
+                    # the actual KB id is selected later by the Supervisor.
+                    kb_id=effective_kb_id or ("__auto_route__" if route_candidates else None),
                     context_window=configured_context_window_for_model(
                         context_llm_cfg,
                         selected_model or (context_llm_cfg.default_model if context_llm_cfg else None),
@@ -154,6 +181,19 @@ async def chat_post(
                 detail="messages or conversation_id is required",
             )
 
+        async def persist_auto_kb_binding(selected_kb: KB, _route: dict[str, Any]) -> None:
+            """Persist only a supervisor-accepted, ACL-scoped selection."""
+            if conv is None:
+                return
+            from src.adapters.persistence import get_session_factory
+
+            factory = get_session_factory()
+            async with factory() as write_session:
+                stored = await write_session.get(Conversation, conv.id)
+                if stored is not None and stored.user_id == user.id and stored.kb_id is None:
+                    stored.kb_id = selected_kb.id
+                    await write_session.commit()
+
         return run_chat_session(
             messages,
             rate_key=f"user:{user.id}",
@@ -168,11 +208,13 @@ async def chat_post(
             complex_llm_cfg_override=None if selected_model else (routing_cfgs.complex if routing_cfgs else None),
             triage_llm_cfg_override=None if selected_model else (routing_cfgs.triage if routing_cfgs else None),
             fallback_llm_cfg_override=None if selected_model else (routing_cfgs.fallback if routing_cfgs else None),
+            kb_candidates=route_candidates,
+            on_kb_routed=persist_auto_kb_binding if conv is not None else None,
         )
     except Exception:
         if conversation_lock_id:
             await generation_lock.release(conversation_lock_id)
-        from src.observability import get_current_trace
+        from src.adapters.observability import get_current_trace
 
         orphan = get_current_trace()
         if orphan is not None and not orphan._finished:
