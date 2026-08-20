@@ -22,7 +22,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="zh-CN" className={fontVariables} suppressHydrationWarning>
       <head>
-        {/* eslint-disable-next-line react/no-danger */}
         <script dangerouslySetInnerHTML={{ __html: NO_FLASH }} />
       </head>
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
@@ -54,7 +53,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </PreviewPanelProvider>
         </ThemeProvider>
         {process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN && (
-          /* eslint-disable-next-line @next/next/no-sync-scripts */
           <script
             defer
             data-domain={process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN}

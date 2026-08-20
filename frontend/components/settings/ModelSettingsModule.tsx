@@ -136,7 +136,6 @@ export function ModelSettingsModule({ embedded = false }: { embedded?: boolean }
       .catch((error) => toast.error(error instanceof Error ? error.message : "读取设置失败"))
       .finally(() => setLoading(false));
     // refresh is intentionally created per render; this boot request runs once.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   if (loading) {

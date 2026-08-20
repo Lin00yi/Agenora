@@ -446,7 +446,6 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
     setActiveSection(resolve());
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowMembers, allowEvaluation, allowRetrieval, allowDanger]);
 
   useEffect(() => {

@@ -79,6 +79,17 @@ npm run sync:model-catalog
 
 本地默认已开启；Docker Compose 默认关闭这个 mock 服务。生产部署应以审核后的 capability catalog 绑定真实订单服务，并把 `prepare_refund` / `confirm_refund` 对接到支付系统的审计、权限、风控和回调链路。退款的 `policy_id`、身份注入、二次确认和请求不自动重放均由 Host 保持控制；不要将演示 SQLite 实现直接当作支付生产系统。
 
+### 本地 Checkpoint 维护
+
+本地 SQLite checkpoint 默认不会自动删除，因为它承载审批恢复状态。若本地开发库变大，先停止后端，再做只读评估：
+
+```bash
+cd backend
+uv run python scripts/maintain_checkpoints.py --keep-per-thread 8
+```
+
+确认输出后，显式加上 `--apply --vacuum-into data/agent_checkpoints.compacted.db` 生成紧凑副本，再在后端停机状态下备份并替换原库。生产环境应使用 PostgreSQL checkpoint backend，并在数据库层制定独立保留策略。
+
 ### 多 Agent 编排链路
 
 每轮先保留原始用户输入，并做无损空白规范化和订单号/确认单号等实体提取；不会在这里改写可能影响执行安全的字段。随后由规则、轻量模型、复杂模型依次产出 `domain / intent / risk / missing_slots` 的结构化意图，只有低置信度才升级到下一层。
