@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
@@ -18,7 +18,6 @@ from src.platform.llm import normalize_model_name
 from src.capabilities.knowledge.domain.models import KB
 from src.capabilities.knowledge.application.routing import list_readable_routable_kbs
 from src.platform.observability import start_trace
-from src.settings import get_settings
 from src.capabilities.settings.domain.models import (
     configured_context_window_for_model,
     list_llm_model_profiles,
@@ -38,6 +37,7 @@ router = APIRouter(tags=["chat"])
 async def chat_post(
     req: ChatRequest,
     user: CurrentUser,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> EventSourceResponse:
     """SSE stream with full message history. Requires Bearer JWT.
@@ -48,6 +48,8 @@ async def chat_post(
     configured their own LLM cfg; if kb_id is set they also need embedding cfg
     (KB-mode chat embeds the query for similarity search).
     """
+    container = request.app.state.container
+    settings = container.settings
     conv: Conversation | None = None
     conversation_lock_id: str | None = None
     if req.conversation_id:
@@ -79,7 +81,7 @@ async def chat_post(
         # credentialed model profile.  The former synchronous gate cannot
         # validate profile ownership/health, so run it only after resolution.
         if (
-            get_settings().byok_required
+            settings.byok_required
             and selected_profile_cfg is None
             and routing_cfgs is None
             and resolve_user_llm(user) is None
@@ -98,11 +100,11 @@ async def chat_post(
         else:
             context_llm_cfg = base_llm_cfg
 
-        if effective_kb_id is None and get_settings().kb_auto_route_mode.strip().lower() != "off":
+        if effective_kb_id is None and settings.kb_auto_route_mode.strip().lower() != "off":
             readable_candidates = await list_readable_routable_kbs(
                 session,
                 user_id=user.id,
-                limit=get_settings().kb_auto_route_max_candidates,
+                limit=settings.kb_auto_route_max_candidates,
             )
             user_embedding_cfg = resolve_user_embedding(user)
             # A candidate whose embeddings cannot be produced for this user is
@@ -180,7 +182,7 @@ async def chat_post(
                 detail="messages or conversation_id is required",
             )
 
-        return run_chat_session(
+        return await run_chat_session(
             messages,
             rate_key=f"user:{user.id}",
             user_email=user.email,
@@ -196,6 +198,7 @@ async def chat_post(
             fallback_llm_cfg_override=None if selected_model else (routing_cfgs.fallback if routing_cfgs else None),
             kb_candidates=route_candidates,
             kb_route_scope="pinned" if pinned else "turn",
+            container=container,
         )
     except Exception:
         if conversation_lock_id:

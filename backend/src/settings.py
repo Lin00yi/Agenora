@@ -103,8 +103,13 @@ class Settings(BaseSettings):
     agent_allow_rag_chat_handoff: bool = True
     # rule_only | rule_triage | layered (rule → triage → complex)
     agent_route_mode: str = "layered"
-    # Durable LangGraph interrupt checkpoints. Kept outside conversation rows
-    # so only workflow state/interrupt payloads live here, not chat history.
+    # Durable LangGraph interrupt checkpoints. ``auto`` chooses PostgreSQL
+    # whenever the application database is PostgreSQL, and keeps SQLite only
+    # for the single-process local-development path.  Workflow state remains
+    # separate from conversation rows so interrupt payloads are never mixed
+    # into user-visible chat history.
+    agent_checkpoint_backend: str = "auto"  # auto | postgres | sqlite
+    agent_checkpoint_database_url: str = ""  # defaults to DATABASE_URL
     agent_checkpoint_db_path: str = str(_DATA_DIR / "agent_checkpoints.db")
 
     # ===== Tools =====
@@ -230,6 +235,17 @@ class Settings(BaseSettings):
     rag_monitor_max_p95_latency_ms: int = 5000
     rag_monitor_min_avg_top_score: float = 0.50
 
+    # ===== Data lifecycle =====
+    # Retention is intentionally opt-in for user conversation/source data.
+    # Trace and completed-operation limits are safe operational defaults; set
+    # 0 to disable a category during an incident investigation.
+    trace_retention_days: int = 90
+    trace_archive_enabled: bool = False
+    conversation_retention_days: int = 0
+    parsed_text_retention_days: int = 0
+    eval_run_retention_days: int = 365
+    operation_job_retention_days: int = 14
+
     # ===== LightRAG Server (knowledge-graph recall) =====
     # When lightrag_enabled and LIGHTRAG_BASE_URL are set, KBs with kg_enabled
     # sync documents to the server and search_kg runs in parallel with search_kb.
@@ -252,7 +268,10 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     rate_limit_per_hour: int = 20
     # sqlite = shared WAL file (multi-worker on one host); memory = process-local only.
-    rate_limit_backend: str = "sqlite"
+    # ``auto`` selects PostgreSQL for production DATABASE_URL values and
+    # SQLite only for local development.  PostgreSQL uses transaction advisory
+    # locks, so separate API replicas share the same limit atomically.
+    rate_limit_backend: str = "auto"  # auto | postgres | sqlite | memory
     rate_limit_db_path: str = ""  # empty → backend/data/rate_limit.db
     cors_origins: str = "http://localhost:3000"
 

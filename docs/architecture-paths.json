@@ -1,0 +1,17 @@
+{
+  "paths": [
+    "backend/src/app.py",
+    "backend/src/api/routes/chat.py",
+    "backend/src/api/streaming/session.py",
+    "backend/src/harness/agents/supervisor.py",
+    "backend/src/harness/context",
+    "backend/src/harness/runtime/agent_loop",
+    "backend/src/harness/policy",
+    "backend/src/capabilities/memory/application",
+    "backend/src/capabilities/knowledge/application",
+    "backend/src/platform/tasks",
+    "backend/src/platform/retention.py",
+    "frontend/lib/sseClient.ts",
+    "frontend/components/chat/ChatMessages.tsx"
+  ]
+}

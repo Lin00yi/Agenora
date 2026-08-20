@@ -24,18 +24,22 @@ RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python deps first for layer caching.
-# Extras: milvus (Milvus Lite) + postgres (asyncpg for DATABASE_URL=postgresql+asyncpg://…)
+# Production uses external Qdrant plus PostgreSQL-backed checkpoints. Milvus
+# Lite remains a local-development-only optional extra because it is an
+# embedded database, unsuitable for the API + worker Compose topology.
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir --retries 5 -i https://pypi.tuna.tsinghua.edu.cn/simple -e '.[milvus,postgres]' \
-    || pip install --no-cache-dir --retries 5 -i https://pypi.org/simple -e '.[milvus,postgres]'
+RUN pip install --no-cache-dir --retries 5 -i https://pypi.tuna.tsinghua.edu.cn/simple -e '.[postgres]' \
+    || pip install --no-cache-dir --retries 5 -i https://pypi.org/simple -e '.[postgres]'
 
 # Source + prompt-injection rule/eval config.
 COPY src ./src
 COPY config ./config
+COPY scripts ./scripts
 COPY alembic ./alembic
 COPY alembic.ini ./alembic.ini
 
-# Runtime data dir (PG handles app DB; this volume holds Milvus Lite .db + uploads).
+# Runtime data dir holds local object-storage fallback and transient artifacts;
+# production database, checkpoints and vector indexes are external services.
 RUN mkdir -p /app/data/uploads
 
 EXPOSE 8000

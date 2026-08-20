@@ -90,7 +90,7 @@ BackgroundTasks：向量刷新 + 记忆整合 + 摘要预热
 
 写入对用户无感：不会在聊天窗口弹出“是否保存”确认框。
 
-实时聊天路径（`POST .../messages`）只**同步**完成规则抽取与关系库落库；embedding 刷新、记忆整合和摘要预热通过 `BackgroundTasks` **异步**执行，避免拖慢发消息。检索时若向量尚未写完，仍可用关键词命中，并在取回时按需回填向量。
+实时聊天路径（`POST .../messages`）只**同步**完成规则抽取与关系库落库；embedding 刷新和记忆整合写入持久化 `operation_jobs`，由 operation worker 通过租约、重试和死信处理。`BackgroundTasks` 仅作为已提交任务的低延迟唤醒，不再是可靠性来源。摘要预热仍是可丢失的性能优化。检索时若向量尚未写完，仍可用关键词命中，并在取回时按需回填向量。
 
 ### 3.1 显式写入
 
@@ -303,7 +303,7 @@ Token 计量使用 **tiktoken**（按模型族选择 `o200k_base` / `cl100k_base
 
 - 实时路径仍以规则为主；LLM 抽取仅在 finalize / idle 维护时运行；
 - 向量以 JSON 存在关系库中，适合小规模个人记忆；达到较大规模后应迁移至支持 metadata filter 的专用向量索引；
-- 过期与整合可由独立 Worker/Cron 覆盖长期不活跃用户；部署平台仍需负责单实例调度与重试；
+- 过期与整合由 operation worker 的有界定时任务覆盖长期不活跃用户；部署可扩容 worker，数据库租约保证单个 job 不会被重复执行；
 - 约束主题词表覆盖常见技术栈与策略；词表外约束仍用 `constraint.misc:<hash>`，需要时可扩展 `CONSTRAINT_TOPICS`；
 - DeepSeek/Claude 无官方公开 tokenizer 时仍用 tiktoken 代理，极端文本上可能与供应商计数有偏差。
 
@@ -313,13 +313,13 @@ Token 计量使用 **tiktoken**（按模型族选择 `o200k_base` / `cl100k_base
 
 | 模块 | 文件 |
 |---|---|
-| 记忆候选、检索、会话摘要、上下文预算 | `backend/src/memory/`、`backend/src/context/` |
-| Memory 数据模型 | `backend/src/conversations/models.py` |
+| 记忆候选、检索、会话摘要、上下文预算 | `backend/src/capabilities/memory/`、`backend/src/harness/context/` |
+| Memory 数据模型 | `backend/src/capabilities/conversations/models.py` |
 | 消息写入与 Memory 管理接口 | `backend/src/api/routes/conversations.py` |
-| 定时维护（闲置 finalize / 整合 / 向量回填） | `backend/src/storage/jobs/memory.py` |
+| 定时维护（闲置 finalize / 整合 / 向量回填） | `backend/src/capabilities/memory/application/worker.py` |
 | 生产 schema 迁移 | `backend/alembic/` |
 | 对话请求中构建上下文 | `backend/src/api/routes/chat.py` |
-| Provider 安全系统提示词和最终 token 分配 | `backend/src/runtime/agent_loop/reason.py`、`prompts_budget.py` |
+| Provider 安全系统提示词和最终 token 分配 | `backend/src/harness/runtime/agent_loop/reason.py`、`prompts_budget.py` |
 | 前端 SSE Trace 类型与渲染 | `frontend/lib/sseClient.ts`、`frontend/components/chat/ChatMessages.tsx` |
 | 记忆管理页 | `frontend/app/memories/page.tsx` |
 | 设计评审（已落地） | Memory Profile/Memory 去重、mode-based RAG reserve 等见本文件 §10 与代码实现 |

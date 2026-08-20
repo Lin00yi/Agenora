@@ -1,39 +1,58 @@
-"""Shared SQLite rate limiter — safe across multiple workers on one host.
+"""Topology-safe per-key sliding-window rate limiting.
 
-Uses a dedicated SQLite file (WAL) so uvicorn multi-worker / multi-process
-deployments share the same counters. Multi-host replicas still need an
-external limiter (Redis / nginx) — set RATE_LIMIT_BACKEND=memory only for
-single-process local demos if desired.
+``postgres`` is the production backend. Each decision runs in one database
+transaction protected by a transaction advisory lock, so all API replicas
+share a single source of truth. SQLite and memory remain intentionally local
+development fallbacks; neither is selected automatically for PostgreSQL.
 """
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import sqlite3
 import time
 from math import ceil
 from pathlib import Path
 from threading import Lock
+from typing import Literal
 
+from sqlalchemy import text
+
+from src.platform.persistence.database import get_session_factory
 from src.settings import get_settings
+
+RateLimitBackend = Literal["postgres", "sqlite", "memory"]
 
 _memory_buckets: dict[str, list[float]] = {}
 _memory_lock = Lock()
 _db_lock = Lock()
 _db_path: Path | None = None
+_WINDOW_SECONDS = 3600.0
+
+
+def resolve_backend() -> RateLimitBackend:
+    """Resolve ``auto`` safely from the configured application database."""
+    settings = get_settings()
+    requested = str(getattr(settings, "rate_limit_backend", "auto") or "auto").strip().lower()
+    if requested in {"postgres", "sqlite", "memory"}:
+        return requested  # type: ignore[return-value]
+    return "postgres" if str(settings.database_url).startswith("postgresql") else "sqlite"
+
+
+def _advisory_key(rate_key: str) -> int:
+    digest = hashlib.sha256(rate_key.encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], byteorder="big", signed=True)
 
 
 def _resolve_db_path() -> Path:
     global _db_path
     if _db_path is None:
         settings = get_settings()
-        # Prefer backend/data next to the app DB; override via RATE_LIMIT_DB_PATH.
         configured = getattr(settings, "rate_limit_db_path", "") or ""
         if configured:
             path = Path(configured)
         else:
-            # settings._DATA_DIR is not exported; derive from database_url parent
-            # or fall back to backend/data.
-            backend_data = Path(__file__).resolve().parents[2] / "data"
-            path = backend_data / "rate_limit.db"
+            path = Path(__file__).resolve().parents[2] / "data" / "rate_limit.db"
         path.parent.mkdir(parents=True, exist_ok=True)
         _db_path = path
     return _db_path
@@ -51,100 +70,145 @@ def _connect() -> sqlite3.Connection:
         )
         """
     )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_hits_key_ts ON hits (rate_key, ts)"
-    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_hits_key_ts ON hits (rate_key, ts)")
     return conn
 
 
-def _check_sqlite(ip: str, limit_per_hour: int) -> tuple[bool, int]:
+def _check_sqlite(rate_key: str, limit_per_hour: int) -> tuple[bool, int]:
     now = time.time()
-    window = 3600.0
-    cutoff = now - window
+    cutoff = now - _WINDOW_SECONDS
     with _db_lock:
         conn = _connect()
         try:
-            conn.execute("DELETE FROM hits WHERE rate_key = ? AND ts <= ?", (ip, cutoff))
+            conn.execute("DELETE FROM hits WHERE rate_key = ? AND ts <= ?", (rate_key, cutoff))
             row = conn.execute(
-                "SELECT COUNT(*) FROM hits WHERE rate_key = ? AND ts > ?",
-                (ip, cutoff),
+                "SELECT COUNT(*) FROM hits WHERE rate_key = ? AND ts > ?", (rate_key, cutoff)
             ).fetchone()
             count = int(row[0] if row else 0)
             if count >= limit_per_hour:
                 return False, 0
-            conn.execute("INSERT INTO hits (rate_key, ts) VALUES (?, ?)", (ip, now))
+            conn.execute("INSERT INTO hits (rate_key, ts) VALUES (?, ?)", (rate_key, now))
             return True, limit_per_hour - count - 1
         finally:
             conn.close()
 
 
-def _check_memory(ip: str, limit_per_hour: int) -> tuple[bool, int]:
+def _check_memory(rate_key: str, limit_per_hour: int) -> tuple[bool, int]:
     now = time.time()
-    window = 3600.0
     with _memory_lock:
-        q = _memory_buckets.setdefault(ip, [])
-        # Drop expired timestamps in place.
-        keep = [ts for ts in q if now - ts <= window]
-        if len(keep) >= limit_per_hour:
-            _memory_buckets[ip] = keep
+        active = [ts for ts in _memory_buckets.get(rate_key, []) if now - ts <= _WINDOW_SECONDS]
+        if len(active) >= limit_per_hour:
+            _memory_buckets[rate_key] = active
             return False, 0
-        keep.append(now)
-        _memory_buckets[ip] = keep
-        return True, limit_per_hour - len(keep)
+        active.append(now)
+        _memory_buckets[rate_key] = active
+        return True, limit_per_hour - len(active)
 
 
-def check(ip: str, limit_per_hour: int) -> tuple[bool, int]:
-    """Return (allowed, remaining)."""
-    backend = (get_settings().rate_limit_backend or "sqlite").strip().lower()
+async def _check_postgres(rate_key: str, limit_per_hour: int) -> tuple[bool, int]:
+    """Atomically prune, count and record a request across every API replica."""
+    now = time.time()
+    cutoff = now - _WINDOW_SECONDS
+    factory = get_session_factory()
+    async with factory() as session:
+        async with session.begin():
+            await session.execute(
+                text("SELECT pg_advisory_xact_lock(:lock_key)"),
+                {"lock_key": _advisory_key(rate_key)},
+            )
+            await session.execute(
+                text("DELETE FROM rate_limit_hits WHERE rate_key = :rate_key AND ts <= :cutoff"),
+                {"rate_key": rate_key, "cutoff": cutoff},
+            )
+            count = int(
+                (
+                    await session.execute(
+                        text("SELECT COUNT(*) FROM rate_limit_hits WHERE rate_key = :rate_key"),
+                        {"rate_key": rate_key},
+                    )
+                ).scalar_one()
+            )
+            if count >= limit_per_hour:
+                return False, 0
+            await session.execute(
+                text("INSERT INTO rate_limit_hits (rate_key, ts) VALUES (:rate_key, :ts)"),
+                {"rate_key": rate_key, "ts": now},
+            )
+            return True, limit_per_hour - count - 1
+
+
+async def check(rate_key: str, limit_per_hour: int) -> tuple[bool, int]:
+    """Return ``(allowed, remaining)`` using the resolved shared backend."""
+    backend = resolve_backend()
+    if backend == "postgres":
+        return await _check_postgres(rate_key, limit_per_hour)
     if backend == "memory":
-        return _check_memory(ip, limit_per_hour)
+        return _check_memory(rate_key, limit_per_hour)
     try:
-        return _check_sqlite(ip, limit_per_hour)
-    except Exception:  # noqa: BLE001 — fail open to in-process memory
-        # Fail open to memory so a disk issue never hard-blocks chat.
-        return _check_memory(ip, limit_per_hour)
+        return await asyncio.to_thread(_check_sqlite, rate_key, limit_per_hour)
+    except Exception:  # noqa: BLE001 - local dev should remain available
+        return _check_memory(rate_key, limit_per_hour)
 
 
 def _retry_after_memory(rate_key: str) -> int:
     now = time.time()
     with _memory_lock:
-        active = [ts for ts in _memory_buckets.get(rate_key, []) if now - ts <= 3600.0]
+        active = [ts for ts in _memory_buckets.get(rate_key, []) if now - ts <= _WINDOW_SECONDS]
         if not active:
             return 1
-        return max(1, int(ceil(active[0] + 3600.0 - now)))
+        return max(1, int(ceil(active[0] + _WINDOW_SECONDS - now)))
 
 
 def _retry_after_sqlite(rate_key: str) -> int:
     now = time.time()
-    cutoff = now - 3600.0
     with _db_lock:
         conn = _connect()
         try:
             row = conn.execute(
                 "SELECT MIN(ts) FROM hits WHERE rate_key = ? AND ts > ?",
-                (rate_key, cutoff),
+                (rate_key, now - _WINDOW_SECONDS),
             ).fetchone()
         finally:
             conn.close()
     oldest = row[0] if row else None
     if not isinstance(oldest, (int, float)):
         return 1
-    return max(1, int(ceil(float(oldest) + 3600.0 - now)))
+    return max(1, int(ceil(float(oldest) + _WINDOW_SECONDS - now)))
 
 
-def retry_after_seconds(rate_key: str) -> int:
+async def _retry_after_postgres(rate_key: str) -> int:
+    now = time.time()
+    factory = get_session_factory()
+    async with factory() as session:
+        oldest = (
+            await session.execute(
+                text(
+                    "SELECT MIN(ts) FROM rate_limit_hits "
+                    "WHERE rate_key = :rate_key AND ts > :cutoff"
+                ),
+                {"rate_key": rate_key, "cutoff": now - _WINDOW_SECONDS},
+            )
+        ).scalar_one()
+    if not isinstance(oldest, (int, float)):
+        return 1
+    return max(1, int(ceil(float(oldest) + _WINDOW_SECONDS - now)))
+
+
+async def retry_after_seconds(rate_key: str) -> int:
     """Return the earliest safe retry delay for a currently limited key."""
-    backend = (get_settings().rate_limit_backend or "sqlite").strip().lower()
+    backend = resolve_backend()
+    if backend == "postgres":
+        return await _retry_after_postgres(rate_key)
     if backend == "memory":
         return _retry_after_memory(rate_key)
     try:
-        return _retry_after_sqlite(rate_key)
-    except Exception:  # noqa: BLE001 — the limiter itself must stay recoverable
+        return await asyncio.to_thread(_retry_after_sqlite, rate_key)
+    except Exception:  # noqa: BLE001
         return _retry_after_memory(rate_key)
 
 
 def reset_for_tests() -> None:
-    """Clear counters (unit tests only)."""
+    """Clear only local backend state (PostgreSQL state belongs to its fixture)."""
     global _db_path
     with _memory_lock:
         _memory_buckets.clear()

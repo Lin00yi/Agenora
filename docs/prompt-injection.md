@@ -64,7 +64,7 @@ Agenora 支持私有化部署吗？
 
 实现位置：
 
-- `backend/src/safety/prompt_injection.py`
+- `backend/src/harness/policy/prompt_injection.py`
 - `assess_prompt_injection(text)`
 
 主要逻辑：
@@ -102,7 +102,7 @@ PromptInjectionAssessment(
 
 实现位置：
 
-- `backend/src/runtime/agent_loop/`
+- `backend/src/harness/runtime/agent_loop/`
 - `query_policy_node`
 
 策略：
@@ -120,9 +120,9 @@ kb_search_done = true
 
 实现位置：
 
-- `backend/src/safety/prompt_injection.py`
+- `backend/src/harness/policy/prompt_injection.py`
 - `filter_untrusted_rag_text(text)`
-- `backend/src/runtime/agent_loop/`
+- `backend/src/harness/runtime/agent_loop/`
 - `kb_search_node`
 
 处理方式：
@@ -148,7 +148,7 @@ prompt_injection_reasons += suspicious_reasons
 
 实现位置：
 
-- `backend/src/runtime/agent_loop/`
+- `backend/src/harness/runtime/agent_loop/`
 - `reason_node`
 
 每轮都会在 system prompt 中保留固定的 `Prompt Injection Guard`，不携带本轮风险原因，以避免因动态 guard 破坏稳定前缀缓存：
@@ -167,7 +167,7 @@ prompt_injection_reasons += suspicious_reasons
 
 实现位置：
 
-- `backend/src/runtime/agent_loop/`
+- `backend/src/harness/runtime/agent_loop/`
 - `reason_node`
 
 当风险为 `high` 时：
@@ -187,7 +187,7 @@ KB 模式下 `search_kb` 本来就不会暴露给 `reason_node`，检索只由 `
 
 实现位置：
 
-- `backend/src/safety/output_filter.py`
+- `backend/src/harness/policy/output_filter.py`
 - `redact_sensitive_output(text)`
 - `backend/src/api/streaming/session.py`
 

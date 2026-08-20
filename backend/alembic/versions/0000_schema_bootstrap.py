@@ -15,6 +15,7 @@ from src.capabilities.conversations import models as _conv_models  # noqa: F401
 from src.capabilities.knowledge.domain import models as _kb_models  # noqa: F401
 from src.platform.observability import models as _obs_models  # noqa: F401
 from src.capabilities.settings.domain import models as _settings_user_models  # noqa: F401
+from src.platform.tasks import models as _operation_job_models  # noqa: F401
 from src.platform.persistence.database import Base
 
 revision: str = "0000_schema_bootstrap"

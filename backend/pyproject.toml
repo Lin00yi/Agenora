@@ -55,7 +55,12 @@ dev = [
 ollama = ["ollama>=0.3"]
 openai = ["openai>=1.30"]
 # Docker Compose / production Postgres (DATABASE_URL=postgresql+asyncpg://…)
-postgres = ["asyncpg>=0.29"]
+postgres = [
+  "asyncpg>=0.29",
+  # Shared, durable LangGraph checkpoints for PostgreSQL deployments.
+  "langgraph-checkpoint-postgres>=2.0",
+  "psycopg[binary,pool]>=3.2",
+]
 # v3-M2 — optional Milvus backend (Lite=embedded local .db, Standalone=server)
 # `pip install -e .[milvus]` then set VECTOR_STORE=milvus in .env
 milvus = ["pymilvus>=2.5", "milvus-lite>=3.0"]

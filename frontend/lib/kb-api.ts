@@ -265,13 +265,8 @@ export async function patchKb(
   );
 }
 
-/** v3-M3: owner-only KB rebuild. Drops the vector collection and re-ingests
- *  every document — used to upgrade a pre-v3-M3 dense-only collection to
- *  the hybrid (dense + BM25) schema. Returns count of docs being re-ingested.
- *  During the rebuild window chat against this KB sees empty hits. */
-export async function rebuildKb(
-  id: string
-): Promise<{ rebuilding: boolean; doc_count: number; collection: string }> {
+/** Owner-only rebuild, persisted as a durable operation before any work runs. */
+export async function rebuildKb(id: string): Promise<OperationJob> {
   return unwrap(
     await authFetch(`/api/kbs/${id}/rebuild`, { method: "POST" })
   );
@@ -612,6 +607,18 @@ export type KbEvalRunList = {
   runs: KbEvalRun[];
 };
 
+export type OperationJob = {
+  id: string;
+  kind: string;
+  status: "pending" | "running" | "done" | "dead_letter" | string;
+  attempts: number;
+  max_attempts: number;
+  result: Record<string, unknown>;
+  error: string | null;
+  created_at: string | null;
+  completed_at: string | null;
+};
+
 export type KbEvalMonitorSnapshot = {
   kb_id?: string;
   window_hours: number;
@@ -665,10 +672,14 @@ export async function putKbEvalConfig(
   );
 }
 
-export async function runKbEvalRegression(kbId: string): Promise<KbEvalRun> {
+export async function runKbEvalRegression(kbId: string): Promise<OperationJob> {
   return unwrap(
     await authFetch(`/api/kbs/${kbId}/eval/run`, { method: "POST" })
   );
+}
+
+export async function getKbEvalJob(kbId: string, jobId: string): Promise<OperationJob> {
+  return unwrap(await authFetch(`/api/kbs/${kbId}/eval/jobs/${jobId}`));
 }
 
 export async function listKbEvalRuns(

@@ -287,6 +287,7 @@ def build_supervisor_graph(
     configure_routed_kb=None,
     kb_route_scope: str = "turn",
     run_context: RunContext | None = None,
+    services: Any | None = None,
     checkpointer=None,
 ):
     """Compile the multi-agent supervisor around a pluggable registry."""
@@ -311,6 +312,7 @@ def build_supervisor_graph(
         kb_candidates=list(kb_candidates or []),
         configure_routed_kb=configure_routed_kb,
         kb_route_scope=kb_route_scope,
+        services=services,
     )
     if deps is None:
         runtime.emit = em

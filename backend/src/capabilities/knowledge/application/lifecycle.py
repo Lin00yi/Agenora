@@ -42,4 +42,4 @@ async def purge_kb(session: AsyncSession, kb: KB) -> None:
     await session.delete(kb)
     await session.commit()
     await documents.delete_kb_uploads(kb_id)
-    evaluation.delete_run_files(kb_id)
+    await evaluation.delete_run_files(kb_id)

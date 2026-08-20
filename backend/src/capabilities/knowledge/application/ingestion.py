@@ -26,18 +26,29 @@ if TYPE_CHECKING:
 log = structlog.get_logger()
 
 async def enqueue_documents(session: AsyncSession, document_ids: list[str]) -> list[Any]:
-    """Durably enqueue documents before any in-process background handoff."""
-    from src.capabilities.knowledge.application.jobs import enqueue_ingestion
+    """Enqueue document ingestion through the shared durable operation queue."""
+    from src.platform.tasks import enqueue_operation
 
-    return [await enqueue_ingestion(session, document_id=document_id) for document_id in document_ids]
+    return [
+        await enqueue_operation(
+            session,
+            kind="ingest_document",
+            payload={"document_id": document_id},
+            # A document can be re-ingested repeatedly; use a fresh enqueue
+            # key while duplicate submissions in the same request collapse.
+            idempotency_key=f"ingest:{document_id}",
+            max_attempts=3,
+        )
+        for document_id in dict.fromkeys(document_ids)
+    ]
 
 
 def handoff_ingestion(background: Any, jobs: list[Any]) -> None:
     """Schedule best-effort execution; the durable queue remains authoritative."""
-    from src.capabilities.knowledge.application.jobs import run_ingestion_job
+    from src.platform.tasks import run_operation_job
 
     for job in jobs:
-        background.add_task(run_ingestion_job, job.id)
+        background.add_task(run_operation_job, job.id)
 
 
 async def ingest_document(
@@ -140,12 +151,20 @@ async def ingest_document(
         await session.commit()
 
     if new_status == "done" and kg_enabled:
-        try:
-            from src.capabilities.knowledge.graph.sync import sync_document_to_lightrag
+        # KG synchronization is an independent retriable operation. Never
+        # make vector ingestion appear failed merely because the optional
+        # graph service is temporarily unavailable.
+        async with factory() as session:
+            from src.platform.tasks import enqueue_operation
 
-            await sync_document_to_lightrag(doc_id)
-        except Exception as exc:  # noqa: BLE001 - vector ingest already succeeded
-            log.warning("lightrag_sync_invoke_failed", doc_id=doc_id, error=str(exc)[:500])
+            await enqueue_operation(
+                session,
+                kind="sync_lightrag_document",
+                payload={"document_id": doc_id},
+                idempotency_key=f"kg-sync:{doc_id}:{new_chunks}",
+                max_attempts=5,
+            )
+            await session.commit()
 
 
 async def delete_document_chunks(collection_name: str, doc_id: str) -> None:

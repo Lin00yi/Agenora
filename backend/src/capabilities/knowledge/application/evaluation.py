@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.capabilities.identity.models import User
 from src.capabilities.knowledge.domain.models import KB, KbEvalConfig, KbEvalRun
+from src.platform.files.object_storage import get_object_storage
 from src.harness.evaluation.metrics import (
     EvaluationGateError,
     RAGGoldenCase,
@@ -27,6 +28,7 @@ from src.harness.evaluation.metrics import (
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[4]
 EVAL_RUNS_BASE = _BACKEND_ROOT / "data" / "eval_runs"
+EVAL_OBJECT_PREFIX = "eval-runs"
 CONFIG_DIR = _BACKEND_ROOT / "config"
 MAX_GOLDEN_CASES = 100
 MAX_RETRIEVAL_JSONL_BYTES = 5 * 1024 * 1024
@@ -278,15 +280,22 @@ def score_report(
     return report, passed, gate_error
 
 
-def _write_retrieval_jsonl(kb_id: str, run_id: str, body: str) -> str:
-    relative = f"{kb_id}/{run_id}.jsonl"
-    target = EVAL_RUNS_BASE / relative
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(body, encoding="utf-8")
-    return relative
+def _eval_object_key(kb_id: str, run_id: str) -> str:
+    return f"{EVAL_OBJECT_PREFIX}/{kb_id}/{run_id}.jsonl"
 
 
-def delete_eval_run_files(kb_id: str) -> None:
+async def _write_retrieval_jsonl(kb_id: str, run_id: str, body: str) -> str:
+    """Store replay input alongside source objects, never in an API pod volume."""
+    key = _eval_object_key(kb_id, run_id)
+    await get_object_storage().put(
+        key, body.encode("utf-8"), content_type="application/x-ndjson; charset=utf-8"
+    )
+    return key
+
+
+async def delete_eval_run_files(kb_id: str) -> None:
+    """Delete object-store artifacts and one-release local compatibility files."""
+    await get_object_storage().delete_prefix(f"{EVAL_OBJECT_PREFIX}/{kb_id}")
     base = EVAL_RUNS_BASE / kb_id
     if base.exists():
         shutil.rmtree(base, ignore_errors=True)
@@ -307,7 +316,7 @@ async def save_eval_run(
     run_id = str(uuid.uuid4())
     relative = ""
     if predictions:
-        relative = _write_retrieval_jsonl(kb.id, run_id, serialize_predictions(predictions))
+        relative = await _write_retrieval_jsonl(kb.id, run_id, serialize_predictions(predictions))
     run = KbEvalRun(
         id=run_id,
         kb_id=kb.id,
@@ -352,10 +361,19 @@ async def run_regression(
     )
 
 
-def load_run_predictions(run: KbEvalRun) -> dict[str, dict[str, Any]]:
+async def load_run_predictions(run: KbEvalRun) -> dict[str, dict[str, Any]]:
     if not run.retrieval_jsonl_path:
         raise EvaluationGateError("this run has no stored retrieval.jsonl")
-    path = EVAL_RUNS_BASE / run.retrieval_jsonl_path
+    key = run.retrieval_jsonl_path
+    if key.startswith(f"{EVAL_OBJECT_PREFIX}/"):
+        try:
+            body = await get_object_storage().get(key)
+        except FileNotFoundError as exc:
+            raise EvaluationGateError("stored retrieval.jsonl is missing") from exc
+        return parse_predictions_jsonl(body.decode("utf-8"), source=key)
+    # One-release compatibility for historical paths written before object
+    # storage became authoritative.
+    path = EVAL_RUNS_BASE / key
     if not path.is_file():
         raise EvaluationGateError("stored retrieval.jsonl is missing")
     return parse_predictions_jsonl(path.read_text(encoding="utf-8"), source=str(path))
@@ -485,8 +503,8 @@ def parse_predictions(raw: bytes) -> dict[str, dict[str, Any]]:
     return parse_predictions_jsonl(raw.decode("utf-8"), source="retrieval.jsonl")
 
 
-def predictions_from_run(run: KbEvalRun) -> dict[str, dict[str, Any]]:
-    return load_run_predictions(run)
+async def predictions_from_run(run: KbEvalRun) -> dict[str, dict[str, Any]]:
+    return await load_run_predictions(run)
 
 
 async def replay(
@@ -500,6 +518,6 @@ async def replay(
     return run.to_public_dict(include_report=True)
 
 
-def delete_run_files(kb_id: str) -> None:
+async def delete_run_files(kb_id: str) -> None:
     """Remove derived artifacts after the KB itself has been deleted."""
-    delete_eval_run_files(kb_id)
+    await delete_eval_run_files(kb_id)

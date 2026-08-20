@@ -17,6 +17,15 @@ services:
       timeout: 3s
       retries: 10
 
+  # ===== Vector database (network service; safe for API + worker replicas) =====
+  # Milvus Lite is intentionally not used in Compose: its embedded database
+  # file cannot be a shared production dependency for multiple processes.
+  qdrant:
+    image: qdrant/qdrant:v1.13.4
+    restart: unless-stopped
+    volumes:
+      - qdrant-data:/qdrant/storage
+
   # ===== Neo4j (LightRAG graph storage) =====
   neo4j:
     image: neo4j:5.26-community
@@ -85,7 +94,7 @@ services:
       retries: 10
       start_period: 40s
 
-  # ===== Backend (FastAPI + LangGraph + Milvus Lite embedded) =====
+  # ===== Backend (FastAPI + LangGraph) =====
   backend:
     build: ./backend
     restart: unless-stopped
@@ -94,14 +103,18 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      checkpoint-setup:
+        condition: service_completed_successfully
+      qdrant:
+        condition: service_started
     environment:
       # --- App DB ---
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-agenora}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-agenora}
 
-      # --- Vector store (Milvus Lite embedded) ---
-      VECTOR_STORE: milvus
-      MILVUS_URI: /app/data/milvus_local.db
-      MILVUS_TOKEN: ""
+      # --- Vector store (external Qdrant; override for managed Qdrant) ---
+      VECTOR_STORE: qdrant
+      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
 
       # --- LightRAG Server (graph recall) ---
       LIGHTRAG_ENABLED: ${LIGHTRAG_ENABLED:-false}
@@ -139,6 +152,9 @@ services:
       LOG_LEVEL: INFO
       CORS_ORIGINS: ${PUBLIC_URL:-http://localhost}
       RATE_LIMIT_PER_HOUR: ${RATE_LIMIT_PER_HOUR:-60}
+      RATE_LIMIT_BACKEND: postgres
+      AGENT_CHECKPOINT_BACKEND: postgres
+      AGENT_CHECKPOINT_DATABASE_URL: postgresql://${POSTGRES_USER:-agenora}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-agenora}
       # The repository's stdio order service is a development mock and is not
       # baked into the production backend image. Use a real adapter before
       # enabling order execution in a deployed environment.
@@ -179,13 +195,32 @@ services:
       APP_ENV: prod
       SCHEMA_BOOTSTRAP: "false"
 
-  # Durable document-ingest worker. It inherits the exact database, vector,
-  # provider and LightRAG configuration from backend; health checks are
-  # disabled because this process deliberately does not expose HTTP.
-  ingestion-worker:
+  # LangGraph owns its own checkpoint schema. Run this once before API
+  # replicas start so concurrent first chat requests never race table setup.
+  checkpoint-setup:
+    build: ./backend
+    restart: "no"
+    command: ["python", "scripts/setup_checkpoint_store.py"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-agenora}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-agenora}
+      AGENT_CHECKPOINT_BACKEND: postgres
+      AGENT_CHECKPOINT_DATABASE_URL: postgresql://${POSTGRES_USER:-agenora}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-agenora}
+      APP_ENV: prod
+      SCHEMA_BOOTSTRAP: "false"
+    healthcheck:
+      disable: true
+
+  # Durable control-plane worker. It owns ingestion, memory maintenance,
+  # LightRAG synchronization and asynchronous evaluations under DB leases.
+  operation-worker:
     extends:
       service: backend
-    command: ["python", "-m", "src.capabilities.knowledge.application.jobs"]
+    command: ["python", "-m", "src.bootstrap.workers.operations"]
     healthcheck:
       disable: true
 
@@ -245,6 +280,8 @@ volumes:
     name: agenora_certbot-www
   neo4j-data:
     name: agenora_neo4j-data
+  qdrant-data:
+    name: agenora_qdrant-data
   lightrag-data:
     name: agenora_lightrag-data
   lightrag-inputs:

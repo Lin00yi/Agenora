@@ -23,7 +23,6 @@ from src.harness.context import (
     get_latest_summary,
     rag_reserve_for_kb,
     refresh_memory_embedding,
-    run_memory_heavy_background,
     run_summary_prepare_background,
     store_user_memories,
 )
@@ -31,6 +30,7 @@ from src.harness.mcp.orders import get_refund
 from src.capabilities.conversations.models import Conversation, Message, UserMemory
 from src.platform.persistence import get_session
 from src.platform.llm import normalize_model_name
+from src.platform.tasks import enqueue_operation, run_operation_job
 from src.capabilities.settings.domain.models import (
     configured_context_window_for_model,
     list_llm_model_profiles,
@@ -834,15 +834,19 @@ async def append_message(
             tools, parts, synced_trace, req.citations
         )
 
+    memory_job = None
+    if pending_memory_ids:
+        memory_job = await enqueue_operation(
+            session,
+            kind="memory_heavy",
+            payload={"user_id": user.id, "memory_ids": pending_memory_ids},
+            idempotency_key=f"memory-heavy:{msg.id}",
+            max_attempts=3,
+        )
     await session.commit()
     await session.refresh(msg)
-    if pending_memory_ids:
-        background.add_task(
-            run_memory_heavy_background,
-            user.id,
-            pending_memory_ids,
-            embedding_cfg,
-        )
+    if memory_job is not None:
+        background.add_task(run_operation_job, memory_job.id)
     summary_llm_cfg = await _context_cfg_for_conversation(session, conv, user)
     summary_model = conv.llm_model or (
         summary_llm_cfg.default_model if summary_llm_cfg is not None else None

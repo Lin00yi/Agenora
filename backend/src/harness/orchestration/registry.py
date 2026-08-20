@@ -51,6 +51,10 @@ class RuntimeDeps:
     routed_kbs: list[Any] = field(default_factory=list)
     routed_kb_configs: dict[str, dict[str, Any]] = field(default_factory=dict)
     configure_routed_kb: Callable[[Any], Any] | None = None
+    # Platform ports supplied by bootstrap. Builders may consume this as they
+    # migrate away from module-level factories; keeping it in one runtime
+    # object prevents service-locator access from spreading through agents.
+    services: Any | None = None
     # "turn" means an automatic selection shown only in the response trace;
     # "pinned" is reserved for an explicit conversation scope.
     kb_route_scope: str = "turn"

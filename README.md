@@ -20,7 +20,7 @@
 |---|---|
 | 前端 | Next.js 16 · React 18 · Tailwind |
 | 后端 | FastAPI · LangGraph · SQLAlchemy |
-| 存储 | SQLite / PostgreSQL · Milvus Lite（可换 Qdrant）· 可选 LightRAG/Neo4j |
+| 存储 | SQLite / PostgreSQL · 本地 Milvus Lite 或生产 Qdrant · 可选 LightRAG/Neo4j |
 
 ## 启动方式
 
@@ -85,11 +85,11 @@ npm run sync:model-catalog
 
 意图识别完成后，受约束的 Planner 才会生成并校验 DAG：任务只能使用 Agent Registry 中允许的能力，依赖必须无环且指向前置任务。相互独立的只读任务可以并行；存在写操作、审批要求或同一资源冲突时，Supervisor 串行调度。退款确认被强制标记为审批任务，并在工具调用层再次校验用户最新消息必须精确为 `确认退款 <approval_id>`。RAG 检索的 query 改写仍只在 RAG agent 内按需运行，不参与订单或退款意图判断。
 
-文档上传会先创建可恢复的入库任务，再由进程内任务立即尝试处理。Docker 模式会自动运行 `ingestion-worker`；本地开发若需要从重启前恢复未完成的入库，可另开终端执行：
+文档上传会先创建可恢复的 operation job，再由进程内任务立即尝试处理。Docker 模式会自动运行 `operation-worker`，统一恢复入库、记忆维护、KG 同步和评测；本地开发若需要从重启前恢复未完成的入库，可另开终端执行：
 
 ```bash
 cd backend
-.venv/bin/python -m src.capabilities.knowledge.application.jobs
+.venv/bin/python -m src.bootstrap.workers.operations
 ```
 
 ### RAG 评测与监控闭环
@@ -129,7 +129,7 @@ cp config/rag_eval_cases.example.jsonl config/rag_eval_cases.jsonl
   --write-results artifacts/rag-retrieval.jsonl --report artifacts/rag-report.json
 ```
 
-知识库详情页的「测评」分区把同一套能力交给 owner / editor：可为每个 KB 上传黄金集 JSONL 与门禁、对当前索引跑检索回归、回放已保存或上传的 `retrieval.jsonl`，并查看该 KB 的线上检索健康。回归产物写在 `backend/data/eval_runs/`（已由 `data/` gitignore 排除）。
+知识库详情页的「测评」分区把同一套能力交给 owner / editor：可为每个 KB 上传黄金集 JSONL 与门禁、对当前索引跑检索回归、回放已保存或上传的 `retrieval.jsonl`，并查看该 KB 的线上检索健康。回归产物写入对象存储的 `eval-runs/<kb>/<run>.jsonl`；旧版 `backend/data/eval_runs/` 仅保留一次升级兼容读取。
 
 上线后，`search_kb` / `search_kg` 的结果数、最高相关度、延迟和失败状态会写入 Trace。Docker 自动运行 `rag-monitor`，按 `RAG_MONITOR_*` 阈值输出结构化告警日志；管理员可在 `/admin/rag` 查看过去 24 小时的空检索率、错误率、P95 延迟和相关度。没有 Docker 时可手动运行一次（加 `--fail-on-alert` 会在告警时以退出码 2 结束，适合 cron/CI）：
 
@@ -149,9 +149,14 @@ cp env.docker.example .env
 ./scripts/deploy.sh
 ```
 
-此模式自动合并 `docker-compose.override.yml`，启动 PostgreSQL、API、持久化入库
-worker、RAG 监控与前端；首次启动时 `migrate` 一次性执行 Alembic。默认不启动
+此模式自动合并 `docker-compose.override.yml`，启动 PostgreSQL、Qdrant、API、持久化
+operation worker、RAG 监控与前端；首次启动时 `migrate` 一次性执行 Alembic。默认不启动
 Neo4j/LightRAG：普通向量 RAG 不依赖图谱服务。
+
+Compose 中的 Qdrant 是网络服务，可由 API、operation worker 及未来副本共享；不再把
+Milvus Lite 文件作为多进程共享索引。生产环境的 LangGraph interrupt checkpoint 和限流
+同样落在 PostgreSQL：`AGENT_CHECKPOINT_BACKEND=postgres`、`RATE_LIMIT_BACKEND=postgres`。
+Milvus Lite 仍可用于单进程本地开发，不应作为 Compose/多副本部署的向量后端。
 
 - 前端：<http://localhost:3000>
 - 后端：<http://localhost:8000/health>
@@ -204,7 +209,7 @@ Schema 演进只由 Alembic 管理。Compose 的 `migrate` 一次性服务会在
 
 ### 备份与恢复
 
-`backup.sh` 的 PostgreSQL 备份使用 `pg_dump`，而不是直接打包运行中的数据卷。Neo4j Community 只支持离线 dump，因此脚本要求明确设置 `AGENORA_BACKUP_ALLOW_NEO4J_DOWNTIME=1`，并在图数据库短暂停机期间备份 `system` 与 `neo4j` 两个数据库。每个备份目录都有 SHA-256 清单。
+`backup.sh` 的 PostgreSQL 备份使用 `pg_dump`，而不是直接打包运行中的数据卷。Qdrant、对象存储和 PostgreSQL 应按各自的快照/版本化策略备份；Neo4j Community 只支持离线 dump，因此脚本要求明确设置 `AGENORA_BACKUP_ALLOW_NEO4J_DOWNTIME=1`，并在图数据库短暂停机期间备份 `system` 与 `neo4j` 两个数据库。每个备份目录都有 SHA-256 清单。
 
 恢复会停止整个 Compose 栈、校验清单并覆盖 PostgreSQL、Neo4j、backend、LightRAG 的全部持久数据；先在隔离环境演练，且只在确实需要恢复时执行。Neo4j Community 的离线 dump/load 限制见 [官方运维文档](https://neo4j.com/docs/operations-manual/current/backup-restore/offline-backup/)。
 

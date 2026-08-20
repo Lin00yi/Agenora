@@ -14,7 +14,7 @@ Authorization model:
 Lifecycle of an upload:
   POST /api/kbs/{id}/documents
     → 201 + Document(status="pending")
-    → durable IngestionJob enqueued (BackgroundTask is only immediate handoff)
+    → durable operation job enqueued (BackgroundTask is only immediate handoff)
     → worker parses/chunks/embeds/upserts with bounded retry
     → Client polls GET /api/kbs/{id} (or /documents) for status transitions
 """
@@ -38,7 +38,7 @@ from fastapi import (
 )
 from fastapi.responses import Response
 from pydantic import BaseModel, EmailStr, Field, HttpUrl
-from sqlalchemy import delete, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.capabilities.identity.middleware import CurrentUser
@@ -62,11 +62,12 @@ from src.capabilities.knowledge.domain.models import (
     Chunk,
     ChunkStrategy,
     Document,
-    IngestionJob,
     KBMember,
     KbEvalRun,
 )
 from src.platform.files.parsers import SUPPORTED_EXTS
+from src.platform.tasks import enqueue_operation, run_operation_job
+from src.platform.tasks.models import OperationJob
 from src.capabilities.settings.application.gate import require_user_embedding
 from src.capabilities.settings.domain.models import resolve_user_embedding
 from src.capabilities.knowledge.application.configuration import resolve_kb_embedding
@@ -563,11 +564,19 @@ async def patch_kb(
     await session.commit()
     await session.refresh(kb)
 
-    if sync_doc_ids:
-        from src.capabilities.knowledge.graph.sync import sync_document_to_lightrag
-
-        for did in sync_doc_ids:
-            background.add_task(sync_document_to_lightrag, did)
+    sync_jobs = [
+        await enqueue_operation(
+            session,
+            kind="sync_lightrag_document",
+            payload={"document_id": did},
+            idempotency_key=f"kg-enable:{did}",
+            max_attempts=5,
+        )
+        for did in sync_doc_ids
+    ]
+    await session.commit()
+    for job in sync_jobs:
+        background.add_task(run_operation_job, job.id)
 
     return kb.to_public_dict(my_role="owner")
 
@@ -579,21 +588,7 @@ async def rebuild_kb(
     background: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    """Owner-only. Drops the vector collection and re-ingests every Document.
-
-    Purpose (v3-M3): upgrade a pre-v3-M3 dense-only Milvus collection to the
-    hybrid schema (dense + BM25). Since Milvus doesn't support adding a
-    sparse field to an existing collection, the only path is drop+recreate
-    +re-embed. Document SQLite rows survive — original files on disk
-    (data/uploads/{kb_id}/{doc_id}.{ext}) drive re-ingest.
-
-    URL-sourced documents re-fetch from source_url. File-sourced documents
-    need the original upload still on disk; if missing, that doc is marked
-    failed but other docs proceed.
-
-    During the rebuild window (~30-90s for typical KB) chat against this KB
-    will see empty hits — acceptable trade-off for a one-time owner action.
-    """
+    """Owner-only. Persist a rebuild; a leased worker drops and re-ingests."""
     kb = await _load_owner_kb(session, kb_id, user.id)
     if kb.is_system:
         raise HTTPException(
@@ -601,52 +596,16 @@ async def rebuild_kb(
             detail="System KBs cannot be rebuilt",
         )
 
-    store = get_store()
-    if not hasattr(store, "delete_collection") or not hasattr(
-        store, "create_collection"
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "KB rebuild requires a multi-collection backend "
-                "(qdrant or milvus)"
-            ),
-        )
-
-    collection_name = kb.collection_name
-    vector_size = kb.vector_size or await _resolve_vector_size(
-        resolve_user_embedding(user)
+    job = await enqueue_operation(
+        session,
+        kind="kb_rebuild",
+        payload={"kb_id": kb.id, "requested_by": user.id},
+        idempotency_key=f"kb-rebuild:{kb.id}",
+        max_attempts=3,
     )
-
-    # Reset all documents back to pending; zero the KB's chunks_count so the
-    # ingest pipeline's delta math (kb.chunks_count -= prev + new) produces
-    # the right total. error/chunks_count cleared per doc.
-    docs = sorted(kb.documents, key=lambda d: d.created_at)
-    for d in docs:
-        d.status = "pending"
-        d.chunks_count = 0
-        d.error = ""
-    kb.chunks_count = 0
     await session.commit()
-    doc_ids = [d.id for d in docs]
-
-    # Drop + recreate the collection with the current schema (v3-M3 hybrid
-    # for Milvus, dense for Qdrant). create_collection is idempotent so
-    # crash-recovery is safe.
-    await store.delete_collection(collection_name)
-    await store.create_collection(collection_name, vector_size)
-
-    # Persist all work before handing it to this process. A worker can resume
-    # any unfinished job after a deploy/restart.
-    jobs = await enqueue_documents(session, doc_ids)
-    await session.commit()
-    handoff_ingestion(background, jobs)
-
-    return {
-        "rebuilding": True,
-        "doc_count": len(doc_ids),
-        "collection": collection_name,
-    }
+    background.add_task(run_operation_job, job.id)
+    return job.to_public_dict()
 
 
 # ---------------------------------------------------------------------------
@@ -699,17 +658,39 @@ async def put_kb_eval_config(
         raise _eval_http_error(exc) from exc
 
 
-@router.post("/{kb_id}/eval/run")
+@router.post("/{kb_id}/eval/run", status_code=status.HTTP_202_ACCEPTED)
 async def run_kb_eval_regression(
     kb_id: str,
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     kb = await _load_writable_kb(session, kb_id, user.id)
-    try:
-        return await evaluation.run_regression_public(session, kb, created_by=user.id)
-    except Exception as exc:
-        raise _eval_http_error(exc) from exc
+    config = await evaluation.get_eval_config(session, kb.id)
+    if config is None or not (config.golden_set_jsonl or "").strip():
+        raise HTTPException(status_code=400, detail="golden set is not configured for this knowledge base")
+    job = await enqueue_operation(
+        session,
+        kind="kb_regression",
+        payload={"kb_id": kb.id, "created_by": user.id},
+        idempotency_key=f"kb-regression:{kb.id}:{config.golden_set_hash}",
+        max_attempts=2,
+    )
+    await session.commit()
+    return job.to_public_dict()
+
+
+@router.get("/{kb_id}/eval/jobs/{job_id}")
+async def get_kb_eval_job(
+    kb_id: str,
+    job_id: str,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    await _load_writable_kb(session, kb_id, user.id)
+    job = await session.get(OperationJob, job_id)
+    if job is None or job.kind != "kb_regression" or f'"kb_id": "{kb_id}"' not in job.payload_json:
+        raise HTTPException(status_code=404, detail="evaluation job not found")
+    return job.to_public_dict()
 
 
 @router.get("/{kb_id}/eval/runs")
@@ -758,7 +739,7 @@ async def replay_kb_eval(
             source = await session.get(KbEvalRun, run_id)
             if source is None or source.kb_id != kb.id:
                 raise HTTPException(status_code=404, detail="eval run not found")
-            predictions = evaluation.predictions_from_run(source)
+            predictions = await evaluation.predictions_from_run(source)
         else:
             assert retrieval_jsonl is not None
             raw = await retrieval_jsonl.read()
@@ -936,7 +917,6 @@ async def delete_document(
 
     # Drop chunks from Qdrant (idempotent), then DB row, then on-disk file.
     await documents.remove_document_chunks(kb.collection_name, doc_id_snap)
-    await session.execute(delete(IngestionJob).where(IngestionJob.document_id == doc_id_snap))
     await session.delete(doc)
     if chunks_to_subtract:
         kb.chunks_count = max(0, (kb.chunks_count or 0) - chunks_to_subtract)

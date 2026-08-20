@@ -34,6 +34,7 @@ import { toastApiError } from "@/lib/byok-toast";
 import { cn } from "@/lib/cn";
 import {
   getKbEvalConfig,
+  getKbEvalJob,
   getKbEvalMonitor,
   getKbEvalRun,
   listKbEvalRuns,
@@ -189,7 +190,14 @@ export function KbEvalSection({ kbId }: { kbId: string }) {
   async function onRunRegression() {
     setRunning(true);
     try {
-      const run = await runKbEvalRegression(kbId);
+      const submitted = await runKbEvalRegression(kbId);
+      const job = await waitForEvalJob(submitted.id);
+      if (job.status !== "done") {
+        throw new Error(job.error || "检索回归任务未完成");
+      }
+      const runId = typeof job.result.eval_run_id === "string" ? job.result.eval_run_id : "";
+      if (!runId) throw new Error("检索回归未返回运行结果");
+      const run = await getKbEvalRun(kbId, runId);
       await refreshRuns(run);
       if (run.gate_passed) toast.success("检索回归完成，门禁通过");
       else toast.error(run.report?.gate_error || "检索回归完成，门禁未通过");
@@ -198,6 +206,15 @@ export function KbEvalSection({ kbId }: { kbId: string }) {
     } finally {
       setRunning(false);
     }
+  }
+
+  async function waitForEvalJob(jobId: string) {
+    for (let attempt = 0; attempt < 150; attempt += 1) {
+      const job = await getKbEvalJob(kbId, jobId);
+      if (job.status === "done" || job.status === "dead_letter") return job;
+      await new Promise((resolve) => window.setTimeout(resolve, 1000));
+    }
+    throw new Error("检索回归仍在运行，请稍后刷新历史记录。");
   }
 
   async function onReplayHistory() {

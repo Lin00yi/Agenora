@@ -234,7 +234,7 @@ class _StreamingAssistantDraft:
             return
 
 
-def run_chat_session(
+async def run_chat_session(
     messages: list[dict[str, str]],
     rate_key: str,
     user_email: str | None = None,
@@ -251,11 +251,12 @@ def run_chat_session(
     fallback_llm_cfg_override=None,
     kb_candidates: list[KB] | None = None,
     kb_route_scope: str = "turn",
+    container=None,
 ) -> EventSourceResponse:
-    settings = get_settings()
-    allowed, remaining = rate_check(rate_key, settings.rate_limit_per_hour)
+    settings = container.settings if container is not None else get_settings()
+    allowed, remaining = await rate_check(rate_key, settings.rate_limit_per_hour)
     if not allowed:
-        retry_after = retry_after_seconds(rate_key)
+        retry_after = await retry_after_seconds(rate_key)
         retry_minutes = max(1, (retry_after + 59) // 60)
         raise HTTPException(
             status_code=429,
@@ -416,6 +417,7 @@ def run_chat_session(
             run_context=run_context,
             allow_rag_chat_handoff=bool(settings.agent_allow_rag_chat_handoff),
             checkpointer=checkpointer,
+            services=container,
         )
 
     # The browser gets this safe, user-owned snapshot before the agent begins.

@@ -226,8 +226,9 @@ async def finalize_memory_rows_heavy(
 ) -> dict[str, int]:
     """Best-effort embedding refresh + consolidate for rows written on the hot path.
 
-    Used by BackgroundTasks after a lightweight ``store_*(..., heavy=False)`` so
-    chat append does not wait on the embedding provider.
+    Used by the durable ``memory_heavy`` operation after a lightweight
+    ``store_*(..., heavy=False)`` write, so chat append does not wait on the
+    embedding provider.
     """
     ids = [str(item) for item in dict.fromkeys(memory_ids) if item]
     if not ids:
@@ -252,7 +253,7 @@ async def run_memory_heavy_background(
     memory_ids: list[str],
     embedding_cfg=None,
 ) -> None:
-    """Open a fresh session for post-append memory embedding / consolidation."""
+    """Legacy direct runner retained for non-HTTP callers during migration."""
     from src.platform.persistence.database import get_session_factory
 
     if not memory_ids:
@@ -292,7 +293,7 @@ async def store_memory_candidates(
     injected together on later turns.
 
     When ``heavy=False`` (realtime chat append), only the relational write runs;
-    callers should schedule ``run_memory_heavy_background`` after commit.
+    callers should enqueue a durable ``memory_heavy`` operation after commit.
     """
     stored: list[UserMemory] = []
     source_ids = [str(item) for item in dict.fromkeys(source_message_ids) if item]

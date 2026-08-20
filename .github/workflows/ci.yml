@@ -15,6 +15,7 @@ jobs:
         with: { python-version: "3.11" }
       - run: pip install -e ".[dev,openai,postgres]"
       - run: ruff check src tests
+      - run: python scripts/verify_architecture_paths.py
       - run: pytest -q
 
   frontend:

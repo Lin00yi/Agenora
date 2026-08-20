@@ -311,13 +311,12 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
     }
   };
 
-  // v3-M3: rebuild collection (owner only). Drops + re-ingests every document.
-  // After confirm, polling loop in refresh() will surface ingest status.
+  // Rebuild is durable; the worker resets the collection and enqueues documents.
   const confirmRebuildKb = async () => {
     setRebuildingKb(true);
     try {
-      const res = await rebuildKb(id);
-      toast.success(`已开始重建：${res.doc_count} 篇文档正在重新 ingest`);
+      await rebuildKb(id);
+      toast.success("已提交重建任务，文档状态将自动更新");
       setPendingRebuild(false);
       // Trigger an immediate refresh so the doc-list polling picks up
       // the pending -> ingesting transition without waiting for the timer.
