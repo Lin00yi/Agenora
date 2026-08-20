@@ -16,7 +16,10 @@ from fastapi import HTTPException
 from langgraph.types import Command
 from sse_starlette.sse import EventSourceResponse
 
+from src.harness.agents.orders import build_orders_graph
+from src.harness.agents.react import build_react_graph
 from src.harness.agents.supervisor import build_supervisor_graph
+from src.harness.runtime.intent_routing import requires_order_workflow
 from src.harness.runtime.checkpoints import checkpoint_config, open_agent_checkpointer
 from src.harness.contracts.runtime import RunContext, RunIdentity
 from src.harness.runtime.agent_loop import EMPTY_ANSWER_FALLBACK
@@ -410,24 +413,58 @@ async def run_chat_session(
         if conversation_id
         else None
     )
-    def build_graph(*, checkpointer=None):
-        return build_supervisor_graph(
+    runtime_mode = str(getattr(settings, "agent_runtime_mode", "react") or "react").strip().lower()
+    use_legacy_supervisor = runtime_mode == "supervisor"
+    execution_runtime = (
+        "supervisor"
+        if use_legacy_supervisor
+        else "orders"
+        if requires_order_workflow(full_messages)
+        else "react"
+    )
+
+    def build_graph(*, checkpointer=None, force_legacy_supervisor: bool = False):
+        if use_legacy_supervisor or force_legacy_supervisor:
+            return build_supervisor_graph(
+                emit=emit,
+                kb=kb,
+                llm_cfg=llm_cfg,
+                complex_llm_cfg=complex_llm_cfg_override,
+                fallback_llm_cfg=fallback_llm_cfg_override,
+                triage_llm_cfg=triage_llm_cfg,
+                embedding_cfg=embedding_cfg,
+                reranker_cfg=reranker_cfg,
+                kb_web_search_enabled=kb_web_search_enabled,
+                kb_candidates=kb_candidates,
+                configure_routed_kb=configure_routed_kb if kb_candidates else None,
+                kb_route_scope=kb_route_scope,
+                run_context=run_context,
+                allow_rag_chat_handoff=bool(settings.agent_allow_rag_chat_handoff),
+                checkpointer=checkpointer,
+                services=container,
+            )
+        if execution_runtime == "orders":
+            return build_orders_graph(
+                emit=emit,
+                user_id=user.id if user is not None else None,
+                llm_cfg=llm_cfg,
+                complex_llm_cfg=complex_llm_cfg_override,
+                fallback_llm_cfg=fallback_llm_cfg_override,
+                mcp_manager=active_mcp_manager,
+                checkpointer=checkpointer,
+            )
+        return build_react_graph(
             emit=emit,
             kb=kb,
+            kb_candidates=kb_candidates,
+            configure_routed_kb=configure_routed_kb if kb_candidates else None,
             llm_cfg=llm_cfg,
             complex_llm_cfg=complex_llm_cfg_override,
             fallback_llm_cfg=fallback_llm_cfg_override,
-            triage_llm_cfg=triage_llm_cfg,
             embedding_cfg=embedding_cfg,
             reranker_cfg=reranker_cfg,
             kb_web_search_enabled=kb_web_search_enabled,
-            kb_candidates=kb_candidates,
-            configure_routed_kb=configure_routed_kb if kb_candidates else None,
-            kb_route_scope=kb_route_scope,
-            run_context=run_context,
-            allow_rag_chat_handoff=bool(settings.agent_allow_rag_chat_handoff),
             checkpointer=checkpointer,
-            services=container,
         )
 
     # The browser gets this safe, user-owned snapshot before the agent begins.
@@ -439,13 +476,13 @@ async def run_chat_session(
             **memory_trace,
             "runtime": {
                 "mode": mode,
-                "agent_runtime": "supervisor",
+                "agent_runtime": execution_runtime,
                 "safety": "heightened" if prompt_guard.level != "low" else "standard",
             },
         }
 
     async def run_agent() -> None:
-        nonlocal memory_trace, draft_dirty
+        nonlocal execution_runtime, memory_trace, draft_dirty
         from src.platform.observability import get_current_trace
 
         trace = get_current_trace()
@@ -476,16 +513,8 @@ async def run_chat_session(
             # empty transcript and later poll this same row for progress.
             draft_dirty = True
             await persist_draft(force=True)
-            if memory_trace is not None:
-                await emit(
-                    {
-                        "event": "context_ready",
-                        "memory_trace": memory_trace,
-                    }
-                )
             initial_state: dict[str, Any] = {
                 "messages": full_messages,
-                "base_messages": list(full_messages),
                 "iterations": 0,
                 "tool_call_log": [],
                 "citations": [],
@@ -494,28 +523,74 @@ async def run_chat_session(
                 "rag_suspicious_chunks": 0,
                 "rag_filtered_chunks": [],
                 "kb_id": kb.id if kb else None,
-                "agent_results": {},
-                "handoff_count": 0,
-                "supervisor_trace": [],
-                "human_inputs": {},
-                "human_required_slots": [],
-                "human_gate_resumed": False,
-                "pending_confirmation": None,
                 "mcp_plugin_set_version": active_mcp_manager.plugin_set_version,
             }
+            if use_legacy_supervisor:
+                initial_state.update(
+                    {
+                        "base_messages": list(full_messages),
+                        "agent_results": {},
+                        "handoff_count": 0,
+                        "supervisor_trace": [],
+                        "human_inputs": {},
+                        "human_required_slots": [],
+                        "human_gate_resumed": False,
+                        "pending_confirmation": None,
+                    }
+                )
             if workflow_config is not None:
                 async with open_agent_checkpointer() as checkpointer:
                     graph, _cost = build_graph(checkpointer=checkpointer)
                     snapshot = await graph.aget_state(workflow_config)
+                    snapshot_values = getattr(snapshot, "values", None)
+                    # A user may resume an approval turn checkpointed before
+                    # the default changed to ReAct.  Its graph state belongs
+                    # to the legacy Supervisor and must be drained there;
+                    # treating it as a fresh ReAct state could skip a human
+                    # gate or mix incompatible nodes.
+                    legacy_snapshot = isinstance(snapshot_values, dict) and any(
+                        key in snapshot_values
+                        for key in ("task_dag", "task_status", "supervisor_trace", "human_required_slots")
+                    )
+                    if legacy_snapshot and not use_legacy_supervisor:
+                        execution_runtime = "supervisor"
+                        if memory_trace is not None:
+                            runtime = memory_trace.get("runtime")
+                            memory_trace = {
+                                **memory_trace,
+                                "runtime": {
+                                    **(runtime if isinstance(runtime, dict) else {}),
+                                    "agent_runtime": execution_runtime,
+                                },
+                            }
+                        graph, _cost = build_graph(
+                            checkpointer=checkpointer,
+                            force_legacy_supervisor=True,
+                        )
+                        snapshot = await graph.aget_state(workflow_config)
                     pending_interrupt = any(
                         bool(getattr(task, "interrupts", ())) for task in (snapshot.tasks or ())
                     )
+                    if memory_trace is not None:
+                        await emit(
+                            {
+                                "event": "context_ready",
+                                "memory_trace": memory_trace,
+                            }
+                        )
                     final_state = await graph.ainvoke(
                         Command(resume=cleaned) if pending_interrupt else initial_state,
                         config=workflow_config,
                     )
             else:
                 graph, _cost = build_graph()
+                if memory_trace is not None:
+                    await emit(
+                        {
+                            "event": "context_ready",
+                            "memory_trace": memory_trace,
+                        }
+                    )
                 final_state = await graph.ainvoke(initial_state)
 
             interrupts = final_state.get("__interrupt__") if isinstance(final_state, dict) else None

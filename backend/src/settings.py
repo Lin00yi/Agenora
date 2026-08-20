@@ -97,7 +97,12 @@ class Settings(BaseSettings):
     # rollout rollback; new deployments should keep ``user_evidence``.
     rag_injection_mode: str = "user_evidence"  # user_evidence | legacy_system
 
-    # ===== Multi-agent runtime =====
+    # ===== Agent runtime =====
+    # ``react`` is the default: one capability-scoped ReAct loop.  The
+    # legacy Supervisor mode is retained only as an explicit rollback switch
+    # while existing checkpointed conversations drain.
+    agent_runtime_mode: str = "react"  # react | supervisor
+    # ===== Legacy Supervisor rollback controls =====
     # Empty RAG evidence may append a chat follow-up once (web_search stays a chat tool).
     # Planned qa_kb → qa_chat does not need this flag.
     agent_allow_rag_chat_handoff: bool = True

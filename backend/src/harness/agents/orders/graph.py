@@ -190,6 +190,7 @@ def build_orders_graph(
     complex_llm_cfg: "UserLLMConfig | None" = None,
     fallback_llm_cfg: "UserLLMConfig | None" = None,
     mcp_manager: McpConnectionManager | None = None,
+    checkpointer=None,
 ):
     registry = registry or build_orders_registry(user_id=user_id, manager=mcp_manager)
     cost = CostTracker()
@@ -224,4 +225,4 @@ def build_orders_graph(
     graph.add_edge("confirm_refund_fast", END)
     graph.add_conditional_edges("reason", should_continue, {"tools": "call_tools", "end": END})
     graph.add_edge("call_tools", "reason")
-    return graph.compile(), cost
+    return graph.compile(checkpointer=checkpointer), cost

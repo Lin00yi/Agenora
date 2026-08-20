@@ -50,3 +50,5 @@ class AgentState(TypedDict, total=False):
     iterations: int
     cost_usd: float | None
     prompt_trace: dict[str, Any]
+    # Serializable, user-safe description of the single-agent capability scope.
+    runtime_scope: dict[str, Any]
