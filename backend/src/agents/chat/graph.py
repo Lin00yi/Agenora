@@ -14,7 +14,7 @@ from src.context.rag.policy import resolve_web_search_policy
 from src.tools.base import ToolRegistry, build_default_registry
 
 if TYPE_CHECKING:
-    from src.settings_user import UserLLMConfig
+    from src.capabilities.settings.domain.models import UserLLMConfig
 
 Emitter = Callable[[dict[str, Any]], Awaitable[None]]
 

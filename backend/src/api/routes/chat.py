@@ -15,15 +15,13 @@ from src.conversations.models import Conversation
 from src.infra import generation_lock
 from src.adapters.persistence import get_session
 from src.adapters.llm import normalize_model_name
-from src.kb.models import KB
-from src.kb.auto_routing import list_readable_routable_kbs
+from src.capabilities.knowledge.domain.models import KB
+from src.capabilities.knowledge.application.routing import list_readable_routable_kbs
 from src.adapters.observability import start_trace
 from src.settings import get_settings
-from src.settings_user import (
+from src.capabilities.settings.domain.models import (
     configured_context_window_for_model,
     list_llm_model_profiles,
-    require_user_embedding,
-    require_user_llm,
     resolve_llm_profile_config,
     resolve_system_llm,
     resolve_user_embedding,
@@ -31,6 +29,7 @@ from src.settings_user import (
     resolve_user_llm_routing_configs,
     with_model_profile_context,
 )
+from src.capabilities.settings.application.gate import require_user_embedding, require_user_llm
 
 router = APIRouter(tags=["chat"])
 

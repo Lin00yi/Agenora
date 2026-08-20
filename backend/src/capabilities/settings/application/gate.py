@@ -16,7 +16,7 @@ from fastapi import HTTPException, status
 from src.auth.models import User
 from src.settings import get_settings
 
-from .models import resolve_user_embedding, resolve_user_llm
+from src.capabilities.settings.domain.models import resolve_user_embedding, resolve_user_llm
 
 
 def _gate(code: str, message: str) -> HTTPException:

@@ -94,7 +94,7 @@ async def test_context_status_uses_system_context_window_for_auto_model(
     from src.conversations.models import Conversation
     from src.api.routes import conversations as routes
     from src.storage.database import get_session_factory
-    from src.settings_user.models import UserLLMConfig
+    from src.capabilities.settings.domain.models import UserLLMConfig
 
     user = await create_user("system-window@example.com")
     conversation = Conversation(id=str(uuid.uuid4()), user_id=user.id, title="auto")
@@ -133,7 +133,7 @@ async def test_model_selection_patch_returns_status_for_the_target_window(
     from src.api.routes import conversations as routes
     from src.conversations.models import Conversation, Message
     from src.storage.database import get_session_factory
-    from src.settings_user.models import UserLLMConfig
+    from src.capabilities.settings.domain.models import UserLLMConfig
 
     user = await create_user("model-switch-status@example.com")
     conversation = Conversation(id=str(uuid.uuid4()), user_id=user.id, title="switch")

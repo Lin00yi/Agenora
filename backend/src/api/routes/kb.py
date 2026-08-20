@@ -56,7 +56,8 @@ from src.capabilities.knowledge.application import (
     handoff_ingestion,
     members,
 )
-from src.kb.models import (
+from src.capabilities.knowledge.application.lifecycle import purge_kb
+from src.capabilities.knowledge.domain.models import (
     KB,
     Chunk,
     ChunkStrategy,
@@ -65,9 +66,10 @@ from src.kb.models import (
     KBMember,
     KbEvalRun,
 )
-from src.kb.parsers import SUPPORTED_EXTS
-from src.settings_user import require_user_embedding, resolve_user_embedding
-from src.settings_user.kb_resolvers import resolve_kb_embedding
+from src.adapters.document_parsers import SUPPORTED_EXTS
+from src.capabilities.settings.application.gate import require_user_embedding
+from src.capabilities.settings.domain.models import resolve_user_embedding
+from src.capabilities.knowledge.application.configuration import resolve_kb_embedding
 
 router = APIRouter(prefix="/api/kbs", tags=["kbs"])
 
@@ -245,7 +247,7 @@ async def _load_document(
 
 
 async def _resolve_doc_embedding_cfg(session: AsyncSession, kb: KB, user: User):
-    from src.settings_user.kb_resolvers import resolve_kb_embedding
+    from src.capabilities.knowledge.application.configuration import resolve_kb_embedding
 
     ecfg = resolve_kb_embedding(kb, user)
     if ecfg is None:
@@ -261,7 +263,7 @@ async def _resolve_doc_embedding_cfg(session: AsyncSession, kb: KB, user: User):
 
 
 async def _optional_doc_embedding_cfg(session: AsyncSession, kb: KB, user: User):
-    from src.settings_user.kb_resolvers import resolve_kb_embedding
+    from src.capabilities.knowledge.application.configuration import resolve_kb_embedding
 
     return resolve_kb_embedding(kb, user)
 
@@ -298,7 +300,7 @@ async def _kb_embedding_cfg_from_body(
 ):
     """Return (UserEmbeddingConfig | None) for vector-size probing if body
     carries a full KB-level embedding override; else None."""
-    from src.settings_user.models import UserEmbeddingConfig
+    from src.capabilities.settings.domain.models import UserEmbeddingConfig
     from src.infra.crypto import decrypt
     if not (req.embedding_provider and req.embedding_base_url and req.embedding_model):
         return None
@@ -505,54 +507,6 @@ async def get_kb(
     }
 
 
-async def purge_kb(session: AsyncSession, kb: KB) -> None:
-    """Drop a KB's vector collection, delete its row (cascades documents /
-    members) and remove uploaded files from disk.
-
-    Shared by the owner delete route (DELETE /api/kbs/{id}) and the admin
-    delete endpoint (DELETE /api/admin/kbs/{id}); callers authorize first.
-    """
-    collection_name = kb.collection_name
-    kb_id = kb.id
-    docs = list(
-        (
-            await session.execute(select(Document).where(Document.kb_id == kb_id))
-        ).scalars()
-    )
-
-    # A graph workspace is an external copy of the source text.  Clear it
-    # before removing relational bookkeeping so a failed call leaves enough
-    # metadata for a retry instead of silently orphaning private content.
-    if bool(getattr(kb, "kg_enabled", False)):
-        from src.kg.sync import delete_document_from_lightrag
-
-        for doc in docs:
-            await delete_document_from_lightrag(
-                kb_id=kb_id,
-                kg_doc_id=getattr(doc, "kg_doc_id", "") or "",
-                kg_track_id=getattr(doc, "kg_track_id", "") or "",
-                strict=True,
-            )
-
-    await session.execute(
-        delete(IngestionJob).where(IngestionJob.document_id.in_([doc.id for doc in docs]))
-    )
-
-    # Drop the vector collection first — it's idempotent so leaks here are
-    # recoverable, but a dangling DB row pointing at a missing collection would
-    # 500 on search.
-    store = get_store()
-    if hasattr(store, "delete_collection"):
-        await store.delete_collection(collection_name)
-
-    await session.delete(kb)  # cascade deletes Document / member rows
-    await session.commit()
-
-    # Clean up uploaded files on disk.
-    await documents.delete_kb_uploads(kb_id)
-    evaluation.delete_run_files(kb_id)
-
-
 @router.delete("/{kb_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def delete_kb(
     kb_id: str,
@@ -753,7 +707,7 @@ async def run_kb_eval_regression(
 ) -> dict:
     kb = await _load_writable_kb(session, kb_id, user.id)
     try:
-        return await evaluation.run_regression(session, kb, created_by=user.id)
+        return await evaluation.run_regression_public(session, kb, created_by=user.id)
     except Exception as exc:
         raise _eval_http_error(exc) from exc
 

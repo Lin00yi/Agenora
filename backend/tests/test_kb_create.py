@@ -12,7 +12,7 @@ async def test_create_kb_rolls_back_when_vector_store_initialization_fails(
 ):
     """A missing optional vector dependency must not leave a KB row behind."""
     from src.storage.database import get_session_factory
-    from src.kb.models import KB
+    from src.capabilities.knowledge.domain.models import KB
     import src.api.routes.kb as kb_routes
 
     user = await create_user("kb-create-failure@example.com")

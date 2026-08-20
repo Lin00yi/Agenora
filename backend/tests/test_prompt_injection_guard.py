@@ -9,7 +9,7 @@ from src.runtime.agent_loop import kb_search_node, query_policy_node, reason_nod
 from src.models.gateway import CostTracker
 from src.safety.output_filter import redact_sensitive_output
 from src.safety.prompt_injection import assess_prompt_injection, filter_untrusted_rag_text
-from src.settings_user.models import UserLLMConfig
+from src.capabilities.settings.domain.models import UserLLMConfig
 from src.tools.base import Tool, ToolRegistry, ToolResult
 
 

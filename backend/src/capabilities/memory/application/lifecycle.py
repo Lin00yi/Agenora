@@ -1,4 +1,4 @@
-"""Persist, consolidate, and finalize user memories."""
+"""Persist, consolidate, and finalize user-memory records."""
 from __future__ import annotations
 
 import json
@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.conversations.models import Message, UserMemory
 
 from src.context.constants import MEMORY_CONSOLIDATE_SEMANTIC, MemoryCandidate
-from src.memory.extract import (
+from src.capabilities.memory.domain.extraction import (
     _constraint_topic_for_candidate,
     constraint_topic_from_memory_key,
     extract_conversation_memory_candidates_with_llm,
@@ -21,7 +21,7 @@ from src.memory.extract import (
     extract_memory_candidates,
     infer_constraint_topic,
 )
-from src.memory.retrieval import (
+from src.capabilities.memory.application.retrieval import (
     _cosine_similarity,
     _memory_vector,
     refresh_memory_embedding,
@@ -30,7 +30,7 @@ from src.memory.retrieval import (
 log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from src.settings_user import UserLLMConfig
+    from src.capabilities.settings.domain.models import UserLLMConfig
 
 def _source_message_ids(row: UserMemory) -> list[str]:
     if not row.source_message_ids:

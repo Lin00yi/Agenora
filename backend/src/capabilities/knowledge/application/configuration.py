@@ -1,4 +1,4 @@
-"""v3-M7: per-KB embedding + reranker config resolvers.
+"""Knowledge configuration resolvers for per-KB embedding and reranking.
 
 Each KB row may carry its own embedding / reranker credentials (set at KB
 creation time via the upload dialog). If the KB row's columns are NULL we
@@ -19,7 +19,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 
 from src.infra.crypto import decrypt
-from src.settings_user.models import (
+from src.capabilities.settings.domain.models import (
     UserEmbeddingConfig,
     UserRerankerConfig,
     resolve_user_embedding,
@@ -28,7 +28,7 @@ from src.settings_user.models import (
 
 if TYPE_CHECKING:
     from src.auth.models import User
-    from src.kb.models import KB
+    from src.capabilities.knowledge.domain.models import KB
 
 
 def _kb_embedding_is_configured(kb: "KB") -> bool:

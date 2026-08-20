@@ -10,7 +10,7 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.storage.database import get_session_factory, init_db
-from src.kb.models import Document, IngestionJob
+from src.capabilities.knowledge.domain.models import Document, IngestionJob
 
 log = structlog.get_logger()
 
@@ -98,7 +98,7 @@ async def run_ingestion_job(job_id: str) -> bool:
         # The ingest function records document-level failure details.  Resolve
         # credentials from the persisted KB/user rows rather than serializing a
         # plaintext credential into this durable queue.
-        from src.kb.ingest import ingest_document
+        from src.capabilities.knowledge.application.ingestion import ingest_document
 
         await ingest_document(document_id)
     except Exception as exc:  # noqa: BLE001 - finalization below schedules retry

@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import select
 
 from src.infra.crypto import encrypt
-from src.settings_user.models import LLMConnection, LLMModelProfile
+from src.capabilities.settings.domain.models import LLMConnection, LLMModelProfile
 
 
 class ConnectionUseCaseError(ValueError):

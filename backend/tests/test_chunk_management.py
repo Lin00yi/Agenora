@@ -6,8 +6,12 @@ import uuid
 
 import pytest
 
-from src.kb.chunk_service import chunk_document_text, resolve_chunk_params, resolve_chunk_strategy
-from src.kb.models import Chunk, Document, KB
+from src.capabilities.knowledge.application.chunks import (
+    chunk_document_text,
+    resolve_chunk_params,
+    resolve_chunk_strategy,
+)
+from src.capabilities.knowledge.domain.models import Chunk, Document, KB
 
 
 def test_resolve_chunk_params_kb_defaults():

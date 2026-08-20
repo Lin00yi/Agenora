@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 from src.models.gateway import CostTracker
 from src.models.catalog import resolve_model_pricing
-from src.settings_user.models import UserLLMConfig
+from src.capabilities.settings.domain.models import UserLLMConfig
 
 
 def _cfg(**overrides) -> UserLLMConfig:

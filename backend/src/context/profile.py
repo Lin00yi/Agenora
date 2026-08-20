@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.conversations.models import UserMemory
 
-from src.memory.long_term import _memory_trace_item
+from src.capabilities.memory.application.lifecycle import _memory_trace_item
 
 from .constants import MAX_PROFILE_CONTEXT_TOKENS, MAX_PROFILE_MEMORY_ROWS, PROFILE_PREFERENCE_KEYS
 from .token_budget import truncate_text_to_token_budget
@@ -78,4 +78,3 @@ def user_profile_block(profile: dict[str, Any], *, token_budget: int = MAX_PROFI
         *lines,
     ]
     return truncate_text_to_token_budget("\n".join(block_lines), token_budget)
-

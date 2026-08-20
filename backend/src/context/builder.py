@@ -8,8 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.conversations.models import Message
 
-from src.memory.long_term import _memory_trace_item
-from src.memory.retrieval import memory_block, retrieve_user_memories
+from src.capabilities.memory.application.lifecycle import _memory_trace_item
+from src.capabilities.memory.application.retrieval import memory_block, retrieve_user_memories
 
 from .compression import ensure_summary_if_needed
 from .constants import MAX_SUMMARY_CONTEXT_TOKENS, BuiltContext
@@ -24,7 +24,7 @@ from .token_budget import (
 )
 
 if TYPE_CHECKING:
-    from src.settings_user import UserLLMConfig
+    from src.capabilities.settings.domain.models import UserLLMConfig
 
 
 async def build_context_for_conversation(

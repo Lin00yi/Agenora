@@ -1,4 +1,4 @@
-"""Provider probe adapters (v2-M1).
+"""Provider-probe adapter implementations.
 
 Three external API shapes:
   - anthropic: GET /v1/models with `x-api-key` + `anthropic-version` headers

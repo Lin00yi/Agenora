@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import select
 
 from src.auth.models import User
-from src.kb.models import KBMember
+from src.capabilities.knowledge.domain.models import KBMember
 
 
 class MemberNotFoundError(LookupError):

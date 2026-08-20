@@ -1,4 +1,4 @@
-"""User memory retrieval, embedding helpers, and prompt block formatting."""
+"""User-memory retrieval use cases, embedding helpers, and prompt blocks."""
 from __future__ import annotations
 
 import json
@@ -305,4 +305,3 @@ def memory_block(memories: list[UserMemory], *, token_budget: int = MAX_MEMORY_C
             lines.append(clipped)
         break
     return "\n".join(lines)
-

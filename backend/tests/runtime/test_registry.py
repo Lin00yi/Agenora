@@ -6,10 +6,10 @@ from typing import Any
 import pytest
 
 from src.agents import build_chat_graph, build_graph, build_rag_graph
-from src.planning.planner import choose_initial_agent
+from src.harness.orchestration.planner import choose_initial_agent
 from src.agents.supervisor import build_supervisor_graph, should_handoff_to_chat
 from src.agents.registry import AgentRegistry, AgentSpec, RuntimeDeps, build_default_agent_registry
-from src.kb.auto_routing import AutoKBRoute
+from src.capabilities.knowledge.application.routing import AutoKBRoute
 
 
 def test_default_registry_has_chat_rag_and_kb_router() -> None:

@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from src.planning.dag import dag_kb_then_chat, dag_single
-from src.planning.validate import DagValidationError, match_agent, validate_and_bind
+from src.harness.orchestration.dag import dag_kb_then_chat, dag_single
+from src.harness.orchestration.validation import DagValidationError, match_agent, validate_and_bind
 from src.agents.registry import build_default_agent_registry
 
 

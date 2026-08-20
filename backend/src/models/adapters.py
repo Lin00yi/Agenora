@@ -12,7 +12,7 @@ from src.settings import get_settings
 from src.tools.base import ToolSchema
 
 if TYPE_CHECKING:
-    from src.settings_user import UserLLMConfig
+    from src.capabilities.settings.domain.models import UserLLMConfig
 
 OnTextDelta = Callable[[str], Awaitable[None] | None]
 OnToolDetected = Callable[[], Awaitable[None] | None]

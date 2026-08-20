@@ -27,7 +27,7 @@ from .constants import (
 )
 
 if TYPE_CHECKING:
-    from src.settings_user import UserLLMConfig
+    from src.capabilities.settings.domain.models import UserLLMConfig
 
 
 def _configured_max_kb_queries() -> int:

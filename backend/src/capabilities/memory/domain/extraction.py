@@ -1,4 +1,4 @@
-"""Rule- and LLM-based memory candidate extraction."""
+"""Memory-domain candidate extraction policies."""
 from __future__ import annotations
 
 import json
@@ -15,7 +15,7 @@ from src.context.constants import (
 )
 
 if TYPE_CHECKING:
-    from src.settings_user import UserLLMConfig
+    from src.capabilities.settings.domain.models import UserLLMConfig
 
 def contains_sensitive_memory_content(text: str) -> bool:
     return any(pattern.search(text) for pattern in SENSITIVE_PATTERNS)
@@ -552,4 +552,3 @@ async def extract_conversation_memory_candidates_with_llm(
         if candidate:
             unique[candidate.key] = candidate
     return list(unique.values())[:12]
-

@@ -4,8 +4,8 @@ from __future__ import annotations
 from typing import Any
 
 from src.harness.orchestration.registry import Emitter, RuntimeDeps
-from src.kb.auto_routing import resolve_auto_kb_route_from_candidates
-from src.models.gateway import CostTracker
+from src.adapters.llm import CostTracker
+from src.capabilities.knowledge.application.routing import resolve_auto_kb_route_from_candidates
 
 
 class _KBRouterGraph:

@@ -1,4 +1,4 @@
-"""URL fetcher + main-content extractor — httpx + trafilatura.
+"""URL-fetch and main-content document-parser adapter.
 
 trafilatura is purpose-built for "give me the article text" extraction across
 arbitrary news/blog/doc sites; it strips chrome, nav, ads, comments.

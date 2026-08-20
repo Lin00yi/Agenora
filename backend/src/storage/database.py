@@ -76,9 +76,9 @@ async def init_db() -> None:
     # Import models so they register with Base.metadata before create_all.
     from src.auth import models as _auth_models  # noqa: F401
     from src.conversations import models as _conv_models  # noqa: F401
-    from src.kb import models as _kb_models  # noqa: F401
+    from src.capabilities.knowledge.domain import models as _kb_models  # noqa: F401
     from src.observability import models as _obs_models  # noqa: F401
-    from src.settings_user import models as _settings_user_models  # noqa: F401
+    from src.capabilities.settings.domain import models as _settings_user_models  # noqa: F401
 
     engine = get_engine()
     async with engine.begin() as conn:

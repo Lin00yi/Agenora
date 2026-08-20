@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.planning.planner import (
+from src.harness.orchestration.planner import (
     choose_initial_agent,
     looks_complex_query,
     resolve_agent_route,
@@ -74,7 +74,7 @@ async def test_resolve_rule_only_skips_llm(monkeypatch: pytest.MonkeyPatch) -> N
     async def boom(**_kwargs: Any):
         raise AssertionError("llm should not run in rule_only")
 
-    monkeypatch.setattr("src.planning.planner.llm_route", boom)
+    monkeypatch.setattr("src.harness.orchestration.planner.llm_route", boom)
     decision = await resolve_agent_route(
         has_kb=True,
         registry=reg,
@@ -104,7 +104,7 @@ async def test_resolve_uses_triage_then_accepts_medium(
             "latency_ms": 12,
         }
 
-    monkeypatch.setattr("src.planning.planner.llm_route", fake_llm_route)
+    monkeypatch.setattr("src.harness.orchestration.planner.llm_route", fake_llm_route)
     decision = await resolve_agent_route(
         has_kb=True,
         registry=reg,
@@ -145,7 +145,7 @@ async def test_resolve_escalates_low_confidence_to_complex(
             "latency_ms": 20,
         }
 
-    monkeypatch.setattr("src.planning.planner.llm_route", fake_llm_route)
+    monkeypatch.setattr("src.harness.orchestration.planner.llm_route", fake_llm_route)
     decision = await resolve_agent_route(
         has_kb=True,
         registry=reg,
@@ -178,7 +178,7 @@ async def test_resolve_complex_query_skips_triage(
             "latency_ms": 30,
         }
 
-    monkeypatch.setattr("src.planning.planner.llm_route", fake_llm_route)
+    monkeypatch.setattr("src.harness.orchestration.planner.llm_route", fake_llm_route)
     query = "请同时对比本地部署、权限模型，以及私有化合规差异？"
     assert looks_complex_query(query)
     decision = await resolve_agent_route(
@@ -225,7 +225,7 @@ async def test_resolve_coerces_task_dag_payload(
             "latency_ms": 9,
         }
 
-    monkeypatch.setattr("src.planning.planner.llm_route", fake_llm_route)
+    monkeypatch.setattr("src.harness.orchestration.planner.llm_route", fake_llm_route)
     decision = await resolve_agent_route(
         has_kb=True,
         registry=reg,

@@ -32,7 +32,7 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     log.info("startup", env=get_settings().app_env)
     await init_db()
     log.info("db_ready")
-    from src.kb.system_seed import seed_system_kbs
+    from src.capabilities.knowledge.application.system_seed import seed_system_kbs
 
     await seed_system_kbs()
     log.info("system_kbs_ready")

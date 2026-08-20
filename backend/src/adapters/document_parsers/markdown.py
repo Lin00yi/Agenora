@@ -1,4 +1,4 @@
-"""Markdown / plain-text parser — minimal cleanup.
+"""Markdown / plain-text document-parser adapter — minimal cleanup.
 
 We don't strip markdown syntax (#, *, links). The embedding model handles it
 fine and stripping makes downstream chunk previews less readable.

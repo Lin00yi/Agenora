@@ -14,7 +14,7 @@ from src.models.gateway import get_client, pick_model, with_cache_control
 from src.settings import get_settings
 
 if TYPE_CHECKING:
-    from src.settings_user import UserLLMConfig
+    from src.capabilities.settings.domain.models import UserLLMConfig
 
 SKILLS_DIR = Path(__file__).parent
 _SKILL_CACHE: dict[str, str] = {}

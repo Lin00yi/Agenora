@@ -8,7 +8,7 @@ from src.skills.loader import invoke_skill
 from src.tools.base import Tool, ToolResult
 
 if TYPE_CHECKING:
-    from src.settings_user import UserLLMConfig
+    from src.capabilities.settings.domain.models import UserLLMConfig
 
 ArgsTransform = Callable[[dict[str, Any]], dict[str, Any]]
 

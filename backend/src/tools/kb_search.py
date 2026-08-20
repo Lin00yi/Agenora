@@ -28,11 +28,11 @@ from src.context.rag.policy import resolve_kb_retrieval_policy
 from src.storage.vector.reranker import rerank
 from src.context import RAG_RESERVE, estimate_tokens, truncate_text_to_token_budget
 from src.adapters.vector import get_vector_store as get_store
-from src.kb.models import KB
+from src.capabilities.knowledge.domain.models import KB
 from src.tools.base import Tool, ToolResult
 
 if TYPE_CHECKING:
-    from src.settings_user import UserEmbeddingConfig, UserRerankerConfig
+    from src.capabilities.settings.domain.models import UserEmbeddingConfig, UserRerankerConfig
 
 
 log = logging.getLogger(__name__)

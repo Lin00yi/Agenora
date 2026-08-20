@@ -22,7 +22,7 @@ from src.context import (
 )
 from src.conversations.models import Conversation
 from src.storage.database import get_session_factory, init_db
-from src.settings_user import resolve_system_llm, resolve_user_embedding, resolve_user_llm
+from src.capabilities.settings.domain.models import resolve_system_llm, resolve_user_embedding, resolve_user_llm
 
 log = structlog.get_logger()
 

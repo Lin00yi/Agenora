@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from src.settings import get_settings
 
 if TYPE_CHECKING:
-    from src.settings_user import UserLLMConfig
+    from src.capabilities.settings.domain.models import UserLLMConfig
 
 # DeepSeek retired this identifier. Keep this normalization at the request
 # boundary too: deployment environments can still have an old explicit env

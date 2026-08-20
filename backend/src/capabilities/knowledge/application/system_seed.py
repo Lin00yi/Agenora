@@ -1,4 +1,4 @@
-"""Startup housekeeping for built-in KBs.
+"""Startup housekeeping use cases for built-in knowledge bases.
 
 The travel demo KB has been removed. On every boot we delete any leftover
 row, unbind conversations that still point at it, and drop the legacy
@@ -10,7 +10,7 @@ import structlog
 from sqlalchemy import update
 
 from src.storage.database import get_session_factory
-from src.kb.models import KB
+from src.capabilities.knowledge.domain.models import KB
 
 log = structlog.get_logger()
 
@@ -28,7 +28,7 @@ async def purge_legacy_travel_kb() -> None:
     """Idempotent removal of the retired travel demo KB and its vectors."""
     from src.conversations.models import Conversation
     from src.adapters.vector import get_vector_store as get_store
-    from src.api.routes.kb import purge_kb
+    from src.capabilities.knowledge.application.lifecycle import purge_kb
 
     factory = get_session_factory()
     async with factory() as session:

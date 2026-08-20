@@ -1,4 +1,4 @@
-"""DOCX parser — python-docx.
+"""DOCX document-parser adapter — python-docx.
 
 Reads paragraphs and table cells in document order. Doesn't preserve heading
 levels separately (the text content already has them inline).

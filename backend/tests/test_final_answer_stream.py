@@ -9,7 +9,7 @@ import pytest
 from src.runtime.agent_loop import reason_node
 from src.models.gateway import CostTracker
 from src.models.adapters import OpenAICompatToolAdapter, StreamHooks
-from src.settings_user.models import UserLLMConfig
+from src.capabilities.settings.domain.models import UserLLMConfig
 from src.tools.base import Tool, ToolRegistry, ToolResult
 
 

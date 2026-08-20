@@ -18,7 +18,7 @@ async def test_deleting_referenced_profile_requires_and_applies_replacement(clie
     from src.conversations.models import Conversation
     from src.infra.crypto import encrypt
     from src.storage.database import get_session_factory
-    from src.settings_user.models import LLMConnection, LLMModelProfile
+    from src.capabilities.settings.domain.models import LLMConnection, LLMModelProfile
 
     user = await create_user("profile-delete@example.com")
     connection_id = str(uuid.uuid4())

@@ -26,9 +26,12 @@ def _golden_line(case_id: str, query: str, doc_id: str) -> str:
 @pytest.mark.asyncio
 async def test_eval_config_crud_and_viewer_forbidden(client, create_user, create_kb, tmp_path, monkeypatch):
     from src.storage.database import get_session_factory
-    from src.kb.models import KBMember
+    from src.capabilities.knowledge.domain.models import KBMember
 
-    monkeypatch.setattr("src.kb.eval_service.EVAL_RUNS_BASE", tmp_path / "eval_runs")
+    monkeypatch.setattr(
+        "src.capabilities.knowledge.application.evaluation.EVAL_RUNS_BASE",
+        tmp_path / "eval_runs",
+    )
 
     owner = await create_user("eval-owner@example.test")
     viewer = await create_user("eval-viewer@example.test")
@@ -70,7 +73,10 @@ async def test_eval_regression_replay_and_missing_cases(client, create_user, cre
     from src.tools.base import ToolResult
     from src.tools.kb_search import KBSearchTool
 
-    monkeypatch.setattr("src.kb.eval_service.EVAL_RUNS_BASE", tmp_path / "eval_runs")
+    monkeypatch.setattr(
+        "src.capabilities.knowledge.application.evaluation.EVAL_RUNS_BASE",
+        tmp_path / "eval_runs",
+    )
 
     owner = await create_user("eval-run-owner@example.test")
     kb = await create_kb(owner.id, name="Eval Run KB")

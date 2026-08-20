@@ -1,4 +1,4 @@
-"""Chunking strategies for KB ingest.
+"""Knowledge-domain chunking strategies.
 
 Sizes are in characters, not tokens. Rationale:
   - BGE-M3 tokenizer-aware sizing requires loading the tokenizer in-process

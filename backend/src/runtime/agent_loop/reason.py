@@ -25,7 +25,7 @@ from src.adapters.llm import (
 from src.models.adapters import create_tool_adapter
 from src.adapters.observability import traced
 from src.settings import get_settings
-from src.settings_user import configured_context_window_for_model
+from src.capabilities.settings.domain.models import configured_context_window_for_model
 from src.tools.base import ToolRegistry
 
 from .constants import EMPTY_ANSWER_FALLBACK, MAX_AUTO_CONTINUATIONS, MAX_ITERATIONS
@@ -38,7 +38,7 @@ from .prompts_budget import (
 )
 
 if TYPE_CHECKING:
-    from src.settings_user import UserLLMConfig
+    from src.capabilities.settings.domain.models import UserLLMConfig
 
 log = logging.getLogger(__name__)
 
@@ -874,7 +874,7 @@ async def _chat_with_connection_health(
     **kwargs: Any,
 ):
     """Run an initial provider attempt and persist connection health."""
-    from src.settings_user.connection_health import (
+    from src.capabilities.settings.application.connection_health import (
         assert_llm_connection_available,
         record_llm_connection_failure,
         record_llm_connection_success,

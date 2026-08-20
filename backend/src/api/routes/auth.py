@@ -141,10 +141,10 @@ async def purge_user(session: AsyncSession, user: User) -> None:
     remaining metadata stay in place and the same DELETE can be retried.
     """
     from src.conversations.models import Conversation, ConversationSummary, Message, UserMemory
-    from src.kb.models import KB, KBMember
-    from src.api.routes.kb import purge_kb
+    from src.capabilities.knowledge.domain.models import KB, KBMember
+    from src.capabilities.knowledge.application.lifecycle import purge_kb
     from src.adapters.observability import Observation, Trace
-    from src.settings_user.models import LLMConnection, LLMModelProfile
+    from src.capabilities.settings.domain.models import LLMConnection, LLMModelProfile
 
     user_id = user.id
     try:

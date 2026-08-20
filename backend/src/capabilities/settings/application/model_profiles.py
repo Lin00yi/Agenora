@@ -10,7 +10,7 @@ from src.adapters.llm import normalize_model_name
 from src.context import resolve_context_window
 from src.conversations.models import Conversation
 from src.models.catalog import resolve_model_catalog_entry
-from src.settings_user.models import (
+from src.capabilities.settings.domain.models import (
     LLMModelProfile,
     ensure_legacy_llm_connection,
     list_llm_connections,

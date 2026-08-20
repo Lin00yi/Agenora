@@ -19,13 +19,13 @@ from src.runtime.agent_loop import EMPTY_ANSWER_FALLBACK
 from src.auth.models import User
 from src.infra import generation_lock
 from src.infra.rate_limit import check as rate_check
-from src.kb.models import KB
+from src.capabilities.knowledge.domain.models import KB
 from src.adapters.observability import get_current_trace_id, preview_text, start_trace
 from src.safety.input_filter import sanitize_user_input
 from src.safety.output_filter import redact_sensitive_output
 from src.safety.prompt_injection import assess_prompt_injection
 from src.settings import get_settings
-from src.settings_user import (
+from src.capabilities.settings.domain.models import (
     resolve_system_llm,
     resolve_user_embedding,
     resolve_user_llm,
@@ -97,7 +97,7 @@ def run_chat_session(
     # (KB row carries its own creds → KB cfg wins; else fall back to user cfg).
     # For unbound chat (no KB), there's nothing to embed so user cfg is fine.
     if kb is not None and user is not None:
-        from src.settings_user.kb_resolvers import (
+        from src.capabilities.knowledge.application.configuration import (
             resolve_kb_embedding,
             resolve_kb_reranker,
         )
@@ -116,7 +116,7 @@ def run_chat_session(
         """Switch runtime-only retrieval dependencies after DAG routing."""
         if user is None:
             return {}
-        from src.settings_user.kb_resolvers import (
+        from src.capabilities.knowledge.application.configuration import (
             resolve_kb_embedding,
             resolve_kb_reranker,
         )

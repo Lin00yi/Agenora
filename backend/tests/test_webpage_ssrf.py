@@ -5,7 +5,7 @@ import socket
 
 import pytest
 
-from src.kb.parsers.webpage import _validate_external_url
+from src.adapters.document_parsers.webpage import _validate_external_url
 
 
 def _addr(address: str):

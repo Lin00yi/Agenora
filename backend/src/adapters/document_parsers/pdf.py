@@ -1,4 +1,4 @@
-"""PDF parser — PyMuPDF (fitz).
+"""PDF document-parser adapter — PyMuPDF (fitz).
 
 PyMuPDF is fastest of the Python options and gets text layout right for most
 born-digital PDFs. For scanned PDFs (image-only) you'd add OCR; out of scope

@@ -21,7 +21,7 @@ from src.context.rag.policy import resolve_web_search_policy
 from src.tools.base import ToolRegistry, build_default_registry
 
 if TYPE_CHECKING:
-    from src.settings_user import UserEmbeddingConfig, UserLLMConfig, UserRerankerConfig
+    from src.capabilities.settings.domain.models import UserEmbeddingConfig, UserLLMConfig, UserRerankerConfig
 
 Emitter = Callable[[dict[str, Any]], Awaitable[None]]
 

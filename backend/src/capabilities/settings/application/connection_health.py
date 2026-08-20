@@ -1,4 +1,4 @@
-"""Connection-level failure classification and small circuit breaker.
+"""Settings connection-health use cases and circuit breaker.
 
 Only transient provider failures count towards opening the circuit.  A bad
 model ID or rejected credential remains visible to the caller instead of being
@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from src.storage.database import get_session_factory
-from src.settings_user.models import LLMConnection
+from src.capabilities.settings.domain.models import LLMConnection
 
 FAILURE_THRESHOLD = 3
 COOLDOWN_SECONDS = 60

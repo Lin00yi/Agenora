@@ -28,7 +28,7 @@ import httpx
 from src.settings import get_settings
 
 if TYPE_CHECKING:
-    from src.settings_user import UserEmbeddingConfig
+    from src.capabilities.settings.domain.models import UserEmbeddingConfig
 
 # ---------------------------------------------------------------------------
 # Provider presets — fill in defaults when explicit env vars are absent.

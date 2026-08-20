@@ -5,8 +5,8 @@ import uuid
 
 import pytest
 
-from src.kb.models import KB
-from src.settings_user.models import UserLLMConfig
+from src.capabilities.knowledge.domain.models import KB
+from src.capabilities.settings.domain.models import UserLLMConfig
 
 
 def _llm_cfg() -> UserLLMConfig:
@@ -46,7 +46,7 @@ def _candidate_loader(*candidates: KB):
 
 @pytest.mark.asyncio
 async def test_auto_route_skips_obvious_general_chat(monkeypatch: pytest.MonkeyPatch) -> None:
-    from src.kb import auto_routing
+    from src.capabilities.knowledge.application import routing as auto_routing
 
     _set_route_mode(monkeypatch, "llm_fallback")
     monkeypatch.setattr(auto_routing, "list_readable_routable_kbs", _candidate_loader(_kb("kb-1", "员工手册")))
@@ -66,7 +66,7 @@ async def test_auto_route_skips_obvious_general_chat(monkeypatch: pytest.MonkeyP
 
 @pytest.mark.asyncio
 async def test_auto_route_uses_explicit_kb_name_without_llm(monkeypatch: pytest.MonkeyPatch) -> None:
-    from src.kb import auto_routing
+    from src.capabilities.knowledge.application import routing as auto_routing
 
     handbook = _kb("kb-1", "员工手册")
     _set_route_mode(monkeypatch, "llm_fallback")
@@ -87,7 +87,7 @@ async def test_auto_route_uses_explicit_kb_name_without_llm(monkeypatch: pytest.
 
 @pytest.mark.asyncio
 async def test_auto_route_accepts_only_a_readable_llm_candidate(monkeypatch: pytest.MonkeyPatch) -> None:
-    from src.kb import auto_routing
+    from src.capabilities.knowledge.application import routing as auto_routing
 
     product = _kb("kb-product", "产品资料")
     policy = _kb("kb-policy", "员工制度")
@@ -128,7 +128,7 @@ async def test_auto_route_accepts_only_a_readable_llm_candidate(monkeypatch: pyt
 async def test_auto_route_rejects_llm_kb_outside_permission_scoped_catalog(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from src.kb import auto_routing
+    from src.capabilities.knowledge.application import routing as auto_routing
 
     _set_route_mode(monkeypatch, "always_llm")
     monkeypatch.setattr(auto_routing, "list_readable_routable_kbs", _candidate_loader(_kb("kb-safe", "允许访问")))
@@ -165,8 +165,8 @@ async def test_auto_route_rejects_llm_kb_outside_permission_scoped_catalog(
 
 @pytest.mark.asyncio
 async def test_routable_catalog_includes_only_readable_kbs(db, create_user) -> None:
-    from src.kb.auto_routing import list_readable_routable_kbs
-    from src.kb.models import KBMember
+    from src.capabilities.knowledge.application.routing import list_readable_routable_kbs
+    from src.capabilities.knowledge.domain.models import KBMember
     from src.storage.database import get_session_factory
 
     owner = await create_user("route-owner@example.com")

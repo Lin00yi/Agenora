@@ -6,9 +6,13 @@ import uuid
 import pytest
 
 from src.conversations.models import Conversation
+from src.capabilities.knowledge.domain.models import KB, SYSTEM_USER_ID
 from src.storage.database import get_session_factory
-from src.kb.models import KB, SYSTEM_USER_ID
-from src.kb.system_seed import LEGACY_TRAVEL_KB_ID, purge_legacy_travel_kb, seed_system_kbs
+from src.capabilities.knowledge.application.system_seed import (
+    LEGACY_TRAVEL_KB_ID,
+    purge_legacy_travel_kb,
+    seed_system_kbs,
+)
 
 
 @pytest.mark.asyncio

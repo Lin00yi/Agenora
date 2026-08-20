@@ -19,7 +19,7 @@ from typing import Any, TYPE_CHECKING
 import httpx
 
 if TYPE_CHECKING:
-    from src.settings_user.models import UserRerankerConfig
+    from src.capabilities.settings.domain.models import UserRerankerConfig
 
 
 # ---------------------------------------------------------------------------

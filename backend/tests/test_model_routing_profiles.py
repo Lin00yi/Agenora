@@ -6,7 +6,7 @@ from src.models.gateway import (
     resolve_empty_answer_fallback_model,
     should_route_to_complex,
 )
-from src.settings_user.models import UserLLMConfig, configured_context_window_for_model
+from src.capabilities.settings.domain.models import UserLLMConfig, configured_context_window_for_model
 
 
 def _config(**overrides) -> UserLLMConfig:

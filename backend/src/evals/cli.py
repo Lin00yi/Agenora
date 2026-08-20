@@ -32,8 +32,8 @@ from src.evals.metrics import (
 async def _live_predictions(cases, *, kb_id: str, limit: int) -> dict[str, dict[str, Any]]:
     from src.auth.models import User
     from src.storage.database import get_session_factory, init_db
-    from src.kb.models import KB
-    from src.settings_user.kb_resolvers import resolve_kb_embedding, resolve_kb_reranker
+    from src.capabilities.knowledge.domain.models import KB
+    from src.capabilities.knowledge.application.configuration import resolve_kb_embedding, resolve_kb_reranker
     from src.tools.kb_search import KBSearchTool
 
     await init_db()

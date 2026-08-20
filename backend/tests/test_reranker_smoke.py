@@ -49,7 +49,7 @@ class _FakeClient:
 @pytest.mark.asyncio
 async def test_rerank_reorders_by_relevance_score(monkeypatch):
     from src.storage.vector import reranker
-    from src.settings_user.models import UserRerankerConfig
+    from src.capabilities.settings.domain.models import UserRerankerConfig
 
     cfg = UserRerankerConfig(
         provider="siliconflow",
@@ -103,7 +103,7 @@ async def test_rerank_passthrough_when_cfg_none(monkeypatch):
 @pytest.mark.asyncio
 async def test_rerank_empty_documents_returns_empty(monkeypatch):
     from src.storage.vector import reranker
-    from src.settings_user.models import UserRerankerConfig
+    from src.capabilities.settings.domain.models import UserRerankerConfig
 
     cfg = UserRerankerConfig(
         provider="siliconflow",
@@ -122,7 +122,7 @@ async def test_rerank_empty_documents_returns_empty(monkeypatch):
 @pytest.mark.asyncio
 async def test_rerank_filters_out_of_range_indices(monkeypatch):
     from src.storage.vector import reranker
-    from src.settings_user.models import UserRerankerConfig
+    from src.capabilities.settings.domain.models import UserRerankerConfig
 
     cfg = UserRerankerConfig(
         provider="siliconflow",
@@ -147,7 +147,7 @@ async def test_rerank_filters_out_of_range_indices(monkeypatch):
 
 
 def test_resolve_user_reranker_returns_none_when_toggle_off():
-    from src.settings_user.models import resolve_user_reranker
+    from src.capabilities.settings.domain.models import resolve_user_reranker
 
     class FakeUser:
         reranker_enabled = False
@@ -161,7 +161,7 @@ def test_resolve_user_reranker_returns_none_when_toggle_off():
 
 
 def test_resolve_user_reranker_returns_none_when_unconfigured():
-    from src.settings_user.models import resolve_user_reranker
+    from src.capabilities.settings.domain.models import resolve_user_reranker
 
     class FakeUser:
         reranker_enabled = True   # enabled but missing fields
@@ -174,7 +174,7 @@ def test_resolve_user_reranker_returns_none_when_unconfigured():
 
 
 def test_resolve_user_reranker_returns_config_when_enabled_and_configured(monkeypatch):
-    from src.settings_user import models as su_models
+    from src.capabilities.settings.domain import models as su_models
 
     # Bypass Fernet decryption (it requires a real settings.jwt_secret).
     monkeypatch.setattr(su_models, "decrypt", lambda token: f"decrypted:{token}")
@@ -198,7 +198,7 @@ def test_resolve_user_reranker_handles_empty_api_key(monkeypatch):
     """Self-hosted openai-compat endpoints may have no api_key. Resolver
     must not call decrypt on empty/None and must still return a config.
     """
-    from src.settings_user import models as su_models
+    from src.capabilities.settings.domain import models as su_models
 
     # decrypt should NOT be called when api_key_enc is empty — fail loudly if it is
     monkeypatch.setattr(su_models, "decrypt", lambda token: (_ for _ in ()).throw(

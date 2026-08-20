@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from src.settings_user.models import UserLLMConfig
+from src.capabilities.settings.domain.models import UserLLMConfig
 
 
 @pytest.mark.asyncio

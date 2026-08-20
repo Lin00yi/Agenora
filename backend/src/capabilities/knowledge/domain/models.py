@@ -1,4 +1,4 @@
-"""KB + Document SQLAlchemy models.
+"""Knowledge-domain SQLAlchemy models.
 
 Each KB owns a vector collection named `kb_{kb.id}` and any number of Document
 rows describing the upload sources. Vectors live in the configured vector backend, not

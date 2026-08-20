@@ -30,7 +30,7 @@ from src.context import resolve_context_window
 from src.infra.crypto import decrypt, encrypt
 from src.adapters.persistence import get_session
 from src.adapters.llm import normalize_model_name
-from src.settings_user.models import (LLMConnection, LLMModelProfile,
+from src.capabilities.settings.domain.models import (LLMConnection, LLMModelProfile,
                                       ensure_legacy_llm_model_profiles,
                                       list_llm_connections,
                                       list_llm_model_profiles)

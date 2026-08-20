@@ -1,4 +1,4 @@
-"""User-scoped LLM / embedding config dataclasses + resolution helpers (v2-M1).
+"""Settings-domain LLM / embedding config models and resolution helpers.
 
 `resolve_user_*` returns either:
   - A populated UserXxxConfig dataclass (user has explicitly configured this side)

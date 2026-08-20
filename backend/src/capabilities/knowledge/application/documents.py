@@ -38,7 +38,7 @@ async def delete_kb_uploads(kb_id: str) -> None:
 
 
 async def remove_document_chunks(collection_name: str, doc_id: str) -> None:
-    """Delete vector and relational chunks through the existing worker service."""
-    from src.kb.ingest import delete_document_chunks
+    """Delete vector and relational chunks through the ingestion use case."""
+    from .ingestion import delete_document_chunks
 
     await delete_document_chunks(collection_name, doc_id)

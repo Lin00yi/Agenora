@@ -24,7 +24,7 @@ from .constants import (
 log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from src.settings_user import UserLLMConfig
+    from src.capabilities.settings.domain.models import UserLLMConfig
 
 def _message_label(msg: Message) -> str:
     return "用户" if msg.role == "user" else "助手"
@@ -245,7 +245,7 @@ async def summarize_messages_with_llm(
     try:
         client = get_client(llm_cfg)
         model = pick_model([], [], llm_cfg)
-        from src.settings_user import configured_context_window_for_model
+        from src.capabilities.settings.domain.models import configured_context_window_for_model
 
         request = _bounded_summary_request(
             previous_summary=previous_summary,

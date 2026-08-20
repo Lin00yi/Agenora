@@ -1,4 +1,4 @@
-"""Document parsers — bytes/URL → clean text.
+"""Document-parser adapters — bytes/URL → clean text.
 
 One module per supported source. All return plain str (UTF-8) with paragraph
 boundaries preserved as double newlines (so chunker can split cleanly).

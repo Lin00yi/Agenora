@@ -16,7 +16,7 @@ from src.runtime.agent_loop import (
 from src.runtime.agent_loop.kb_search import _bound_aggregated_rag_context
 from src.context import RAG_RESERVE, estimate_tokens
 from src.models.gateway import CostTracker
-from src.settings_user.models import UserLLMConfig
+from src.capabilities.settings.domain.models import UserLLMConfig
 from src.tools.base import Tool, ToolRegistry, ToolResult
 
 

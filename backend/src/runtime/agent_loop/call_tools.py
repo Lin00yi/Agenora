@@ -14,7 +14,7 @@ from src.tools.web_search import _format_web_results, select_web_result_raw
 from .constants import MAX_SEARCH_KB_CALLS_PER_STEP
 
 if TYPE_CHECKING:
-    from src.settings_user import UserLLMConfig
+    from src.capabilities.settings.domain.models import UserLLMConfig
 
 
 @traced("call_tools")

@@ -9,7 +9,7 @@ import pytest
 
 async def _make_document(create_user, create_kb):
     from src.storage.database import get_session_factory
-    from src.kb.models import Document
+    from src.capabilities.knowledge.domain.models import Document
 
     user = await create_user("ingest-jobs@example.test")
     kb = await create_kb(user.id, "Queued KB")
@@ -25,8 +25,8 @@ async def _make_document(create_user, create_kb):
 async def test_ingestion_job_marks_done_after_worker_completes(db, create_user, create_kb, monkeypatch):
     from src.storage.database import get_session_factory
     from src.storage.jobs.ingestion import enqueue_ingestion, run_ingestion_job
-    from src.kb.models import Document, IngestionJob
-    import src.kb.ingest as ingest
+    from src.capabilities.knowledge.domain.models import Document, IngestionJob
+    import src.capabilities.knowledge.application.ingestion as ingest
 
     doc = await _make_document(create_user, create_kb)
     factory = get_session_factory()
@@ -58,8 +58,8 @@ async def test_ingestion_job_retries_then_records_terminal_failure(
 ):
     from src.storage.database import get_session_factory
     from src.storage.jobs.ingestion import enqueue_ingestion, run_ingestion_job
-    from src.kb.models import Document, IngestionJob
-    import src.kb.ingest as ingest
+    from src.capabilities.knowledge.domain.models import Document, IngestionJob
+    import src.capabilities.knowledge.application.ingestion as ingest
 
     doc = await _make_document(create_user, create_kb)
     factory = get_session_factory()

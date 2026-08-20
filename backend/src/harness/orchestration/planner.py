@@ -1,4 +1,4 @@
-"""Three-layer supervisor router: rule → triage → complex.
+"""Harness-owned three-layer supervisor planner: rule → triage → complex.
 
 Output is a validated task DAG (capabilities + depends_on). A single
 ``target`` is derived from the first bound agent for compatibility.
@@ -26,7 +26,7 @@ from src.adapters.observability import ageneration, traced
 from src.settings import get_settings
 
 if TYPE_CHECKING:
-    from src.settings_user import UserLLMConfig
+    from src.capabilities.settings.domain.models import UserLLMConfig
 
 RouteTarget = Literal["chat", "rag", "kb_router"]
 RouteSource = Literal["rule", "triage", "complex", "fallback"]

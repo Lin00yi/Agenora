@@ -20,10 +20,10 @@ async def test_admin_user_delete_removes_owned_external_and_relational_data(
     """A delete must not leave a vector collection, trace, memory, or BYOK key behind."""
     from src.conversations.models import Conversation, ConversationSummary, Message, UserMemory
     from src.storage.database import get_session_factory
-    from src.kb.models import Document, IngestionJob, KBMember
+    from src.capabilities.knowledge.domain.models import Document, IngestionJob, KBMember
     from src.observability.models import Observation, Trace
-    from src.settings_user.models import LLMConnection, LLMModelProfile
-    import src.api.routes.kb as kb_routes
+    from src.capabilities.settings.domain.models import LLMConnection, LLMModelProfile
+    import src.capabilities.knowledge.application.lifecycle as lifecycle
 
     class RecordingStore:
         def __init__(self):
@@ -33,7 +33,7 @@ async def test_admin_user_delete_removes_owned_external_and_relational_data(
             self.deleted.append(collection_name)
 
     store = RecordingStore()
-    monkeypatch.setattr(kb_routes, "get_store", lambda: store)
+    monkeypatch.setattr(lifecycle, "get_vector_store", lambda: store)
 
     admin = await create_user("admin@purge.test", is_admin=True)
     target = await create_user("target@purge.test")
@@ -124,7 +124,7 @@ async def test_admin_user_delete_removes_owned_external_and_relational_data(
 async def test_kb_purge_keeps_metadata_when_graph_cleanup_fails(db, create_user, create_kb, monkeypatch):
     """A strict external delete failure must leave identifiers available for retry."""
     from src.storage.database import get_session_factory
-    from src.kb.models import Document, KB
+    from src.capabilities.knowledge.domain.models import Document, KB
     from src.api.routes.kb import purge_kb
     import src.kg.sync as kg_sync
 

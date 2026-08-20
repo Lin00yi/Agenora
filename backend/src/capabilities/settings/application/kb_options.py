@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from src.capabilities.knowledge.application import configured_vector_size
 from src.infra.crypto import encrypt
-from src.kb.models import KB
+from src.capabilities.knowledge.domain.models import KB
 
 
 class KBOptionsUseCaseError(ValueError):

@@ -9,7 +9,11 @@ from src.harness.contracts.runtime import RunContext
 from src.adapters.llm import CostTracker
 
 if TYPE_CHECKING:
-    from src.settings_user import UserEmbeddingConfig, UserLLMConfig, UserRerankerConfig
+    from src.capabilities.settings.domain.models import (
+        UserEmbeddingConfig,
+        UserLLMConfig,
+        UserRerankerConfig,
+    )
 
 Emitter = EventEmitter
 SideEffect = Literal["none", "read", "write"]

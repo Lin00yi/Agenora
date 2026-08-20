@@ -29,7 +29,7 @@ from src.context import (
 from src.conversations.models import Conversation, Message, UserMemory
 from src.adapters.persistence import get_session
 from src.adapters.llm import normalize_model_name
-from src.settings_user import (
+from src.capabilities.settings.domain.models import (
     configured_context_window_for_model,
     list_llm_model_profiles,
     resolve_llm_profile_config,

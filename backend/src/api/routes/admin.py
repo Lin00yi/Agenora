@@ -32,8 +32,9 @@ from src.api.routes.auth import purge_user
 from src.conversations.models import Conversation, Message
 from src.adapters.persistence import get_session
 from src.capabilities.memory.application import run_maintenance as run_memory_maintenance
-from src.kb.models import KB, Document
-from src.api.routes.kb import _email_map, purge_kb
+from src.capabilities.knowledge.domain.models import KB, Document
+from src.api.routes.kb import _email_map
+from src.capabilities.knowledge.application.lifecycle import purge_kb
 
 log = structlog.get_logger()
 
@@ -178,7 +179,7 @@ async def evaluate_rag_retrieval(
     This endpoint returns only citation-safe result metadata. It deliberately
     does not return chunk text or the raw user-owned source document body.
     """
-    from src.kb.eval_service import retrieve_predictions
+    from src.capabilities.knowledge.application.evaluation import retrieve_predictions
 
     kb = await session.get(KB, req.kb_id)
     if kb is None:

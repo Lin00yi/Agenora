@@ -6,7 +6,7 @@ conversation grows beyond the configured budget.
 """
 from __future__ import annotations
 
-from src.memory.extract import (
+from src.capabilities.memory.domain.extraction import (
     CONSTRAINT_TOPIC_ALIASES,
     CONSTRAINT_TOPICS,
     contains_sensitive_memory_content,
@@ -17,7 +17,7 @@ from src.memory.extract import (
     infer_constraint_topic,
     normalize_constraint_key,
 )
-from src.memory.long_term import (
+from src.capabilities.memory.application.lifecycle import (
     consolidate_user_memories,
     extract_conversation_memories,
     finalize_memory_rows_heavy,
@@ -26,7 +26,7 @@ from src.memory.long_term import (
     store_memory_candidates,
     store_user_memories,
 )
-from src.memory.retrieval import (
+from src.capabilities.memory.application.retrieval import (
     backfill_user_memory_embeddings,
     memory_block,
     memory_embedding_is_available,

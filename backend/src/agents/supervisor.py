@@ -13,7 +13,7 @@ from typing import Any, Awaitable, Callable
 from langgraph.graph import END, StateGraph
 
 from src.harness.orchestration.dag import TaskDag, append_chat_followup
-from src.planning.planner import resolve_agent_route
+from src.harness.orchestration.planner import resolve_agent_route
 from src.harness.orchestration.state import SupervisorState
 from src.harness.orchestration.validation import ready_tasks, validate_and_bind
 from src.context.rag.assess import is_empty_injected_evidence

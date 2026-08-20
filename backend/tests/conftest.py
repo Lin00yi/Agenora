@@ -108,7 +108,7 @@ def create_kb():
 
     async def _create(owner_id: str, name: str = "KB", *, is_system: bool = False):
         from src.storage.database import get_session_factory
-        from src.kb.models import KB
+        from src.capabilities.knowledge.domain.models import KB
 
         factory = get_session_factory()
         async with factory() as session:
