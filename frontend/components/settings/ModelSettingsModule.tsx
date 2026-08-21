@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ProviderLogo } from "@/components/ProviderLogo";
@@ -686,7 +686,9 @@ function ModelProfilesManager({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [profilePendingRemoval, setProfilePendingRemoval] = useState<LLMModelProfile | null>(null);
   const [replacementProfileId, setReplacementProfileId] = useState("");
+  const replacementProfileIdRef = useRef("");
   const [profileRemovalError, setProfileRemovalError] = useState<string | null>(null);
+  const [referencedConversationCount, setReferencedConversationCount] = useState<number | null>(null);
   const [pricingProfile, setPricingProfile] = useState<LLMModelProfile | null>(null);
   const [editingInputPrice, setEditingInputPrice] = useState("");
   const [editingOutputPrice, setEditingOutputPrice] = useState("");
@@ -699,6 +701,11 @@ function ModelProfilesManager({
   const [complexModel, setComplexModel] = useState(initial?.complex_profile_id ?? "");
   const [triageModel, setTriageModel] = useState(initial?.triage_profile_id ?? "");
   const [fallbackModel, setFallbackModel] = useState(initial?.fallback_profile_id ?? "");
+
+  const selectReplacementProfile = (profileId: string) => {
+    replacementProfileIdRef.current = profileId;
+    setReplacementProfileId(profileId);
+  };
 
   useEffect(() => {
     setDefaultModel(initial?.default_profile_id ?? "");
@@ -960,13 +967,15 @@ function ModelProfilesManager({
   };
 
   const removeProfile = async (profile: LLMModelProfile) => {
+    const requestedReplacementId = replacementProfileIdRef.current || null;
     setDeletingId(profile.id);
     try {
-      const result = await deleteLLMModelProfile(profile.id, replacementProfileId || null);
+      const result = await deleteLLMModelProfile(profile.id, requestedReplacementId);
       await onChanged();
       setProfilePendingRemoval(null);
-      setReplacementProfileId("");
+      selectReplacementProfile("");
       setProfileRemovalError(null);
+      setReferencedConversationCount(null);
       toast.success(
         result.migrated_conversations
           ? `模型已移除，${result.migrated_conversations} 个历史会话已迁移。`
@@ -977,7 +986,13 @@ function ModelProfilesManager({
         error instanceof SettingsApiError &&
         (error.detail as { code?: string } | null)?.code === "model_profile_in_use"
       ) {
-        setProfileRemovalError(error.message);
+        const count = (error.detail as { conversation_count?: unknown }).conversation_count;
+        setReferencedConversationCount(typeof count === "number" ? count : null);
+        // A first, no-replacement request can finish after the user has picked
+        // a replacement. Do not let that stale 409 overwrite the new state.
+        if (requestedReplacementId || !replacementProfileIdRef.current) {
+          setProfileRemovalError(error.message);
+        }
         return;
       }
       toast.error(error instanceof Error ? error.message : "移除模型失败");
@@ -1262,11 +1277,18 @@ function ModelProfilesManager({
             </div>
             <div className="flex gap-2">
               <Button type="button" variant="outline" size="sm" onClick={() => openPricingEditor(profile)}>定价</Button>
-              <Button type="button" variant="destructive" size="sm" onClick={() => {
-                setProfileRemovalError(null);
-                setReplacementProfileId("");
-                setProfilePendingRemoval(profile);
-              }} disabled={deletingId === profile.id}>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={() => {
+                  setProfileRemovalError(null);
+                  selectReplacementProfile("");
+                  setReferencedConversationCount(null);
+                  setProfilePendingRemoval(profile);
+                }}
+                disabled={deletingId === profile.id}
+              >
                 {deletingId === profile.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                 移除
               </Button>
@@ -1445,7 +1467,7 @@ function ModelProfilesManager({
             if (!open && !deletingId) {
               setProfilePendingRemoval(null);
               setProfileRemovalError(null);
-              setReplacementProfileId("");
+              selectReplacementProfile("");
             }
           }}
         >
@@ -1464,8 +1486,9 @@ function ModelProfilesManager({
               <Select
                 id="profile-removal-replacement"
                 value={replacementProfileId}
+                disabled={Boolean(deletingId)}
                 onChange={(event) => {
-                  setReplacementProfileId(event.target.value);
+                  selectReplacementProfile(event.target.value);
                   setProfileRemovalError(null);
                 }}
                 options={enabledProfiles
@@ -1484,11 +1507,37 @@ function ModelProfilesManager({
                 {profileRemovalError}
               </p>
             )}
+            {referencedConversationCount && replacementProfileId && (
+              <p className="rounded-lg border border-positive/25 bg-positive/10 px-3 py-2 text-sm leading-6 text-positive" role="status">
+                将把 {referencedConversationCount} 条历史会话迁移到所选模型，确认后移除当前模型。
+              </p>
+            )}
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setProfilePendingRemoval(null)} disabled={Boolean(deletingId)}>取消</Button>
-              <Button type="button" variant="destructive" onClick={() => void removeProfile(profilePendingRemoval)} disabled={Boolean(deletingId)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setProfilePendingRemoval(null);
+                  selectReplacementProfile("");
+                  setProfileRemovalError(null);
+                  setReferencedConversationCount(null);
+                }}
+                disabled={Boolean(deletingId)}
+              >
+                取消
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => void removeProfile(profilePendingRemoval)}
+                disabled={Boolean(deletingId) || (Boolean(referencedConversationCount) && !replacementProfileId)}
+              >
                 {deletingId && <Loader2 className="h-4 w-4 animate-spin" />}
-                {deletingId ? "正在迁移" : "迁移并移除"}
+                {deletingId
+                  ? "正在迁移"
+                  : referencedConversationCount && !replacementProfileId
+                    ? "请选择替代模型"
+                    : "迁移并移除"}
               </Button>
             </div>
           </DialogContent>
