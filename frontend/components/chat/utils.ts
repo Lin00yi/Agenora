@@ -354,6 +354,7 @@ export function resolveContextUsagePercent(status: {
 }
 
 export function formatMessageStats(messages: Message[]) {
+  if (messages.length === 0) return "";
   const userCount = messages.filter((message) => message.role === "user").length;
   const assistantCount = messages.filter((message) => message.role === "assistant").length;
   return `${userCount} \u8f6e \u00b7 ${messages.length} \u6761`;

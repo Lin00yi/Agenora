@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import AppModal from "@/components/AppModal";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -44,13 +44,13 @@ const MemorySystemModule = dynamic(
   () => import("@/components/settings/MemorySystemModule").then((module) => module.MemorySystemModule),
   { ssr: false }
 );
-type SettingsModule = "personal" | "model" | "memory" | "about";
+export type SettingsModule = "personal" | "dispatch" | "memory" | "about";
 type PersonalTab = "general" | "appearance" | "account" | "data";
 
 const MODULES: { key: SettingsModule; label: string; Icon: typeof UserIcon }[] = [
   { key: "personal", label: "个人", Icon: UserIcon },
-  { key: "model", label: "模型", Icon: SlidersHorizontal },
-  { key: "memory", label: "记忆系统", Icon: BrainCircuit },
+  { key: "dispatch", label: "模型", Icon: SlidersHorizontal },
+  { key: "memory", label: "记忆", Icon: BrainCircuit },
   { key: "about", label: "关于", Icon: Info },
 ];
 
@@ -66,6 +66,7 @@ type Props = {
   onClose: () => void;
   user: User;
   onUserChanged: (u: User) => void;
+  initialModule?: SettingsModule;
 };
 
 export default function SystemSettingsDialog({
@@ -73,8 +74,9 @@ export default function SystemSettingsDialog({
   onClose,
   user,
   onUserChanged,
+  initialModule = "personal",
 }: Props) {
-  const [module, setModule] = useState<SettingsModule>("personal");
+  const [module, setModule] = useState<SettingsModule>(initialModule);
   const [personalTab, setPersonalTab] = useState<PersonalTab>("general");
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -82,6 +84,10 @@ export default function SystemSettingsDialog({
   const [deleting, setDeleting] = useState(false);
   const router = useRouter();
   const modules = MODULES;
+
+  useEffect(() => {
+    if (open) setModule(initialModule);
+  }, [initialModule, open]);
 
   const doClear = async () => {
     setClearing(true);
@@ -166,7 +172,7 @@ export default function SystemSettingsDialog({
                   onRequestDelete={() => setConfirmDelete(true)}
                 />
               )}
-              {module === "model" && <ModelSettingsModule embedded />}
+              {module === "dispatch" && <ModelSettingsModule embedded />}
               {module === "memory" && <MemorySystemModule embedded />}
               {module === "about" && (
                 <div className="px-5 py-5 sm:px-6">

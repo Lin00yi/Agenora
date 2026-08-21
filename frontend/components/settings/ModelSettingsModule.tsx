@@ -110,12 +110,12 @@ function formatProfilePricing(profile: LLMModelProfile) {
   return `${source}：$${pricing.input}/$${pricing.output} / M tokens`;
 }
 
-/** User-level LLM configuration. KB retrieval options remain a separate region below. */
+/** Legacy direct-route export. Settings are now embedded in the settings workspace. */
 export default function SettingsPage() {
   return <ModelSettingsModule />;
 }
 
-/** Reused by the settings workspace as well as the legacy direct route. */
+/** Model settings, reused by the settings workspace. */
 export function ModelSettingsModule({ embedded = false }: { embedded?: boolean }) {
   const router = useRouter();
   const [settings, setSettings] = useState<MySettings | null>(null);

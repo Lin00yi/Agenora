@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type CSSProperties,
   useCallback,
   useEffect,
   useMemo,
@@ -61,11 +62,14 @@ export function ChatPage({
   routeConversationId = null,
   startBlank = false,
   initialKbId = null,
+  initialSettingsModule = null,
 }: {
   routeConversationId?: string | null;
   startBlank?: boolean;
   /** Explicit KB entry from a KB page, never an implicit carry-over. */
   initialKbId?: string | null;
+  /** Deep-link target for the settings workspace, not a standalone page. */
+  initialSettingsModule?: "dispatch" | null;
 }) {
   const router = useRouter();
   const [panePhase, setPanePhase] = useState<"in" | "out">("in");
@@ -89,12 +93,15 @@ export function ChatPage({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [llmConfigurationOpen, setLlmConfigurationOpen] = useState(false);
+  const [settingsModule, setSettingsModule] = useState<"personal" | "dispatch">("personal");
   const [composerValue, setComposerValue] = useState("");
 
   const messagesCache = useRef<Map<string, Message[]>>(new Map());
   const scrollRef = useRef<HTMLDivElement>(null);
+  const threadDockRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [threadDockHeight, setThreadDockHeight] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const paneSwitchSeq = useRef(0);
   const modelOptionsRef = useRef<string[]>([]);
@@ -259,6 +266,12 @@ export function ChatPage({
     setConversationHasMore,
   });
 
+  useEffect(() => {
+    if (initialSettingsModule !== "dispatch") return;
+    setSettingsModule("dispatch");
+    setSystemSettingsOpen(true);
+  }, [initialSettingsModule, setSystemSettingsOpen]);
+
   // useChatBoot clears the initial workspace after it has loaded the
   // conversation list. Restore only an explicit KB-page entry afterwards;
   // ordinary new chats stay unbound.
@@ -409,8 +422,9 @@ export function ChatPage({
 
   const openLlmSettings = useCallback(() => {
     setLlmConfigurationOpen(false);
-    router.push("/settings");
-  }, [router]);
+    setSettingsModule("dispatch");
+    setSystemSettingsOpen(true);
+  }, [setSystemSettingsOpen]);
 
   const finalizeSilently = useCallback((id: string | null) => {
     if (!id) return;
@@ -482,6 +496,31 @@ export function ChatPage({
     if (!stickToBottomRef.current) return;
     scrollThreadToBottom("auto");
   }, [scrollThreadToBottom, visibleMessages.length, lastAssistantContentLen]);
+
+  // The docked composer overlays the thread, and its height changes with the
+  // textarea, toolbar wrapping, streaming controls, and mobile safe area.
+  // Reserve its measured footprint instead of relying on a stale CSS constant.
+  useEffect(() => {
+    const dock = threadDockRef.current;
+    if (!dock || humanInput) {
+      setThreadDockHeight(0);
+      return;
+    }
+    const update = () => {
+      const height = Math.ceil(dock.getBoundingClientRect().height);
+      setThreadDockHeight((previous) => (previous === height ? previous : height));
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(dock);
+    return () => observer.disconnect();
+  }, [humanInput]);
+
+  useEffect(() => {
+    if (!threadDockHeight || !stickToBottomRef.current) return;
+    const frame = requestAnimationFrame(() => scrollThreadToBottom("auto"));
+    return () => cancelAnimationFrame(frame);
+  }, [scrollThreadToBottom, threadDockHeight]);
 
   // A human panel occupies real layout space below the thread. Keep its first
   // appearance in view for readers already following the conversation, while
@@ -683,7 +722,10 @@ export function ChatPage({
           onSelectConversation={handleSelect}
           onDeleteConversation={handleDelete}
           onLoadMoreConversations={loadMoreConversations}
-          onOpenAccountSettings={() => setSystemSettingsOpen(true)}
+          onOpenAccountSettings={() => {
+            setSettingsModule("personal");
+            setSystemSettingsOpen(true);
+          }}
           onOpenSearch={() => setSearchOpen(true)}
           onLogout={handleLogout}
         />
@@ -776,7 +818,15 @@ export function ChatPage({
                   </div>
                 </div>
               ) : (
-                <div className="kf-thread relative flex min-h-0 flex-1 flex-col" data-kf-region="thread">
+                <div
+                  className="kf-thread relative flex min-h-0 flex-1 flex-col"
+                  data-kf-region="thread"
+                  style={
+                    !humanInput && threadDockHeight > 0
+                      ? ({ "--chat-composer-offset": `${threadDockHeight + 12}px` } as CSSProperties)
+                      : undefined
+                  }
+                >
                   <div
                     ref={scrollRef}
                     onScroll={onThreadScroll}
@@ -804,6 +854,7 @@ export function ChatPage({
                     </div>
                   </div>
                   <div
+                    ref={threadDockRef}
                     className={cn(
                       "kf-thread-dock pointer-events-none absolute bottom-0 left-0 z-10",
                       humanInput && "kf-thread-dock-human relative bottom-auto left-auto z-0 shrink-0"
@@ -874,6 +925,7 @@ export function ChatPage({
           onClose={() => setSystemSettingsOpen(false)}
           user={user}
           onUserChanged={setUser}
+          initialModule={settingsModule}
         />
       )}
       <LLMConfigurationDialog
@@ -903,12 +955,24 @@ export function ChatPage({
 }
 function SearchParamChatPage() {
   const searchParams = useSearchParams();
-  return <ChatPage routeConversationId={searchParams.get("conversation")} initialKbId={searchParams.get("kb")} />;
+  return (
+    <ChatPage
+      routeConversationId={searchParams.get("conversation")}
+      initialKbId={searchParams.get("kb")}
+      initialSettingsModule={searchParams.get("settings") === "dispatch" ? "dispatch" : null}
+    />
+  );
 }
 
 export function NewConversationChatPage() {
   const searchParams = useSearchParams();
-  return <ChatPage startBlank initialKbId={searchParams.get("kb")} />;
+  return (
+    <ChatPage
+      startBlank
+      initialKbId={searchParams.get("kb")}
+      initialSettingsModule={searchParams.get("settings") === "dispatch" ? "dispatch" : null}
+    />
+  );
 }
 
 export default function Page() {

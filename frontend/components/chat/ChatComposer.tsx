@@ -229,9 +229,11 @@ export function Composer({
           </div>
         </div>
       </div>
-      <p className="kf-composer-disclaimer mt-2 text-center text-xs">
-        <span className="tabular-nums">{messageStats}</span>
-      </p>
+      {centered || messageStats ? (
+        <p className="kf-composer-disclaimer mt-2 text-center text-xs">
+          {centered ? "内容由 AI 生成，请仔细甄别" : <span className="tabular-nums">{messageStats}</span>}
+        </p>
+      ) : null}
     </div>
   );
 }
