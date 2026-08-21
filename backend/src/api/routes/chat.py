@@ -169,7 +169,7 @@ async def chat_post(
                     user_id=user.id,
                     model=selected_model,
                     # Reserve RAG context for a route-capable unbound turn;
-                    # the actual KB id is selected later by the Supervisor.
+                    # the actual KB id is selected later by Runtime Scope.
                     kb_id=effective_kb_id or ("__auto_route__" if route_candidates else None),
                     context_window=configured_context_window_for_model(
                         context_llm_cfg,
@@ -211,7 +211,6 @@ async def chat_post(
             triage_llm_cfg_override=None if selected_model else (routing_cfgs.triage if routing_cfgs else None),
             fallback_llm_cfg_override=None if selected_model else (routing_cfgs.fallback if routing_cfgs else None),
             kb_candidates=route_candidates,
-            kb_route_scope="pinned" if pinned else "turn",
             container=container,
         )
     except Exception:

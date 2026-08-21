@@ -1,44 +1,48 @@
-"""Regression coverage for public route-trace semantics."""
+"""Regression coverage for single-agent runtime scope semantics."""
 from __future__ import annotations
 
-from src.harness.orchestration.intent import IntentAssessment
-from src.harness.orchestration.planner import _plan_from_intent
-from src.harness.orchestration.registry import build_default_agent_registry
+from types import SimpleNamespace
+
+import pytest
+
+from src.harness.runtime.scope import resolve_runtime_scope
 
 
-def _knowledge_assessment() -> IntentAssessment:
-    return IntentAssessment(
-        domain="knowledge",
-        intent="knowledge_lookup",
-        risk="read",
-        confidence="high",
-        source="triage",
-        rationale="needs_kb_fact",
+@pytest.mark.asyncio
+async def test_rule_only_general_scope_never_runs_kb_selection(monkeypatch) -> None:
+    async def unexpected_kb_route(**_kwargs):
+        raise AssertionError("ordinary conversation must not invoke KB routing")
+
+    monkeypatch.setattr("src.harness.runtime.scope.resolve_auto_kb_route_from_candidates", unexpected_kb_route)
+
+    scope = await resolve_runtime_scope(
+        messages=[{"role": "user", "content": "你好，帮我润色这句话"}],
+        bound_kb=None,
+        candidates=[SimpleNamespace(id="kb-1")],
+        llm_cfg=None,
+        mode="rule_only",
     )
 
+    assert scope.kind == "general"
+    assert scope.selected_kbs == ()
+    assert scope.intent.source == "fallback"
 
-def test_unbound_knowledge_hypothesis_describes_chat_fallback_not_kb_retrieval() -> None:
-    decision = _plan_from_intent(
-        _knowledge_assessment(),
-        has_kb=False,
-        has_routable_kbs=False,
-        registry=build_default_agent_registry(),
+
+@pytest.mark.asyncio
+async def test_pinned_kb_is_admitted_without_a_second_router_call(monkeypatch) -> None:
+    async def unexpected_kb_route(**_kwargs):
+        raise AssertionError("pinned KB must not invoke automatic routing")
+
+    monkeypatch.setattr("src.harness.runtime.scope.resolve_auto_kb_route_from_candidates", unexpected_kb_route)
+    kb = SimpleNamespace(id="kb-1")
+    scope = await resolve_runtime_scope(
+        messages=[{"role": "user", "content": "解释一下 Redis"}],
+        bound_kb=kb,
+        candidates=[],
+        llm_cfg=None,
+        mode="rule_only",
     )
 
-    assert decision["tasks"][0]["type"] == "qa_chat"
-    assert decision["reason"] == "general_chat"
-    # The classifier rationale remains available to operators, but is not
-    # presented as a statement about the executed plan.
-    assert decision["intent"]["rationale"] == "needs_kb_fact"
-
-
-def test_kb_selection_plan_describes_selection_not_completed_retrieval() -> None:
-    decision = _plan_from_intent(
-        _knowledge_assessment(),
-        has_kb=False,
-        has_routable_kbs=True,
-        registry=build_default_agent_registry(),
-    )
-
-    assert decision["tasks"][0]["type"] == "kb_route"
-    assert decision["reason"] == "checking_kb_relevance"
+    assert scope.kind == "knowledge_base"
+    assert scope.selected_kbs == (kb,)
+    assert scope.kb_route is None

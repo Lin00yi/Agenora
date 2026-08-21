@@ -98,10 +98,8 @@ class Settings(BaseSettings):
     rag_injection_mode: str = "user_evidence"  # user_evidence | legacy_system
 
     # ===== Agent runtime =====
-    # ``react`` is the default: one capability-scoped ReAct loop.  The
-    # legacy Supervisor mode is retained only as an explicit rollback switch
-    # while existing checkpointed conversations drain.
-    agent_runtime_mode: str = "react"  # react | supervisor
+    # Chat uses one capability-scoped ReAct loop. Runtime scope is resolved
+    # before that loop; it is not a selectable Supervisor/DAG runtime.
     # Host-enforced limits for the default single-Agent ReAct runtime. These
     # bound external work and model-visible tool output independently of the
     # selected provider/model profile.
@@ -109,10 +107,6 @@ class Settings(BaseSettings):
     agent_max_concurrent_tool_calls: int = 4
     agent_tool_result_max_tokens_per_call: int = 1_500
     agent_tool_result_max_tokens_per_step: int = 4_500
-    # ===== Legacy Supervisor rollback controls =====
-    # Empty RAG evidence may append a chat follow-up once (web_search stays a chat tool).
-    # Planned qa_kb → qa_chat does not need this flag.
-    agent_allow_rag_chat_handoff: bool = True
     # rule_only | rule_triage | layered (rule → triage → complex)
     agent_route_mode: str = "layered"
     # Durable LangGraph interrupt checkpoints. ``auto`` chooses PostgreSQL

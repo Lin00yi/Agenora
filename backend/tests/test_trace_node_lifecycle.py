@@ -42,9 +42,9 @@ async def test_react_scope_is_a_first_class_trace_observation(monkeypatch) -> No
     result = await scope.afunc({"messages": []})
 
     assert result["runtime_scope"]["kind"] == "general"
-    assert [(obs.name, obs.metadata["kind"]) for obs in trace.observations] == [
-        ("scope", "general")
-    ]
+    scope_observation = next(obs for obs in trace.observations if obs.name == "scope")
+    assert scope_observation.metadata["kind"] == "general"
+    assert any(obs.name == "runtime_scope" for obs in trace.observations)
     # Scope is trace/runtime metadata, not a user-visible pseudo-tool.
     assert events == []
     await trace.finish()

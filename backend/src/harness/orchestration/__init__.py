@@ -1,5 +1,1 @@
-"""Planning, scheduling, and agent-capability contracts for the harness."""
-
-from .registry import AgentRegistry, AgentSpec, RuntimeDeps, build_default_agent_registry
-
-__all__ = ["AgentRegistry", "AgentSpec", "RuntimeDeps", "build_default_agent_registry"]
+"""Shared intent types retained by the single-agent runtime."""

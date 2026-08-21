@@ -18,11 +18,9 @@ from sse_starlette.sse import EventSourceResponse
 
 from src.harness.agents.orders import build_orders_graph
 from src.harness.agents.react import build_react_graph
-from src.harness.agents.supervisor import build_supervisor_graph
 from src.harness.runtime.intent_routing import requires_order_workflow
 from src.harness.runtime.telemetry import summarize_runtime_state
 from src.harness.runtime.checkpoints import checkpoint_config, open_agent_checkpointer
-from src.harness.contracts.runtime import RunContext, RunIdentity
 from src.harness.runtime.agent_loop import EMPTY_ANSWER_FALLBACK
 from src.capabilities.identity.models import User
 from src.capabilities.conversations.models import Conversation, Message
@@ -325,7 +323,6 @@ async def run_chat_session(
     triage_llm_cfg_override=None,
     fallback_llm_cfg_override=None,
     kb_candidates: list[KB] | None = None,
-    kb_route_scope: str = "turn",
     container=None,
 ) -> EventSourceResponse:
     # MCP configuration is deployment-owned. Every graph in this process uses
@@ -463,52 +460,17 @@ async def run_chat_session(
             complex_model=llm_cfg.triage_model,
             complex_enabled=False,
         )
-    run_context = RunContext(
-        identity=RunIdentity(
-            user_id=user.id if user is not None else None,
-            conversation_id=conversation_id,
-        ),
-        emit=emit,
-        attributes={
-            "mcp_manager": active_mcp_manager,
-            "plugin_set_version": active_mcp_manager.plugin_set_version,
-        },
-    )
     workflow_config = (
         checkpoint_config(user_id=user.id if user is not None else None, conversation_id=conversation_id)
         if conversation_id
         else None
     )
-    runtime_mode = str(getattr(settings, "agent_runtime_mode", "react") or "react").strip().lower()
-    use_legacy_supervisor = runtime_mode == "supervisor"
-    execution_runtime = (
-        "supervisor"
-        if use_legacy_supervisor
-        else "orders"
-        if requires_order_workflow(full_messages)
-        else "react"
-    )
+    # Chat has one runtime contract: the constrained ReAct graph. Order/refund
+    # writes remain a separate deterministic approval workflow, never a
+    # Supervisor-selected sub-agent.
+    execution_runtime = "orders" if requires_order_workflow(full_messages) else "react"
 
-    def build_graph(*, checkpointer=None, force_legacy_supervisor: bool = False):
-        if use_legacy_supervisor or force_legacy_supervisor:
-            return build_supervisor_graph(
-                emit=emit,
-                kb=kb,
-                llm_cfg=llm_cfg,
-                complex_llm_cfg=complex_llm_cfg_override,
-                fallback_llm_cfg=fallback_llm_cfg_override,
-                triage_llm_cfg=triage_llm_cfg,
-                embedding_cfg=embedding_cfg,
-                reranker_cfg=reranker_cfg,
-                kb_web_search_enabled=kb_web_search_enabled,
-                kb_candidates=kb_candidates,
-                configure_routed_kb=configure_routed_kb if kb_candidates else None,
-                kb_route_scope=kb_route_scope,
-                run_context=run_context,
-                allow_rag_chat_handoff=bool(settings.agent_allow_rag_chat_handoff),
-                checkpointer=checkpointer,
-                services=container,
-            )
+    def build_graph(*, checkpointer=None):
         if execution_runtime == "orders":
             return build_orders_graph(
                 emit=emit,
@@ -526,6 +488,7 @@ async def run_chat_session(
             configure_routed_kb=configure_routed_kb if kb_candidates else None,
             llm_cfg=llm_cfg,
             complex_llm_cfg=complex_llm_cfg_override,
+            triage_llm_cfg=triage_llm_cfg,
             fallback_llm_cfg=fallback_llm_cfg_override,
             embedding_cfg=embedding_cfg,
             reranker_cfg=reranker_cfg,
@@ -596,55 +559,21 @@ async def run_chat_session(
                 prompt_injection_risk=prompt_guard.level,
                 prompt_injection_reasons=prompt_guard.reasons,
             )
-            if use_legacy_supervisor:
-                initial_state.update(
-                    {
-                        "base_messages": list(full_messages),
-                        "agent_results": {},
-                        "handoff_count": 0,
-                        "supervisor_trace": [],
-                        "human_inputs": {},
-                        "human_required_slots": [],
-                        "human_gate_resumed": False,
-                        "pending_confirmation": None,
-                    }
-                )
             if workflow_config is not None:
                 async with open_agent_checkpointer() as checkpointer:
                     graph, _cost = build_graph(checkpointer=checkpointer)
                     snapshot = await graph.aget_state(workflow_config)
                     snapshot_values = getattr(snapshot, "values", None)
-                    # A user may resume an approval turn checkpointed before
-                    # the default changed to ReAct.  Its graph state belongs
-                    # to the legacy Supervisor and must be drained there;
-                    # treating it as a fresh ReAct state could skip a human
-                    # gate or mix incompatible nodes.
+                    # Supervisor checkpoints use a different graph contract.
+                    # The retired runtime is never resumed; discard only that
+                    # obsolete thread state and start this new turn in ReAct.
                     legacy_snapshot = isinstance(snapshot_values, dict) and any(
                         key in snapshot_values
                         for key in ("task_dag", "task_status", "supervisor_trace", "human_required_slots")
                     )
-                    if legacy_snapshot and not use_legacy_supervisor:
-                        execution_runtime = "supervisor"
-                        if trace is not None:
-                            trace.metadata.update(
-                                {
-                                    "agent_runtime": execution_runtime,
-                                    "trace_schema_version": TRACE_SCHEMA_VERSION,
-                                }
-                            )
-                        if memory_trace is not None:
-                            runtime = memory_trace.get("runtime")
-                            memory_trace = {
-                                **memory_trace,
-                                "runtime": {
-                                    **(runtime if isinstance(runtime, dict) else {}),
-                                    "agent_runtime": execution_runtime,
-                                },
-                            }
-                        graph, _cost = build_graph(
-                            checkpointer=checkpointer,
-                            force_legacy_supervisor=True,
-                        )
+                    if legacy_snapshot:
+                        thread_id = workflow_config["configurable"]["thread_id"]
+                        await checkpointer.adelete_thread(thread_id)
                         snapshot = await graph.aget_state(workflow_config)
                     pending_interrupt = any(
                         bool(getattr(task, "interrupts", ())) for task in (snapshot.tasks or ())

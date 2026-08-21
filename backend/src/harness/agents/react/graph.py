@@ -12,14 +12,11 @@ from typing import Any, Awaitable, Callable, TYPE_CHECKING
 
 from langgraph.graph import END, StateGraph
 
-from src.capabilities.knowledge.application.routing import (
-    AutoKBRoute,
-    resolve_auto_kb_route_from_candidates,
-)
 from src.harness.context.rag.policy import resolve_web_search_policy
 from src.harness.contracts.state import AgentState
 from src.harness.prompts.system import SYSTEM_PROMPT_GENERAL, build_kb_system_prompt
 from src.harness.runtime.agent_loop import call_tools_node, reason_node, should_continue
+from src.harness.runtime.scope import RuntimeScope, resolve_runtime_scope
 from src.harness.tools.base import ToolRegistry, build_default_registry
 from src.platform.llm.gateway import CostTracker
 from src.platform.observability import aspan
@@ -87,37 +84,28 @@ class _ScopedTools:
     kb_web_search_enabled: bool
     configure_routed_kb: Callable[[Any], dict[str, Any]] | None
     selected_kbs: list[Any] = field(default_factory=list)
-    route: AutoKBRoute | None = None
+    scope: RuntimeScope | None = None
     registry: ToolRegistry | None = None
+    triage_llm_cfg: "UserLLMConfig | None" = None
+    complex_llm_cfg: "UserLLMConfig | None" = None
+    scope_mode: str | None = None
 
     async def resolve(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
-        if self.bound_kb is not None:
-            self.selected_kbs = [self.bound_kb]
-            self.route = None
-        elif self.candidates:
-            self.route = await resolve_auto_kb_route_from_candidates(
-                messages=messages,
-                candidates=self.candidates,
-                llm_cfg=self.llm_cfg,
-            )
-            self.selected_kbs = list(self.route.selected_kbs) if self.route.needs_retrieval else []
-        else:
-            self.selected_kbs = []
-            self.route = None
+        self.scope = await resolve_runtime_scope(
+            messages=messages,
+            bound_kb=self.bound_kb,
+            candidates=self.candidates,
+            llm_cfg=self.llm_cfg,
+            triage_llm_cfg=self.triage_llm_cfg,
+            complex_llm_cfg=self.complex_llm_cfg,
+            mode=self.scope_mode,
+        )
+        self.selected_kbs = list(self.scope.selected_kbs)
 
         selected_ids = [str(kb.id) for kb in self.selected_kbs]
-        route_metadata = self.route.trace_metadata() if self.route is not None else {
-            "needs_retrieval": bool(self.selected_kbs),
-            "selected_kb_id": selected_ids[0] if selected_ids else None,
-            "selected_kb_ids": selected_ids,
-            "source": "pinned" if self.bound_kb is not None else "none",
-            "confidence": "high" if self.bound_kb is not None else "high",
-            "reason": "pinned_kb" if self.bound_kb is not None else "no_kb_candidates",
-            "latency_ms": 0,
-            "candidate_count": len(self.candidates),
-        }
+        route_metadata = self.scope.trace_metadata()
         return {
-            "kind": "knowledge_base" if self.selected_kbs else "general",
+            "kind": self.scope.kind,
             "selected_kb_ids": selected_ids,
             "route": route_metadata,
         }
@@ -177,6 +165,7 @@ def build_react_graph(
     configure_routed_kb: Callable[[Any], dict[str, Any]] | None = None,
     llm_cfg: "UserLLMConfig | None" = None,
     complex_llm_cfg: "UserLLMConfig | None" = None,
+    triage_llm_cfg: "UserLLMConfig | None" = None,
     fallback_llm_cfg: "UserLLMConfig | None" = None,
     embedding_cfg: "UserEmbeddingConfig | None" = None,
     reranker_cfg: "UserRerankerConfig | None" = None,
@@ -194,6 +183,8 @@ def build_react_graph(
         reranker_cfg=reranker_cfg,
         kb_web_search_enabled=kb_web_search_enabled,
         configure_routed_kb=configure_routed_kb,
+        triage_llm_cfg=triage_llm_cfg,
+        complex_llm_cfg=complex_llm_cfg,
     )
 
     async def scope_node(state: AgentState) -> AgentState:
@@ -209,11 +200,11 @@ def build_react_graph(
                         "route_source": scope["route"].get("source"),
                     }
                 )
-        route_cost = scoped.route.cost_usd if scoped.route is not None else 0.0
+        route_cost = scoped.scope.cost_usd if scoped.scope is not None else 0.0
         # ``scope`` remains a first-class admin trace node and runtime-state
         # field, but it is not a user-visible chat action. Do not persist an
         # internal "agent_route: react" event into the chat timeline.
-        if scoped.route is not None and scoped.selected_kbs:
+        if scoped.scope is not None and scoped.scope.kb_route is not None and scoped.selected_kbs:
             await em(
                 {
                     "event": "kb_routed",
@@ -222,8 +213,8 @@ def build_react_graph(
                     "kb_id": scoped.selected_kbs[0].id,
                     "kb_ids": [item.id for item in scoped.selected_kbs],
                     "name": "、".join(str(item.name) for item in scoped.selected_kbs),
-                    "source": scoped.route.source,
-                    "confidence": scoped.route.confidence,
+                    "source": scoped.scope.source,
+                    "confidence": scoped.scope.confidence,
                 }
             )
         return {
@@ -232,7 +223,7 @@ def build_react_graph(
             "kb_id": scope["selected_kb_ids"][0] if scope["selected_kb_ids"] else None,
             # Keep the persisted trace and observability payload compatible
             # with the previous Supervisor-owned auto-route contract.
-            "kb_auto_route": scope["route"] if scoped.route is not None else state.get("kb_auto_route"),
+            "kb_auto_route": scope["route"],
             "cost_usd": route_cost,
         }
 
@@ -248,7 +239,7 @@ def build_react_graph(
             fallback_llm_cfg=fallback_llm_cfg,
             emit=em,
         )
-        route_cost = scoped.route.cost_usd if scoped.route is not None else 0.0
+        route_cost = scoped.scope.cost_usd if scoped.scope is not None else 0.0
         model_cost = result.get("cost_usd")
         result["cost_usd"] = (
             None if route_cost is None or model_cost is None else float(route_cost) + float(model_cost)

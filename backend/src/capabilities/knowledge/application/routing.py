@@ -226,7 +226,7 @@ async def resolve_auto_kb_route_from_candidates(*, messages: list[dict[str, Any]
 
 
 async def resolve_auto_kb_route(session: AsyncSession, *, user_id: str, messages: list[dict[str, Any]], llm_cfg: "UserLLMConfig | None") -> AutoKBRoute:
-    """Resolve a route for compatibility callers outside supervisor runtime."""
+    """Resolve KB selection for compatibility callers outside ReAct scope."""
     from src.settings import get_settings
 
     candidates = await list_readable_routable_kbs(session, user_id=user_id, limit=getattr(get_settings(), "kb_auto_route_max_candidates", 8))

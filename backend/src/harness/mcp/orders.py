@@ -2,7 +2,7 @@
 
 This module intentionally contains no subprocess, endpoint or credential
 knowledge. The MCP catalog/manager decide how a capability reaches an MCP
-server; orders only shapes data for the supervisor's human-intervention UI.
+server; orders only shapes data for the deterministic human-intervention UI.
 """
 from __future__ import annotations
 

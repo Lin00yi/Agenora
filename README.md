@@ -1,14 +1,14 @@
 # Agenora
 
-个人项目：私有 RAG 知识库 + 可观测的多 Agent 编排与受控执行。
+个人项目：私有 RAG 知识库 + 可观测的受约束单 Agent ReAct 执行。
 
-上传文档 / 抓取网页 → 用自然语言提问。系统由 Supervisor 在知识库路由、RAG 检索、通用对话及订单执行能力之间受控调度；答案带原文引用，路由、检索与工具调用过程可见。
+上传文档 / 抓取网页 → 用自然语言提问。系统先确定本轮允许的知识库与工具范围，再由单一 ReAct Agent 按需检索、调用工具与生成回答；答案带原文引用，范围判定、检索与工具调用过程可见。
 
 ## 能做什么
 
 - **私有知识库** — PDF / Markdown / Word / 网页，按账号隔离
 - **混合检索** — 关键词 + 向量，可选 cross-encoder 重排
-- **受控多 Agent 编排** — Supervisor 调度知识库路由、RAG、通用对话与订单执行；检索无证据时可受限切换到通用回答
+- **受约束单 Agent ReAct** — 规则、triage、complex、回退共同决定本轮权限、知识库与工具；Agent 在预算内自主调用能力
 - **MCP 执行示例** — 本地订单服务经 stdio MCP 对接；订单读取按当前登录用户隔离，退款采用“创建确认单 → 用户二次确认 → 幂等执行”
 - **可观测执行过程** — 思考链展示任务路由、工具调用、耗时与命中来源
 - **BYOK** — 自带 LLM / Embedding Key，数据留在你的部署环境
@@ -69,7 +69,7 @@ npm run sync:model-catalog
 
 用户也可从知识库详情页点击「基于此知识库提问」，创建一个显式绑定该知识库的会话。只有需要让用户自行选择知识库时，才将该变量设为 `selectable`。显式绑定会在后续请求中沿用已保存的 `kb_id`；自动路由仅作用于当前轮，下一轮会重新判断，避免把一次自动命中误变成永久锁库。
 
-后端通过 `KB_AUTO_ROUTE_MODE=llm_fallback` 启用规则优先、轻量 LLM 兜底的自动路由；可改为 `off`、`rule_only` 或 `always_llm`。接口层只准备已授权且可检索的候选集；Planner 为未绑定会话生成 `kb_route` DAG 节点，Supervisor 委托 `kb_router` 后动态展开为 RAG 或通用聊天任务。明确提到多个知识库、或要求比较与整合时，单轮最多并行检索 3 个 KB，最终回答保留各自引用来源。`KB_AUTO_ROUTE_MAX_CANDIDATES` 默认为 8，用于限制单轮交给路由器的已授权候选数。Docker 部署修改根目录 `.env` 后需重启后端；若同时修改前端选择器策略，使用 `docker compose up -d --build frontend` 重建前端。
+后端通过 `AGENT_ROUTE_MODE=layered` 启用规则 → triage → complex → 回退的运行范围判定。只有判定为知识型问题时，才会在已授权且可检索的候选库中执行 `KB_AUTO_ROUTE_MODE=llm_fallback` 的 KB 选择；普通对话不会为此额外调用模型。明确提到多个知识库、或要求比较与整合时，单轮最多选择 3 个 KB，最终回答保留各自引用来源。`KB_AUTO_ROUTE_MAX_CANDIDATES` 默认为 8，用于限制本轮候选范围。Docker 部署修改根目录 `.env` 后需重启后端；若同时修改前端选择器策略，使用 `docker compose up -d --build frontend` 重建前端。
 
 ### 订单与退款 MCP 执行示例
 
@@ -90,18 +90,13 @@ uv run python scripts/maintain_checkpoints.py --keep-per-thread 8
 
 确认输出后，显式加上 `--apply --vacuum-into /Volumes/<有足够空间的磁盘>/agent_checkpoints.compacted.db` 生成紧凑副本，再在后端停机状态下备份并替换原库。脚本会在删除前保守校验目标卷至少有源库 110% 的空闲空间；本盘空间不足时不要先执行 `--apply`，应改用外接盘或另一块卷。生产环境应使用 PostgreSQL checkpoint backend，并在数据库层制定独立保留策略。
 
-### 多 Agent 编排链路
+### 单 Agent Runtime Scope 链路
 
 每轮先保留原始用户输入，并做无损空白规范化和订单号/确认单号等实体提取；不会在这里改写可能影响执行安全的字段。随后由规则、轻量模型、复杂模型依次产出 `domain / intent / risk / missing_slots` 的结构化意图，只有低置信度才升级到下一层。
 
-意图识别完成后，受约束的 Planner 才会生成并校验 DAG：任务只能使用 Agent Registry 中允许的能力，依赖必须无环且指向前置任务。相互独立的只读任务可以并行；存在写操作、审批要求或同一资源冲突时，Supervisor 串行调度。退款确认被强制标记为审批任务，并在工具调用层再次校验用户最新消息必须精确为 `确认退款 <approval_id>`。RAG 检索的 query 改写仍只在 RAG agent 内按需运行，不参与订单或退款意图判断。
+意图识别完成后，Runtime Scope 只授予本轮所需的知识库和工具；它不生成 DAG，也不会在多个 Agent 之间调度。ReAct Agent 在这些边界内执行 `reason → tools → reason` 循环。退款确认仍由独立的确定性审批图处理，并在工具调用层再次校验用户最新消息必须精确为 `确认退款 <approval_id>`。RAG 检索的 query 改写只在 ReAct 选择 KB 检索工具后按需运行，不参与订单或退款意图判断。
 
-文档上传会先创建可恢复的 operation job，再由进程内任务立即尝试处理。Docker 模式会自动运行 `operation-worker`，统一恢复入库、记忆维护、KG 同步和评测；本地开发若需要从重启前恢复未完成的入库，可另开终端执行：
-
-```bash
-cd backend
-.venv/bin/python -m src.bootstrap.workers.operations
-```
+文档上传会先创建可恢复的 operation job。Docker 模式使用独立的 `operation-worker` 统一恢复入库、记忆维护、KG 同步和评测；本地开发则由 API 进程内的单通道 worker 处理，避免嵌入式 Milvus Lite 被两个进程同时打开。不要在本地 Milvus Lite 模式另起 `operation-worker` 进程。
 
 ### RAG 评测与监控闭环
 

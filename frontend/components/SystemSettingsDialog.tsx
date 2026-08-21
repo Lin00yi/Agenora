@@ -567,7 +567,7 @@ function AboutTab() {
       <div>
         <h3 className="font-medium">Agenora</h3>
         <p className="mt-1 text-muted">
-          Private RAG knowledge base with observable multi-agent orchestration — grounded answers you can trace.
+          Private RAG knowledge base with observable constrained ReAct execution — grounded answers you can trace.
         </p>
       </div>
 
@@ -591,8 +591,8 @@ function AboutTab() {
 
       <div className="rounded-lg border border-surface-border/70 bg-surface p-4 text-xs leading-5 text-muted shadow-sm">
         <p>
-          Agenora 是个人维护的本地优先知识库与多 Agent 编排项目。Supervisor 会在知识库路由、
-          RAG 检索与通用对话之间受控调度，路由、检索和工具调用过程可追溯；数据保存在你自己的数据库中。
+          Agenora 是个人维护的本地优先知识库与受约束 ReAct 项目。系统会先确定本轮知识库与工具范围，
+          再由单一 Agent 按需检索和调用工具；范围判定、检索和工具调用过程可追溯，数据保存在你自己的数据库中。
           使用本服务即表示你了解：LLM 输出可能不准确；上传到知识库的文档会经过 embedding 提供商处理。详见仓库 README。
         </p>
       </div>
