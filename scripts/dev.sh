@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Agenora 本地开发：同时启动 FastAPI (:8000) 和 Next.js (:3000)。
+# Agenora 本地开发：启动 FastAPI (:8000) 和 Next.js (:3000)。
+# 开发环境的 durable worker 由 FastAPI lifespan 以同进程方式启动，
+# 这样嵌入式 Milvus Lite 不会被两个进程同时打开。
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"

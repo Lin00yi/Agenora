@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import logging
+from asyncio import CancelledError, Task, create_task
+from contextlib import suppress
 from contextlib import asynccontextmanager
 
 import structlog
@@ -29,8 +31,24 @@ async def application_lifespan(app: FastAPI):
     log.info("system_kbs_ready")
     await seed_admins()
     log.info("admins_seeded")
+    operation_worker_task: Task[None] | None = None
+    # Local development commonly uses an embedded Milvus Lite file. A second
+    # worker process cannot open that file while the API owns it, so run the
+    # durable operation worker inside this process. Production Compose keeps
+    # this disabled and starts its dedicated `operation-worker` service.
+    if container.settings.app_env.strip().lower() != "prod":
+        from src.bootstrap.workers.operations import worker_main
+
+        operation_worker_task = create_task(
+            worker_main(), name="agenora-local-operation-worker"
+        )
+        log.info("operation_worker_started", mode="in_process")
     try:
         yield
     finally:
+        if operation_worker_task is not None:
+            operation_worker_task.cancel()
+            with suppress(CancelledError):
+                await operation_worker_task
         await close_mcp_manager()
         log.info("shutdown")
