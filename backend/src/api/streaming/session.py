@@ -49,6 +49,57 @@ from src.capabilities.settings.domain.models import (
 log = structlog.get_logger()
 
 
+def _fresh_turn_state(
+    *,
+    messages: list[dict[str, str]],
+    kb_id: str | None,
+    mcp_plugin_set_version: str | None,
+    prompt_injection_risk: str,
+    prompt_injection_reasons: list[str],
+) -> dict[str, Any]:
+    """Return a complete non-interrupt turn state for a durable graph thread.
+
+    LangGraph merges an invoke payload with the last checkpoint for the same
+    ``thread_id``.  That is required for a paused HITL turn, but an ordinary
+    next chat turn must never inherit terminal or retrieval state from the
+    previous turn.  In particular, a stale ``final_report`` makes ``reason``
+    exit before it calls the model, leaving the browser with a completed SSE
+    stream that contained no tokens.
+    """
+    return {
+        "messages": messages,
+        "pending_tool_calls": [],
+        "tool_call_log": [],
+        "tool_call_count": 0,
+        "tool_call_limit": 0,
+        "tool_result_budget": {},
+        "web_search_call_count": 0,
+        "web_search_evidence_count": 0,
+        "kb_queries": [],
+        "kb_context": "",
+        "retrieved_evidence": [],
+        "retrieval_assessment": {},
+        "kb_search_done": False,
+        "query_policy_action": "",
+        "query_policy_reason": "",
+        "query_policy_source": "",
+        "query_policy_latency_ms": 0,
+        "citations": [],
+        "final_report": None,
+        "report_streamed": False,
+        "iterations": 0,
+        "cost_usd": None,
+        "prompt_trace": {},
+        "runtime_scope": {},
+        "prompt_injection_risk": prompt_injection_risk,
+        "prompt_injection_reasons": prompt_injection_reasons,
+        "rag_suspicious_chunks": 0,
+        "rag_filtered_chunks": [],
+        "kb_id": kb_id,
+        "mcp_plugin_set_version": mcp_plugin_set_version,
+    }
+
+
 async def check_chat_rate_limit(*, rate_key: str, limit_per_hour: int) -> int:
     """Consume one chat quota slot or raise the shared SSE/API response shape."""
     allowed, remaining = await rate_check(rate_key, limit_per_hour)
@@ -538,20 +589,13 @@ async def run_chat_session(
             # empty transcript and later poll this same row for progress.
             draft_dirty = True
             await persist_draft(force=True)
-            initial_state: dict[str, Any] = {
-                "messages": full_messages,
-                "iterations": 0,
-                "tool_call_log": [],
-                "tool_call_count": 0,
-                "tool_result_budget": {},
-                "citations": [],
-                "prompt_injection_risk": prompt_guard.level,
-                "prompt_injection_reasons": prompt_guard.reasons,
-                "rag_suspicious_chunks": 0,
-                "rag_filtered_chunks": [],
-                "kb_id": kb.id if kb else None,
-                "mcp_plugin_set_version": active_mcp_manager.plugin_set_version,
-            }
+            initial_state = _fresh_turn_state(
+                messages=full_messages,
+                kb_id=kb.id if kb else None,
+                mcp_plugin_set_version=active_mcp_manager.plugin_set_version,
+                prompt_injection_risk=prompt_guard.level,
+                prompt_injection_reasons=prompt_guard.reasons,
+            )
             if use_legacy_supervisor:
                 initial_state.update(
                     {

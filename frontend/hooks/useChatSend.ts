@@ -910,7 +910,10 @@ export function useChatSend({
                 break;
               }
               const snap = streamingRef.current;
-              const emptyResponse = !snap?.content.trim();
+              // A final text segment can already have been sealed into
+              // ``parts`` before `done` (for example after a tool event). Do
+              // not mistake that valid response for an empty SSE round.
+              const emptyResponse = !snap || !joinAssistantText(snap.parts, snap.content).trim();
               if (emptyResponse) {
                 updateLastAssistant((m) =>
                   m.role === "assistant"
