@@ -42,61 +42,23 @@ type Props = {
 // Compatibility only for built-in tools and historical rows created before
 // MCP capabilities emitted a reviewed display descriptor. Newly mounted MCP
 // tools render from event.display and do not require a frontend release.
-const LEGACY_NAME_LABEL: Record<string, string> = {
+const BUILTIN_TOOL_LABEL: Record<string, string> = {
   search_kb: "检索知识库",
   search_kg: "检索知识图谱",
   web_search: "搜索网络",
   generate_kb_report: "生成知识库报告",
   get_current_time: "获取当前时间",
-  intent_ready: "识别任务意图",
   human_input_required: "等待你补充信息",
-  dag_ready: "处理计划",
-  agent_route: "选择处理方式",
-  agent_handoff: "切换处理方式",
-  kb_routed: "选择知识库",
 };
-
-const AGENT_LABEL: Record<string, string> = {
-  chat: "通用对话",
-  rag: "知识库问答",
-  orders: "订单与退款",
-};
-
-const TASK_LABEL: Record<string, string> = {
-  qa_kb: "查阅知识库",
-  qa_chat: "通用对话",
-  qa_orders: "订单与退款",
-};
-
-type DagTask = {
-  id?: string;
-  type?: string;
-  agent?: string;
-  depends_on?: string[];
-};
-
-export function formatDagPlan(tasks: unknown): string {
-  if (!Array.isArray(tasks) || tasks.length === 0) return "";
-  const labels = tasks.map((raw) => {
-    const task = raw as DagTask;
-    if (task.type && TASK_LABEL[task.type]) return TASK_LABEL[task.type];
-    if (task.agent === "rag") return TASK_LABEL.qa_kb;
-    if (task.agent === "chat") return TASK_LABEL.qa_chat;
-    return AGENT_LABEL[String(task.agent ?? "")] || "处理";
-  });
-  return labels.join(" → ");
-}
 
 /**
  * Compact processing record for end users.
- * Route/source/confidence stay out of the visible line; agent identity lives
- * in the collapsed summary so expanded rows are not repeated badges.
+ * Historical orchestration stays in the admin Trace; chat shows only actions
+ * that are meaningful to the user.
  */
 export default function ThinkingChain({ events, intro }: Props) {
-  // ``agent_route: react`` is an implementation detail of the default
-  // single-agent runtime. It is useful in an admin trace, but does not
-  // describe a user-visible action and must not make a chat reply look as if
-  // it delegated to a separate Agent.
+  // Supervisor planning/dispatch events are historical runtime details, not
+  // user-visible actions.
   const visibleEvents = useMemo(() => compactEvents(events), [events]);
   const hasRunning = visibleEvents.some((event) => event.status === "running");
   const [open, setOpen] = useState(hasRunning);
@@ -199,86 +161,26 @@ function ProcessEvent({ event, now }: { event: ToolEvent; now: number }) {
   );
 }
 
-/** Keep the latest plan and hide chat-internal runtime route events. */
+/** Remove historical Supervisor orchestration from the end-user timeline. */
 export function compactEvents(events: ToolEvent[]): ToolEvent[] {
-  const latestPlan = [...events].reverse().find((event) => event.name === "dag_ready");
-  const out: ToolEvent[] = [];
-  let planEmitted = false;
-  for (const event of events) {
-    if (isInternalReactRoute(event)) continue;
-    if (latestPlan && event.name === "agent_route") continue;
-    if (event.name === "dag_ready") {
-      if (planEmitted || !latestPlan) continue;
-      out.push(latestPlan);
-      planEmitted = true;
-      continue;
-    }
-    const prev = out[out.length - 1];
-    if (
-      event.name === "agent_route" &&
-      prev?.name === "agent_route" &&
-      String(prev.input?.agent ?? "") === String(event.input?.agent ?? "")
-    ) {
-      out[out.length - 1] = event;
-      continue;
-    }
-    out.push(event);
-  }
-  return out;
+  return events.filter((event) => !isHistoricalOrchestrationEvent(event.name));
 }
 
 function getTraceSummary(events: ToolEvent[], hasRunning: boolean, elapsedMs: number | null): string {
-  const agentHint = latestPlanOrAgentLabel(events);
   if (hasRunning) {
     const active = events.filter((event) => event.status === "running" && !isRouteEvent(event.name));
     if (active.length === 0) {
-      return agentHint ? `${agentHint} · 处理中` : "正在处理";
+      return "正在处理";
     }
     const labels = new Set(active.map((event) => toolLabel(event)));
     const action =
       labels.size === 1 ? `正在${Array.from(labels)[0]}` : `正在处理 · ${active.length} 项`;
-    return agentHint ? `${agentHint} · ${action}` : action;
+    return action;
   }
   if (events.some((event) => event.status === "error" || event.status === "blocked")) {
-    const base = elapsedMs == null ? "部分步骤未完成" : `部分步骤未完成 · ${formatElapsed(elapsedMs)}`;
-    return agentHint ? `${agentHint} · ${base}` : base;
+    return elapsedMs == null ? "部分步骤未完成" : `部分步骤未完成 · ${formatElapsed(elapsedMs)}`;
   }
-  const base = elapsedMs == null ? "已处理" : `已处理 ${formatElapsed(elapsedMs)}`;
-  return agentHint ? `${agentHint} · ${base}` : base;
-}
-
-function latestPlanOrAgentLabel(events: ToolEvent[]): string | null {
-  const plan = [...events].reverse().find((event) => event.name === "dag_ready");
-  if (plan) {
-    const label = formatDagPlan(plan.input?.tasks);
-    if (label) return label;
-  }
-  return latestAgentLabel(events);
-}
-
-function latestAgentLabel(events: ToolEvent[]): string | null {
-  for (let i = events.length - 1; i >= 0; i--) {
-    const event = events[i];
-    if (event.name === "agent_handoff") {
-      const to = String(event.input?.to ?? "");
-      const label = publicAgentLabel(to);
-      if (label) return label;
-    }
-    if (event.name === "agent_route") {
-      const agent = String(event.input?.agent ?? "");
-      const label = publicAgentLabel(agent);
-      if (label) return label;
-    }
-    const label = publicAgentLabel(event.agent);
-    if (label) return label;
-  }
-  return null;
-}
-
-function publicAgentLabel(agent: string | undefined): string | null {
-  // React is the shared runtime, not a separately delegated worker.
-  if (!agent || agent === "react") return null;
-  return AGENT_LABEL[agent] ?? null;
+  return elapsedMs == null ? "已处理" : `已处理 ${formatElapsed(elapsedMs)}`;
 }
 
 function useTraceElapsed(events: ToolEvent[], now: number): number | null {
@@ -294,21 +196,6 @@ function useTraceElapsed(events: ToolEvent[], now: number): number | null {
 }
 
 export function formatToolAction(event: ToolEvent): string {
-  if (event.name === "dag_ready") {
-    const plan = formatDagPlan(event.input?.tasks);
-    return plan || "处理计划";
-  }
-  if (event.name === "agent_route") {
-    const agent = String(event.input?.agent ?? "");
-    const label = (AGENT_LABEL[agent] ?? agent) || "处理";
-    return `使用${label}`;
-  }
-  if (event.name === "agent_handoff") {
-    const from = AGENT_LABEL[String(event.input?.from ?? "")] ?? String(event.input?.from ?? "");
-    const to = AGENT_LABEL[String(event.input?.to ?? "")] ?? String(event.input?.to ?? "");
-    if (from && to) return `从${from}转到${to}`;
-    return "切换处理方式";
-  }
   if (event.name === "kb_routed") {
     const name = String(event.input?.name ?? "").trim();
     return name ? `本轮检索 ${name}` : "本轮选择知识库";
@@ -321,13 +208,6 @@ export function formatToolAction(event: ToolEvent): string {
 }
 
 function formatToolDetail(event: ToolEvent): string {
-  if (event.name === "dag_ready" || event.name === "agent_route" || event.name === "agent_handoff") {
-    const reason = typeof event.input?.reason === "string" ? event.input.reason : event.reason;
-    if (typeof reason !== "string") return "";
-    return event.name === "dag_ready"
-      ? formatDagRouteReason(event.input?.tasks, reason.trim())
-      : formatRouteReason(reason.trim());
-  }
   const displayDetail = event.display?.detail?.trim();
   if (displayDetail) return truncate(displayDetail, 72);
   const input = event.input;
@@ -342,78 +222,7 @@ function formatToolDetail(event: ToolEvent): string {
 function toolLabel(event: ToolEvent): string {
   const dynamic = event.display?.label?.trim();
   if (dynamic) return dynamic;
-  return LEGACY_NAME_LABEL[event.name] ?? "调用服务能力";
-}
-
-/** Map machine / LLM snake reasons to short Chinese; hide opaque tokens. */
-export function formatRouteReason(reason: string): string {
-  if (!reason) return "";
-  const exact: Record<string, string> = {
-    kb_bound_default: "已绑定知识库",
-    unbound_default: "未绑定知识库",
-    kb_bound_non_kb_intent: "闲聊或非检索问题",
-    kb_bound_chitchat: "闲聊",
-    rag_empty_evidence: "知识库暂无相关内容",
-    rag_missing_kb_fallback: "知识库暂不可用",
-    empty_query_kb_bound: "空问题",
-    single_available: "仅一条可用通路",
-    first_available: "默认通路",
-    checking_kb_relevance: "判断是否需要查阅知识库",
-    kb_selected_for_retrieval: "已选择知识库进行检索",
-    no_matching_kb_general_fallback: "未匹配到知识库，按通用对话回答",
-    orders_unavailable_general_fallback: "订单能力暂不可用，按通用对话回答",
-    needs_kb_fact: "需要查阅知识库",
-    needs_kb: "需要查阅知识库",
-    kb_fact: "知识库事实问题",
-    chitchat: "闲聊",
-    general_chat: "通用对话即可",
-    web_needed: "需要联网核实",
-    needs_kb_then_web: "先查知识库，不够再联网",
-    multi_intent: "问题含多个意图",
-  };
-  if (exact[reason]) return exact[reason];
-
-  const lower = reason.toLowerCase();
-  if (lower.includes("query_about") || lower.includes("about_")) return "需要查阅知识库";
-  if (lower.includes("chitchat") || lower.includes("greeting")) return "闲聊";
-  if (lower.includes("non_kb") || lower.includes("not_kb")) return "非知识库问题";
-  if (lower.includes("web") || lower.includes("search")) return "需要联网";
-  // Opaque model tokens (snake_case / truncated) stay hidden for end users.
-  if (/^[a-z0-9_]+$/i.test(reason) || reason.includes("_") || reason.includes("[")) {
-    return "";
-  }
-  return reason.length > 24 ? `${reason.slice(0, 24)}…` : reason;
-}
-
-/**
- * Persisted histories can contain plans emitted before the backend began
- * separating classifier rationale from executable-plan rationale.  Make the
- * renderer defensive so a chat plan never claims that it queried a KB.
- */
-export function formatDagRouteReason(tasks: unknown, reason: string): string {
-  if (!Array.isArray(tasks)) return formatRouteReason(reason);
-  const taskTypes = tasks
-    .map((raw) => String((raw as DagTask | null)?.type ?? ""))
-    .filter(Boolean);
-  if (taskTypes.length === 1 && taskTypes[0] === "kb_route") {
-    return "判断是否需要查阅知识库";
-  }
-  if (taskTypes.length === 1 && taskTypes[0] === "qa_chat") {
-    const lower = reason.toLowerCase();
-    if (
-      reason === "needs_kb_fact" ||
-      reason === "needs_kb" ||
-      reason === "kb_fact" ||
-      lower.includes("kb") ||
-      lower.includes("rag") ||
-      lower.includes("fact") ||
-      lower.includes("query_about") ||
-      lower.includes("about_")
-    ) {
-      return "通用对话即可";
-    }
-  }
-  return formatRouteReason(reason);
+  return BUILTIN_TOOL_LABEL[event.name] ?? "调用服务能力";
 }
 
 function formatEventDuration(event: ToolEvent, now: number): string | null {
@@ -432,11 +241,11 @@ function isSearchTool(name: string): boolean {
 }
 
 function isRouteEvent(name: string): boolean {
-  return name === "dag_ready" || name === "agent_route" || name === "agent_handoff" || name === "kb_routed";
+  return name === "kb_routed";
 }
 
-function isInternalReactRoute(event: ToolEvent): boolean {
-  return event.name === "agent_route" && String(event.input?.agent ?? "") === "react";
+function isHistoricalOrchestrationEvent(name: string): boolean {
+  return name === "intent_ready" || name === "dag_ready" || name === "agent_route" || name === "agent_handoff";
 }
 
 function normalizeIssue(issue: string): string {
