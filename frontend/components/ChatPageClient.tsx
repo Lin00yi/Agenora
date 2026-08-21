@@ -704,17 +704,6 @@ export function ChatPage({
           <ChatTopBar
             title={currentConversation?.title ?? DEFAULT_TITLE}
             onOpenSidebar={() => setSidebarOpen(true)}
-            conversation={currentConversation}
-            kbName={currentKb?.name ?? "通用对话"}
-            modelLabel={
-              currentModel ||
-              (llmSource === "system"
-                ? "系统默认"
-                : llmSource === "user"
-                  ? "默认模型"
-                  : "未配置")
-            }
-            messageStats={formatMessageStats(visibleMessages)}
           />
 
           <div className="min-h-0 flex-1" data-kf-region="workspace-host">
@@ -781,6 +770,7 @@ export function ChatPage({
                         onSelectKb={handleKbChange}
                         onModelChange={handleModelChange}
                         onManageModels={openLlmSettings}
+                        messageStats={formatMessageStats(visibleMessages)}
                       />
                     )}
                   </div>
@@ -867,6 +857,7 @@ export function ChatPage({
                           onSelectKb={handleKbChange}
                           onModelChange={handleModelChange}
                           onManageModels={openLlmSettings}
+                          messageStats={formatMessageStats(visibleMessages)}
                         />
                       )}
                     </div>

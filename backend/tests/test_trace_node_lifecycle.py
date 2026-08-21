@@ -45,14 +45,6 @@ async def test_react_scope_is_a_first_class_trace_observation(monkeypatch) -> No
     assert [(obs.name, obs.metadata["kind"]) for obs in trace.observations] == [
         ("scope", "general")
     ]
-    assert events == [
-        {
-            "event": "agent_route",
-            "agent": "react",
-            "scope": "general",
-            "source": "none",
-            "confidence": "high",
-            "reason": "no_kb_candidates",
-        }
-    ]
+    # Scope is trace/runtime metadata, not a user-visible pseudo-tool.
+    assert events == []
     await trace.finish()

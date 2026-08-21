@@ -210,19 +210,9 @@ def build_react_graph(
                     }
                 )
         route_cost = scoped.route.cost_usd if scoped.route is not None else 0.0
-        # A stage summary is deliberately not model reasoning/chain-of-thought.
-        # It only tells the UI which bounded capability scope was selected.
-        route = scope["route"]
-        await em(
-            {
-                "event": "agent_route",
-                "agent": "react",
-                "scope": scope["kind"],
-                "source": str(route.get("source") or "none"),
-                "confidence": str(route.get("confidence") or "high"),
-                "reason": str(route.get("reason") or "capability_scope_selected"),
-            }
-        )
+        # ``scope`` remains a first-class admin trace node and runtime-state
+        # field, but it is not a user-visible chat action. Do not persist an
+        # internal "agent_route: react" event into the chat timeline.
         if scoped.route is not None and scoped.selected_kbs:
             await em(
                 {

@@ -54,6 +54,7 @@ export function Composer({
   onSelectKb,
   onModelChange,
   onManageModels,
+  messageStats,
   centered = false,
 }: {
   value: string;
@@ -81,6 +82,8 @@ export function Composer({
   onSelectKb: (id: string | null) => void;
   onModelChange: (model: string | null) => void;
   onManageModels: () => void;
+  /** Current conversation turn/message count, displayed beside the AI notice. */
+  messageStats: string;
   centered?: boolean;
 }) {
   const profileOptions = [...modelProfiles]
@@ -226,7 +229,9 @@ export function Composer({
           </div>
         </div>
       </div>
-      <p className="kf-composer-disclaimer mt-2 text-center text-xs">{"\u5185\u5bb9\u7531 AI \u751f\u6210\uff0c\u8bf7\u4ed4\u7ec6\u7504\u522b"}</p>
+      <p className="kf-composer-disclaimer mt-2 text-center text-xs">
+        <span className="tabular-nums">{messageStats}</span>
+      </p>
     </div>
   );
 }

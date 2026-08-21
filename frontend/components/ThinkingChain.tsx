@@ -57,7 +57,6 @@ const LEGACY_NAME_LABEL: Record<string, string> = {
 };
 
 const AGENT_LABEL: Record<string, string> = {
-  react: "受约束 Agent",
   chat: "通用对话",
   rag: "知识库问答",
   orders: "订单与退款",
@@ -94,16 +93,20 @@ export function formatDagPlan(tasks: unknown): string {
  * in the collapsed summary so expanded rows are not repeated badges.
  */
 export default function ThinkingChain({ events, intro }: Props) {
-  const hasRunning = events.some((event) => event.status === "running");
+  // ``agent_route: react`` is an implementation detail of the default
+  // single-agent runtime. It is useful in an admin trace, but does not
+  // describe a user-visible action and must not make a chat reply look as if
+  // it delegated to a separate Agent.
+  const visibleEvents = useMemo(() => compactEvents(events), [events]);
+  const hasRunning = visibleEvents.some((event) => event.status === "running");
   const [open, setOpen] = useState(hasRunning);
   const wasRunningRef = useRef(hasRunning);
   const [now, setNow] = useState(() => Date.now());
-  const elapsedMs = useTraceElapsed(events, now);
+  const elapsedMs = useTraceElapsed(visibleEvents, now);
   const summary = useMemo(
-    () => getTraceSummary(events, hasRunning, elapsedMs),
-    [events, hasRunning, elapsedMs]
+    () => getTraceSummary(visibleEvents, hasRunning, elapsedMs),
+    [visibleEvents, hasRunning, elapsedMs]
   );
-  const visibleEvents = useMemo(() => compactEvents(events), [events]);
 
   useEffect(() => {
     if (hasRunning) {
@@ -123,6 +126,8 @@ export default function ThinkingChain({ events, intro }: Props) {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [hasRunning]);
+
+  if (visibleEvents.length === 0) return null;
 
   return (
     <section aria-label="处理过程" className="py-1 text-sm">
@@ -194,12 +199,13 @@ function ProcessEvent({ event, now }: { event: ToolEvent; now: number }) {
   );
 }
 
-/** Keep the latest plan; hide internal agent_route once a DAG is shown. */
+/** Keep the latest plan and hide chat-internal runtime route events. */
 export function compactEvents(events: ToolEvent[]): ToolEvent[] {
   const latestPlan = [...events].reverse().find((event) => event.name === "dag_ready");
   const out: ToolEvent[] = [];
   let planEmitted = false;
   for (const event of events) {
+    if (isInternalReactRoute(event)) continue;
     if (latestPlan && event.name === "agent_route") continue;
     if (event.name === "dag_ready") {
       if (planEmitted || !latestPlan) continue;
@@ -255,15 +261,24 @@ function latestAgentLabel(events: ToolEvent[]): string | null {
     const event = events[i];
     if (event.name === "agent_handoff") {
       const to = String(event.input?.to ?? "");
-      if (AGENT_LABEL[to]) return AGENT_LABEL[to];
+      const label = publicAgentLabel(to);
+      if (label) return label;
     }
     if (event.name === "agent_route") {
       const agent = String(event.input?.agent ?? "");
-      if (AGENT_LABEL[agent]) return AGENT_LABEL[agent];
+      const label = publicAgentLabel(agent);
+      if (label) return label;
     }
-    if (event.agent && AGENT_LABEL[event.agent]) return AGENT_LABEL[event.agent];
+    const label = publicAgentLabel(event.agent);
+    if (label) return label;
   }
   return null;
+}
+
+function publicAgentLabel(agent: string | undefined): string | null {
+  // React is the shared runtime, not a separately delegated worker.
+  if (!agent || agent === "react") return null;
+  return AGENT_LABEL[agent] ?? null;
 }
 
 function useTraceElapsed(events: ToolEvent[], now: number): number | null {
@@ -418,6 +433,10 @@ function isSearchTool(name: string): boolean {
 
 function isRouteEvent(name: string): boolean {
   return name === "dag_ready" || name === "agent_route" || name === "agent_handoff" || name === "kb_routed";
+}
+
+function isInternalReactRoute(event: ToolEvent): boolean {
+  return event.name === "agent_route" && String(event.input?.agent ?? "") === "react";
 }
 
 function normalizeIssue(issue: string): string {
