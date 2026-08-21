@@ -12,8 +12,16 @@ from src.harness.mcp.policies import supports_high_risk_policy
 from src.harness.tools.base import ToolRegistry
 from src.harness.tools.citations import citations_from_tool_raw, merge_citations
 from src.harness.tools.web_search import _format_web_results, select_web_result_raw
+from src.settings import get_settings
 
-from .constants import MAX_SEARCH_KB_CALLS_PER_STEP
+from .constants import (
+    MAX_CONCURRENT_TOOL_CALLS_PER_STEP,
+    MAX_SEARCH_KB_CALLS_PER_STEP,
+    MAX_TOOL_CALLS_PER_TURN,
+    MAX_TOOL_RESULT_TOKENS_PER_CALL,
+    MAX_TOOL_RESULT_TOKENS_PER_STEP,
+)
+from .tool_results import compact_tool_results
 
 
 def _latest_user_text(messages: list[dict[str, Any]] | None) -> str:
@@ -85,6 +93,51 @@ async def call_tools_node(
     if not pending:
         return state
     _ = llm_cfg
+    settings = get_settings()
+    max_tool_calls = max(
+        1, int(getattr(settings, "agent_max_tool_calls_per_turn", MAX_TOOL_CALLS_PER_TURN))
+    )
+    max_concurrent_calls = max(
+        1,
+        int(
+            getattr(
+                settings,
+                "agent_max_concurrent_tool_calls",
+                MAX_CONCURRENT_TOOL_CALLS_PER_STEP,
+            )
+        ),
+    )
+    max_result_per_call = max(
+        1,
+        int(
+            getattr(
+                settings,
+                "agent_tool_result_max_tokens_per_call",
+                MAX_TOOL_RESULT_TOKENS_PER_CALL,
+            )
+        ),
+    )
+    max_result_per_step = max(
+        1,
+        int(
+            getattr(
+                settings,
+                "agent_tool_result_max_tokens_per_step",
+                MAX_TOOL_RESULT_TOKENS_PER_STEP,
+            )
+        ),
+    )
+
+    # Count actual external dispatches, rather than model requests. A blocked
+    # call consumes no side-effect budget, but cannot trigger an unbounded
+    # fan-out either because each graph turn is still iteration-bounded.
+    previous_tool_calls = max(
+        0,
+        int(state.get("tool_call_count") or len(state.get("tool_call_log") or [])),
+    )
+    reserved_tool_calls = 0
+    budget_lock = asyncio.Lock()
+    call_semaphore = asyncio.Semaphore(max_concurrent_calls)
 
     blocked_tool_call_ids: dict[str, str] = {}
     # A spent search budget is expected control flow, not a safety violation.
@@ -109,6 +162,7 @@ async def call_tools_node(
                 allowed_web_calls += 1
 
     async def _run(tc: dict[str, Any]) -> dict[str, Any]:
+        nonlocal reserved_tool_calls
         name = tc["name"]
         args = tc.get("input") or {}
         started_at_ms = int(time.time() * 1000)
@@ -184,6 +238,33 @@ async def call_tools_node(
                 "content": f"[blocked by safety] {reason}",
                 "is_error": True,
             }
+        # Reserve only after permission, confirmation and per-tool policy
+        # checks pass. Invalid calls must not consume the useful-work budget.
+        async with budget_lock:
+            if previous_tool_calls + reserved_tool_calls >= max_tool_calls:
+                budget_exhausted = True
+            else:
+                reserved_tool_calls += 1
+                budget_exhausted = False
+        if budget_exhausted:
+            reason = f"本轮工具调用总额度已达上限（{max_tool_calls} 次），本次未执行。"
+            await emit(
+                {
+                    "event": "tool_blocked",
+                    "id": tc["id"],
+                    "name": name,
+                    "input": args,
+                    "reason": reason,
+                    **({"display": display} if display else {}),
+                }
+            )
+            return {
+                "type": "tool_result",
+                "tool_use_id": tc["id"],
+                "content": f"[blocked by runtime budget] {reason}",
+                "is_error": True,
+                "executed": False,
+            }
         await emit(
             {
                 "event": "tool_start",
@@ -194,7 +275,8 @@ async def call_tools_node(
             }
         )
 
-        result = await registry.call(name, args)
+        async with call_semaphore:
+            result = await registry.call(name, args)
         citations = (
             citations_from_tool_raw(name, result.raw) if result.error is None else []
         )
@@ -223,7 +305,8 @@ async def call_tools_node(
             "citations": citations,
                 "latency_ms": result.latency_ms,
                 "display": display,
-                "t0": started_at_ms,
+            "t0": started_at_ms,
+            "executed": True,
         }
 
     results = await asyncio.gather(*[_run(tc) for tc in pending])
@@ -301,6 +384,17 @@ async def call_tools_node(
             }
         )
 
+    for result in results:
+        raw = result.get("raw")
+        result["is_final_result"] = bool(
+            isinstance(raw, dict) and raw.get("final_result") and not result.get("is_error")
+        )
+    output_budget = compact_tool_results(
+        results,
+        max_tokens_per_call=max_result_per_call,
+        max_tokens_per_step=max_result_per_step,
+    )
+
     tool_log = list(state.get("tool_call_log") or [])
     turn_citations = list(state.get("citations") or [])
     for tc, r in zip(pending, results, strict=False):
@@ -318,12 +412,25 @@ async def call_tools_node(
                 "t0": r.get("t0"),
                 "error": "yes" if r.get("is_error") else None,
                 "citations": cites,
+                "result_truncated": bool(r.get("result_truncated")),
                 **({"display": r["display"]} if r.get("display") else {}),
             }
         )
 
     messages = list(state.get("messages") or [])
-    messages.append({"role": "user", "content": results})
+    # `raw`, citations, UI descriptors and timing are runtime-only.  Do not
+    # carry them into checkpointed/model-visible history; provider adapters
+    # need only the canonical tool-result block fields.
+    model_results = [
+        {
+            "type": "tool_result",
+            "tool_use_id": r["tool_use_id"],
+            "content": r["content"],
+            "is_error": bool(r.get("is_error")),
+        }
+        for r in results
+    ]
+    messages.append({"role": "user", "content": model_results})
 
     final_report = state.get("final_report")
     for r in results:
@@ -342,4 +449,9 @@ async def call_tools_node(
         "final_report": final_report,
         "web_search_call_count": allowed_web_calls,
         "web_search_evidence_count": previous_web_evidence + accepted_web_evidence,
+        "tool_call_count": previous_tool_calls + sum(
+            1 for result in results if result.get("executed")
+        ),
+        "tool_call_limit": max_tool_calls,
+        "tool_result_budget": output_budget.to_state(),
     }

@@ -228,6 +228,7 @@ export type AdminObservationNode = {
   parent_observation_id: string | null;
   type: string;
   name: string;
+  lifecycle: "active" | "legacy" | "retired" | "unknown";
   started_at: string | null;
   ended_at: string | null;
   duration_ms: number | null;

@@ -10,6 +10,8 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
+from src.harness.runtime.agent_loop.constants import MAX_TOOL_CALLS_PER_TURN
+
 
 def _safe_scope(value: Any) -> dict[str, Any] | None:
     if not isinstance(value, dict):
@@ -48,12 +50,26 @@ def summarize_runtime_state(state: dict[str, Any] | None) -> dict[str, Any]:
             errors += 1
 
     iterations = source.get("iterations")
-    return {
+    result = {
         "iterations": max(0, int(iterations or 0)),
         "tool_calls": dict(sorted(names.items())),
-        "tool_call_total": sum(names.values()),
+        "tool_call_total": max(0, int(source.get("tool_call_count") or sum(names.values()))),
         "tool_error_total": errors,
         "web_search_calls": max(0, int(source.get("web_search_call_count") or 0)),
         "web_search_evidence": max(0, int(source.get("web_search_evidence_count") or 0)),
         **({"scope": scope} if (scope := _safe_scope(source.get("runtime_scope"))) else {}),
     }
+    budget = source.get("tool_result_budget")
+    if isinstance(budget, dict):
+        result["tool_result_budget"] = {
+            key: max(0, int(budget.get(key) or 0))
+            for key in ("truncated_calls", "source_tokens", "admitted_tokens")
+        }
+    if "tool_call_count" in source:
+        result["tool_call_budget"] = {
+            "used": result["tool_call_total"],
+            "limit": max(1, int(source.get("tool_call_limit") or MAX_TOOL_CALLS_PER_TURN)),
+            "exhausted": result["tool_call_total"]
+            >= max(1, int(source.get("tool_call_limit") or MAX_TOOL_CALLS_PER_TURN)),
+        }
+    return result

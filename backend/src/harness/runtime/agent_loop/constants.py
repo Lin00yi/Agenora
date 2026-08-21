@@ -4,7 +4,14 @@ from __future__ import annotations
 from typing import Any, Literal, TypedDict
 
 MAX_ITERATIONS = 10
+# The ReAct loop has a step cap, but a provider may still return an arbitrary
+# number of calls in a single step. Bound both fan-out and the whole-turn work
+# budget so one completion cannot create an unbounded execution chain.
+MAX_TOOL_CALLS_PER_TURN = 12
+MAX_CONCURRENT_TOOL_CALLS_PER_STEP = 4
 MAX_SEARCH_KB_CALLS_PER_STEP = 3
+MAX_TOOL_RESULT_TOKENS_PER_CALL = 1_500
+MAX_TOOL_RESULT_TOKENS_PER_STEP = 4_500
 MAX_KB_REWRITE_QUERIES = 3
 MAX_AUTO_CONTINUATIONS = 2
 EMPTY_ANSWER_FALLBACK = (

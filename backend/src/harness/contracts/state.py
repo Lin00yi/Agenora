@@ -29,6 +29,9 @@ class AgentState(TypedDict, total=False):
     messages: list[dict[str, Any]]
     pending_tool_calls: list[dict[str, Any]]
     tool_call_log: list[ToolCallRecord]
+    tool_call_count: int
+    tool_call_limit: int
+    tool_result_budget: dict[str, int]
     web_search_call_count: int
     web_search_evidence_count: int
     kb_queries: list[dict[str, Any]]

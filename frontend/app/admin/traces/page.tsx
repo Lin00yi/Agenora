@@ -347,6 +347,12 @@ function TraceDetail({
   const reasons = metaReasons(detail.metadata);
   const filteredChunks = metaFilteredChunks(detail.metadata);
   const suspiciousCount = metaSuspiciousCount(detail.metadata);
+  const runtime = typeof detail.metadata?.agent_runtime === "string"
+    ? detail.metadata.agent_runtime
+    : "历史记录";
+  const schemaVersion = typeof detail.metadata?.trace_schema_version === "number"
+    ? detail.metadata.trace_schema_version
+    : null;
 
   return (
     <div className={cn("flex h-full max-h-[min(70dvh,52rem)] flex-col", loading && "opacity-70")}>
@@ -388,6 +394,8 @@ function TraceDetail({
           {detail.metadata?.kb_id != null && (
             <span>KB {shortId(String(detail.metadata.kb_id))}</span>
           )}
+          <span>运行时 {runtime}</span>
+          {schemaVersion != null && <span>Trace v{schemaVersion}</span>}
         </div>
         {reasons.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1.5">
@@ -415,7 +423,9 @@ function TraceDetail({
         )}
 
         {detail.observations.length === 0 ? (
-          <p className="text-sm text-muted">该 Trace 没有子 observation。</p>
+          <p className="text-sm text-muted">
+            该 Trace 没有可展示的执行节点（通常为历史版本或中断前未采集的记录），不作为当前 ReAct 链路样本。
+          </p>
         ) : (
           <div className="space-y-1">
             <div className="mb-2 flex items-center justify-between text-xs text-muted">
@@ -561,6 +571,7 @@ function ObservationRow({
             <div className="flex flex-wrap items-center gap-2">
               <TypeChip type={node.type} />
               <span className="truncate text-sm font-medium">{node.name}</span>
+              <ObservationLifecycleChip lifecycle={node.lifecycle} />
               {node.status === "error" && <StatusChip status="error" />}
               <span
                 className={cn(
@@ -626,6 +637,21 @@ function ObservationRow({
       )}
     </div>
   );
+}
+
+function ObservationLifecycleChip({
+  lifecycle,
+}: {
+  lifecycle: AdminObservationNode["lifecycle"];
+}) {
+  if (lifecycle === "active") return null;
+  const copy = {
+    legacy: "旧 Supervisor",
+    retired: "已退役",
+    unknown: "未知节点",
+  } as const;
+  const tone = lifecycle === "retired" ? "chip-warning" : "chip-muted";
+  return <span className={cn("chip text-[10px]", tone)}>{copy[lifecycle]}</span>;
 }
 
 function TraceIoPreviewButton({

@@ -123,12 +123,17 @@ class Observation(Base):
         return parsed if isinstance(parsed, dict) else {}
 
     def to_dict(self) -> dict:
+        # Import here to keep ORM model import lightweight and avoid a runtime
+        # dependency from trace persistence on the admin-facing catalog.
+        from src.platform.observability.catalog import observation_lifecycle
+
         return {
             "id": self.id,
             "trace_id": self.trace_id,
             "parent_observation_id": self.parent_observation_id,
             "type": self.type,
             "name": self.name,
+            "lifecycle": observation_lifecycle(self.name),
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "ended_at": self.ended_at.isoformat() if self.ended_at else None,
             "duration_ms": self.duration_ms,

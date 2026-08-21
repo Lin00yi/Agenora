@@ -57,6 +57,7 @@ const LEGACY_NAME_LABEL: Record<string, string> = {
 };
 
 const AGENT_LABEL: Record<string, string> = {
+  react: "受约束 Agent",
   chat: "通用对话",
   rag: "知识库问答",
   orders: "订单与退款",

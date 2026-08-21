@@ -22,6 +22,7 @@ from src.harness.prompts.system import SYSTEM_PROMPT_GENERAL, build_kb_system_pr
 from src.harness.runtime.agent_loop import call_tools_node, reason_node, should_continue
 from src.harness.tools.base import ToolRegistry, build_default_registry
 from src.platform.llm.gateway import CostTracker
+from src.platform.observability import aspan
 
 if TYPE_CHECKING:
     from src.capabilities.settings.domain.models import (
@@ -196,8 +197,32 @@ def build_react_graph(
     )
 
     async def scope_node(state: AgentState) -> AgentState:
-        scope = await scoped.resolve(list(state.get("messages") or []))
+        # Scope is a real ReAct graph stage.  Record it explicitly rather than
+        # making a routed-KB span the only evidence that it ran.
+        async with aspan("scope", metadata={"candidate_count": len(scoped.candidates)}) as obs:
+            scope = await scoped.resolve(list(state.get("messages") or []))
+            if obs is not None:
+                obs.update(
+                    metadata={
+                        "kind": scope["kind"],
+                        "selected_kb_ids": scope["selected_kb_ids"],
+                        "route_source": scope["route"].get("source"),
+                    }
+                )
         route_cost = scoped.route.cost_usd if scoped.route is not None else 0.0
+        # A stage summary is deliberately not model reasoning/chain-of-thought.
+        # It only tells the UI which bounded capability scope was selected.
+        route = scope["route"]
+        await em(
+            {
+                "event": "agent_route",
+                "agent": "react",
+                "scope": scope["kind"],
+                "source": str(route.get("source") or "none"),
+                "confidence": str(route.get("confidence") or "high"),
+                "reason": str(route.get("reason") or "capability_scope_selected"),
+            }
+        )
         if scoped.route is not None and scoped.selected_kbs:
             await em(
                 {

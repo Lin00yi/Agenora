@@ -34,6 +34,7 @@ from src.platform.runtime.rate_limit import (
 )
 from src.capabilities.knowledge.domain.models import KB
 from src.platform.observability import get_current_trace_id, preview_text, start_trace
+from src.platform.observability.catalog import TRACE_SCHEMA_VERSION
 from src.harness.policy.input_filter import sanitize_user_input
 from src.harness.policy.output_filter import redact_sensitive_output
 from src.harness.policy.prompt_injection import assess_prompt_injection
@@ -519,6 +520,16 @@ async def run_chat_session(
                 trace.input_preview = preview_text(
                     cleaned, store_io=_gs().trace_store_io
                 )
+        if trace is not None:
+            # Persisted rows must say which graph contract produced them.  A
+            # dashboard must never present an old Supervisor tree as the
+            # current default ReAct runtime.
+            trace.metadata.update(
+                {
+                    "agent_runtime": execution_runtime,
+                    "trace_schema_version": TRACE_SCHEMA_VERSION,
+                }
+            )
         final_state: dict[str, Any] | None = None
         run_started_at_ms = int(time.time() * 1000)
         try:
@@ -531,6 +542,8 @@ async def run_chat_session(
                 "messages": full_messages,
                 "iterations": 0,
                 "tool_call_log": [],
+                "tool_call_count": 0,
+                "tool_result_budget": {},
                 "citations": [],
                 "prompt_injection_risk": prompt_guard.level,
                 "prompt_injection_reasons": prompt_guard.reasons,
@@ -568,6 +581,13 @@ async def run_chat_session(
                     )
                     if legacy_snapshot and not use_legacy_supervisor:
                         execution_runtime = "supervisor"
+                        if trace is not None:
+                            trace.metadata.update(
+                                {
+                                    "agent_runtime": execution_runtime,
+                                    "trace_schema_version": TRACE_SCHEMA_VERSION,
+                                }
+                            )
                         if memory_trace is not None:
                             runtime = memory_trace.get("runtime")
                             memory_trace = {
@@ -736,6 +756,7 @@ async def run_chat_session(
                             "prompt_trace": prompt_trace if isinstance(prompt_trace, dict) else None,
                             "kb_auto_route": final_kb_route,
                             "agent_runtime": execution_runtime,
+                            "trace_schema_version": TRACE_SCHEMA_VERSION,
                             "runtime_telemetry": runtime_telemetry,
                         },
                     )
@@ -797,6 +818,8 @@ async def run_chat_session(
                                 final_state.get("rag_filtered_chunks") or []
                             ),
                             "kb_auto_route": final_state.get("kb_auto_route"),
+                            "agent_runtime": execution_runtime,
+                            "trace_schema_version": TRACE_SCHEMA_VERSION,
                         }
                     await asyncio.shield(
                         trace.finish(status="error", error=str(exc), metadata=err_meta)
