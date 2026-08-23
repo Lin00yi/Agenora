@@ -10,9 +10,15 @@ from langgraph.graph import END, StateGraph
 
 from src.harness.contracts.state import AgentState
 from src.harness.runtime.agent_loop import call_tools_node, reason_node, should_continue
-from src.harness.tools.base import ToolRegistry
 from src.harness.mcp.orders import build_orders_registry
+from src.harness.agents.orders.hitl import (
+    human_input_gate,
+    needs_human_gate,
+    sync_pending_confirmation,
+)
+from src.harness.tools.base import ToolRegistry
 from src.harness.mcp.manager import McpConnectionManager
+
 from src.platform.llm.gateway import CostTracker
 
 if TYPE_CHECKING:
@@ -62,16 +68,6 @@ def _confirmed_refund_approval(state: AgentState) -> str | None:
     """Accept only the exact confirmation phrase required by the write tool."""
     match = re.fullmatch(r"确认退款\s+(RFD-[A-Z0-9-]+)", _latest_user_text(state))
     return match.group(1) if match else None
-
-
-def _fast_confirmation_route(state: AgentState, *, registry: ToolRegistry) -> str:
-    """Skip an otherwise unnecessary LLM round-trip after explicit approval.
-
-    The MCP service remains the authority for ownership, expiry, idempotency and
-    the actual write. This only makes the already-authorized dispatch path
-    deterministic, so the irreversible action is not delayed by model latency.
-    """
-    return "confirm" if _confirmed_refund_approval(state) and registry.get("confirm_refund") else "reason"
 
 
 async def _confirm_refund_fast(
@@ -176,6 +172,28 @@ async def _confirm_refund_fast(
     }
 
 
+def _entry_route(state: AgentState, *, registry: ToolRegistry) -> str:
+    if _confirmed_refund_approval(state) and registry.get("confirm_refund"):
+        return "confirm"
+    if needs_human_gate(state):
+        return "human_gate"
+    return "reason"
+
+
+def _after_human_gate(state: AgentState, *, registry: ToolRegistry) -> str:
+    if needs_human_gate(state):
+        return "human_gate"
+    if _confirmed_refund_approval(state) and registry.get("confirm_refund"):
+        return "confirm"
+    return "reason"
+
+
+def _after_sync_confirmation(state: AgentState) -> str:
+    if isinstance(state.get("pending_confirmation"), dict):
+        return "human_gate"
+    return "reason"
+
+
 async def _fast_confirmation_gate(state: AgentState) -> AgentState:
     """Route only; normal order work must retain its existing LLM tool loop."""
     return state
@@ -198,6 +216,11 @@ def build_orders_graph(
     graph = StateGraph(AgentState)
     graph.add_node("fast_confirmation_gate", _fast_confirmation_gate)
     graph.add_node(
+        "human_gate",
+        partial(human_input_gate, user_id=user_id),
+    )
+    graph.add_node("sync_confirmation", sync_pending_confirmation)
+    graph.add_node(
         "confirm_refund_fast",
         partial(_confirm_refund_fast, registry=registry, emit=em),
     )
@@ -219,10 +242,20 @@ def build_orders_graph(
     graph.set_entry_point("fast_confirmation_gate")
     graph.add_conditional_edges(
         "fast_confirmation_gate",
-        partial(_fast_confirmation_route, registry=registry),
-        {"confirm": "confirm_refund_fast", "reason": "reason"},
+        partial(_entry_route, registry=registry),
+        {"confirm": "confirm_refund_fast", "human_gate": "human_gate", "reason": "reason"},
+    )
+    graph.add_conditional_edges(
+        "human_gate",
+        partial(_after_human_gate, registry=registry),
+        {"human_gate": "human_gate", "confirm": "confirm_refund_fast", "reason": "reason"},
     )
     graph.add_edge("confirm_refund_fast", END)
     graph.add_conditional_edges("reason", should_continue, {"tools": "call_tools", "end": END})
-    graph.add_edge("call_tools", "reason")
+    graph.add_edge("call_tools", "sync_confirmation")
+    graph.add_conditional_edges(
+        "sync_confirmation",
+        _after_sync_confirmation,
+        {"human_gate": "human_gate", "reason": "reason"},
+    )
     return graph.compile(checkpointer=checkpointer), cost

@@ -15,6 +15,8 @@ def test_react_runtime_has_one_tool_loop_not_a_supervisor_dag() -> None:
 
 def test_only_order_intents_or_explicit_refund_followups_leave_react() -> None:
     assert requires_order_workflow([{"role": "user", "content": "帮我查订单 ORD-123"}])
+    assert requires_order_workflow([{"role": "user", "content": "查询我的所有订单"}])
+    assert requires_order_workflow([{"role": "user", "content": "我要执行退款"}])
     assert requires_order_workflow([{"role": "user", "content": "确认退款 RFD-123"}])
     assert requires_order_workflow(
         [

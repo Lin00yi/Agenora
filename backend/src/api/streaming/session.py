@@ -95,6 +95,10 @@ def _fresh_turn_state(
         "rag_filtered_chunks": [],
         "kb_id": kb_id,
         "mcp_plugin_set_version": mcp_plugin_set_version,
+        "human_inputs": {},
+        "human_required_slots": [],
+        "human_gate_resumed": False,
+        "pending_confirmation": None,
     }
 
 
@@ -569,7 +573,7 @@ async def run_chat_session(
                     # obsolete thread state and start this new turn in ReAct.
                     legacy_snapshot = isinstance(snapshot_values, dict) and any(
                         key in snapshot_values
-                        for key in ("task_dag", "task_status", "supervisor_trace", "human_required_slots")
+                        for key in ("task_dag", "task_status", "supervisor_trace")
                     )
                     if legacy_snapshot:
                         thread_id = workflow_config["configurable"]["thread_id"]

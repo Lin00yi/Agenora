@@ -26,7 +26,16 @@ IntentSource = Literal["rule", "triage", "complex", "fallback"]
 _ORDER_ID_PATTERN = re.compile(r"\bORD-[A-Z0-9-]+\b", re.IGNORECASE)
 _APPROVAL_ID_PATTERN = re.compile(r"\bRFD-[A-Z0-9-]+\b", re.IGNORECASE)
 _REFUND_INFO_HINTS = ("退款政策", "退款规则", "退款条款", "退款流程", "退款条件")
-_ORDER_LOOKUP_HINTS = ("我的订单", "查订单", "订单信息", "订单详情", "订单号")
+_ORDER_LOOKUP_HINTS = (
+    "我的订单",
+    "查订单",
+    "查询订单",
+    "所有订单",
+    "订单列表",
+    "订单信息",
+    "订单详情",
+    "订单号",
+)
 _REFUND_HINTS = ("退款", "退货", "退这笔", "退钱", "我要退", "申请退")
 
 

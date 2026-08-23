@@ -55,3 +55,8 @@ class AgentState(TypedDict, total=False):
     prompt_trace: dict[str, Any]
     # Serializable, user-safe description of the single-agent capability scope.
     runtime_scope: dict[str, Any]
+    # Orders HITL checkpoint fields (LangGraph interrupt resume).
+    human_inputs: dict[str, str]
+    human_required_slots: list[str]
+    human_gate_resumed: bool
+    pending_confirmation: dict[str, Any]
