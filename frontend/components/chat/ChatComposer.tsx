@@ -7,7 +7,6 @@ import {
   BookOpen,
   Database,
   LockKeyhole,
-  Paperclip,
   Square,
 } from "lucide-react";
 import ModelSelect from "@/components/Select";
@@ -127,66 +126,63 @@ export function Composer({
           data-testid="composer-input"
           placeholder="输入消息…"
           disabled={busy}
-          className={cn("kf-composer-input block max-h-[160px] w-full resize-none bg-transparent px-5 py-4 text-[15px] leading-6 outline-none disabled:cursor-not-allowed disabled:opacity-70", centered ? "min-h-[112px] text-base" : "min-h-[44px] px-4 py-3")}
+          className={cn("kf-composer-input block max-h-[160px] w-full resize-none bg-transparent px-5 py-4 text-[15px] leading-6 outline-none disabled:cursor-not-allowed disabled:opacity-70", centered ? "min-h-24 text-base" : "min-h-[44px] px-4 py-3")}
         />
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 px-3 pb-2.5 pt-1 sm:flex sm:flex-wrap">
-          {kbPickerEnabled ? (
-            <div
-              className="kf-control inline-flex h-[var(--control-h-sm)] min-w-0 w-full items-center gap-1.5 rounded-lg border px-2 text-xs sm:w-auto sm:max-w-[216px]"
-              title={kbLocked ? "当前会话由首条消息的知识库锁定" : "选择通用对话或知识库"}
-            >
-              <Database className="h-3.5 w-3.5 shrink-0 text-brand" />
-              <ModelSelect
-                aria-label="选择知识库"
-                tone="plain"
-                className="kf-kb-trigger h-[var(--control-h-sm)] min-w-[96px] flex-1 border-0 bg-transparent px-0 py-0 text-xs text-current shadow-none hover:bg-transparent focus-visible:ring-0 disabled:cursor-not-allowed disabled:text-muted"
-                contentAlign="start"
-                contentClassName="kf-model-content"
-                contentPosition="popper"
-                disabled={kbLocked || busy}
-                onChange={(e) => onSelectKb(e.target.value || null)}
-                options={[
-                  { value: "", label: "通用对话" },
-                  ...kbs.map((kb) => ({ value: kb.id, label: kb.name })),
-                ]}
+        <div className="flex flex-nowrap items-center gap-2 px-3 pb-2.5 pt-1">
+          <div className="w-[120px] shrink-0 sm:w-[160px]">
+            {kbPickerEnabled ? (
+              <div
+                className="kf-control inline-flex h-[var(--control-h-sm)] min-w-0 w-full items-center gap-1.5 rounded-lg border px-2 text-xs"
                 title={kbLocked ? "当前会话由首条消息的知识库锁定" : "选择通用对话或知识库"}
-                value={currentKbId ?? ""}
+              >
+                <Database className="h-3.5 w-3.5 shrink-0 text-brand" />
+                <ModelSelect
+                  aria-label="选择知识库"
+                  tone="plain"
+                  className="kf-kb-trigger h-[var(--control-h-sm)] min-w-0 flex-1 border-0 bg-transparent px-0 py-0 text-xs text-current shadow-none hover:bg-transparent focus-visible:ring-0 disabled:cursor-not-allowed disabled:text-muted"
+                  contentAlign="start"
+                  contentAlignOffset={-28}
+                  contentAvoidCollisions={false}
+                  contentClassName="kf-model-content"
+                  contentPosition="popper"
+                  disabled={kbLocked || busy}
+                  onChange={(e) => onSelectKb(e.target.value || null)}
+                  options={[
+                    { value: "", label: "通用对话" },
+                    ...kbs.map((kb) => ({ value: kb.id, label: kb.name })),
+                  ]}
+                  title={kbLocked ? "当前会话由首条消息的知识库锁定" : "选择通用对话或知识库"}
+                  value={currentKbId ?? ""}
+                />
+                {kbLocked && <LockKeyhole className="h-3.5 w-3.5 shrink-0 text-muted" />}
+              </div>
+            ) : currentKbId && currentKbName ? (
+              <Link
+                className="kf-control inline-flex h-[var(--control-h-sm)] max-w-full items-center gap-1.5 rounded-lg border px-2 text-xs"
+                href={`/kbs/${currentKbId}`}
+                aria-label={`已连接知识库：${currentKbName}`}
+                title={`已连接知识库：${currentKbName}`}
+              >
+                <BookOpen className="h-3.5 w-3.5 shrink-0 text-brand" />
+                <span className="max-w-[160px] truncate">{currentKbName}</span>
+                {kbLocked ? <LockKeyhole className="h-3.5 w-3.5 shrink-0 text-muted" /> : null}
+              </Link>
+            ) : null}
+          </div>
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:ml-auto sm:flex-none">
+            {!centered && (
+              <ContextUsageIndicator
+                contextStatus={contextStatus}
+                loading={contextStatusLoading}
+                promptTrace={promptTrace}
               />
-              {kbLocked && <LockKeyhole className="h-3.5 w-3.5 shrink-0 text-muted" />}
-            </div>
-          ) : currentKbId && currentKbName ? (
-            <Link
-              className="kf-control inline-flex h-[var(--control-h-sm)] max-w-full items-center gap-1.5 rounded-lg border px-2 text-xs"
-              href={`/kbs/${currentKbId}`}
-              aria-label={`已连接知识库：${currentKbName}`}
-              title={`已连接知识库：${currentKbName}`}
-            >
-              <BookOpen className="h-3.5 w-3.5 shrink-0 text-brand" />
-              <span className="max-w-[160px] truncate">{currentKbName}</span>
-              {kbLocked ? <LockKeyhole className="h-3.5 w-3.5 shrink-0 text-muted" /> : null}
-            </Link>
-          ) : null}
-          {kbPickerEnabled ? (
-            <Link
-              className="kf-control kf-press inline-flex size-[var(--control-h-sm)] items-center justify-center rounded-lg border"
-              href={currentKbId ? `/kbs/${currentKbId}` : "/kbs"}
-              aria-label={currentKbId ? "\u6253\u5f00\u77e5\u8bc6\u5e93\u4e0a\u4f20\u8d44\u6599" : "\u9009\u62e9\u77e5\u8bc6\u5e93\u540e\u4e0a\u4f20\u8d44\u6599"}
-              title={currentKbId ? "\u6253\u5f00\u77e5\u8bc6\u5e93\u4e0a\u4f20\u8d44\u6599" : "\u9009\u62e9\u77e5\u8bc6\u5e93\u540e\u4e0a\u4f20\u8d44\u6599"}
-            >
-              <Paperclip className="h-3.5 w-3.5" />
-            </Link>
-          ) : null}
-          <div className="col-span-2 flex min-w-0 items-center gap-2 sm:col-auto sm:ml-auto">
-            <ContextUsageIndicator
-              contextStatus={contextStatus}
-              loading={contextStatusLoading}
-              promptTrace={promptTrace}
-            />
+            )}
             <ModelSelect
               aria-label="模型选择"
               className="kf-model-trigger h-8 min-w-0 flex-1 text-sm sm:min-w-[132px] sm:max-w-[200px]"
               tone="plain"
               contentAlign="end"
+              contentAvoidCollisions={false}
               contentClassName="kf-model-content"
               contentPosition="popper"
               disabled={busy}

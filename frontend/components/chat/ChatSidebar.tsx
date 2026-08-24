@@ -520,22 +520,25 @@ function ConversationRow({
   onDelete: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const statusDotClass = getConversationStatusDotClass(conversation, currentId);
   const messageCount = conversation.messages.length || conversation.message_count || 0;
   const active = conversation.id === currentId;
-  const showActions = hovered || pinned;
+  // The menu is portalled. Keep its trigger mounted while it is open, otherwise
+  // leaving the row removes the positioning anchor and the menu jumps away.
+  const showActions = hovered || pinned || actionMenuOpen;
 
   return (
     <div
       className={cn(
-        "kf-sidebar-row group flex min-h-10 items-center gap-0.5 rounded-lg border px-2 py-1.5 text-sm transition-[background-color,border-color,color]",
+        "kf-sidebar-row group relative flex min-h-10 items-center gap-0.5 rounded-lg border px-2 py-1.5 text-sm transition-[background-color,border-color,color]",
         active ? "kf-sidebar-row-active" : "kf-sidebar-row-idle"
       )}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       <button
-        className="min-w-0 flex-1 cursor-pointer px-1.5 text-left"
+        className="min-w-0 flex-1 cursor-pointer px-1.5 pr-9 text-left"
         onClick={onSelect}
         type="button"
         title={conversation.title}
@@ -557,11 +560,11 @@ function ConversationRow({
       </button>
       <div
         className={cn(
-          "shrink-0",
-          !showActions && "hidden group-focus-within:block"
+          "absolute top-1/2 right-2 shrink-0 -translate-y-1/2 transition-opacity",
+          !showActions && "invisible pointer-events-none opacity-0 group-focus-within:visible group-focus-within:pointer-events-auto group-focus-within:opacity-100"
         )}
       >
-        <DropdownMenu>
+        <DropdownMenu open={actionMenuOpen} onOpenChange={setActionMenuOpen}>
           <DropdownMenuTrigger asChild>
             <button
               aria-label={`${conversation.title} 更多操作`}

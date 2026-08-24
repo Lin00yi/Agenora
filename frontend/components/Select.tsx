@@ -57,6 +57,9 @@ type SelectProps = {
   className?: string;
   contentClassName?: string;
   contentAlign?: "start" | "center" | "end";
+  contentAlignOffset?: number;
+  /** Keep a menu edge fixed to its trigger when its placement is predictable. */
+  contentAvoidCollisions?: boolean;
   contentPosition?: "item-aligned" | "popper";
   id?: string;
   title?: string;
@@ -76,6 +79,8 @@ const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(
     className,
   contentClassName,
   contentAlign,
+  contentAlignOffset,
+  contentAvoidCollisions = true,
   value,
     defaultValue,
     disabled,
@@ -206,6 +211,8 @@ const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(
       <DropdownMenuContent
         ref={contentRef}
         align={contentAlign ?? "start"}
+        alignOffset={contentAlignOffset}
+        avoidCollisions={contentAvoidCollisions}
         className={cn("min-w-[var(--radix-dropdown-menu-trigger-width)]", contentClassName)}
       >
         {placeholderOption && (
