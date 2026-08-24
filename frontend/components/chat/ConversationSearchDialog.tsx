@@ -223,25 +223,27 @@ export function ConversationSearchDialog({
             className="h-12 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted"
             aria-label="搜索对话"
           />
-          {searching ? (
-            <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-muted" aria-label="搜索中" />
-          ) : query ? (
-            <button
-              type="button"
-              className="rounded-md p-1 text-muted transition hover:bg-surface-2 hover:text-ink"
-              aria-label="清空搜索"
-              onClick={() => setQuery("")}
-            >
-              <X className="h-4 w-4" />
-            </button>
-          ) : (
-            <kbd className="rounded border border-surface-border/80 px-1.5 py-0.5 text-[10px] text-muted">
-              Esc
-            </kbd>
-          )}
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center">
+            {searching ? (
+              <LoaderCircle className="h-4 w-4 animate-spin text-muted" aria-label="搜索中" />
+            ) : query ? (
+              <button
+                type="button"
+                className="rounded-md p-1 text-muted transition hover:bg-surface-2 hover:text-ink"
+                aria-label="清空搜索"
+                onClick={() => setQuery("")}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            ) : (
+              <kbd className="rounded border border-surface-border/80 px-1.5 py-0.5 text-[10px] leading-none text-muted">
+                Esc
+              </kbd>
+            )}
+          </div>
         </div>
 
-        <div className="max-h-[min(24rem,60vh)] overflow-y-auto p-2">
+        <div className="h-[min(16rem,40vh)] overflow-y-auto p-2">
           {showRecent && (
             <div className="mb-1 flex items-center justify-between px-2 py-1.5">
               <span className="text-xs font-medium text-muted">最近搜索</span>
@@ -277,7 +279,9 @@ export function ConversationSearchDialog({
           )}
 
           {trimmed && !searching && results.length === 0 && (
-            <div className="px-3 py-8 text-center text-sm text-muted">没有匹配的对话</div>
+            <div className="flex h-full items-center justify-center px-3 text-center text-sm text-muted">
+              没有匹配的对话
+            </div>
           )}
 
           {trimmed &&
@@ -312,7 +316,7 @@ export function ConversationSearchDialog({
             })}
 
           {!trimmed && recent.length === 0 && (
-            <div className="px-3 py-8 text-center text-sm text-muted">
+            <div className="flex h-full items-center justify-center px-3 text-center text-sm text-muted">
               输入关键词搜索标题或消息内容
             </div>
           )}
