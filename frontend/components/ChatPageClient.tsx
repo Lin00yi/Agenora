@@ -730,7 +730,7 @@ export function ChatPage({
 
       <div
         className={cn(
-          "grid h-full grid-cols-1",
+          "grid h-full grid-cols-1 transition-[grid-template-columns] duration-surface ease-ui-drawer motion-reduce:transition-none",
           sidebarCollapsed ? "lg:grid-cols-[56px_minmax(0,1fr)]" : "lg:grid-cols-[286px_minmax(0,1fr)]"
         )}
         data-kf-layout="chat"

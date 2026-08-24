@@ -444,6 +444,33 @@
     outline-offset: 2px;
   }
 
+  .kf-chat .kf-sidebar-rail-brand-mark,
+  .kf-chat .kf-sidebar-rail-expand-icon {
+    transition: opacity var(--duration-press) var(--ease-out), transform var(--duration-press) var(--ease-out);
+  }
+
+  .kf-chat .kf-sidebar-rail-brand-mark {
+    display: inline-flex;
+  }
+
+  .kf-chat .kf-sidebar-rail-expand-icon {
+    position: absolute;
+    opacity: 0;
+    transform: scale(0.84);
+  }
+
+  .kf-chat .kf-sidebar-rail-action:hover .kf-sidebar-rail-brand-mark,
+  .kf-chat .kf-sidebar-rail-action:focus-visible .kf-sidebar-rail-brand-mark {
+    opacity: 0;
+    transform: scale(0.84);
+  }
+
+  .kf-chat .kf-sidebar-rail-action:hover .kf-sidebar-rail-expand-icon,
+  .kf-chat .kf-sidebar-rail-action:focus-visible .kf-sidebar-rail-expand-icon {
+    opacity: 1;
+    transform: scale(1);
+  }
+
   .kf-chat .kf-sidebar-recent-popover {
     background: rgb(var(--kf-surface-2));
     border-color: var(--chat-line);

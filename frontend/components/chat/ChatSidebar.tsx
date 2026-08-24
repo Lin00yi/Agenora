@@ -11,6 +11,7 @@ import {
   MoreHorizontal,
   Pin,
   PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Search,
   Settings,
@@ -329,12 +330,15 @@ export function ChatSidebar({
         <div className="flex flex-col items-center gap-2 pt-1">
           <button
             aria-label="展开侧栏"
-            className="kf-sidebar-rail-action kf-press inline-flex size-[var(--control-h)] cursor-pointer items-center justify-center rounded-lg"
+            className="kf-sidebar-rail-action kf-press relative inline-flex size-[var(--control-h)] cursor-pointer items-center justify-center rounded-lg"
             onClick={onToggleCollapsed}
             title="展开侧栏"
             type="button"
           >
-            <Brand showWordmark={false} size="sm" />
+            <span className="kf-sidebar-rail-brand-mark">
+              <Brand showWordmark={false} size="sm" />
+            </span>
+            <PanelLeftOpen className="kf-sidebar-rail-expand-icon size-[18px]" aria-hidden />
           </button>
           <div className="kf-sidebar-separator my-1 h-px w-6" />
           <button
