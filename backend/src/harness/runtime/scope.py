@@ -97,12 +97,20 @@ def _latest_user_text(messages: list[dict[str, Any]]) -> str:
 
 def _extract_json_object(text: str) -> dict[str, Any]:
     cleaned = (text or "").strip()
+    if not cleaned:
+        raise ValueError("empty runtime scope response")
     if cleaned.startswith("```"):
         cleaned = cleaned.strip("`").removeprefix("json").strip()
-    value = json.loads(cleaned)
-    if not isinstance(value, dict):
+    try:
+        payload = json.loads(cleaned)
+    except json.JSONDecodeError:
+        start, end = cleaned.find("{"), cleaned.rfind("}")
+        if start < 0 or end <= start:
+            raise ValueError("no JSON object found in runtime scope response") from None
+        payload = json.loads(cleaned[start : end + 1])
+    if not isinstance(payload, dict):
         raise ValueError("runtime scope payload must be an object")
-    return value
+    return payload
 
 
 def _coerce_assessment(payload: dict[str, Any], *, source: ScopeSource, latency_ms: int) -> IntentAssessment:
@@ -143,7 +151,7 @@ async def _classify_with_llm(
     has_routable_kbs: bool,
     llm_cfg: "UserLLMConfig | None",
     source: Literal["triage", "complex"],
-) -> tuple[IntentAssessment, float | None]:
+) -> tuple[IntentAssessment | None, float | None]:
     started = time.perf_counter()
     model = pick_model([{"role": "user", "content": query}], [], llm_cfg)
     prompt = (
@@ -183,12 +191,17 @@ async def _classify_with_llm(
             text = response.choices[0].message.content or ""
         if generation is not None:
             generation.update(output=text, usage=usage)
-    return (
-        _coerce_assessment(
-            _extract_json_object(text), source=source, latency_ms=int((time.perf_counter() - started) * 1000)
-        ),
-        tracker.total_usd,
-    )
+    latency_ms = int((time.perf_counter() - started) * 1000)
+    try:
+        if not (text or "").strip():
+            return None, tracker.total_usd
+        return (
+            _coerce_assessment(_extract_json_object(text), source=source, latency_ms=latency_ms),
+            tracker.total_usd,
+        )
+    except (json.JSONDecodeError, ValueError):
+        # Expected provider/format drift — caller falls through to complex/fallback.
+        return None, tracker.total_usd
 
 
 @traced("runtime_scope")
