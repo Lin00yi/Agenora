@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ChevronDown,
-  ChevronRight,
   Copy,
   GitBranch,
   RefreshCw,
@@ -24,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Pagination } from "@/components/ui/pagination";
 import { PageSkeleton, StateView } from "@/components/ui/state-view";
 import Select from "@/components/Select";
+import { SpanWaterfall } from "@/components/admin/SpanWaterfall";
 import { usePreviewPanel } from "@/components/preview/PreviewPanelProvider";
 
 const PAGE_SIZE = 30;
@@ -359,7 +358,7 @@ function TraceDetail({
       <div className="border-b border-surface-border/70 bg-surface-2/35 px-5 py-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="text-base font-semibold">Span 树</h3>
+            <h3 className="text-base font-semibold">执行链路</h3>
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <code className="truncate font-mono text-xs text-muted">{detail.id}</code>
               <CopyBtn value={detail.id} label="复制 Trace ID" />
@@ -426,21 +425,11 @@ function TraceDetail({
             该 Trace 没有可展示的执行节点（通常为历史版本或中断前未采集的记录），不作为当前 ReAct 链路样本。
           </p>
         ) : (
-          <div className="space-y-1">
-            <div className="mb-2 flex items-center justify-between text-xs text-muted">
-              <span>时间线（相对整次请求）</span>
-              <span>总长 {formatDuration(detail.duration_ms)}</span>
-            </div>
-            {detail.observations.map((node) => (
-              <ObservationRow
-                key={node.id}
-                node={node}
-                depth={0}
-                totalMs={totalMs}
-                rootStart={rootStart}
-              />
-            ))}
-          </div>
+          <SpanWaterfall
+            nodes={detail.observations}
+            totalMs={totalMs}
+            rootStart={rootStart}
+          />
         )}
       </div>
     </div>
@@ -518,138 +507,6 @@ function FilteredChunksPanel({ chunks }: { chunks: FilteredChunkRow[] }) {
       </div>
     </div>
   );
-}
-
-function ObservationRow({
-  node,
-  depth,
-  totalMs,
-  rootStart,
-}: {
-  node: AdminObservationNode;
-  depth: number;
-  totalMs: number;
-  rootStart: number;
-}) {
-  const children = node.children ?? [];
-  const [open, setOpen] = useState(depth < 2);
-  const hasChildren = children.length > 0;
-  const startMs = node.started_at ? Date.parse(node.started_at) - rootStart : 0;
-  const dur = Math.max(0, node.duration_ms ?? 0);
-  const leftPct = Math.max(0, Math.min(100, (startMs / totalMs) * 100));
-  const widthPct = Math.max(0.8, Math.min(100 - leftPct, (dur / totalMs) * 100));
-  const slow = dur >= 1000 || dur / totalMs >= 0.35;
-
-  return (
-    <div>
-      <div
-        className={cn(
-          "rounded-lg px-2 py-2 transition hover:bg-surface-2/50",
-          node.status === "error" && "bg-danger/5"
-        )}
-        style={{ marginLeft: `${depth * 0.85}rem` }}
-      >
-        <div className="flex items-start gap-2">
-          <button
-            type="button"
-            className={cn(
-              "mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted",
-              !hasChildren && "invisible"
-            )}
-            aria-label={open ? "折叠" : "展开"}
-            onClick={() => setOpen((v) => !v)}
-          >
-            {open ? (
-              <ChevronDown className="h-3.5 w-3.5" />
-            ) : (
-              <ChevronRight className="h-3.5 w-3.5" />
-            )}
-          </button>
-
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <TypeChip type={node.type} />
-              <span className="truncate text-sm font-medium">{node.name}</span>
-              <ObservationLifecycleChip lifecycle={node.lifecycle} />
-              {node.status === "error" && <StatusChip status="error" />}
-              <span
-                className={cn(
-                  "tabular-nums text-xs",
-                  slow ? "font-semibold text-warning" : "text-muted"
-                )}
-              >
-                {formatDuration(node.duration_ms)}
-              </span>
-              {node.model && (
-                <span className="truncate text-xs text-muted">{node.model}</span>
-              )}
-              {node.cost_usd != null && node.cost_usd > 0 && (
-                <span className="tabular-nums text-xs text-muted">
-                  {formatCost(node.cost_usd)}
-                </span>
-              )}
-            </div>
-
-            <div className="relative mt-2 h-2 overflow-hidden rounded-full bg-surface-2">
-              <div
-                className={cn(
-                  "absolute top-0 h-full rounded-full",
-                  node.type === "generation"
-                    ? "bg-brand/75"
-                    : node.type === "tool"
-                      ? "bg-info/70"
-                      : "bg-muted/45",
-                  node.status === "error" && "!bg-danger/70"
-                )}
-                style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
-                title={`offset ${formatDuration(startMs)} · ${formatDuration(dur)}`}
-              />
-            </div>
-
-            {node.error && (
-              <p className="mt-1 text-xs text-danger">{node.error}</p>
-            )}
-            <TraceIoPreviewButton
-              title={node.name}
-              subtitle={`${node.type} · ${formatDuration(node.duration_ms)}`}
-              input={node.input_preview}
-              output={node.output_preview}
-              metadata={node.metadata}
-            />
-          </div>
-        </div>
-      </div>
-
-      {hasChildren && open && (
-        <div>
-          {children.map((child) => (
-            <ObservationRow
-              key={child.id}
-              node={child}
-              depth={depth + 1}
-              totalMs={totalMs}
-              rootStart={rootStart}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ObservationLifecycleChip({
-  lifecycle,
-}: {
-  lifecycle: AdminObservationNode["lifecycle"];
-}) {
-  if (lifecycle === "active") return null;
-  const copy = {
-    legacy: "旧 Supervisor",
-    retired: "已退役",
-    unknown: "未知节点",
-  } as const;
-  const tone = lifecycle === "retired" ? "chip-warning" : "chip-muted";
-  return <span className={cn("chip text-[10px]", tone)}>{copy[lifecycle]}</span>;
 }
 
 function TraceIoPreviewButton({
@@ -755,13 +612,6 @@ function metaFilteredChunks(
   const value = metadata?.rag_filtered_chunks;
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is FilteredChunkRow => !!item && typeof item === "object");
-}
-
-function TypeChip({ type }: { type: string }) {
-  const label =
-    type === "generation" ? "LLM" : type === "tool" ? "工具" : "步骤";
-  const tone = type === "generation" ? "chip-brand" : "chip-muted";
-  return <span className={cn("chip shrink-0", tone)}>{label}</span>;
 }
 
 function flattenTree(nodes: AdminObservationNode[]): AdminObservationNode[] {
