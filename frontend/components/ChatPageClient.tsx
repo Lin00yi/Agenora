@@ -58,6 +58,8 @@ import {
   waitPaneMs,
 } from "@/lib/chatPageHelpers";
 
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "agenora.chat.sidebar-collapsed";
+
 export function ChatPage({
   routeConversationId = null,
   startBlank = false,
@@ -91,10 +93,31 @@ export function ChatPage({
     useState<ConversationContextStatus | null>(null);
   const [contextStatusLoading, setContextStatusLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [llmConfigurationOpen, setLlmConfigurationOpen] = useState(false);
   const [settingsModule, setSettingsModule] = useState<"personal" | "dispatch">("personal");
   const [composerValue, setComposerValue] = useState("");
+
+  useEffect(() => {
+    try {
+      setSidebarCollapsed(window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true");
+    } catch {
+      // Keep the default expanded layout when browser storage is unavailable.
+    }
+  }, []);
+
+  const handleToggleSidebarCollapsed = useCallback(() => {
+    setSidebarCollapsed((previous) => {
+      const next = !previous;
+      try {
+        window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(next));
+      } catch {
+        // The interaction remains available even when storage is blocked.
+      }
+      return next;
+    });
+  }, []);
 
   const messagesCache = useRef<Map<string, Message[]>>(new Map());
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -706,11 +729,15 @@ export function ChatPage({
       )}
 
       <div
-        className="grid h-full grid-cols-1 lg:grid-cols-[286px_minmax(0,1fr)]"
+        className={cn(
+          "grid h-full grid-cols-1",
+          sidebarCollapsed ? "lg:grid-cols-[56px_minmax(0,1fr)]" : "lg:grid-cols-[286px_minmax(0,1fr)]"
+        )}
         data-kf-layout="chat"
       >
         <ChatSidebar
           open={sidebarOpen}
+          collapsed={sidebarCollapsed}
           conversations={sidebarConversations}
           conversationTotal={conversationTotal}
           conversationHasMore={conversationHasMore}
@@ -718,6 +745,7 @@ export function ChatPage({
           currentId={currentId}
           user={user}
           onClose={() => setSidebarOpen(false)}
+          onToggleCollapsed={handleToggleSidebarCollapsed}
           onNew={handleNew}
           onSelectConversation={handleSelect}
           onDeleteConversation={handleDelete}

@@ -430,6 +430,37 @@
     color: var(--chat-muted);
   }
 
+  .kf-chat .kf-sidebar-rail-action {
+    color: var(--chat-muted);
+  }
+
+  .kf-chat .kf-sidebar-rail-action:hover {
+    background: color-mix(in srgb, var(--chat-ink) 8%, transparent);
+    color: var(--chat-ink);
+  }
+
+  .kf-chat .kf-sidebar-rail-action:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--chat-accent) 72%, transparent);
+    outline-offset: 2px;
+  }
+
+  .kf-chat .kf-sidebar-recent-popover {
+    background: rgb(var(--kf-surface-2));
+    border-color: var(--chat-line);
+  }
+
+  .kf-chat .kf-sidebar-recent-item {
+    color: var(--chat-ink);
+    transition: background-color var(--duration-press) var(--ease-out);
+  }
+
+  .kf-chat .kf-sidebar-recent-item:hover,
+  .kf-chat .kf-sidebar-recent-item:focus-visible,
+  .kf-chat .kf-sidebar-recent-item-active {
+    background: color-mix(in srgb, var(--chat-ink) 8%, transparent);
+    outline: none;
+  }
+
   .kf-chat .kf-sidebar-row-action:hover {
     border-color: transparent;
     background: color-mix(in srgb, var(--chat-ink) 8%, transparent);
