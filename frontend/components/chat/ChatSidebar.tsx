@@ -7,16 +7,24 @@ import {
   ChevronDown,
   LoaderCircle,
   LogOut,
+  MoreHorizontal,
   Pin,
+  PanelLeftClose,
   Plus,
   Search,
   Settings,
   Shield,
   Trash2,
-  X,
 } from "lucide-react";
 import Brand from "@/components/Brand";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/cn";
 import type { User } from "@/lib/auth";
 import type { Conversation } from "@/lib/conversationStore";
@@ -124,12 +132,13 @@ export function ChatSidebar({
         <div className="flex items-center justify-between">
           <Brand className="kf-sidebar-brand" size="md" tone="soft" />
           <button
-            aria-label="关闭侧栏"
-            className="kf-sidebar-icon-action kf-press inline-flex size-[var(--control-h)] items-center justify-center rounded-lg border lg:hidden"
+            aria-label="收起侧栏"
+            className="kf-sidebar-toggle kf-press inline-flex size-[var(--control-h)] items-center justify-center rounded-lg border lg:hidden"
             onClick={onClose}
             type="button"
+            title="收起侧栏"
           >
-            <X className="h-4 w-4" />
+            <PanelLeftClose className="size-[18px]" aria-hidden />
           </button>
         </div>
 
@@ -355,36 +364,34 @@ function ConversationRow({
       </button>
       <div
         className={cn(
-          "flex shrink-0 items-center gap-0.5",
-          !showActions && "hidden"
+          "shrink-0",
+          !showActions && "hidden group-focus-within:block"
         )}
       >
-        <button
-          aria-label={pinned ? "取消置顶" : "置顶对话"}
-          aria-pressed={pinned}
-          className={cn(
-            "kf-sidebar-row-action inline-flex size-7 cursor-pointer items-center justify-center rounded-lg",
-            pinned && "kf-sidebar-row-action-active"
-          )}
-          onClick={(event) => {
-            event.stopPropagation();
-            onTogglePin();
-          }}
-          type="button"
-        >
-          <Pin className={cn("h-3.5 w-3.5", pinned && "fill-current")} />
-        </button>
-        <button
-          aria-label="删除会话"
-          className="kf-sidebar-row-action inline-flex size-7 cursor-pointer items-center justify-center rounded-lg"
-          onClick={(event) => {
-            event.stopPropagation();
-            onDelete();
-          }}
-          type="button"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              aria-label={`${conversation.title} 更多操作`}
+              className="kf-sidebar-row-action inline-flex size-7 cursor-pointer items-center justify-center rounded-lg"
+              onClick={(event) => event.stopPropagation()}
+              title="更多操作"
+              type="button"
+            >
+              <MoreHorizontal className="h-4 w-4" aria-hidden />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-36">
+            <DropdownMenuItem className="cursor-pointer" onSelect={onTogglePin}>
+              <Pin className={cn("h-4 w-4", pinned && "fill-current")} />
+              {pinned ? "取消置顶" : "置顶对话"}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="cursor-pointer" onSelect={onDelete} variant="destructive">
+              <Trash2 className="h-4 w-4" />
+              删除会话
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );

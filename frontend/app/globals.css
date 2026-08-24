@@ -249,11 +249,13 @@
     box-shadow: 0 8px 18px color-mix(in srgb, var(--chat-accent) 9%, transparent);
   }
 
-  .kf-chat .kf-mobile-sidebar-action {
-    border-color: var(--chat-line);
-    background: color-mix(in srgb, var(--chat-surface) 82%, transparent);
+  /* Mobile open/close affordances describe the sidebar itself rather than a
+     generic back/close action. Both states share one compact touch target. */
+  .kf-chat .kf-sidebar-toggle {
+    border-color: transparent;
+    background: transparent;
     color: var(--chat-muted);
-    box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+    box-shadow: none;
     transition:
       background-color var(--duration-press) var(--ease-out),
       border-color var(--duration-press) var(--ease-out),
@@ -261,11 +263,11 @@
       color var(--duration-press) var(--ease-out);
   }
 
-  .kf-chat .kf-mobile-sidebar-action:hover {
-    border-color: color-mix(in srgb, var(--chat-accent) 36%, var(--chat-line));
-    background: color-mix(in srgb, var(--chat-accent) 8%, var(--chat-surface));
+  .kf-chat .kf-sidebar-toggle:hover {
+    border-color: transparent;
+    background: color-mix(in srgb, var(--chat-accent) 8%, transparent);
     color: var(--chat-ink);
-    box-shadow: 0 8px 18px color-mix(in srgb, var(--chat-accent) 10%, transparent);
+    box-shadow: none;
   }
 
   .kf-chat .kf-sidebar-shell {
@@ -308,7 +310,6 @@
     transform: none;
   }
 
-  .kf-chat .kf-sidebar-icon-action,
   .kf-chat .kf-sidebar-row-action,
   .kf-chat .kf-sidebar-load-more {
     min-height: var(--control-h);
@@ -317,12 +318,10 @@
     color: var(--chat-muted);
   }
 
-  .kf-chat .kf-sidebar-icon-action,
   .kf-chat .kf-sidebar-row-action {
     min-width: var(--control-h);
   }
 
-  .kf-chat .kf-sidebar-icon-action:hover,
   .kf-chat .kf-sidebar-row-action:hover,
   .kf-chat .kf-sidebar-load-more:hover {
     border-color: var(--chat-line);
@@ -330,8 +329,7 @@
     color: var(--chat-ink);
   }
 
-  .kf-chat .kf-sidebar-icon-action:focus-visible,
-  .kf-chat .kf-mobile-sidebar-action:focus-visible,
+  .kf-chat .kf-sidebar-toggle:focus-visible,
   .kf-chat .kf-sidebar-primary-action:focus-visible,
   .kf-chat .kf-sidebar-row-action:focus-visible,
   .kf-chat .kf-sidebar-load-more:focus-visible,
@@ -436,15 +434,6 @@
     border-color: transparent;
     background: color-mix(in srgb, var(--chat-ink) 8%, transparent);
     color: var(--chat-ink);
-  }
-
-  .kf-chat .kf-sidebar-row-action-active {
-    color: var(--chat-ink);
-  }
-
-  .kf-chat .kf-sidebar-row-action[aria-label="删除会话"]:hover {
-    background: color-mix(in srgb, rgb(var(--danger)) 12%, transparent);
-    color: rgb(var(--danger));
   }
 
   .kf-chat .kf-sidebar-status-badge,
@@ -744,6 +733,30 @@
       color-mix(in srgb, var(--chat-canvas) 72%, transparent) 72%,
       transparent
     );
+  }
+
+  /* On phones there is no persistent scrollbar gutter to keep clear of. Let
+     the dock use the full device width and keep all content inside the visual
+     viewport, including devices with a home indicator. */
+  @media (max-width: 639px) {
+    .kf-chat .kf-workspace .kf-thread {
+      --chat-thread-scrollbar: 0px;
+    }
+
+    .kf-chat .kf-workspace .kf-thread-scroll {
+      scrollbar-gutter: auto;
+      overscroll-behavior-x: none;
+    }
+
+    .kf-chat .kf-workspace .kf-thread-dock {
+      right: 0;
+      padding-top: 1.5rem;
+    }
+
+    .kf-chat .kf-workspace .kf-thread-inner {
+      overflow-x: clip;
+      padding-bottom: calc(var(--chat-composer-offset) + env(safe-area-inset-bottom, 0px));
+    }
   }
 
   /* Human intervention replaces the composer without floating over the thread.

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft } from "lucide-react";
+import { PanelLeftOpen } from "lucide-react";
 
 export const DEFAULT_TITLE = "新对话";
 
@@ -17,12 +17,14 @@ export function ChatTopBar({
       data-kf-region="topbar"
     >
       <button
-        className="kf-mobile-sidebar-action inline-flex size-[var(--control-h)] cursor-pointer items-center justify-center rounded-lg border lg:hidden"
+        className="kf-sidebar-toggle kf-press inline-flex size-[var(--control-h)] cursor-pointer items-center justify-center rounded-lg border lg:hidden"
         onClick={onOpenSidebar}
         type="button"
         aria-label="打开侧栏"
+        aria-expanded={false}
+        title="打开侧栏"
       >
-        <ChevronLeft className="h-5 w-5 rotate-180" />
+        <PanelLeftOpen className="size-[18px]" aria-hidden />
       </button>
 
       <div className="min-w-0 flex-1">

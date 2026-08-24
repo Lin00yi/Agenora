@@ -45,7 +45,7 @@ export function ChatLoadingShell({
           <main className="kf-main kf-workspace flex h-full min-h-0 min-w-0 flex-col">
             <div className="kf-thread relative min-h-0 flex-1">
               <div className="kf-thread-scroll absolute inset-0 overflow-y-auto">
-                <div className="kf-thread-inner mx-auto flex min-h-full w-full max-w-[860px] items-center justify-center px-5 pt-5">
+                <div className="kf-thread-inner mx-auto flex min-h-full w-full min-w-0 max-w-[860px] items-center justify-center px-3 pt-4 sm:px-5 sm:pt-5">
                   <StateView
                     variant="loading"
                     title={label}
@@ -58,7 +58,7 @@ export function ChatLoadingShell({
                 aria-hidden="true"
                 className="kf-thread-dock pointer-events-none absolute bottom-0 left-0 z-10"
               >
-                <div className="kf-composer kf-composer-docked px-5 pb-3 pt-1">
+                <div className="kf-composer kf-composer-docked px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-1 sm:px-5 sm:pb-3">
                   <div className="kf-composer-box mx-auto h-[105px] max-w-[860px] rounded-[var(--radius-composer)]" />
                   <div className="kf-composer-skeleton mx-auto mt-2 h-4 w-48 rounded" />
                 </div>

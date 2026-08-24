@@ -55,9 +55,9 @@ function SourceGroup({
         <span>{title}</span>
         <span className="tabular-nums text-faint">· {items.length}</span>
       </div>
-      <ul className="grid gap-2 sm:grid-cols-2">
+      <ul className="grid min-w-0 gap-2 sm:grid-cols-2">
         {items.map((item, index) => (
-          <li key={`${channel}-${item.url || item.source || item.title}-${index}`}>
+          <li className="min-w-0" key={`${channel}-${item.url || item.source || item.title}-${index}`}>
             <SourceCard item={item} />
           </li>
         ))}
@@ -81,26 +81,26 @@ function SourceCard({ item }: { item: Citation }) {
 
   const body = (
     <>
-      <div className="flex items-start justify-between gap-2">
-        <p className="min-w-0 flex-1 truncate text-sm font-medium text-ink/90">{title}</p>
+      <div className="flex min-w-0 items-start justify-between gap-2">
+        <p className="line-clamp-2 min-w-0 flex-1 break-words text-sm font-medium leading-5 text-ink/90">{title}</p>
         {href ? (
           <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted opacity-70" />
         ) : null}
       </div>
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted">
-        {meta ? <span className="truncate">{meta}</span> : null}
+      <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted">
+        {meta ? <span className="max-w-full truncate">{meta}</span> : null}
         {scoreLabel ? (
           <span className="tabular-nums text-faint">相关度 {scoreLabel}</span>
         ) : null}
       </div>
       {item.snippet ? (
-        <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-muted/90">{item.snippet}</p>
+        <p className="mt-1.5 line-clamp-3 break-words text-xs leading-5 text-muted/90">{item.snippet}</p>
       ) : null}
     </>
   );
 
   const className = cn(
-    "block w-full rounded-lg border border-surface-border/70 bg-surface/80 px-3 py-2.5 text-left transition-colors",
+    "block min-w-0 w-full overflow-hidden rounded-lg border border-surface-border/70 bg-surface/80 px-3 py-2.5 text-left transition-colors",
     href &&
       "cursor-pointer hover:border-border-strong hover:bg-surface-2/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
   );

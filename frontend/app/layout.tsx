@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Toaster } from "sonner";
 import { PreviewPanelProvider } from "@/components/preview/PreviewPanelProvider";
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -13,6 +13,15 @@ export const metadata: Metadata = {
   icons: {
     icon: [{ url: "/logo.svg", type: "image/svg+xml" }],
   },
+};
+
+// Keep mobile browsers on the device viewport. Without an explicit viewport,
+// embedded browsers can fall back to a desktop layout width, which makes the
+// chat pane look clipped rather than allowing its small-screen layout to run.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 // Runs before paint so the dark class is applied before the first frame.

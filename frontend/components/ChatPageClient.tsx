@@ -748,13 +748,13 @@ export function ChatPage({
             onOpenSidebar={() => setSidebarOpen(true)}
           />
 
-          <div className="min-h-0 flex-1" data-kf-region="workspace-host">
+          <div className="min-h-0 min-w-0 flex-1" data-kf-region="workspace-host">
             <main
               className="kf-main kf-workspace flex h-full min-h-0 min-w-0 flex-col"
               data-kf-region="workspace"
             >
               {missingConversationId ? (
-                <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+                <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5 sm:py-5">
                   <div className="mx-auto flex min-h-full w-full max-w-[860px] items-center justify-center">
                     <StateView
                       variant="error"
@@ -770,7 +770,7 @@ export function ChatPage({
                   </div>
                 </div>
               ) : (!currentId && visibleMessages.length === 0) ? (
-                <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+                <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5 sm:py-5">
                   <div className="mx-auto flex w-full max-w-[920px] flex-col">
                     <EmptyWorkbench
                       centered
@@ -841,7 +841,7 @@ export function ChatPage({
                   >
                     <div
                       className={cn(
-                        "kf-thread-inner mx-auto flex w-full max-w-[860px] flex-col gap-7 px-5 pt-5",
+                        "kf-thread-inner mx-auto flex w-full min-w-0 max-w-[860px] flex-col gap-7 px-3 pt-4 sm:px-5 sm:pt-5",
                         humanInput && "kf-thread-inner-human"
                       )}
                       data-kf-region="thread-inner"
