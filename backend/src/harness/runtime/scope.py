@@ -86,6 +86,22 @@ def normalize_scope_mode(raw: str | None) -> ScopeMode:
     return mode if mode in _SCOPE_MODES else "layered"  # type: ignore[return-value]
 
 
+def _needs_complex_intent_layer(
+    assessment: IntentAssessment | None,
+    *,
+    scope_mode: ScopeMode,
+) -> bool:
+    """Return True when layered mode should escalate past triage to the complex LLM pass."""
+    if scope_mode != "layered":
+        return False
+    if assessment is None:
+        return True
+    # Triage (or rule) high/medium confidence is sufficient — skip the second LLM call.
+    if assessment.confidence in {"high", "medium"}:
+        return False
+    return assessment.confidence == "low"
+
+
 def _latest_user_text(messages: list[dict[str, Any]]) -> str:
     for message in reversed(messages):
         if message.get("role") == "user" and isinstance(message.get("content"), str):
@@ -234,7 +250,7 @@ async def resolve_runtime_scope(
             )
         except Exception:  # noqa: BLE001 - continue to the stronger/fallback layer
             assessment = None
-    if (assessment is None or assessment.confidence == "low") and scope_mode == "layered":
+    if _needs_complex_intent_layer(assessment, scope_mode=scope_mode):
         try:
             assessment, complex_cost_usd = await _classify_with_llm(
                 query=query,
