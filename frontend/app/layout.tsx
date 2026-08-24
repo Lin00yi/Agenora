@@ -24,7 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script dangerouslySetInnerHTML={{ __html: NO_FLASH }} />
       </head>
-      <body className="min-h-screen bg-background font-sans text-foreground antialiased">
+      <body className="min-h-screen overflow-x-hidden bg-background font-sans text-foreground antialiased">
         <ThemeProvider>
           <PreviewPanelProvider>
             {children}

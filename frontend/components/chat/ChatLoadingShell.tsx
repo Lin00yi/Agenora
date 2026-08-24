@@ -17,7 +17,7 @@ export function ChatLoadingShell({
   return (
     <div
       className={cn(
-        "kf-chat kf-chat-root h-dvh w-screen overflow-hidden",
+        "kf-chat kf-chat-root h-full w-full overflow-hidden",
         animated && "kf-page-transition"
       )}
     >      <div className="grid h-full grid-cols-1 lg:grid-cols-[286px_minmax(0,1fr)]">
@@ -40,7 +40,7 @@ export function ChatLoadingShell({
           <div className="kf-user-trigger mt-auto h-[58px] rounded-lg border" />
         </aside>
 
-        <div className="flex h-[100dvh] max-h-[100dvh] min-h-0 min-w-0 flex-col overflow-hidden">
+        <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
           <ChatTopBar title={DEFAULT_TITLE} onOpenSidebar={() => {}} />
           <main className="kf-main kf-workspace flex h-full min-h-0 min-w-0 flex-col">
             <div className="kf-thread relative min-h-0 flex-1">

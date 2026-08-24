@@ -113,8 +113,10 @@ export function PreviewPanelProvider({ children }: { children: ReactNode }) {
 
   return (
     <PreviewPanelContext.Provider value={value}>
-      <div className="flex min-h-dvh w-full overflow-hidden">
-        <div className="min-w-0 min-h-dvh flex-1 overflow-y-auto">{children}</div>
+      <div className="flex h-dvh w-full overflow-hidden">
+        <div className="preview-main min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+          {children}
+        </div>
         <aside
           aria-hidden={!open}
           className={cn(

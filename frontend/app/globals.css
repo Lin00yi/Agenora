@@ -1400,6 +1400,11 @@ html.dark {
   }
 }
 
+html {
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
 html,
 body {
   font-family: var(--font-sans);
@@ -1408,7 +1413,50 @@ body {
   text-rendering: geometricPrecision;
 }
 
-/* Scrollbar */
+body {
+  overflow-x: hidden;
+}
+
+/* Full-viewport chat owns its own scroll regions; suppress the app shell scroll. */
+.preview-main:has(> [data-kf-root]) {
+  overflow: hidden;
+}
+
+/* Scrollbar — app shell and admin pages (chat thread uses scoped rules below). */
+.preview-main,
+.admin-panel,
+.app-modal-panel {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--ink) / 0.12) transparent;
+}
+
+.preview-main::-webkit-scrollbar,
+.admin-panel::-webkit-scrollbar,
+.app-modal-panel::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.preview-main::-webkit-scrollbar-thumb,
+.admin-panel::-webkit-scrollbar-thumb,
+.app-modal-panel::-webkit-scrollbar-thumb {
+  background: rgb(var(--ink) / 0.12);
+  border-radius: 999px;
+}
+
+.preview-main::-webkit-scrollbar-thumb:hover,
+.admin-panel::-webkit-scrollbar-thumb:hover,
+.app-modal-panel::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--ink) / 0.22);
+}
+
+.preview-main::-webkit-scrollbar-track,
+.admin-panel::-webkit-scrollbar-track,
+.app-modal-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Fallback for dialogs, dropdowns, sidebars, and other nested scroll areas. */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
