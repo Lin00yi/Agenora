@@ -190,15 +190,24 @@ def build_react_graph(
     async def scope_node(state: AgentState) -> AgentState:
         # Scope is a real ReAct graph stage.  Record it explicitly rather than
         # making a routed-KB span the only evidence that it ran.
-        async with aspan("scope", metadata={"candidate_count": len(scoped.candidates)}) as obs:
-            scope = await scoped.resolve(list(state.get("messages") or []))
+        messages = list(state.get("messages") or [])
+        async with aspan(
+            "scope",
+            input={
+                "message_count": len(messages),
+                "candidate_count": len(scoped.candidates),
+                "bound_kb_id": str(scoped.bound_kb.id) if scoped.bound_kb is not None else None,
+            },
+        ) as obs:
+            scope = await scoped.resolve(messages)
             if obs is not None:
                 obs.update(
+                    output=scope,
                     metadata={
                         "kind": scope["kind"],
                         "selected_kb_ids": scope["selected_kb_ids"],
                         "route_source": scope["route"].get("source"),
-                    }
+                    },
                 )
         route_cost = scoped.scope.cost_usd if scoped.scope is not None else 0.0
         # ``scope`` remains a first-class admin trace node and runtime-state

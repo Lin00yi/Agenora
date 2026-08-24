@@ -34,6 +34,7 @@ type TraceIoPreview = {
   subtitle?: string;
   input?: string | null;
   output?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 export type PreviewPayload = TextPreview | TraceIoPreview;
@@ -256,8 +257,18 @@ function TraceIoPreviewPanel({
             </pre>
           </section>
         ) : null}
-        {!preview.input && !preview.output ? (
-          <p className="text-sm text-muted">没有可预览的输入或输出。</p>
+        {preview.metadata && Object.keys(preview.metadata).length > 0 ? (
+          <section className="rounded-lg border border-surface-border/80 bg-surface-2/30 p-3">
+            <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">Metadata</h3>
+            <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-ink">
+              {formatPreviewText(JSON.stringify(preview.metadata, null, 2), "json")}
+            </pre>
+          </section>
+        ) : null}
+        {!preview.input && !preview.output && !(preview.metadata && Object.keys(preview.metadata).length > 0) ? (
+          <p className="text-sm text-muted">
+            没有可预览的输入或输出。若为新 Trace，请确认后端已开启 TRACE_STORE_IO。
+          </p>
         ) : null}
       </div>
     </>

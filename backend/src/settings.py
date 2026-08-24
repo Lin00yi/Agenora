@@ -217,8 +217,9 @@ class Settings(BaseSettings):
     trace_enabled: bool = True
     # Store truncated input/output previews on traces/observations.
     # I/O previews may contain user prompts, retrieved private documents and
-    # model output. Keep them opt-in; metadata-only traces remain available.
-    trace_store_io: bool = False
+    # model output. Admin-only /api/admin/traces reads them; disable in prod
+    # with TRACE_STORE_IO=false if you need metadata-only traces.
+    trace_store_io: bool = True
     # External trace export is opt-in. A self-hosted Langfuse deployment can
     # still be enabled explicitly without changing the tracing architecture.
     langfuse_enabled: bool = False

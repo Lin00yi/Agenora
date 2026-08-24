@@ -215,7 +215,7 @@ function TracesPanel() {
       ) : traces.length === 0 ? (
         <StateView
           title="还没有 Trace 记录"
-          description="开启 TRACE_ENABLED 后，完成一轮对话即可在此查看端到端 span 树与延迟。"
+          description="开启 TRACE_ENABLED 后，完成一轮对话即可在此查看端到端 span 树与延迟。每个 span 可点「预览 IO」查看输入/输出。"
         />
       ) : (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
@@ -409,14 +409,13 @@ function TraceDetail({
       </div>
 
       <div className="flex-1 space-y-4 overflow-y-auto p-5">
-        {(detail.input_preview || detail.output_preview) && (
-          <TraceIoPreviewButton
-            title={`Trace ${shortId(detail.id)}`}
-            subtitle="会话级输入 / 输出"
-            input={detail.input_preview}
-            output={detail.output_preview}
-          />
-        )}
+        <TraceIoPreviewButton
+          title={`Trace ${shortId(detail.id)}`}
+          subtitle="会话级输入 / 输出"
+          input={detail.input_preview}
+          output={detail.output_preview}
+          metadata={detail.metadata}
+        />
 
         {filteredChunks.length > 0 && (
           <FilteredChunksPanel chunks={filteredChunks} />
@@ -610,14 +609,13 @@ function ObservationRow({
             {node.error && (
               <p className="mt-1 text-xs text-danger">{node.error}</p>
             )}
-            {(node.input_preview || node.output_preview) && (
-              <TraceIoPreviewButton
-                title={node.name}
-                subtitle={`${node.type} · ${formatDuration(node.duration_ms)}`}
-                input={node.input_preview}
-                output={node.output_preview}
-              />
-            )}
+            <TraceIoPreviewButton
+              title={node.name}
+              subtitle={`${node.type} · ${formatDuration(node.duration_ms)}`}
+              input={node.input_preview}
+              output={node.output_preview}
+              metadata={node.metadata}
+            />
           </div>
         </div>
       </div>
@@ -659,13 +657,17 @@ function TraceIoPreviewButton({
   subtitle,
   input,
   output,
+  metadata,
 }: {
   title: string;
   subtitle?: string;
   input?: string | null;
   output?: string | null;
+  metadata?: Record<string, unknown> | null;
 }) {
   const { openPreview } = usePreviewPanel();
+  const hasIo = !!(input || output);
+  const hasMetadata = !!metadata && Object.keys(metadata).length > 0;
   return (
     <Button
       type="button"
@@ -679,10 +681,12 @@ function TraceIoPreviewButton({
           subtitle,
           input,
           output,
+          metadata: hasMetadata ? metadata : null,
         })
       }
     >
       预览 IO
+      {!hasIo && hasMetadata ? " · meta" : null}
     </Button>
   );
 }

@@ -451,7 +451,51 @@ async def atool(name: str, **kwargs: Any) -> AsyncIterator[SpanHandle | None]:
         yield handle
 
 
-def traced(name: str, *, as_type: ObservationType = "span"):
+def _trace_value_summary(value: Any) -> Any:
+    """Reduce large runtime objects to admin-safe IO previews."""
+    if value is None:
+        return None
+    if hasattr(value, "trace_metadata") and callable(getattr(value, "trace_metadata")):
+        return value.trace_metadata()
+    if isinstance(value, dict):
+        if "messages" in value and any(
+            key in value for key in ("iterations", "pending_tool_calls", "final_report", "runtime_scope")
+        ):
+            pending = value.get("pending_tool_calls") or []
+            tool_names: list[str] = []
+            for item in pending:
+                if not isinstance(item, dict):
+                    continue
+                name = item.get("name") or (item.get("function") or {}).get("name")
+                if name:
+                    tool_names.append(str(name))
+            final_report = value.get("final_report")
+            summary: dict[str, Any] = {
+                "iterations": value.get("iterations"),
+                "message_count": len(value.get("messages") or []),
+                "pending_tools": tool_names,
+            }
+            if final_report:
+                summary["final_report"] = str(final_report)[:500]
+            if value.get("report_streamed") is not None:
+                summary["report_streamed"] = bool(value.get("report_streamed"))
+            runtime_scope = value.get("runtime_scope")
+            if isinstance(runtime_scope, dict):
+                summary["runtime_scope"] = {
+                    "kind": runtime_scope.get("kind"),
+                    "selected_kb_ids": runtime_scope.get("selected_kb_ids"),
+                }
+            return summary
+        if "kind" in value and "selected_kb_ids" in value:
+            return value
+    if isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (list, tuple)):
+        return [_trace_value_summary(item) for item in list(value)[:20]]
+    return str(value)[:500]
+
+
+def traced(name: str, *, as_type: ObservationType = "span", capture_io: bool = True):
     """Decorator: wrap an async function in a named observation on the current trace."""
 
     def decorator(fn):
@@ -459,9 +503,12 @@ def traced(name: str, *, as_type: ObservationType = "span"):
             t = get_current_trace()
             if t is None:
                 return await fn(*args, **kwargs)
-            async with t.start_observation(name, as_type=as_type) as handle:
+            input_summary = _trace_value_summary(args[0]) if capture_io and args else None
+            async with t.start_observation(name, as_type=as_type, input=input_summary) as handle:
                 try:
                     result = await fn(*args, **kwargs)
+                    if capture_io and result is not None:
+                        handle.update(output=_trace_value_summary(result))
                     return result
                 except Exception as exc:
                     handle.update(error=str(exc), status="error")
