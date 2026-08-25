@@ -34,6 +34,7 @@ type TraceIoPreview = {
   subtitle?: string;
   input?: string | null;
   output?: string | null;
+  error?: string | null;
   metadata?: Record<string, unknown> | null;
 };
 
@@ -257,6 +258,12 @@ function TraceIoPreviewPanel({
             </pre>
           </section>
         ) : null}
+        {preview.error ? (
+          <section className="rounded-lg border border-danger/30 bg-danger/5 p-3">
+            <h3 className="mb-2 text-[11px] font-semibold uppercase text-danger">错误</h3>
+            <p className="text-pretty break-words text-sm leading-6 text-danger">{preview.error}</p>
+          </section>
+        ) : null}
         {preview.metadata && Object.keys(preview.metadata).length > 0 ? (
           <section className="rounded-lg border border-surface-border/80 bg-surface-2/30 p-3">
             <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">Metadata</h3>
@@ -265,7 +272,7 @@ function TraceIoPreviewPanel({
             </pre>
           </section>
         ) : null}
-        {!preview.input && !preview.output && !(preview.metadata && Object.keys(preview.metadata).length > 0) ? (
+        {!preview.input && !preview.output && !preview.error && !(preview.metadata && Object.keys(preview.metadata).length > 0) ? (
           <p className="text-sm text-muted">
             没有可预览的输入或输出。若为新 Trace，请确认后端已开启 TRACE_STORE_IO。
           </p>

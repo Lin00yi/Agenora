@@ -354,6 +354,9 @@ function TraceDetail({
   const schemaVersion = typeof detail.metadata?.trace_schema_version === "number"
     ? detail.metadata.trace_schema_version
     : null;
+  const ttftMs = typeof detail.metadata?.ttft_ms === "number" && Number.isFinite(detail.metadata.ttft_ms)
+    ? Math.max(0, detail.metadata.ttft_ms)
+    : null;
 
   return (
     <div className={cn("flex h-full max-h-[min(70dvh,52rem)] flex-col", loading && "opacity-70")}>
@@ -370,6 +373,7 @@ function TraceDetail({
             <RiskChip risk={risk} />
             <StatusChip status={detail.status} />
             <span className="chip chip-muted">{formatDuration(detail.duration_ms)}</span>
+            {ttftMs != null && <span className="chip chip-muted tabular-nums" title="从请求 Trace 开始到首个流式文本 token 发出的耗时">TTFT {formatDuration(ttftMs)}</span>}
             <span className="chip chip-muted">{formatCost(detail.total_cost_usd)}</span>
             {suspiciousCount > 0 && (
               <span className="chip chip-warning">过滤 {suspiciousCount} chunk</span>

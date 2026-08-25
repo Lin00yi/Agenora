@@ -321,6 +321,8 @@ export type AdminObservationNode = {
   input_preview: string | null;
   output_preview: string | null;
   metadata: Record<string, unknown>;
+  /** Provider time to first token for a generation observation. */
+  ttft_ms?: number | null;
   children?: AdminObservationNode[];
 };
 

@@ -235,7 +235,7 @@ async def kb_search_node(
             "input": args,
             "result": result.text if result.error is None else f"[tool error] {result.error}",
             "latency_ms": result.latency_ms,
-            "error": "yes" if result.error is not None else None,
+            "error": result.error,
             "citations": citations,
         }
         filtered_text = tool_result["result"]
@@ -369,7 +369,7 @@ async def kb_search_node(
                 else f"[tool error] {kg_result.error}"
             ),
             "latency_ms": kg_result.latency_ms,
-            "error": "yes" if kg_result.error is not None else None,
+            "error": kg_result.error,
             "citations": [],
             "timed_out": timed_out,
         }

@@ -22,6 +22,8 @@ export type MemoryTrace = {
     mode?: "general" | "knowledge_base";
     agent_runtime?: string;
     safety?: "standard" | "heightened";
+    /** End-to-end time from the request trace start to the first streamed text token. */
+    ttft_ms?: number;
     /** Aggregate runtime telemetry. It deliberately excludes tool inputs and results. */
     execution?: {
       iterations?: number;

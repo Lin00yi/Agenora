@@ -14,6 +14,27 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _ttft_ms(started_at: datetime | None, metadata: dict) -> int | None:
+    """Return generation time-to-first-token from the stored completion start.
+
+    Langfuse calls this ``completion_start_time``.  Keeping the derived value
+    in the admin response (rather than duplicating it in the database) makes
+    existing traces readable as soon as the UI gains TTFT support.
+    """
+    value = metadata.get("completion_start_time")
+    if started_at is None or not isinstance(value, str) or not value:
+        return None
+    try:
+        completion_started_at = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if completion_started_at.tzinfo is None:
+        completion_started_at = completion_started_at.replace(tzinfo=timezone.utc)
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=timezone.utc)
+    return max(0, int((completion_started_at - started_at).total_seconds() * 1000))
+
+
 class Trace(Base):
     """One end-to-end request / chat turn."""
 
@@ -127,6 +148,7 @@ class Observation(Base):
         # dependency from trace persistence on the admin-facing catalog.
         from src.platform.observability.catalog import observation_lifecycle
 
+        metadata = self.metadata_dict()
         return {
             "id": self.id,
             "trace_id": self.trace_id,
@@ -144,5 +166,8 @@ class Observation(Base):
             "cost_usd": self.cost_usd,
             "input_preview": self.input_preview,
             "output_preview": self.output_preview,
-            "metadata": self.metadata_dict(),
+            "metadata": metadata,
+            # TTFT is meaningful for generation nodes only. Historical rows
+            # without completion_start_time deliberately remain null.
+            "ttft_ms": _ttft_ms(self.started_at, metadata) if self.type == "generation" else None,
         }

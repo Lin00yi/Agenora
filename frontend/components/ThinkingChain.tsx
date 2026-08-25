@@ -249,7 +249,14 @@ function isHistoricalOrchestrationEvent(name: string): boolean {
 }
 
 function normalizeIssue(issue: string): string {
-  return issue.length > 96 ? `${issue.slice(0, 96)}…` : issue;
+  const normalized = issue.trim();
+  // Older persisted tool rows used the literal "yes" as an error sentinel.
+  // These rows have already discarded the original reason, so make that
+  // limitation explicit instead of misleading users with a generic failure.
+  if (!normalized || normalized.toLowerCase() === "yes") {
+    return "旧记录未保存具体失败原因；请在追踪中查看原始错误。";
+  }
+  return normalized.length > 160 ? `${normalized.slice(0, 160)}…` : normalized;
 }
 
 function truncate(text: string, limit: number): string {

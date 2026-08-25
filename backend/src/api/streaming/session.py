@@ -373,6 +373,8 @@ async def run_chat_session(
     draft_message_id: str | None = None
     draft_dirty = False
     last_draft_persist_at = 0.0
+    session_started_at_ms = int(time.time() * 1000)
+    first_token_at_ms: int | None = None
 
     async def persist_draft(*, force: bool = False) -> None:
         """Checkpoint visible stream progress at a bounded write rate.
@@ -405,7 +407,17 @@ async def run_chat_session(
         last_draft_persist_at = now
 
     async def emit(evt: dict[str, Any]) -> None:
-        nonlocal draft_dirty
+        nonlocal draft_dirty, first_token_at_ms
+        # This is the response-level TTFT users experience: from the root
+        # request trace to the first text token sent over SSE. Provider spans
+        # retain their own TTFT separately via completion_start_time.
+        if (
+            first_token_at_ms is None
+            and evt.get("event") == "token"
+            and isinstance(evt.get("text"), str)
+            and evt["text"]
+        ):
+            first_token_at_ms = int(time.time() * 1000)
         if evt.get("event") in {"tool_start", "tool_blocked"} and not isinstance(
             evt.get("t0"), (int, float)
         ):
@@ -715,8 +727,33 @@ async def run_chat_session(
                 )
                 report = EMPTY_ANSWER_FALLBACK
                 report_streamed = False
+            if not report_streamed:
+                # Skill / non-stream paths still use fake chunking for UX.
+                await emit({"event": "report_start"})
+                for piece in _chunks(report, size=8):
+                    await emit({"event": "token", "text": piece})
+                    await asyncio.sleep(0.02)
+            ttft_ms = None
+            if first_token_at_ms is not None:
+                ttft_started_at_ms = (
+                    int(trace.started_at.timestamp() * 1000)
+                    if trace is not None
+                    else session_started_at_ms
+                )
+                ttft_ms = max(0, first_token_at_ms - ttft_started_at_ms)
+            if ttft_ms is not None and memory_trace is not None:
+                runtime = memory_trace.get("runtime")
+                memory_trace = {
+                    **memory_trace,
+                    "runtime": {
+                        **(runtime if isinstance(runtime, dict) else {}),
+                        "ttft_ms": ttft_ms,
+                    },
+                }
             # Finish sinks before SSE "done" so client disconnect / task.cancel
-            # cannot skip DB persist while Langfuse flush is in flight.
+            # cannot skip DB persist while Langfuse flush is in flight. This is
+            # intentionally after fallback chunking, because that path emits
+            # the first visible token here rather than inside the graph.
             if trace is not None:
                 await asyncio.shield(
                     trace.finish(
@@ -741,15 +778,10 @@ async def run_chat_session(
                             "agent_runtime": execution_runtime,
                             "trace_schema_version": TRACE_SCHEMA_VERSION,
                             "runtime_telemetry": runtime_telemetry,
+                            **({"ttft_ms": ttft_ms} if ttft_ms is not None else {}),
                         },
                     )
                 )
-            if not report_streamed:
-                # Skill / non-stream paths still use fake chunking for UX.
-                await emit({"event": "report_start"})
-                for piece in _chunks(report, size=8):
-                    await emit({"event": "token", "text": piece})
-                    await asyncio.sleep(0.02)
             persisted_message_id = await _persist_assistant_turn(
                 conversation_id=conversation_id,
                 user=user,

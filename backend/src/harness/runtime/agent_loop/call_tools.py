@@ -301,6 +301,10 @@ async def call_tools_node(
             "tool_use_id": tc["id"],
             "content": result.text if result.error is None else f"[tool error] {result.error}",
             "is_error": result.error is not None,
+            # Keep the real, already SSE-visible failure reason for the
+            # durable chat timeline. A boolean-like placeholder here used to
+            # render as a stray "yes" below failed tool rows after reload.
+            "error": result.error,
             "raw": result.raw,
             "citations": citations,
                 "latency_ms": result.latency_ms,
@@ -410,7 +414,7 @@ async def call_tools_node(
                 "result": r["content"],
                 "latency_ms": r.get("latency_ms"),
                 "t0": r.get("t0"),
-                "error": "yes" if r.get("is_error") else None,
+                "error": r.get("error"),
                 "citations": cites,
                 "result_truncated": bool(r.get("result_truncated")),
                 **({"display": r["display"]} if r.get("display") else {}),

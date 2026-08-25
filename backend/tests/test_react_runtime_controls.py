@@ -25,6 +25,12 @@ class _RecordingTool(Tool):
         return ToolResult(text="ok", latency_ms=1, raw={"results": []})
 
 
+class _FailingTool(_RecordingTool):
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        self.calls.append(kwargs)
+        return ToolResult(text="", latency_ms=1, error="upstream search timed out")
+
+
 @pytest.mark.asyncio
 async def test_react_tool_loop_enforces_kb_per_step_budget() -> None:
     registry = ToolRegistry()
@@ -135,6 +141,27 @@ async def test_blocked_calls_do_not_consume_turn_tool_budget() -> None:
     assert dangerous.calls == []
     assert len(allowed.calls) == 1
     assert result["tool_call_count"] == MAX_TOOL_CALLS_PER_TURN
+
+
+@pytest.mark.asyncio
+async def test_react_tool_loop_persists_the_actual_tool_failure_reason() -> None:
+    registry = ToolRegistry()
+    tool = _FailingTool("web_search")
+    registry.register(tool)
+
+    async def emit(_: dict[str, Any]) -> None:
+        return None
+
+    result = await call_tools_node(
+        {
+            "messages": [{"role": "user", "content": "查询"}],
+            "pending_tool_calls": [{"id": "failed-search", "name": "web_search", "input": {}}],
+        },
+        registry=registry,
+        emit=emit,
+    )
+
+    assert result["tool_call_log"][-1]["error"] == "upstream search timed out"
 
 
 def test_tool_results_keep_head_and_tail_under_a_shared_budget() -> None:

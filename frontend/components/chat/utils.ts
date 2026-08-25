@@ -356,8 +356,18 @@ export function resolveContextUsagePercent(status: {
 export function formatMessageStats(messages: Message[]) {
   if (messages.length === 0) return "";
   const userCount = messages.filter((message) => message.role === "user").length;
-  const assistantCount = messages.filter((message) => message.role === "assistant").length;
-  return `${userCount} \u8f6e \u00b7 ${messages.length} \u6761`;
+  const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
+  const ttftMs = lastAssistant?.memory_trace?.runtime?.ttft_ms;
+  const ttft = typeof ttftMs === "number" && Number.isFinite(ttftMs) && ttftMs >= 0
+    ? ` · TTFT ${formatLatency(ttftMs)}`
+    : "";
+  return `${userCount} \u8f6e \u00b7 ${messages.length} \u6761${ttft}`;
+}
+
+function formatLatency(ms: number): string {
+  if (ms < 1_000) return `${Math.round(ms)} ms`;
+  if (ms < 60_000) return `${(ms / 1_000).toFixed(2)} s`;
+  return `${(ms / 60_000).toFixed(2)} min`;
 }
 
 export function formatTime(value?: number | null) {

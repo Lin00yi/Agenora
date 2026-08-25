@@ -68,6 +68,7 @@ export function SpanWaterfall({ nodes, totalMs, rootStart }: Props) {
       subtitle: `${typeLabel(node.type)} · ${formatDuration(node.duration_ms)}`,
       input: node.input_preview,
       output: node.output_preview,
+      error: node.error,
       metadata: node.metadata,
     });
   };
@@ -141,6 +142,7 @@ function SpanRow({
   const widthPct = Math.max(1.2, Math.min(100 - leftPct, (dur / totalMs) * 100));
   const slow = dur >= 1000 || dur / totalMs >= 0.35;
   const tokens = tokenLabel(node.usage);
+  const ttft = node.type === "generation" ? node.ttft_ms : null;
   const active = activeId === node.id;
 
   return (
@@ -192,6 +194,11 @@ function SpanRow({
             ) : null}
             {tokens ? (
               <span className="hidden shrink-0 tabular-nums text-[11px] text-muted md:inline">{tokens}</span>
+            ) : null}
+            {ttft != null ? (
+              <span className="hidden shrink-0 tabular-nums text-[11px] text-muted lg:inline" title="模型调用到首个输出 token 的耗时">
+                TTFT {formatDuration(ttft)}
+              </span>
             ) : null}
             {node.cost_usd != null && node.cost_usd > 0 ? (
               <span className="hidden shrink-0 tabular-nums text-[11px] text-muted lg:inline">
