@@ -22,6 +22,13 @@ const PROVIDERS: Array<{ value: WebSearchProvider; label: string; description: s
   { value: "tavily", label: "Tavily", description: "面向 AI Agent 的网页搜索 API，需要 Key。" },
 ];
 
+const LEGACY_WEB_SEARCH_SETTINGS: MyWebSearchSettings = {
+  provider: null,
+  has_key: false,
+  configured: false,
+  effective_provider: "duckduckgo",
+};
+
 function providerLabel(value: WebSearchProvider) {
   return PROVIDERS.find((item) => item.value === value)?.label ?? value;
 }
@@ -38,7 +45,10 @@ export function WebSearchSettingsModule({ embedded = false }: { embedded?: boole
 
   const refresh = async () => {
     const settings = await getMySettings();
-    const next = settings.web_search;
+    // A frontend can be deployed just before its backend. Keep this screen
+    // usable during that short rollout window instead of dereferencing an
+    // absent field in the legacy GET /api/settings/me response.
+    const next = settings.web_search ?? LEGACY_WEB_SEARCH_SETTINGS;
     setInitial(next);
     setProvider(next.provider ?? next.effective_provider ?? "duckduckgo");
     setApiKey("");

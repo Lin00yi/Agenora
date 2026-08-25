@@ -131,7 +131,8 @@ export type MySettings = {
   embedding: MyEmbeddingSettings;
   reranker: MyRerankerSettings;
   kb_options: MyKbOptions;
-  web_search: MyWebSearchSettings;
+  /** Optional while a browser is still connected to an older backend rollout. */
+  web_search?: MyWebSearchSettings;
 };
 
 export type SaveLLMBody = {
