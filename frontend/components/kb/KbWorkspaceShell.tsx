@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { KnowledgeBaseContextHeader } from "@/components/kb/AdminPageShell";
@@ -11,6 +11,7 @@ import { toast } from "@/lib/toast";
 
 export function KbWorkspaceShell({ kbId, children }: { kbId: string; children: ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [kb, setKb] = useState<KBDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -47,7 +48,7 @@ export function KbWorkspaceShell({ kbId, children }: { kbId: string; children: R
     <div className="app-page admin-page min-h-dvh text-ink">
       <KnowledgeBaseContextHeader
         breadcrumbs={[{ label: "知识库管理", href: "/kbs" }]}
-        title="知识库工作区"
+        title={pathname.includes("/documents/") ? "文档" : undefined}
         context={{ label: kb.name, href: `/kbs/${kbId}` }}
       />
       <main className="app-page-content mx-auto px-4 py-7 sm:px-6 sm:py-10">{children}</main>

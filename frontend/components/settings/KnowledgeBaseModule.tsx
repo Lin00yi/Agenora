@@ -96,63 +96,87 @@ export function KnowledgeBaseModule() {
   return (
     <div className="app-page min-h-dvh text-ink">
       <header className="app-page-header border-b">
-        <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4 sm:px-6">
-          <Link
-            href="/"
-            className="app-nav-link app-nav-link-compact"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            <span>返回对话</span>
-          </Link>
+        <div className="mx-auto flex h-14 max-w-6xl items-center px-4 sm:px-6">
+          <nav aria-label="页面导航" className="flex min-w-0 items-center gap-2">
+            <Link
+              href="/"
+              className="app-nav-link app-nav-link-compact shrink-0"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              <span>返回对话</span>
+            </Link>
+            <ChevronRight aria-hidden="true" className="hidden h-4 w-4 text-faint sm:block" />
+            <span aria-current="page" className="hidden truncate text-sm font-medium text-ink sm:block">
+              知识库
+            </span>
+          </nav>
         </div>
       </header>
 
-      <main className="app-page-content mx-auto max-w-5xl px-4 py-7 sm:px-6 sm:py-10">
-        <div className="mb-6 flex flex-col gap-3 border-b border-surface-border/70 pb-5 sm:flex-row sm:items-end sm:justify-between">
-          <div className="min-w-0">
-            <h2 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-ink">
-              <span className="admin-icon-tile admin-icon-tile-brand rounded-md">
-                <BookOpen className="h-5 w-5" />
-              </span>
-              我的知识库
-            </h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-              创建与管理资料库；新建时可单独配置 embedding / reranker。
-            </p>
+      <main className="app-page-content mx-auto max-w-6xl px-4 py-7 sm:px-6 sm:py-10">
+        <section className="border-b border-surface-border/70 pb-7" aria-labelledby="knowledge-bases-title">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-brand">知识资产</p>
+              <h1 id="knowledge-bases-title" className="mt-2 flex items-center gap-2 text-balance text-3xl font-semibold text-ink">
+                <span className="admin-icon-tile admin-icon-tile-brand size-9 rounded-lg">
+                  <BookOpen className="h-5 w-5" />
+                </span>
+                我的知识库
+              </h1>
+              <p className="mt-2 max-w-2xl text-pretty text-sm leading-6 text-muted">
+                统一管理对话可引用的资料、检索模型与访问权限。
+              </p>
+            </div>
+            <Button onClick={() => setCreateOpen(true)} className="w-full sm:w-auto" type="button">
+              <Plus className="h-4 w-4" />
+              新建知识库
+            </Button>
           </div>
-          <Button
-            onClick={() => setCreateOpen(true)}
-            className="w-full sm:w-auto"
-            type="button"
-          >
-            <Plus className="h-4 w-4" />
-            新建知识库
-          </Button>
-        </div>
+          <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted">
+            {loading ? (
+              <span>正在同步知识库与文档状态</span>
+            ) : (
+              <>
+                <span className="tabular-nums"><strong className="font-semibold text-ink">{kbs.length}</strong> 个知识库</span>
+                <span aria-hidden className="text-surface-border">·</span>
+                <span className="tabular-nums">{kbs.reduce((total, kb) => total + kb.documents_count, 0)} 份文档</span>
+                <span aria-hidden className="text-surface-border">·</span>
+                <span>选择知识库后可管理文档、图谱与检索设置</span>
+              </>
+            )}
+          </div>
+        </section>
 
-        <div className="mb-6">
-          <KbRetrievalPreferences initial={kbOptions} onChanged={setKbOptions} />
-        </div>
+        <section className="mt-7 grid gap-7 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start">
+          <div className="min-w-0">
+            <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+              <div>
+                <h2 className="text-balance text-lg font-semibold text-ink">知识库列表</h2>
+                <p className="mt-1 text-pretty text-sm text-muted">进入任一知识库，继续维护文档、关系图谱与团队访问权限。</p>
+              </div>
+              {!loading && kbs.length > 0 ? <span className="text-sm tabular-nums text-muted">共 {kbs.length} 个</span> : null}
+            </div>
 
-        {loading ? (
-          <StateView
-            variant="loading"
-            title="正在读取知识库"
-            description="正在同步文档、分块和成员信息。"
-          />
-        ) : kbs.length === 0 ? (
-          <StateView
-            title="还没有知识库"
-            description="从一个资料库开始，把文档变成可追问、可引用的答案。"
-            action={
-              <Button onClick={() => setCreateOpen(true)} type="button">
-                <Plus className="h-4 w-4" />
-                新建知识库
-              </Button>
-            }
-          />
-        ) : (
-          <ul className="grid min-w-0 gap-2">
+            {loading ? (
+              <StateView
+                variant="loading"
+                title="正在读取知识库"
+                description="正在同步文档、分块和成员信息。"
+              />
+            ) : kbs.length === 0 ? (
+              <StateView
+                title="还没有知识库"
+                description="从一个资料库开始，把文档变成可追问、可引用的答案。"
+                action={
+                  <Button onClick={() => setCreateOpen(true)} type="button">
+                    <Plus className="h-4 w-4" />
+                    新建知识库
+                  </Button>
+                }
+              />
+            ) : (
+              <ul className="overflow-hidden rounded-xl border border-surface-border/80 bg-surface divide-y divide-surface-border/70">
             {kbs.map((kb) => {
               const isOwner = kb.my_role === "owner";
               const isEditor = kb.my_role === "editor";
@@ -160,10 +184,10 @@ export function KnowledgeBaseModule() {
               return (
                 <li
                   key={kb.id}
-                  className="group min-w-0 overflow-hidden rounded-lg border border-surface-border/80 bg-surface transition-[background-color,border-color] hover:border-brand/30 hover:bg-surface-2/40"
+                  className="group min-w-0 transition-[background-color] hover:bg-surface-2/45"
                 >
-                  <div className="flex min-w-0 items-start gap-3 px-4 py-3.5 sm:gap-3.5 sm:px-5">
-                    <span className="admin-icon-tile admin-icon-tile-muted mt-0.5 shrink-0 transition group-hover:border-brand/25 group-hover:bg-brand/10 group-hover:text-brand">
+                  <div className="flex min-w-0 items-start gap-3 px-4 py-4 sm:gap-4 sm:px-5">
+                    <span className="admin-icon-tile admin-icon-tile-muted mt-0.5 size-9 shrink-0 transition-[background-color,border-color,color] group-hover:border-brand/25 group-hover:bg-brand/10 group-hover:text-brand">
                         {kb.is_system ? (
                           <Lock className="h-4 w-4 text-warning" />
                         ) : isEditor ? (
@@ -174,9 +198,9 @@ export function KnowledgeBaseModule() {
                           <BookOpen className="h-4 w-4 opacity-60" />
                         )}
                     </span>
-                    <Link href={`/kbs/${kb.id}`} className="min-w-0 flex-1 overflow-hidden rounded-md outline-none focus-visible:ring-2 focus-visible:ring-brand/25">
+                    <Link href={`/kbs/${kb.id}`} className="min-w-0 flex-1 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-brand/25">
                       <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                        <span className="min-w-0 break-words text-[15px] font-medium">{kb.name}</span>
+                        <span className="min-w-0 break-words text-[15px] font-semibold text-ink">{kb.name}</span>
                         {kb.is_system && (
                           <span className="chip chip-warning">示例</span>
                         )}
@@ -190,18 +214,18 @@ export function KnowledgeBaseModule() {
                           <span className="chip chip-muted">只读</span>
                         )}
                       </div>
-                      <div className="mt-1 line-clamp-2 break-words text-sm text-muted">
+                      <div className="mt-1.5 line-clamp-2 break-words text-sm leading-6 text-muted">
                         {kb.description || (
                           <span className="italic opacity-60">无描述</span>
                         )}
                       </div>
-                      <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
-                        <span className="inline-flex items-center gap-1">
+                      <div className="mt-3 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted">
+                        <span className="inline-flex items-center gap-1 tabular-nums">
                           <FileText className="h-3 w-3" />
                           {kb.documents_count} 文档
                         </span>
                         <span aria-hidden className="text-surface-border">·</span>
-                        <span className="inline-flex items-center gap-1">
+                        <span className="inline-flex items-center gap-1 tabular-nums">
                           <Hash className="h-3 w-3" />
                           {kb.chunks_count} 分块
                         </span>
@@ -215,11 +239,12 @@ export function KnowledgeBaseModule() {
                         ) : null}
                       </div>
                     </Link>
+                    <ChevronRight className="mt-2 h-4 w-4 shrink-0 text-muted/60 transition-transform group-hover:translate-x-0.5" aria-hidden />
                     {isOwner && (
                       <button
                         onClick={() => setPendingDelete(kb)}
                         className={cn(
-                          "admin-icon-action size-8 shrink-0 text-muted/70 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 sm:focus-visible:opacity-100",
+                          "admin-icon-action mt-0.5 size-8 shrink-0 text-muted/70 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 sm:focus-visible:opacity-100",
                           "hover:bg-danger/15 hover:text-danger"
                         )}
                         aria-label="删除知识库"
@@ -233,8 +258,14 @@ export function KnowledgeBaseModule() {
                 </li>
               );
             })}
-          </ul>
-        )}
+              </ul>
+            )}
+          </div>
+
+          <aside className="min-w-0 lg:sticky lg:top-6">
+            <KbRetrievalPreferences initial={kbOptions} onChanged={setKbOptions} />
+          </aside>
+        </section>
       </main>
 
       <CreateKbDialog

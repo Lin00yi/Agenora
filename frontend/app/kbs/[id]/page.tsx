@@ -444,8 +444,8 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
   return (
     <>
       <AdminPageHeading
-        title="知识库工作区"
-        subtitle={`${kb.name}（${kb.id.slice(0, 8)}…）`}
+        title={kb.name}
+        subtitle="管理文档、知识图谱、检索设置与访问权限。"
         actions={
         <>
           <Button asChild>
@@ -453,9 +453,6 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
               <Play className="h-4 w-4" />
               基于此知识库提问
             </Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href="/kbs">返回知识库</Link>
           </Button>
         </>
         }

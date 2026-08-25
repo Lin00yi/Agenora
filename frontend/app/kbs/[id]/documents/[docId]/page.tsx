@@ -492,9 +492,6 @@ export default function DocumentDetailPage({
         }
         actions={
         <>
-          <Button asChild variant="outline">
-            <Link href={`/kbs/${kbId}`}>返回文档</Link>
-          </Button>
           {canWrite && (
             <Button
               type="button"

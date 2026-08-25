@@ -34,20 +34,24 @@ export function KnowledgeBaseContextHeader({
   contextNavigation,
 }: {
   breadcrumbs: BreadcrumbItem[];
-  title: string;
+  title?: string;
   context?: { label: string; href: string };
   contextNavigation?: AdminContextNavItem[];
 }) {
   return (
     <header className="app-page-header border-b">
-      <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6">
+      <div className="mx-auto flex h-14 max-w-6xl items-center px-4 sm:px-6">
         <Link href="/kbs" className="app-nav-link app-nav-link-compact" aria-label="返回知识库管理">
           <BookOpen className="h-4 w-4" />
           <span className="hidden sm:inline">知识库</span>
         </Link>
         <ChevronRight className="hidden h-3.5 w-3.5 shrink-0 text-muted/55 sm:block" aria-hidden />
         {context ? (
-          <Link href={context.href} className="min-w-0 flex-1 truncate text-sm font-medium text-ink transition-colors hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 sm:max-w-[20rem] sm:flex-none">
+          <Link
+            href={context.href}
+            aria-current={title ? undefined : "page"}
+            className="min-w-0 flex-1 truncate rounded-md px-2 py-1 text-sm font-medium text-ink transition-colors hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 sm:max-w-[24rem] sm:flex-none"
+          >
             {context.label}
           </Link>
         ) : (
@@ -60,12 +64,17 @@ export function KnowledgeBaseContextHeader({
             ))}
           </nav>
         )}
-        <span className="hidden shrink-0 text-sm text-muted sm:inline" aria-hidden>/</span>
-        <span className="hidden truncate text-sm text-muted sm:inline">{title}</span>
-        <div className="flex-1" />
+        {title ? (
+          <>
+            <ChevronRight className="hidden h-3.5 w-3.5 shrink-0 text-muted/55 sm:block" aria-hidden />
+            <span aria-current="page" className="hidden max-w-[18rem] truncate text-sm text-muted sm:inline">
+              {title}
+            </span>
+          </>
+        ) : null}
       </div>
       {contextNavigation?.length ? (
-        <nav className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 pb-3 sm:px-6" aria-label="知识库分区">
+        <nav className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-4 pb-3 sm:px-6" aria-label="知识库分区">
           {contextNavigation.map((item) => {
             const Icon = item.icon;
             return (
