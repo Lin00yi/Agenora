@@ -54,6 +54,7 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 LLM_PROVIDERS = Literal["anthropic", "openai-compat"]
 EMBEDDING_PROVIDERS = Literal["openai-compat", "ollama"]
 RERANKER_PROVIDERS = Literal["siliconflow", "cohere", "openai-compat"]
+WEB_SEARCH_PROVIDERS = Literal["duckduckgo", "brave", "bing", "tavily"]
 
 
 class LLMBody(BaseModel):
@@ -156,6 +157,13 @@ class ProbeRerankerBody(BaseModel):
 class KbOptionsBody(BaseModel):
     """v2-M6: per-user KB-mode toggles. Currently just web_search opt-in."""
     kb_web_search_enabled: bool
+
+
+class WebSearchBody(BaseModel):
+    """Per-user engine override. Empty api_key keeps a saved paid key."""
+
+    provider: WEB_SEARCH_PROVIDERS
+    api_key: str = Field(default="", max_length=512)
 
 
 # ---------------------------------------------------------------------------
@@ -315,6 +323,15 @@ def _to_public(
         # v2-M6: KB-mode toggles.
         "kb_options": {
             "kb_web_search_enabled": bool(getattr(user, "kb_web_search_enabled", False)),
+        },
+        "web_search": {
+            "provider": getattr(user, "web_search_provider", None),
+            "has_key": bool(getattr(user, "web_search_api_key_enc", None)),
+            "configured": bool(getattr(user, "web_search_provider", None)),
+            "effective_provider": (
+                getattr(user, "web_search_provider", None)
+                or (s.web_search_provider or "duckduckgo").strip().lower()
+            ),
         },
     }
 
@@ -696,6 +713,35 @@ async def save_kb_options(
         session, user=user_row, enabled=body.kb_web_search_enabled
     )
     return _to_public(user_row)
+
+
+# ---------------------------------------------------------------------------
+# PUT / DELETE /web-search — per-user search engine override
+# ---------------------------------------------------------------------------
+@router.put("/web-search")
+async def save_web_search(
+    body: WebSearchBody,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    user_row = await session.get(User, user.id)
+    if user_row is None:
+        raise HTTPException(status_code=404, detail="user not found")
+    try:
+        user_row = await kb_options.save_web_search(session, user=user_row, body=body)
+    except kb_options.KBOptionsUseCaseError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    return _to_public(user_row)
+
+
+@router.delete("/web-search", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+async def clear_web_search(
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> None:
+    user_row = await session.get(User, user.id)
+    if user_row is not None:
+        await kb_options.clear_web_search(session, user=user_row)
 
 
 # ---------------------------------------------------------------------------

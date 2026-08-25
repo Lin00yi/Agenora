@@ -14,7 +14,7 @@ from src.harness.context.rag.policy import resolve_web_search_policy
 from src.harness.tools.base import ToolRegistry, build_default_registry
 
 if TYPE_CHECKING:
-    from src.capabilities.settings.domain.models import UserLLMConfig
+    from src.capabilities.settings.domain.models import UserLLMConfig, UserWebSearchConfig
 
 Emitter = Callable[[dict[str, Any]], Awaitable[None]]
 
@@ -30,10 +30,11 @@ def build_chat_graph(
     llm_cfg: "UserLLMConfig | None" = None,
     complex_llm_cfg: "UserLLMConfig | None" = None,
     fallback_llm_cfg: "UserLLMConfig | None" = None,
+    web_search_cfg: "UserWebSearchConfig | None" = None,
 ):
     """General chat subgraph — web_search + time tools, no KB."""
     if registry is None:
-        registry = build_default_registry(kb=None, llm_cfg=llm_cfg)
+        registry = build_default_registry(kb=None, llm_cfg=llm_cfg, web_search_cfg=web_search_cfg)
 
     cost = CostTracker()
     em = emit or _noop_emit

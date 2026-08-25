@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from src.settings import get_settings
 from src.harness.tools.base import Tool, ToolResult
 from src.harness.tools.search_providers import get_search_provider
+from src.capabilities.settings.domain.models import UserWebSearchConfig
 
 
 _GENERIC_TITLES = {"untitled", "undefined", "null", "n/a"}
@@ -86,6 +87,7 @@ class WebSearchTool(Tool):
         *,
         max_results_default: int = 5,
         max_results_cap: int = 5,
+        search_config: UserWebSearchConfig | None = None,
     ) -> None:
         """Per-mount config.
 
@@ -95,8 +97,9 @@ class WebSearchTool(Tool):
         """
         self._default = max(1, int(max_results_default))
         self._cap = max(self._default, int(max_results_cap))
+        self._search_config = search_config
         self._provider_name = (
-            get_settings().web_search_provider or "duckduckgo"
+            search_config.provider if search_config else get_settings().web_search_provider or "duckduckgo"
         ).strip().lower()
         self.description = (
             "搜索互联网获取实时信息或模型预训练之外的事实。"
@@ -133,7 +136,7 @@ class WebSearchTool(Tool):
                 n = self._default
 
         try:
-            provider = get_search_provider()
+            provider = get_search_provider(self._search_config)
             results = await provider.search(query, max_results=n)
         except Exception as exc:  # noqa: BLE001
             return ToolResult(text="", latency_ms=0, error=f"web_search failed: {exc}")

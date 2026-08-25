@@ -188,7 +188,13 @@ async def save_prompt_draft(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     try:
-        version = await save_draft(session, key=key, content=req.content, admin_id=admin.id)
+        version = await save_draft(
+            session,
+            key=key,
+            content=req.content,
+            admin_id=admin.id,
+            admin_email=admin.email,
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="prompt template not found") from exc
     except ValueError as exc:
@@ -205,7 +211,13 @@ async def publish_prompt_version(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     try:
-        published = await publish_version(session, key=key, version=version)
+        published = await publish_version(
+            session,
+            key=key,
+            version=version,
+            admin_id=admin.id,
+            admin_email=admin.email,
+        )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -222,7 +234,13 @@ async def rollback_prompt_version(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     try:
-        published = await rollback_to_version(session, key=key, version=req.version, admin_id=admin.id)
+        published = await rollback_to_version(
+            session,
+            key=key,
+            version=req.version,
+            admin_id=admin.id,
+            admin_email=admin.email,
+        )
     except (KeyError, LookupError) as exc:
         raise HTTPException(status_code=404, detail=str(exc) or "prompt template not found") from exc
     except ValueError as exc:

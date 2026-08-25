@@ -60,14 +60,34 @@ async def test_registry_publish_and_rollback_drive_runtime_resolution() -> None:
             content="你是第一个已发布版本。",
             admin_id="admin-1",
         )
-        await publish_version(session, key=PROMPT_KEY_GENERAL, version=first["version"])
+        await publish_version(
+            session,
+            key=PROMPT_KEY_GENERAL,
+            version=first["version"],
+            admin_id="admin-1",
+            admin_email="first@example.com",
+        )
         second = await save_draft(
             session,
             key=PROMPT_KEY_GENERAL,
             content="你是第二个已发布版本。",
             admin_id="admin-1",
         )
-        await publish_version(session, key=PROMPT_KEY_GENERAL, version=second["version"])
+        await publish_version(
+            session,
+            key=PROMPT_KEY_GENERAL,
+            version=second["version"],
+            admin_id="admin-1",
+            admin_email="first@example.com",
+        )
+
+        with pytest.raises(ValueError, match="只能发布草稿版本"):
+            await publish_version(
+                session,
+                key=PROMPT_KEY_GENERAL,
+                version=first["version"],
+                admin_id="admin-1",
+            )
 
         current = await resolve_published_prompts(session)
         assert current[PROMPT_KEY_GENERAL].content == "你是第二个已发布版本。"
@@ -79,6 +99,7 @@ async def test_registry_publish_and_rollback_drive_runtime_resolution() -> None:
             key=PROMPT_KEY_GENERAL,
             version=1,
             admin_id="admin-2",
+            admin_email="second@example.com",
         )
         assert rolled_back["version"] == 3
         assert rolled_back["status"] == "published"
@@ -89,6 +110,19 @@ async def test_registry_publish_and_rollback_drive_runtime_resolution() -> None:
         detail = await get_template_detail(session, PROMPT_KEY_GENERAL)
         assert detail["published_version"] == 3
         assert [item["status"] for item in detail["versions"]] == ["published", "archived", "archived"]
+        assert {(item["action"], item["version"]) for item in detail["audit_events"]} == {
+            ("draft_saved", 1),
+            ("published", 1),
+            ("draft_saved", 2),
+            ("published", 2),
+            ("draft_saved", 3),
+            ("rollback_published", 3),
+        }
+        rollback_event = next(
+            item for item in detail["audit_events"] if item["action"] == "rollback_published"
+        )
+        assert rollback_event["source_version"] == 1
+        assert rollback_event["actor_email"] == "second@example.com"
 
     assert fallback_resolution(PROMPT_KEY_GENERAL).source == "code"
     await engine.dispose()

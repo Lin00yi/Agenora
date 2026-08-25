@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   BrainCircuit,
   Download,
+  Globe2,
   Info,
   SlidersHorizontal,
   Trash2,
@@ -44,12 +45,17 @@ const MemorySystemModule = dynamic(
   () => import("@/components/settings/MemorySystemModule").then((module) => module.MemorySystemModule),
   { ssr: false }
 );
-export type SettingsModule = "personal" | "dispatch" | "memory" | "about";
+const WebSearchSettingsModule = dynamic(
+  () => import("@/components/settings/WebSearchSettingsModule").then((module) => module.WebSearchSettingsModule),
+  { ssr: false }
+);
+export type SettingsModule = "personal" | "dispatch" | "web-search" | "memory" | "about";
 type PersonalTab = "general" | "appearance" | "account" | "data";
 
 const MODULES: { key: SettingsModule; label: string; Icon: typeof UserIcon }[] = [
   { key: "personal", label: "个人", Icon: UserIcon },
   { key: "dispatch", label: "模型", Icon: SlidersHorizontal },
+  { key: "web-search", label: "联网", Icon: Globe2 },
   { key: "memory", label: "记忆", Icon: BrainCircuit },
   { key: "about", label: "关于", Icon: Info },
 ];
@@ -173,6 +179,7 @@ export default function SystemSettingsDialog({
                 />
               )}
               {module === "dispatch" && <ModelSettingsModule embedded />}
+              {module === "web-search" && <WebSearchSettingsModule embedded />}
               {module === "memory" && <MemorySystemModule embedded />}
               {module === "about" && (
                 <div className="px-5 py-5 sm:px-6">

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import AsyncIterator
+import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
@@ -209,6 +210,10 @@ def _migrate_additive_columns(sync_conn) -> None:
             ("reranker_base_url", "VARCHAR(255)"),
             ("reranker_api_key_enc", "VARCHAR(1024)"),
             ("reranker_model", "VARCHAR(128)"),
+            # Per-user web search provider override. NULL retains the env
+            # configured engine for existing users/deployments.
+            ("web_search_provider", "VARCHAR(32)"),
+            ("web_search_api_key_enc", "VARCHAR(1024)"),
         ]
         for col_name, col_type in new_cols:
             if col_name not in cols:
@@ -482,3 +487,58 @@ def _migrate_additive_columns(sync_conn) -> None:
                 sync_conn.execute(
                     text(f"ALTER TABLE conversation_summaries ADD COLUMN {col_name} {col_type}")
                 )
+
+    if {"prompt_template_versions", "prompt_template_audit_events"}.issubset(tables):
+        # ``create_all`` creates the audit table in local development but does
+        # not run Alembic's data backfill. Add only missing inferred events so
+        # pre-existing prompt versions remain explainable after an upgrade.
+        existing = {
+            (row["template_id"], int(row["version"]), row["action"])
+            for row in sync_conn.execute(
+                text(
+                    "SELECT template_id, version, action "
+                    "FROM prompt_template_audit_events"
+                )
+            ).mappings()
+        }
+        versions = sync_conn.execute(
+            text(
+                "SELECT template_id, version, status, created_by_admin_id, created_at, published_at "
+                "FROM prompt_template_versions"
+            )
+        ).mappings()
+        audit_rows = []
+        for version in versions:
+            draft_key = (version["template_id"], int(version["version"]), "draft_saved")
+            if draft_key not in existing:
+                audit_rows.append(
+                    {
+                        "id": str(uuid.uuid4()),
+                        "template_id": version["template_id"],
+                        "version": version["version"],
+                        "action": "draft_saved",
+                        "actor_admin_id": version["created_by_admin_id"],
+                        "created_at": version["created_at"],
+                    }
+                )
+            published_key = (version["template_id"], int(version["version"]), "published")
+            if version["published_at"] is not None and published_key not in existing:
+                audit_rows.append(
+                    {
+                        "id": str(uuid.uuid4()),
+                        "template_id": version["template_id"],
+                        "version": version["version"],
+                        "action": "published",
+                        "actor_admin_id": None,
+                        "created_at": version["published_at"] or version["created_at"],
+                    }
+                )
+        if audit_rows:
+            sync_conn.execute(
+                text(
+                    "INSERT INTO prompt_template_audit_events "
+                    "(id, template_id, version, action, actor_admin_id, created_at) "
+                    "VALUES (:id, :template_id, :version, :action, :actor_admin_id, :created_at)"
+                ),
+                audit_rows,
+            )

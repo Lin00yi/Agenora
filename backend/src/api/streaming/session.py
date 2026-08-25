@@ -42,6 +42,7 @@ from src.capabilities.settings.domain.models import (
     resolve_user_embedding,
     resolve_user_llm,
     resolve_user_reranker,
+    resolve_user_web_search,
 )
 
 log = structlog.get_logger()
@@ -442,6 +443,7 @@ async def run_chat_session(
         reranker_cfg = resolve_user_reranker(user) if user is not None else None
     # v2-M6: per-user KB-mode web_search opt-in flag.
     kb_web_search_enabled = bool(getattr(user, "kb_web_search_enabled", False))
+    web_search_cfg = resolve_user_web_search(user)
 
     def configure_routed_kb(selected_kb: KB) -> dict[str, Any]:
         """Switch runtime-only retrieval dependencies after DAG routing."""
@@ -498,6 +500,7 @@ async def run_chat_session(
             embedding_cfg=embedding_cfg,
             reranker_cfg=reranker_cfg,
             kb_web_search_enabled=kb_web_search_enabled,
+            web_search_cfg=web_search_cfg,
             prompt_overrides=prompt_overrides,
             checkpointer=checkpointer,
         )

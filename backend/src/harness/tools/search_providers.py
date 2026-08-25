@@ -9,6 +9,8 @@ import httpx
 
 from src.settings import get_settings
 
+from src.capabilities.settings.domain.models import UserWebSearchConfig
+
 
 @dataclass
 class SearchResult:
@@ -135,18 +137,20 @@ class TavilySearchProvider:
         ]
 
 
-def get_search_provider() -> SearchProvider:
+def get_search_provider(config: UserWebSearchConfig | None = None) -> SearchProvider:
+    """Resolve a user override first, then the deployment-level fallback."""
     settings = get_settings()
-    provider = (settings.web_search_provider or "duckduckgo").strip().lower()
+    provider = (config.provider if config else settings.web_search_provider or "duckduckgo").strip().lower()
+    api_key = config.api_key if config else ""
     if provider in {"duckduckgo", "ddg"}:
         return DuckDuckGoSearchProvider()
     if provider == "brave":
-        return BraveSearchProvider(settings.brave_search_api_key)
+        return BraveSearchProvider(api_key if config else settings.brave_search_api_key)
     if provider == "bing":
-        return BingSearchProvider(settings.bing_search_api_key)
+        return BingSearchProvider(api_key if config else settings.bing_search_api_key)
     if provider == "tavily":
-        return TavilySearchProvider(settings.tavily_api_key)
+        return TavilySearchProvider(api_key if config else settings.tavily_api_key)
     raise ValueError(
         "Unknown WEB_SEARCH_PROVIDER="
-        f"'{settings.web_search_provider}'. Supported: duckduckgo, brave, bing, tavily."
+        f"'{provider}'. Supported: duckduckgo, brave, bing, tavily."
     )

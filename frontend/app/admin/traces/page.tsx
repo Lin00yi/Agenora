@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Copy,
   GitBranch,
+  MessageSquareText,
   RefreshCw,
   Search,
   X,
@@ -346,6 +347,7 @@ function TraceDetail({
   const reasons = metaReasons(detail.metadata);
   const filteredChunks = metaFilteredChunks(detail.metadata);
   const suspiciousCount = metaSuspiciousCount(detail.metadata);
+  const promptVersions = metaPromptVersions(detail.metadata);
   const runtime = typeof detail.metadata?.agent_runtime === "string"
     ? detail.metadata.agent_runtime
     : "历史记录";
@@ -416,6 +418,8 @@ function TraceDetail({
           metadata={detail.metadata}
         />
 
+        {promptVersions.length > 0 ? <PromptVersionsPanel entries={promptVersions} /> : null}
+
         {filteredChunks.length > 0 && (
           <FilteredChunksPanel chunks={filteredChunks} />
         )}
@@ -433,6 +437,44 @@ function TraceDetail({
         )}
       </div>
     </div>
+  );
+}
+
+type PromptVersionEntry = {
+  surface: string;
+  key: string;
+  version: number | null;
+  digest: string | null;
+  source: "registry" | "code";
+};
+
+function PromptVersionsPanel({ entries }: { entries: PromptVersionEntry[] }) {
+  return (
+    <section className="rounded-lg border border-brand/20 bg-brand/5 p-3" aria-label="本轮 Prompt 版本">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h4 className="flex text-balance items-center gap-2 text-sm font-semibold text-ink"><MessageSquareText className="h-4 w-4 text-brand" />本轮 Prompt 版本</h4>
+          <p className="mt-1 text-pretty text-xs leading-5 text-muted">仅展示实际生效的模板键、版本与摘要；Prompt 正文不会进入 Trace。</p>
+        </div>
+        <span className="chip chip-muted tabular-nums">{entries.length} 个</span>
+      </div>
+      <ul className="mt-3 divide-y divide-brand/15 overflow-hidden rounded-md border border-brand/15 bg-surface">
+        {entries.map((entry) => (
+          <li key={`${entry.surface}-${entry.key}-${entry.version ?? "code"}-${entry.digest ?? ""}`} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-3 py-2 text-xs">
+            <div className="min-w-0">
+              <span className="font-medium text-ink">{entry.surface}</span>
+              <code className="ml-2 break-all font-mono text-[11px] text-muted">{entry.key}</code>
+            </div>
+            <div className="flex items-center gap-2 text-muted">
+              <span className={cn("chip", entry.source === "registry" ? "chip-success" : "chip-muted")}>
+                {entry.source === "registry" ? `已发布 v${entry.version ?? "?"}` : "代码默认"}
+              </span>
+              {entry.digest ? <code className="font-mono text-[10px]">{entry.digest.slice(0, 12)}</code> : null}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -612,6 +654,38 @@ function metaFilteredChunks(
   const value = metadata?.rag_filtered_chunks;
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is FilteredChunkRow => !!item && typeof item === "object");
+}
+
+function metaPromptVersions(
+  metadata: Record<string, unknown> | null | undefined
+): PromptVersionEntry[] {
+  const entries: PromptVersionEntry[] = [];
+  const add = (surface: string, value: unknown) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return;
+    const record = value as Record<string, unknown>;
+    const key = typeof record.key === "string" ? record.key : null;
+    const source = record.source === "registry" ? "registry" : record.source === "code" ? "code" : null;
+    if (!key || !source) return;
+    entries.push({
+      surface,
+      key,
+      source,
+      version: typeof record.version === "number" ? record.version : null,
+      digest: typeof record.digest === "string" ? record.digest : null,
+    });
+  };
+
+  add("回答规则", metadata?.prompt_registry);
+  const scope = metadata?.kb_auto_route;
+  if (scope && typeof scope === "object" && !Array.isArray(scope)) {
+    const scopeRecord = scope as Record<string, unknown>;
+    add("运行范围识别", scopeRecord.intent_prompt_registry);
+    const route = scopeRecord.kb_route;
+    if (route && typeof route === "object" && !Array.isArray(route)) {
+      add("知识库自动路由", (route as Record<string, unknown>).prompt_registry);
+    }
+  }
+  return entries;
 }
 
 function flattenTree(nodes: AdminObservationNode[]): AdminObservationNode[] {

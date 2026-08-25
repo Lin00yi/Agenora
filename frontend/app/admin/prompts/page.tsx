@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Code2, FileText, GitCompareArrows, History, RefreshCw, Save, Send, X } from "lucide-react";
+import { CheckCircle2, Code2, FileText, GitCompareArrows, History, RefreshCw, Save, Send, ShieldCheck, X } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {
   savePromptDraft,
   type AdminPromptTemplateDetail,
   type AdminPromptTemplateSummary,
+  type AdminPromptAuditEvent,
   type AdminPromptVersion,
 } from "@/lib/admin-api";
 import { toast } from "@/lib/toast";
@@ -72,6 +73,23 @@ function changedLinesPreview(lines: string[]) {
   if (lines.length === 0) return "（没有独有文本行）";
   const preview = lines.slice(0, 14).map((line) => line || "（空行）").join("\n");
   return lines.length > 14 ? `${preview}\n…（其余 ${lines.length - 14} 行）` : preview;
+}
+
+function formatAuditTime(value: string | null) {
+  if (!value) return "时间未知";
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(value));
+}
+
+function auditEventLabel(event: AdminPromptAuditEvent) {
+  if (event.action === "draft_saved") return `保存草稿 v${event.version}`;
+  if (event.action === "rollback_published") return `由 v${event.source_version ?? "?"} 回滚并发布为 v${event.version}`;
+  return `发布 v${event.version}`;
 }
 
 export default function AdminPromptsPage() {
@@ -335,6 +353,20 @@ export default function AdminPromptsPage() {
                     </li>
                     ))}
                   </ul>
+                  {detail.audit_events.length > 0 ? (
+                    <section className="mt-5" aria-label="发布审计记录">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-ink"><ShieldCheck className="h-4 w-4 text-brand" />发布审计</div>
+                      <p className="mt-1 text-xs leading-5 text-muted">仅记录后台草稿、发布与回滚操作；历史记录不会因后续发布被覆盖。</p>
+                      <ol className="mt-3 space-y-2">
+                        {detail.audit_events.map((event) => (
+                          <li key={event.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-md border border-surface-border/70 bg-surface-2/30 px-3 py-2 text-xs">
+                            <span className="font-medium text-ink">{auditEventLabel(event)}</span>
+                            <span className="text-muted">{event.actor_email ?? (event.actor_admin_id ? `管理员 ${event.actor_admin_id.slice(0, 8)}` : "系统/历史记录")} · <time dateTime={event.created_at ?? undefined}>{formatAuditTime(event.created_at)}</time></span>
+                          </li>
+                        ))}
+                      </ol>
+                    </section>
+                  ) : null}
                 </>
               )}
             </div>

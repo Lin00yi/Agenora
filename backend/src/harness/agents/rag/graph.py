@@ -21,7 +21,7 @@ from src.harness.context.rag.policy import resolve_web_search_policy
 from src.harness.tools.base import ToolRegistry, build_default_registry
 
 if TYPE_CHECKING:
-    from src.capabilities.settings.domain.models import UserEmbeddingConfig, UserLLMConfig, UserRerankerConfig
+    from src.capabilities.settings.domain.models import UserEmbeddingConfig, UserLLMConfig, UserRerankerConfig, UserWebSearchConfig
 
 Emitter = Callable[[dict[str, Any]], Awaitable[None]]
 
@@ -44,6 +44,7 @@ def build_rag_graph(
     embedding_cfg: "UserEmbeddingConfig | None" = None,
     reranker_cfg: "UserRerankerConfig | None" = None,
     kb_web_search_enabled: bool = False,
+    web_search_cfg: "UserWebSearchConfig | None" = None,
 ):
     """KB-bound subgraph — one or more ACL-scoped KBs, then one answer."""
     selected_kbs = list(kbs or ([kb] if kb is not None else []))
@@ -58,6 +59,7 @@ def build_rag_graph(
                 reranker_cfg=reranker_cfg,
                 llm_cfg=llm_cfg,
                 user_kb_web_search_enabled=kb_web_search_enabled,
+                web_search_cfg=web_search_cfg,
             )
         else:
             from src.harness.tools.base import ToolRegistry
@@ -83,6 +85,7 @@ def build_rag_graph(
                     WebSearchTool(
                         max_results_default=policy.results_per_call,
                         max_results_cap=policy.results_per_call,
+                        search_config=web_search_cfg,
                     )
                 )
 

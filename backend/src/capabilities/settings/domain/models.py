@@ -205,6 +205,19 @@ class UserRerankerConfig:
     model: str
 
 
+@dataclass(frozen=True, slots=True)
+class UserWebSearchConfig:
+    """A user-selected web-search engine and its decrypted credential.
+
+    This is intentionally independent from KB search enablement: the latter
+    decides whether web search is mounted, while this config decides which
+    engine a mounted ``web_search`` tool uses.
+    """
+
+    provider: str  # duckduckgo | brave | bing | tavily
+    api_key: str = ""
+
+
 def _llm_is_configured(u: "User") -> bool:
     return bool(
         u.llm_provider
@@ -539,4 +552,16 @@ def resolve_user_reranker(user: "User") -> Optional[UserRerankerConfig]:
         base_url=(user.reranker_base_url or "").rstrip("/"),
         api_key=decrypt(enc) if enc else "",
         model=user.reranker_model or "",
+    )
+
+
+def resolve_user_web_search(user: "User | None") -> Optional[UserWebSearchConfig]:
+    """Return an explicit user override, or None to retain env defaults."""
+    provider = (getattr(user, "web_search_provider", None) or "").strip().lower()
+    if not provider:
+        return None
+    encrypted_key = getattr(user, "web_search_api_key_enc", None) or ""
+    return UserWebSearchConfig(
+        provider=provider,
+        api_key=decrypt(encrypted_key) if encrypted_key else "",
     )

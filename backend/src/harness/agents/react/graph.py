@@ -33,6 +33,7 @@ if TYPE_CHECKING:
         UserEmbeddingConfig,
         UserLLMConfig,
         UserRerankerConfig,
+        UserWebSearchConfig,
     )
 
 Emitter = Callable[[dict[str, Any]], Awaitable[None]]
@@ -50,6 +51,7 @@ def _build_multi_kb_registry(
     embedding_cfg: "UserEmbeddingConfig | None",
     reranker_cfg: "UserRerankerConfig | None",
     kb_web_search_enabled: bool,
+    web_search_cfg: "UserWebSearchConfig | None",
 ) -> ToolRegistry:
     """Mount one bounded search capability across explicitly selected KBs."""
     from src.harness.tools.kb_search import KBSearchTool, MultiKBSearchTool
@@ -74,6 +76,7 @@ def _build_multi_kb_registry(
             WebSearchTool(
                 max_results_default=policy.results_per_call,
                 max_results_cap=policy.results_per_call,
+                search_config=web_search_cfg,
             )
         )
     return registry
@@ -89,6 +92,7 @@ class _ScopedTools:
     embedding_cfg: "UserEmbeddingConfig | None"
     reranker_cfg: "UserRerankerConfig | None"
     kb_web_search_enabled: bool
+    web_search_cfg: "UserWebSearchConfig | None"
     configure_routed_kb: Callable[[Any], dict[str, Any]] | None
     selected_kbs: list[Any] = field(default_factory=list)
     scope: RuntimeScope | None = None
@@ -134,7 +138,9 @@ class _ScopedTools:
         if self.registry is not None:
             return self.registry
         if not self.selected_kbs:
-            self.registry = build_default_registry(kb=None, llm_cfg=self.llm_cfg)
+            self.registry = build_default_registry(
+                kb=None, llm_cfg=self.llm_cfg, web_search_cfg=self.web_search_cfg
+            )
             return self.registry
         if len(self.selected_kbs) == 1:
             selected = self.selected_kbs[0]
@@ -147,6 +153,7 @@ class _ScopedTools:
                 user_kb_web_search_enabled=bool(
                     config.get("kb_web_search_enabled", self.kb_web_search_enabled)
                 ),
+                web_search_cfg=self.web_search_cfg,
             )
             return self.registry
         configs = {
@@ -160,6 +167,7 @@ class _ScopedTools:
             embedding_cfg=self.embedding_cfg,
             reranker_cfg=self.reranker_cfg,
             kb_web_search_enabled=self.kb_web_search_enabled,
+            web_search_cfg=self.web_search_cfg,
         )
         return self.registry
 
@@ -197,6 +205,7 @@ def build_react_graph(
     embedding_cfg: "UserEmbeddingConfig | None" = None,
     reranker_cfg: "UserRerankerConfig | None" = None,
     kb_web_search_enabled: bool = False,
+    web_search_cfg: "UserWebSearchConfig | None" = None,
     prompt_overrides: dict[str, PromptResolution] | None = None,
     checkpointer=None,
 ):
@@ -210,6 +219,7 @@ def build_react_graph(
         embedding_cfg=embedding_cfg,
         reranker_cfg=reranker_cfg,
         kb_web_search_enabled=kb_web_search_enabled,
+        web_search_cfg=web_search_cfg,
         configure_routed_kb=configure_routed_kb,
         triage_llm_cfg=triage_llm_cfg,
         complex_llm_cfg=complex_llm_cfg,

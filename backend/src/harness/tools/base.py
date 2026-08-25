@@ -155,6 +155,7 @@ def build_default_registry(
     reranker_cfg=None,
     llm_cfg=None,
     user_kb_web_search_enabled: bool = False,
+    web_search_cfg=None,
 ) -> ToolRegistry:
     """Build the agent's tool set based on which KB (if any) is active.
 
@@ -193,6 +194,7 @@ def build_default_registry(
             WebSearchTool(
                 max_results_default=web_policy.results_per_call,
                 max_results_cap=web_policy.results_per_call,
+                search_config=web_search_cfg,
             )
         )
         return reg
@@ -219,6 +221,7 @@ def build_default_registry(
             WebSearchTool(
                 max_results_default=web_policy.results_per_call,
                 max_results_cap=web_policy.results_per_call,
+                search_config=web_search_cfg,
             )
         )
     return reg

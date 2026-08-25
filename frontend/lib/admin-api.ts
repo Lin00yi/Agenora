@@ -123,6 +123,16 @@ export type AdminPromptVersion = {
   published_at: string | null;
 };
 
+export type AdminPromptAuditEvent = {
+  id: string;
+  version: number;
+  action: "draft_saved" | "published" | "rollback_published";
+  actor_admin_id: string | null;
+  actor_email: string | null;
+  source_version: number | null;
+  created_at: string | null;
+};
+
 export type AdminPromptTemplateSummary = {
   key: string;
   display_name: string;
@@ -141,6 +151,7 @@ export type AdminPromptTemplateDetail = {
   published_version: number | null;
   fallback_content: string;
   versions: AdminPromptVersion[];
+  audit_events: AdminPromptAuditEvent[];
 };
 
 export async function listPromptTemplates(): Promise<{ templates: AdminPromptTemplateSummary[] }> {

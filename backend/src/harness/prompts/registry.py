@@ -10,7 +10,7 @@ import uuid
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.harness.prompts.models import PromptTemplate, PromptTemplateVersion
+from src.harness.prompts.models import PromptTemplate, PromptTemplateAuditEvent, PromptTemplateVersion
 from src.harness.prompts.system import (
     PROMPT_KEY_GRAPH_EXTRACTION,
     PROMPT_KEY_GENERAL,
@@ -142,6 +142,41 @@ def _version_dict(version: PromptTemplateVersion) -> dict:
     }
 
 
+def _audit_event_dict(event: PromptTemplateAuditEvent) -> dict:
+    return {
+        "id": event.id,
+        "version": event.version,
+        "action": event.action,
+        "actor_admin_id": event.actor_admin_id,
+        "actor_email": event.actor_email,
+        "source_version": event.source_version,
+        "created_at": event.created_at.isoformat() if event.created_at else None,
+    }
+
+
+def _record_audit_event(
+    session: AsyncSession,
+    *,
+    template_id: str,
+    version: int,
+    action: str,
+    actor_admin_id: str | None,
+    actor_email: str | None,
+    source_version: int | None = None,
+) -> None:
+    session.add(
+        PromptTemplateAuditEvent(
+            id=str(uuid.uuid4()),
+            template_id=template_id,
+            version=version,
+            action=action,
+            actor_admin_id=actor_admin_id,
+            actor_email=actor_email.strip().lower() if actor_email else None,
+            source_version=source_version,
+        )
+    )
+
+
 async def list_templates(session: AsyncSession) -> list[dict]:
     rows = (await session.execute(select(PromptTemplate))).scalars().all()
     by_key = {row.key: row for row in rows}
@@ -188,6 +223,18 @@ async def get_template_detail(session: AsyncSession, key: str) -> dict:
                 )
             ).scalars()
         )
+        audit_events = list(
+            (
+                await session.execute(
+                    select(PromptTemplateAuditEvent)
+                    .where(PromptTemplateAuditEvent.template_id == template.id)
+                    .order_by(PromptTemplateAuditEvent.created_at.desc(), PromptTemplateAuditEvent.id.desc())
+                    .limit(100)
+                )
+            ).scalars()
+        )
+    else:
+        audit_events = []
     return {
         "key": definition.key,
         "display_name": definition.display_name,
@@ -196,10 +243,18 @@ async def get_template_detail(session: AsyncSession, key: str) -> dict:
         "published_version": template.published_version if template else None,
         "fallback_content": default_prompt_template(key),
         "versions": [_version_dict(version) for version in versions],
+        "audit_events": [_audit_event_dict(event) for event in audit_events],
     }
 
 
-async def save_draft(session: AsyncSession, *, key: str, content: str, admin_id: str) -> dict:
+async def save_draft(
+    session: AsyncSession,
+    *,
+    key: str,
+    content: str,
+    admin_id: str,
+    admin_email: str | None = None,
+) -> dict:
     definition = get_definition(key)
     normalized = validate_prompt_content(key, content)
     template = (
@@ -233,12 +288,29 @@ async def save_draft(session: AsyncSession, *, key: str, content: str, admin_id:
         created_by_admin_id=admin_id,
     )
     session.add(version)
+    _record_audit_event(
+        session,
+        template_id=template.id,
+        version=next_version,
+        action="draft_saved",
+        actor_admin_id=admin_id,
+        actor_email=admin_email,
+    )
     await session.commit()
     await session.refresh(version)
     return _version_dict(version)
 
 
-async def publish_version(session: AsyncSession, *, key: str, version: int) -> dict:
+async def publish_version(
+    session: AsyncSession,
+    *,
+    key: str,
+    version: int,
+    admin_id: str | None = None,
+    admin_email: str | None = None,
+    action: str = "published",
+    source_version: int | None = None,
+) -> dict:
     template = (
         await session.execute(select(PromptTemplate).where(PromptTemplate.key == key))
     ).scalar_one_or_none()
@@ -254,6 +326,8 @@ async def publish_version(session: AsyncSession, *, key: str, version: int) -> d
     ).scalar_one_or_none()
     if target is None:
         raise LookupError("模板版本不存在")
+    if target.status != "draft":
+        raise ValueError("只能发布草稿版本；历史版本请通过回滚创建新的发布版本")
     # Drafts normally pass this check in ``save_draft``. Re-validating here
     # keeps publishing safe for historical rows and for any data changed
     # outside the admin write path.
@@ -269,12 +343,28 @@ async def publish_version(session: AsyncSession, *, key: str, version: int) -> d
     target.status = "published"
     target.published_at = _now()
     template.published_version = target.version
+    _record_audit_event(
+        session,
+        template_id=template.id,
+        version=target.version,
+        action=action,
+        actor_admin_id=admin_id,
+        actor_email=admin_email,
+        source_version=source_version,
+    )
     await session.commit()
     await session.refresh(target)
     return _version_dict(target)
 
 
-async def rollback_to_version(session: AsyncSession, *, key: str, version: int, admin_id: str) -> dict:
+async def rollback_to_version(
+    session: AsyncSession,
+    *,
+    key: str,
+    version: int,
+    admin_id: str,
+    admin_email: str | None = None,
+) -> dict:
     template = (
         await session.execute(select(PromptTemplate).where(PromptTemplate.key == key))
     ).scalar_one_or_none()
@@ -290,8 +380,22 @@ async def rollback_to_version(session: AsyncSession, *, key: str, version: int, 
     ).scalar_one_or_none()
     if source is None:
         raise LookupError("模板版本不存在")
-    draft = await save_draft(session, key=key, content=source.content, admin_id=admin_id)
-    return await publish_version(session, key=key, version=int(draft["version"]))
+    draft = await save_draft(
+        session,
+        key=key,
+        content=source.content,
+        admin_id=admin_id,
+        admin_email=admin_email,
+    )
+    return await publish_version(
+        session,
+        key=key,
+        version=int(draft["version"]),
+        admin_id=admin_id,
+        admin_email=admin_email,
+        action="rollback_published",
+        source_version=version,
+    )
 
 
 async def resolve_published_prompts(session: AsyncSession) -> dict[str, PromptResolution]:

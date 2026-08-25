@@ -89,3 +89,28 @@ async def clear_reranker(session: Any, *, user: Any) -> None:
     user.reranker_model = None
     user.reranker_enabled = False
     await session.commit()
+
+
+async def save_web_search(session: Any, *, user: Any, body: Any) -> Any:
+    previous_provider = getattr(user, "web_search_provider", None)
+    if body.api_key:
+        user.web_search_api_key_enc = encrypt(body.api_key)
+    elif body.provider == "duckduckgo":
+        # DuckDuckGo never needs a credential; discard an old paid-provider
+        # key rather than retaining an unrelated secret indefinitely.
+        user.web_search_api_key_enc = None
+    elif previous_provider != body.provider or not user.web_search_api_key_enc:
+        # A key saved for another engine must never be reused implicitly. It
+        # would otherwise cause a confusing authentication failure (or spend
+        # a different provider's quota) after the engine is switched.
+        raise KBOptionsUseCaseError("api_key required for first-time configuration", 400)
+    user.web_search_provider = body.provider
+    await session.commit()
+    await session.refresh(user)
+    return user
+
+
+async def clear_web_search(session: Any, *, user: Any) -> None:
+    user.web_search_provider = None
+    user.web_search_api_key_enc = None
+    await session.commit()

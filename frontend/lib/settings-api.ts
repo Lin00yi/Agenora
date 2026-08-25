@@ -116,11 +116,22 @@ export type MyKbOptions = {
   kb_web_search_enabled: boolean;
 };
 
+export type WebSearchProvider = "duckduckgo" | "brave" | "bing" | "tavily";
+
+export type MyWebSearchSettings = {
+  /** Null means use the deployment-level environment configuration. */
+  provider: WebSearchProvider | null;
+  has_key: boolean;
+  configured: boolean;
+  effective_provider: WebSearchProvider;
+};
+
 export type MySettings = {
   llm: MyLLMSettings;
   embedding: MyEmbeddingSettings;
   reranker: MyRerankerSettings;
   kb_options: MyKbOptions;
+  web_search: MyWebSearchSettings;
 };
 
 export type SaveLLMBody = {
@@ -181,6 +192,12 @@ export type SaveRerankerBody = {
   api_key: string;
   model: string;
   enabled: boolean;
+};
+
+export type SaveWebSearchBody = {
+  provider: WebSearchProvider;
+  /** Empty keeps the currently encrypted provider key. */
+  api_key: string;
 };
 
 export type ProbeLLMBody = {
@@ -389,6 +406,20 @@ export async function saveKbOptions(body: MyKbOptions): Promise<MySettings> {
       body: JSON.stringify(body),
     })
   );
+}
+
+export async function saveWebSearchSettings(body: SaveWebSearchBody): Promise<MySettings> {
+  return unwrap(
+    await authFetch("/api/settings/web-search", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+  );
+}
+
+export async function clearWebSearchSettings(): Promise<void> {
+  await unwrap(await authFetch("/api/settings/web-search", { method: "DELETE" }));
 }
 
 // v3-M4: cross-encoder reranker (opt-in, default off).

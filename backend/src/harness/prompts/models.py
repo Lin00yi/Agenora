@@ -48,3 +48,20 @@ class PromptTemplateVersion(Base):
     created_by_admin_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PromptTemplateAuditEvent(Base):
+    """Append-only control-plane record for prompt draft and release actions."""
+
+    __tablename__ = "prompt_template_audit_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    template_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("prompt_templates.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    actor_admin_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    actor_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    source_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)

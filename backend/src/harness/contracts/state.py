@@ -53,8 +53,14 @@ class AgentState(TypedDict, total=False):
     iterations: int
     cost_usd: float | None
     prompt_trace: dict[str, Any]
+    # Version/digest metadata for the Prompt Registry template that governed
+    # the final answer; safe to persist in admin traces, never shown to users.
+    prompt_registry: dict[str, Any]
     # Serializable, user-safe description of the single-agent capability scope.
     runtime_scope: dict[str, Any]
+    # Scope decision metadata, including only prompt-version metadata for the
+    # LLM classifiers/router that were actually invoked in this turn.
+    kb_auto_route: dict[str, Any]
     # Orders HITL checkpoint fields (LangGraph interrupt resume).
     human_inputs: dict[str, str]
     human_required_slots: list[str]

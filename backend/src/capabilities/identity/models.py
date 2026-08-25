@@ -76,6 +76,16 @@ class User(Base):
         Boolean, nullable=False, default=False, server_default="0"
     )
 
+    # Per-user web-search provider override. NULL keeps the deployment-level
+    # Settings values as the backwards-compatible fallback. The API key is
+    # encrypted at rest and is never returned by the settings projection.
+    web_search_provider: Mapped[Optional[str]] = mapped_column(
+        String(32), nullable=True, default=None
+    )
+    web_search_api_key_enc: Mapped[Optional[str]] = mapped_column(
+        String(1024), nullable=True, default=None
+    )
+
     # 06-01 admin-dashboard: platform-level role + active flag.
     # - is_admin gates /api/admin/* (see auth.middleware.require_admin) and is
     #   seeded from settings.admin_emails on startup; togglable at runtime.
