@@ -21,7 +21,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   FormEvent,
   use,
@@ -41,7 +41,7 @@ import {
   formatFileSize,
 } from "@/components/kb/admin-utils";
 import {
-  AdminPageShell,
+  AdminPageHeading,
   AdminPanel,
   AdminSection,
   AdminSectionNav,
@@ -52,6 +52,7 @@ import {
   AdminToolbarButton,
 } from "@/components/kb/AdminTableActions";
 import { KbEvalSection } from "@/components/kb/KbEvalSection";
+import { KnowledgeGraphPanel } from "@/components/kb/KnowledgeGraphPanel";
 import Select from "@/components/Select";
 import { Button } from "@/components/ui/button";
 import { Pagination } from "@/components/ui/pagination";
@@ -106,6 +107,8 @@ const kbDetailInputClass =
 export default function KbDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get("tab");
 
   const [kb, setKb] = useState<KBDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -123,7 +126,6 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
   const [deletingKb, setDeletingKb] = useState(false);
   // v3-M3: advanced settings + index rebuild
   const [groupingBusy, setGroupingBusy] = useState(false);
-  const [kgBusy, setKgBusy] = useState(false);
   const [chunkBusy, setChunkBusy] = useState(false);
   const [chunkStrategy, setChunkStrategy] = useState<ChunkStrategy>("recursive");
   const [chunkTarget, setChunkTarget] = useState("1500");
@@ -292,26 +294,6 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
     }
   };
 
-  const onToggleKg = async (next: boolean) => {
-    if (!kb) return;
-    setKgBusy(true);
-    setKb({ ...kb, kg_enabled: next });
-    try {
-      const updated = await patchKb(id, { kg_enabled: next });
-      setKb((cur) => (cur ? { ...cur, kg_enabled: updated.kg_enabled } : cur));
-      toast.success(
-        next
-          ? "已开启知识图谱召回（将同步已入库文档到 LightRAG）"
-          : "已关闭知识图谱召回"
-      );
-    } catch (err) {
-      setKb((cur) => (cur ? { ...cur, kg_enabled: !next } : cur));
-      toast.error((err as Error).message);
-    } finally {
-      setKgBusy(false);
-    }
-  };
-
   // Rebuild is durable; the worker resets the collection and enqueues documents.
   const confirmRebuildKb = async () => {
     setRebuildingKb(true);
@@ -411,48 +393,12 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
     setDocPage(1);
   }, [docSearch, docStatusFilter]);
 
-  type KbSectionId = "documents" | "members" | "evaluation" | "retrieval" | "danger";
+  type KbSectionId = "documents" | "graph" | "members" | "evaluation" | "retrieval" | "danger";
   const [activeSection, setActiveSection] = useState<KbSectionId>("documents");
 
-  // Allow flags used only for section mounting logic.
-  // Keep them safe during initial renders when `kb` is still null/undefined,
-  // so Hook order stays stable (no conditional early returns).
-  const allowMembers = !kb?.is_system;
-  const allowEvaluation = (() => {
-    if (!kb) return false;
-    const myRole = kb.my_role ?? (kb.is_system ? "viewer" : "owner");
-    const isOwner = myRole === "owner";
-    return (isOwner || myRole === "editor") && !kb.is_system;
-  })();
-  const allowRetrieval = (() => {
-    if (!kb) return false;
-    const myRole = kb.my_role ?? (kb.is_system ? "viewer" : "owner");
-    return myRole === "owner" && !kb.is_system;
-  })();
-  const allowDanger = allowRetrieval;
-
   useEffect(() => {
-    const resolve = (): KbSectionId => {
-      const raw = window.location.hash.replace(/^#/, "");
-      const next = raw as KbSectionId;
-      if (next === "documents") return "documents";
-      if (next === "members" && allowMembers) return "members";
-      if (next === "evaluation" && allowEvaluation) return "evaluation";
-      if (next === "retrieval" && allowRetrieval) return "retrieval";
-      if (next === "danger" && allowDanger) return "danger";
-      return "documents";
-    };
-
-    const onHashChange = () => setActiveSection(resolve());
-    setActiveSection(resolve());
-    window.addEventListener("hashchange", onHashChange);
-    return () => window.removeEventListener("hashchange", onHashChange);
-  }, [allowMembers, allowEvaluation, allowRetrieval, allowDanger]);
-
-  useEffect(() => {
-    const el = document.getElementById(activeSection);
-    el?.scrollIntoView();
-  }, [activeSection]);
+    if (requestedTab === "graph") setActiveSection("graph");
+  }, [requestedTab]);
 
   if (loading) {
     return (
@@ -496,22 +442,12 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
   );
 
   return (
-    <AdminPageShell
-      breadcrumbs={[
-        { label: "首页", href: "/" },
-        { label: "知识库管理", href: "/kbs" },
-        { label: "文档管理" },
-      ]}
-      title="文档管理"
-      subtitle={`${kb.name}（${kb.id.slice(0, 8)}…）`}
-      actions={
+    <>
+      <AdminPageHeading
+        title="知识库工作区"
+        subtitle={`${kb.name}（${kb.id.slice(0, 8)}…）`}
+        actions={
         <>
-          <Button asChild variant="outline">
-            <Link href={`/kbs/${id}/graph`}>
-              <Network className="h-4 w-4" />
-              查看图谱
-            </Link>
-          </Button>
           <Button asChild>
             <Link href={`/c?kb=${encodeURIComponent(id)}`}>
               <Play className="h-4 w-4" />
@@ -522,8 +458,8 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
             <Link href="/kbs">返回知识库</Link>
           </Button>
         </>
-      }
-    >
+        }
+      />
         {/* v2-M9: role banner for non-owner / non-system access */}
         {!kb.is_system && myRole === "editor" && (
           <div className="mb-4 rounded-lg border border-info/25 bg-info/10 px-4 py-3 text-sm shadow-sm">
@@ -594,28 +530,27 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
         </section>
 
         <AdminSectionNav
-          value={`#${activeSection}`}
-          onValueChange={(value) => {
-            const next = value.replace(/^#/, "");
-            setActiveSection(next as KbSectionId);
-            window.location.hash = value;
-          }}
+          value={activeSection}
+          onValueChange={(value) => setActiveSection(value as KbSectionId)}
           items={[
-            { label: kb.is_system ? "示例说明" : "文档", href: "#documents", icon: FileText },
+            { label: kb.is_system ? "示例说明" : "文档", value: "documents", icon: FileText },
+            { label: "知识图谱", value: "graph", icon: Network },
             ...(isOwner && !kb.is_system
-              ? [{ label: "检索设置", href: "#retrieval", icon: SlidersHorizontal }]
+              ? [{ label: "检索设置", value: "retrieval", icon: SlidersHorizontal }]
               : []),
             ...(canWrite
-              ? [{ label: "测评", href: "#evaluation", icon: ClipboardList }]
+              ? [{ label: "测评", value: "evaluation", icon: ClipboardList }]
               : []),
             ...(!kb.is_system
-              ? [{ label: "成员", href: "#members", icon: Users }]
+              ? [{ label: "成员", value: "members", icon: Users }]
               : []),
             ...(isOwner && !kb.is_system
-              ? [{ label: "危险操作", href: "#danger", icon: AlertCircle, muted: true }]
+              ? [{ label: "危险操作", value: "danger", icon: AlertCircle, muted: true }]
               : []),
           ]}
         />
+
+        {activeSection === "graph" ? <KnowledgeGraphPanel kbId={id} /> : null}
 
         {activeSection === "documents" ? (
           <AdminSection
@@ -999,22 +934,6 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
               </span>
             </div>
 
-            <div className="mx-4 mb-4 flex items-start gap-3 rounded-lg border border-surface-border/80 bg-surface p-4 text-sm shadow-sm transition hover:border-brand/25 hover:bg-surface-2/60">
-              <Switch
-                checked={Boolean(kb.kg_enabled)}
-                disabled={kgBusy}
-                onCheckedChange={(checked) => void onToggleKg(checked)}
-                className="mt-1"
-                aria-label="切换知识图谱召回"
-              />
-              <span>
-                <span className="font-medium">知识图谱召回</span>
-                <span className="ml-1 text-xs text-muted">
-                  经 LightRAG Server + Neo4j 做实体关系召回，与向量/关键词混合检索并行。开启后会同步已入库文档（额外消耗 LLM）；实体、关系与原文证据可在内置“查看图谱”中查看。
-                </span>
-              </span>
-            </div>
-
             <form onSubmit={onSaveChunkSettings} className="border-t border-surface-border/70 px-4 py-4">
               <div className="text-sm font-medium">分块参数（KB 默认）</div>
               <p className="mt-1 text-xs text-muted">
@@ -1178,7 +1097,7 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
         onConfirm={confirmRebuildKb}
         busy={rebuildingKb}
       />
-    </AdminPageShell>
+    </>
   );
 }
 

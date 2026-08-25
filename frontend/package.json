@@ -11,6 +11,7 @@
     "sync:model-catalog": "node scripts/sync-models-dev-catalog.mjs"
   },
   "dependencies": {
+    "@antv/g6": "^5.1.1",
     "@opencode-ai/models": "^0.0.45",
     "class-variance-authority": "0.7.0",
     "clsx": "2.1.1",

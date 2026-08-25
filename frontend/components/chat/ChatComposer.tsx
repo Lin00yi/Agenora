@@ -142,9 +142,7 @@ export function Composer({
                   className="kf-kb-trigger h-[var(--control-h-sm)] min-w-0 flex-1 border-0 bg-transparent px-0 py-0 text-xs text-current shadow-none hover:bg-transparent focus-visible:ring-0 disabled:cursor-not-allowed disabled:text-muted"
                   contentAlign="start"
                   contentAlignOffset={-28}
-                  contentAvoidCollisions={false}
                   contentClassName="kf-model-content"
-                  contentPosition="popper"
                   disabled={kbLocked || busy}
                   onChange={(e) => onSelectKb(e.target.value || null)}
                   options={[
@@ -182,9 +180,7 @@ export function Composer({
               className="kf-model-trigger h-8 min-w-0 flex-1 text-sm sm:min-w-[132px] sm:max-w-[200px]"
               tone="plain"
               contentAlign="end"
-              contentAvoidCollisions={false}
               contentClassName="kf-model-content"
-              contentPosition="popper"
               disabled={busy}
               onChange={(event) => {
                 if (event.target.value === MANAGE_MODELS_VALUE) {

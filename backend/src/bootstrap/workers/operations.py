@@ -88,6 +88,9 @@ async def worker_main(*, poll_seconds: float = 2.0) -> None:
             await migrate_legacy_ingestion_jobs()
             await _enqueue_periodic_operations()
             count = await recover_operations(limit=worker_batch_limit())
+            from src.capabilities.knowledge.graph.service import reconcile_graph_scans
+
+            await reconcile_graph_scans()
             if not count:
                 await asyncio.sleep(max(0.2, poll_seconds))
         except Exception as exc:  # noqa: BLE001 - worker must self-heal

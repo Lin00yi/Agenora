@@ -44,7 +44,15 @@ const DropdownMenuContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
 >(function DropdownMenuContent(
-  { className, align = "start", sideOffset = 4, ...props },
+  {
+    className,
+    align = "start",
+    sideOffset = 4,
+    collisionPadding = 8,
+    avoidCollisions = true,
+    sticky = "always",
+    ...props
+  },
   ref
 ) {
   return (
@@ -54,8 +62,11 @@ const DropdownMenuContent = React.forwardRef<
         data-slot="dropdown-menu-content"
         sideOffset={sideOffset}
         align={align}
+        collisionPadding={collisionPadding}
+        avoidCollisions={avoidCollisions}
+        sticky={sticky}
         className={cn(
-          "z-50 max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-36 overflow-x-hidden overflow-y-auto rounded-lg border border-surface-border/80 bg-surface p-1 text-ink shadow-[0_18px_48px_rgb(15_23_42/0.18)] ring-1 ring-surface-border/45 outline-none data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 dark:border-surface-border/90 dark:bg-surface dark:shadow-[0_22px_54px_rgb(0_0_0/0.34)]",
+          "z-50 max-h-[var(--radix-dropdown-menu-content-available-height)] max-w-[var(--radix-dropdown-menu-content-available-width)] min-w-36 overflow-x-hidden overflow-y-auto rounded-lg border border-surface-border/80 bg-surface p-1 text-ink shadow-[0_18px_48px_rgb(15_23_42/0.18)] ring-1 ring-surface-border/45 outline-none data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 dark:border-surface-border/90 dark:bg-surface dark:shadow-[0_22px_54px_rgb(0_0_0/0.34)]",
           className
         )}
         {...props}

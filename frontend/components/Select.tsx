@@ -58,8 +58,9 @@ type SelectProps = {
   contentClassName?: string;
   contentAlign?: "start" | "center" | "end";
   contentAlignOffset?: number;
-  /** Keep a menu edge fixed to its trigger when its placement is predictable. */
+  /** Disable only for a deliberately clipped menu; adaptive placement is the default. */
   contentAvoidCollisions?: boolean;
+  /** @deprecated DropdownMenu always uses popper positioning. Retained for existing callers. */
   contentPosition?: "item-aligned" | "popper";
   id?: string;
   title?: string;
@@ -77,11 +78,11 @@ const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(
     placeholder,
     placeholderOption,
     className,
-  contentClassName,
-  contentAlign,
-  contentAlignOffset,
-  contentAvoidCollisions = true,
-  value,
+    contentClassName,
+    contentAlign,
+    contentAlignOffset,
+    contentAvoidCollisions = true,
+    value,
     defaultValue,
     disabled,
     name,

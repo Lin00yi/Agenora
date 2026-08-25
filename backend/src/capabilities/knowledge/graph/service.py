@@ -11,10 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.capabilities.identity.models import User
 from src.capabilities.knowledge.domain.models import Chunk, Document, KB
-from src.capabilities.settings.domain.models import resolve_system_llm, resolve_user_llm
+from src.capabilities.settings.domain.models import resolve_system_llm, resolve_user_llm_routing_configs
 from src.platform.persistence.database import get_session_factory
 
-from .extraction import document_content_hash, extract_relation_candidates
+from .extraction import document_content_hash, document_extraction_hash, extract_relation_candidates
 from .models import GraphEntity, GraphEvidence, GraphExtractionRun, GraphRelation, GraphScan, GraphSource
 
 
@@ -51,6 +51,17 @@ async def ensure_graph_source(session: AsyncSession, document: Document) -> Grap
         source.source_type = document.source_type or source.source_type
         source.source_url = document.source_url or ""
     return source
+
+
+async def _resolve_graph_llm(session: AsyncSession, kb: KB) -> Any | None:
+    """Use the knowledge-base owner's primary model-routing target."""
+    owner = await session.get(User, kb.user_id)
+    routing = (
+        await resolve_user_llm_routing_configs(session, owner)
+        if owner is not None
+        else None
+    )
+    return (routing.primary if routing is not None else None) or resolve_system_llm()
 
 
 async def request_graph_scan(
@@ -166,7 +177,9 @@ async def extract_document_graph(document_id: str, *, scan_id: str | None = None
         kb = await session.get(KB, document.kb_id)
         if kb is None or not bool(kb.kg_enabled) or not (document.parsed_text or "").strip():
             return {"skipped": "graph_disabled_or_empty"}
-        content_hash = document_content_hash(document.parsed_text)
+        llm_cfg = await _resolve_graph_llm(session, kb)
+        source_text_hash = document_content_hash(document.parsed_text)
+        content_hash = document_extraction_hash(document.parsed_text, llm_cfg=llm_cfg)
         run_id = _stable_id("agenora-graph-extraction", document.id, content_hash)
         run = await session.get(GraphExtractionRun, run_id)
         if run is not None and run.status == "done":
@@ -185,8 +198,6 @@ async def extract_document_graph(document_id: str, *, scan_id: str | None = None
             run.scan_id = scan_id or run.scan_id
             run.status = "running"
             run.error = ""
-        owner = await session.get(User, kb.user_id)
-        llm_cfg = (resolve_user_llm(owner) if owner is not None else None) or resolve_system_llm()
         source_text = document.parsed_text
         filename = document.filename
         await session.commit()
@@ -202,7 +213,7 @@ async def extract_document_graph(document_id: str, *, scan_id: str | None = None
             return {"skipped": "document_deleted"}
         # Document content changed while a remote model was running. Preserve
         # the old evidence until the new content receives its own operation.
-        if document_content_hash(document.parsed_text) != content_hash:
+        if document_content_hash(document.parsed_text) != source_text_hash:
             run.status = "superseded"
             run.completed_at = _utcnow()
             await session.commit()
@@ -320,6 +331,7 @@ async def run_graph_scan(scan_id: str) -> dict[str, int | str]:
                 ).scalars()
             )
         scan.documents_seen = len(document_ids)
+        scan_trigger = scan.trigger
         await session.commit()
 
     changed = 0
@@ -334,14 +346,15 @@ async def run_graph_scan(scan_id: str) -> dict[str, int | str]:
             await session.commit()
         # URL documents are rescanned via their normal ingestion path. Files
         # retain their uploaded version and are simply re-extracted when asked.
-        if is_remote:
+        if is_remote and scan_trigger == "schedule":
             await ingest_document(document_id, graph_scan_id=scan_id)
         async with factory() as session:
             document = await session.get(Document, document_id)
             source = await session.get(GraphSource, _source_id_for_document(document_id))
             if document is None or source is None or document.status != "done":
                 continue
-            content_hash = document_content_hash(document.parsed_text)
+            llm_cfg = await _resolve_graph_llm(session, kb)
+            content_hash = document_extraction_hash(document.parsed_text, llm_cfg=llm_cfg)
             if source.last_content_hash == content_hash:
                 source.last_scan_at = _utcnow()
                 source.last_error = ""
@@ -367,10 +380,70 @@ async def run_graph_scan(scan_id: str) -> dict[str, int | str]:
         scan = await session.get(GraphScan, scan_id)
         if scan is not None:
             scan.documents_changed = changed
-            scan.status = "done"
-            scan.completed_at = _utcnow()
+            # A scan only discovers and dispatches document extractions.  Do
+            # not report it as complete until its child jobs reach a terminal
+            # state; local Milvus development intentionally processes one
+            # durable job at a time, so waiting here would deadlock the queue.
+            if extracted_jobs:
+                scan.status = "extracting"
+                scan.completed_at = None
+            else:
+                scan.status = "done"
+                scan.completed_at = _utcnow()
             await session.commit()
     return {"documents_seen": len(document_ids), "documents_changed": changed, "extraction_jobs": extracted_jobs}
+
+
+async def reconcile_graph_scans(*, limit: int = 100) -> int:
+    """Finalize dispatched scans only after all of their extraction jobs end.
+
+    Scan and extraction are separate durable jobs.  This reconciliation keeps
+    the user-facing scan status truthful without making the parent scan block
+    the single-job local worker.
+    """
+    from src.platform.tasks.models import OperationJob
+
+    factory = get_session_factory()
+    finalized = 0
+    async with factory() as session:
+        scans = list(
+            (
+                await session.execute(
+                    select(GraphScan)
+                    .where(GraphScan.status == "extracting")
+                    .order_by(GraphScan.created_at)
+                    .limit(max(1, min(limit, 500)))
+                )
+            ).scalars()
+        )
+        for scan in scans:
+            jobs = list(
+                (
+                    await session.execute(
+                        select(OperationJob).where(
+                            OperationJob.kind == "extract_graph_document",
+                            OperationJob.payload_json.contains(f'"scan_id": "{scan.id}"'),
+                        )
+                    )
+                ).scalars()
+            )
+            # The scan commits dispatched work before transitioning to this
+            # state.  Keep it visible as extracting rather than racing a
+            # just-created child job in another transaction.
+            if not jobs or any(job.status in {"pending", "running"} for job in jobs):
+                continue
+            failed = [job for job in jobs if job.status == "dead_letter"]
+            if failed:
+                scan.status = "dead_letter"
+                scan.error = (failed[0].error or "图谱关系抽取失败")[:2000]
+            else:
+                scan.status = "done"
+                scan.error = ""
+            scan.completed_at = _utcnow()
+            finalized += 1
+        if finalized:
+            await session.commit()
+    return finalized
 
 
 async def enqueue_due_graph_scans(*, limit: int = 50) -> int:

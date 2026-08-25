@@ -29,7 +29,7 @@ import AppModal from "@/components/AppModal";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import Select from "@/components/Select";
 import {
-  AdminPageShell,
+  AdminPageHeading,
   AdminPanel,
 } from "@/components/kb/AdminPageShell";
 import {
@@ -480,22 +480,17 @@ export default function DocumentDetailPage({
     doc.chunk_overlap != null;
 
   return (
-    <AdminPageShell
-      breadcrumbs={[
-        { label: "首页", href: "/" },
-        { label: "知识库管理", href: "/kbs" },
-        { label: "文档管理", href: `/kbs/${kbId}` },
-        { label: "分块管理" },
-      ]}
-      title="分块管理"
-      subtitle={
+    <>
+      <AdminPageHeading
+        title="分块管理"
+        subtitle={
         <>
           {doc.filename}
           <span className="mx-1.5 text-muted/50">·</span>
           <span className="text-muted">{kb.name}</span>
         </>
-      }
-      actions={
+        }
+        actions={
         <>
           <Button asChild variant="outline">
             <Link href={`/kbs/${kbId}`}>返回文档</Link>
@@ -516,8 +511,8 @@ export default function DocumentDetailPage({
             </Button>
           )}
         </>
-      }
-    >
+        }
+      />
       <section className="admin-panel mb-4 overflow-hidden">
         <div className="flex flex-col gap-2 bg-surface-2/35 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -1119,7 +1114,7 @@ export default function DocumentDetailPage({
         busy={mergeTarget != null && isPending(`merge:${mergeTarget.chunk.id}`)}
         onConfirm={confirmMergeChunks}
       />
-    </AdminPageShell>
+    </>
   );
 }
 
