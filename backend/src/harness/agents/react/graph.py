@@ -18,6 +18,8 @@ from src.harness.prompts.registry import PromptResolution, fallback_resolution
 from src.harness.prompts.system import (
     PROMPT_KEY_GENERAL,
     PROMPT_KEY_KNOWLEDGE_BASE,
+    PROMPT_KEY_KNOWLEDGE_BASE_ROUTING,
+    PROMPT_KEY_RUNTIME_SCOPE,
     build_kb_system_prompt,
 )
 from src.harness.runtime.agent_loop import call_tools_node, reason_node, should_continue
@@ -97,6 +99,14 @@ class _ScopedTools:
     prompt_overrides: dict[str, PromptResolution] = field(default_factory=dict)
 
     async def resolve(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
+        routing_prompt = self.prompt_overrides.get(
+            PROMPT_KEY_KNOWLEDGE_BASE_ROUTING,
+            fallback_resolution(PROMPT_KEY_KNOWLEDGE_BASE_ROUTING),
+        )
+        intent_prompt = self.prompt_overrides.get(
+            PROMPT_KEY_RUNTIME_SCOPE,
+            fallback_resolution(PROMPT_KEY_RUNTIME_SCOPE),
+        )
         self.scope = await resolve_runtime_scope(
             messages=messages,
             bound_kb=self.bound_kb,
@@ -105,6 +115,10 @@ class _ScopedTools:
             triage_llm_cfg=self.triage_llm_cfg,
             complex_llm_cfg=self.complex_llm_cfg,
             mode=self.scope_mode,
+            kb_route_system_prompt=routing_prompt.content,
+            kb_route_prompt_metadata=routing_prompt.trace_metadata(),
+            intent_system_prompt_template=intent_prompt.content,
+            intent_prompt_metadata=intent_prompt.trace_metadata(),
         )
         self.selected_kbs = list(self.scope.selected_kbs)
 

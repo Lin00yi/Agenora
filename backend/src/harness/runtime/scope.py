@@ -21,6 +21,7 @@ from src.harness.orchestration.intent import (
     rule_classify,
     understand_query,
 )
+from src.harness.prompts.system import build_runtime_scope_system_prompt
 from src.platform.llm import CostTracker, get_client, pick_model, with_cache_control
 from src.platform.observability import ageneration, traced
 
@@ -44,6 +45,7 @@ class RuntimeScope:
     selected_kbs: tuple[Any, ...] = ()
     kb_route: AutoKBRoute | None = None
     intent_cost_usd: float | None = 0.0
+    intent_prompt_registry: dict[str, str | int | None] | None = None
 
     @property
     def source(self) -> ScopeSource:
@@ -78,6 +80,7 @@ class RuntimeScope:
             "confidence": self.confidence,
             "latency_ms": self.latency_ms,
             "kb_route": self.kb_route.trace_metadata() if self.kb_route else None,
+            "intent_prompt_registry": self.intent_prompt_registry,
         }
 
 
@@ -167,18 +170,15 @@ async def _classify_with_llm(
     has_routable_kbs: bool,
     llm_cfg: "UserLLMConfig | None",
     source: Literal["triage", "complex"],
+    system_prompt_template: str | None = None,
 ) -> tuple[IntentAssessment | None, float | None]:
     started = time.perf_counter()
     model = pick_model([{"role": "user", "content": query}], [], llm_cfg)
-    prompt = (
-        f"你是{'轻量' if source == 'triage' else '高精度'}运行范围识别器，不是规划器。只输出 JSON："
-        '{"domain":"general|knowledge|orders","intent":"general_chat|knowledge_lookup|order_lookup|refund_prepare|refund_confirm|refund_information",'
-        '"risk":"none|read|write|confirmation_required","missing_slots":["order_id|refund_reason|approval_id"],'
-        '"confidence":"high|medium|low","rationale":"short_snake_case"}。'
-        "订单查询是 orders/order_lookup/read；退款申请是 orders/refund_prepare/write；"
-        "只有精确确认退款是 refund_confirm/confirmation_required；退款政策是 knowledge/refund_information/read。"
-        f"当前已固定知识库={has_bound_kb}；有可访问候选知识库={has_routable_kbs}。"
-        "拿不准必须返回 low，不能输出 agent、tasks、工具或解释。"
+    prompt = build_runtime_scope_system_prompt(
+        scope_tier="轻量" if source == "triage" else "高精度",
+        has_bound_kb=has_bound_kb,
+        has_routable_kbs=has_routable_kbs,
+        template=system_prompt_template,
     )
     client = get_client(llm_cfg)
     tracker = CostTracker()
@@ -230,6 +230,10 @@ async def resolve_runtime_scope(
     triage_llm_cfg: "UserLLMConfig | None" = None,
     complex_llm_cfg: "UserLLMConfig | None" = None,
     mode: str | None = None,
+    kb_route_system_prompt: str | None = None,
+    kb_route_prompt_metadata: dict[str, str | int | None] | None = None,
+    intent_system_prompt_template: str | None = None,
+    intent_prompt_metadata: dict[str, str | int | None] | None = None,
 ) -> RuntimeScope:
     """Resolve a single turn's capability scope before entering ReAct."""
     query = _latest_user_text(messages)
@@ -239,25 +243,30 @@ async def resolve_runtime_scope(
     scope_mode = normalize_scope_mode(mode)
     assessment = rule
     intent_cost_usd: float | None = 0.0
+    intent_prompt_used = False
     if assessment is None and scope_mode in {"rule_triage", "layered"}:
         try:
+            intent_prompt_used = True
             assessment, intent_cost_usd = await _classify_with_llm(
                 query=query,
                 has_bound_kb=has_bound_kb,
                 has_routable_kbs=has_routable_kbs,
                 llm_cfg=triage_llm_cfg or llm_cfg,
                 source="triage",
+                system_prompt_template=intent_system_prompt_template,
             )
         except Exception:  # noqa: BLE001 - continue to the stronger/fallback layer
             assessment = None
     if _needs_complex_intent_layer(assessment, scope_mode=scope_mode):
         try:
+            intent_prompt_used = True
             assessment, complex_cost_usd = await _classify_with_llm(
                 query=query,
                 has_bound_kb=has_bound_kb,
                 has_routable_kbs=has_routable_kbs,
                 llm_cfg=complex_llm_cfg or llm_cfg,
                 source="complex",
+                system_prompt_template=intent_system_prompt_template,
             )
             if intent_cost_usd is None or complex_cost_usd is None:
                 intent_cost_usd = None
@@ -271,13 +280,24 @@ async def resolve_runtime_scope(
         assessment = fallback_assessment(has_kb=has_bound_kb, has_routable_kbs=False)
 
     if assessment.domain == "orders":
-        return RuntimeScope(kind="orders", intent=assessment, intent_cost_usd=intent_cost_usd)
+        return RuntimeScope(
+            kind="orders",
+            intent=assessment,
+            intent_cost_usd=intent_cost_usd,
+            intent_prompt_registry=intent_prompt_metadata if intent_prompt_used else None,
+        )
     if bound_kb is not None:
         return RuntimeScope(
-            kind="knowledge_base", intent=assessment, selected_kbs=(bound_kb,), intent_cost_usd=intent_cost_usd
+            kind="knowledge_base", intent=assessment, selected_kbs=(bound_kb,), intent_cost_usd=intent_cost_usd,
+            intent_prompt_registry=intent_prompt_metadata if intent_prompt_used else None,
         )
     if assessment.domain != "knowledge" or not candidates:
-        return RuntimeScope(kind="general", intent=assessment, intent_cost_usd=intent_cost_usd)
+        return RuntimeScope(
+            kind="general",
+            intent=assessment,
+            intent_cost_usd=intent_cost_usd,
+            intent_prompt_registry=intent_prompt_metadata if intent_prompt_used else None,
+        )
 
     # KB selection is now a conditional part of RuntimeScope, never an
     # unconditional pre-ReAct LLM call for ordinary conversation.
@@ -285,6 +305,8 @@ async def resolve_runtime_scope(
         messages=messages,
         candidates=candidates,
         llm_cfg=complex_llm_cfg or llm_cfg,
+        system_prompt=kb_route_system_prompt,
+        prompt_metadata=kb_route_prompt_metadata,
     )
     selected = tuple(route.selected_kbs) if route.needs_retrieval else ()
     return RuntimeScope(
@@ -293,4 +315,5 @@ async def resolve_runtime_scope(
         selected_kbs=selected,
         kb_route=route,
         intent_cost_usd=intent_cost_usd,
+        intent_prompt_registry=intent_prompt_metadata if intent_prompt_used else None,
     )

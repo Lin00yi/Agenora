@@ -32,6 +32,8 @@ from src.capabilities.memory.application.retrieval import (
     _memory_vector,
     refresh_memory_embedding,
 )
+from src.harness.prompts.registry import fallback_resolution, resolve_published_prompts
+from src.harness.prompts.system import PROMPT_KEY_MEMORY_EXTRACTION
 
 log = logging.getLogger(__name__)
 
@@ -568,8 +570,17 @@ async def extract_conversation_memories(
         for row in rows:
             stored_by_id[row.id] = row
 
+    prompt_resolution = (await resolve_published_prompts(session)).get(
+        PROMPT_KEY_MEMORY_EXTRACTION,
+        fallback_resolution(PROMPT_KEY_MEMORY_EXTRACTION),
+    )
     llm_candidates = await extract_conversation_memory_candidates_with_llm(
-        messages, llm_cfg=llm_cfg
+        messages,
+        llm_cfg=llm_cfg,
+        system_prompt_template=prompt_resolution.content,
+        extractor_version=(
+            f"memory-v3:{prompt_resolution.source}:v{prompt_resolution.version or 'code'}"
+        )[:64],
     )
     rows = await store_memory_candidates(
         session,

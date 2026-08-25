@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.capabilities.identity.models import User
 from src.capabilities.knowledge.domain.models import Chunk, Document, KB
 from src.capabilities.settings.domain.models import resolve_system_llm, resolve_user_llm_routing_configs
+from src.harness.prompts.registry import PromptResolution, fallback_resolution, resolve_published_prompts
+from src.harness.prompts.system import PROMPT_KEY_GRAPH_EXTRACTION
 from src.platform.persistence.database import get_session_factory
 
 from .extraction import document_content_hash, document_extraction_hash, extract_relation_candidates
@@ -62,6 +64,12 @@ async def _resolve_graph_llm(session: AsyncSession, kb: KB) -> Any | None:
         else None
     )
     return (routing.primary if routing is not None else None) or resolve_system_llm()
+
+
+async def _resolve_graph_extraction_prompt(session: AsyncSession) -> PromptResolution:
+    """Use a published extraction template, or keep the code default stable."""
+    prompts = await resolve_published_prompts(session)
+    return prompts.get(PROMPT_KEY_GRAPH_EXTRACTION, fallback_resolution(PROMPT_KEY_GRAPH_EXTRACTION))
 
 
 async def request_graph_scan(
@@ -178,8 +186,11 @@ async def extract_document_graph(document_id: str, *, scan_id: str | None = None
         if kb is None or not bool(kb.kg_enabled) or not (document.parsed_text or "").strip():
             return {"skipped": "graph_disabled_or_empty"}
         llm_cfg = await _resolve_graph_llm(session, kb)
+        prompt_resolution = await _resolve_graph_extraction_prompt(session)
         source_text_hash = document_content_hash(document.parsed_text)
-        content_hash = document_extraction_hash(document.parsed_text, llm_cfg=llm_cfg)
+        content_hash = document_extraction_hash(
+            document.parsed_text, llm_cfg=llm_cfg, prompt_digest=prompt_resolution.digest
+        )
         run_id = _stable_id("agenora-graph-extraction", document.id, content_hash)
         run = await session.get(GraphExtractionRun, run_id)
         if run is not None and run.status == "done":
@@ -203,7 +214,10 @@ async def extract_document_graph(document_id: str, *, scan_id: str | None = None
         await session.commit()
 
     candidates, extractor, model = await extract_relation_candidates(
-        text=source_text, document_name=filename, llm_cfg=llm_cfg
+        text=source_text,
+        document_name=filename,
+        llm_cfg=llm_cfg,
+        system_prompt=prompt_resolution.content,
     )
 
     async with factory() as session:
@@ -287,6 +301,9 @@ async def extract_document_graph(document_id: str, *, scan_id: str | None = None
         await _refresh_relation_counts(session, relation_ids)
         run.extractor = extractor
         run.extractor_model = model
+        run.extractor_version = (
+            f"prompt:{prompt_resolution.source}:v{prompt_resolution.version or 'code'}"
+        )[:32]
         run.status = "done"
         run.entities_count = len(entity_ids)
         run.relations_count = len({relation_id for relation_id in relation_ids if relation_id not in old_relation_ids} | (relation_ids & old_relation_ids))
@@ -354,7 +371,10 @@ async def run_graph_scan(scan_id: str) -> dict[str, int | str]:
             if document is None or source is None or document.status != "done":
                 continue
             llm_cfg = await _resolve_graph_llm(session, kb)
-            content_hash = document_extraction_hash(document.parsed_text, llm_cfg=llm_cfg)
+            prompt_resolution = await _resolve_graph_extraction_prompt(session)
+            content_hash = document_extraction_hash(
+                document.parsed_text, llm_cfg=llm_cfg, prompt_digest=prompt_resolution.digest
+            )
             if source.last_content_hash == content_hash:
                 source.last_scan_at = _utcnow()
                 source.last_error = ""

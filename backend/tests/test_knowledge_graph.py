@@ -18,6 +18,8 @@ from src.capabilities.identity.models import User
 from src.capabilities.settings.domain.models import UserLLMConfig
 from src.harness.tools.kg_search import KGSearchTool
 from src.harness.tools import kg_search
+from src.harness.prompts.registry import publish_version, save_draft
+from src.harness.prompts.system import PROMPT_KEY_GRAPH_EXTRACTION
 from src.platform.persistence.database import Base
 from src.platform.tasks.models import OperationJob
 
@@ -74,6 +76,11 @@ def test_extraction_hash_changes_when_default_model_becomes_available() -> None:
     assert document_extraction_hash("Gateway depends on Catalog.", llm_cfg=None) != document_extraction_hash(
         "Gateway depends on Catalog.", llm_cfg=cfg
     )
+    assert document_extraction_hash(
+        "Gateway depends on Catalog.", llm_cfg=cfg, prompt_digest="prompt-a"
+    ) != document_extraction_hash(
+        "Gateway depends on Catalog.", llm_cfg=cfg, prompt_digest="prompt-b"
+    )
 
 
 @pytest.mark.asyncio
@@ -115,6 +122,13 @@ async def test_graph_extraction_uses_routing_primary_model(monkeypatch: pytest.M
         )
         session.add_all((owner, kb, document))
         await session.commit()
+        draft = await save_draft(
+            session,
+            key=PROMPT_KEY_GRAPH_EXTRACTION,
+            content="Registry graph extraction prompt. Return JSON only.",
+            admin_id="admin-1",
+        )
+        await publish_version(session, key=PROMPT_KEY_GRAPH_EXTRACTION, version=draft["version"])
 
     monkeypatch.setattr(service, "get_session_factory", lambda: factory)
 
@@ -125,6 +139,7 @@ async def test_graph_extraction_uses_routing_primary_model(monkeypatch: pytest.M
 
     async def extract_with_default(**kwargs: object):
         captured["cfg"] = kwargs["llm_cfg"]
+        captured["system_prompt"] = kwargs["system_prompt"]
         return [], "llm", default_cfg.default_model
 
     monkeypatch.setattr(service, "resolve_user_llm_routing_configs", resolve_routing)
@@ -134,6 +149,7 @@ async def test_graph_extraction_uses_routing_primary_model(monkeypatch: pytest.M
 
     assert result["relations"] == 0
     assert captured["cfg"] == default_cfg
+    assert captured["system_prompt"] == "Registry graph extraction prompt. Return JSON only."
     await engine.dispose()
 
 

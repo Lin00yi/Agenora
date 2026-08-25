@@ -208,6 +208,8 @@ async def publish_prompt_version(
         published = await publish_version(session, key=key, version=version)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     log.info("admin_action", actor=admin.email, action="publish_prompt_version", prompt_key=key, version=version)
     return published
 
@@ -223,6 +225,8 @@ async def rollback_prompt_version(
         published = await rollback_to_version(session, key=key, version=req.version, admin_id=admin.id)
     except (KeyError, LookupError) as exc:
         raise HTTPException(status_code=404, detail=str(exc) or "prompt template not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     log.info(
         "admin_action",
         actor=admin.email,

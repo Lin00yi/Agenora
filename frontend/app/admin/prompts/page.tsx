@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, Code2, FileText, History, RefreshCw, Save, Send } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { CheckCircle2, Code2, FileText, GitCompareArrows, History, RefreshCw, Save, Send, X } from "lucide-react";
 
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { PageSkeleton, StateView } from "@/components/ui/state-view";
 import { cn } from "@/lib/cn";
@@ -18,6 +19,61 @@ import {
 } from "@/lib/admin-api";
 import { toast } from "@/lib/toast";
 
+type PendingPromptAction = {
+  kind: "publish" | "rollback";
+  version: AdminPromptVersion;
+};
+
+type PromptBaseline = {
+  label: string;
+  content: string;
+};
+
+function getChangeSummary(before: string, after: string) {
+  const beforeLines = before.split("\n");
+  const afterLines = after.split("\n");
+  const remaining = new Map<string, number>();
+  for (const line of beforeLines) remaining.set(line, (remaining.get(line) ?? 0) + 1);
+
+  let added = 0;
+  for (const line of afterLines) {
+    const count = remaining.get(line) ?? 0;
+    if (count > 0) remaining.set(line, count - 1);
+    else added += 1;
+  }
+  const removedLines: string[] = [];
+  for (const line of beforeLines) {
+    const count = remaining.get(line) ?? 0;
+    if (count > 0) {
+      removedLines.push(line);
+      remaining.set(line, count - 1);
+    }
+  }
+  const addedLines: string[] = [];
+  const original = new Map<string, number>();
+  for (const line of beforeLines) original.set(line, (original.get(line) ?? 0) + 1);
+  for (const line of afterLines) {
+    const count = original.get(line) ?? 0;
+    if (count > 0) original.set(line, count - 1);
+    else addedLines.push(line);
+  }
+  return {
+    beforeLines: beforeLines.length,
+    afterLines: afterLines.length,
+    added,
+    removed: removedLines.length,
+    addedLines,
+    removedLines,
+    reordered: before !== after && added === 0 && removedLines.length === 0,
+  };
+}
+
+function changedLinesPreview(lines: string[]) {
+  if (lines.length === 0) return "（没有独有文本行）";
+  const preview = lines.slice(0, 14).map((line) => line || "（空行）").join("\n");
+  return lines.length > 14 ? `${preview}\n…（其余 ${lines.length - 14} 行）` : preview;
+}
+
 export default function AdminPromptsPage() {
   const [templates, setTemplates] = useState<AdminPromptTemplateSummary[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -27,6 +83,9 @@ export default function AdminPromptsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [pendingAction, setPendingAction] = useState<PendingPromptAction | null>(null);
+  const [compareVersion, setCompareVersion] = useState<AdminPromptVersion | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const loadList = useCallback(async () => {
     const response = await listPromptTemplates();
@@ -92,8 +151,11 @@ export default function AdminPromptsPage() {
       toast.success(`已发布 v${version.version}，新会话将使用此版本。`);
       await loadList();
       await loadDetail(detail.key);
+      setPendingAction(null);
     } catch (error) {
-      toast.error((error as Error).message);
+      const message = (error as Error).message;
+      setActionError(message);
+      toast.error(message);
     } finally {
       setPublishing(false);
     }
@@ -107,11 +169,39 @@ export default function AdminPromptsPage() {
       toast.success(`已基于 v${version.version} 发布回滚版本 v${published.version}。`);
       await loadList();
       await loadDetail(detail.key);
+      setPendingAction(null);
     } catch (error) {
-      toast.error((error as Error).message);
+      const message = (error as Error).message;
+      setActionError(message);
+      toast.error(message);
     } finally {
       setPublishing(false);
     }
+  };
+
+  const publishedBaseline = useMemo<PromptBaseline | null>(() => {
+    if (!detail) return null;
+    const published = detail.versions.find((version) => version.status === "published");
+    return published
+      ? { label: `当前已发布 v${published.version}`, content: published.content }
+      : { label: "当前代码默认", content: detail.fallback_content };
+  }, [detail]);
+  const compareSummary = pendingAction && publishedBaseline
+    ? getChangeSummary(publishedBaseline.content, pendingAction.version.content)
+    : null;
+  const selectedComparison = compareVersion && publishedBaseline
+    ? getChangeSummary(publishedBaseline.content, compareVersion.content)
+    : null;
+
+  const requestAction = (kind: PendingPromptAction["kind"], version: AdminPromptVersion) => {
+    setActionError(null);
+    setPendingAction({ kind, version });
+  };
+
+  const confirmAction = async () => {
+    if (!pendingAction) return;
+    if (pendingAction.kind === "publish") await publish(pendingAction.version);
+    else await rollback(pendingAction.version);
   };
 
   if (loading && templates.length === 0) {
@@ -142,7 +232,12 @@ export default function AdminPromptsPage() {
               <button
                 key={template.key}
                 type="button"
-                onClick={() => setSelectedKey(template.key)}
+                onClick={() => {
+                  setSelectedKey(template.key);
+                  setCompareVersion(null);
+                  setPendingAction(null);
+                  setActionError(null);
+                }}
                 className={cn(
                   "w-full rounded-lg border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30",
                   active ? "border-brand/35 bg-brand/10" : "border-surface-border/80 bg-surface hover:bg-surface-2/55"
@@ -202,8 +297,30 @@ export default function AdminPromptsPage() {
               {detail.versions.length === 0 ? (
                 <StateView variant="notice" density="compact" title="尚未创建版本" description="当前使用代码默认模板。修改后先保存草稿，再选择发布。" className="mt-3" />
               ) : (
-                <ul className="mt-3 divide-y divide-surface-border/70 overflow-hidden rounded-lg border border-surface-border/80">
-                  {detail.versions.map((version) => (
+                <>
+                  {compareVersion && publishedBaseline && selectedComparison ? (
+                    <section className="mt-3 rounded-lg border border-brand/20 bg-brand/5 p-4" aria-label="版本内容对比">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-ink">与当前版本的差异</p>
+                          <p className="mt-1 text-xs text-muted">{publishedBaseline.label} → v{compareVersion.version}：新增 {selectedComparison.added} 行，删除 {selectedComparison.removed} 行。{selectedComparison.reordered ? "文本行相同，但行顺序已调整。" : ""}</p>
+                        </div>
+                        <Button type="button" size="icon-sm" variant="ghost" onClick={() => setCompareVersion(null)} aria-label="关闭版本对比"><X className="h-4 w-4" /></Button>
+                      </div>
+                      <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                        <div className="min-w-0 rounded-md border border-surface-border/70 bg-surface p-3">
+                          <p className="text-xs font-medium text-muted">当前版本中将移除的文本行</p>
+                          <pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-5 text-ink">{changedLinesPreview(selectedComparison.removedLines)}</pre>
+                        </div>
+                        <div className="min-w-0 rounded-md border border-brand/20 bg-surface p-3">
+                          <p className="text-xs font-medium text-brand">v{compareVersion.version} 中将新增的文本行</p>
+                          <pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-5 text-ink">{changedLinesPreview(selectedComparison.addedLines)}</pre>
+                        </div>
+                      </div>
+                    </section>
+                  ) : null}
+                  <ul className="mt-3 divide-y divide-surface-border/70 overflow-hidden rounded-lg border border-surface-border/80">
+                    {detail.versions.map((version) => (
                     <li key={version.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex min-w-0 items-center gap-2 text-sm">
                         <span className="font-semibold tabular-nums text-ink">v{version.version}</span>
@@ -211,17 +328,42 @@ export default function AdminPromptsPage() {
                         <span className="truncate font-mono text-xs text-muted">{version.digest.slice(0, 12)}</span>
                       </div>
                       <div className="flex shrink-0 flex-wrap gap-2">
-                        {version.status === "draft" ? <Button type="button" size="sm" onClick={() => void publish(version)} disabled={publishing || saving}><Send className="h-3.5 w-3.5" />发布</Button> : null}
-                        {version.status !== "published" ? <Button type="button" size="sm" variant="outline" onClick={() => void rollback(version)} disabled={publishing || saving}><CheckCircle2 className="h-3.5 w-3.5" />回滚至此</Button> : null}
+                        {version.status !== "published" ? <Button type="button" size="sm" variant="ghost" onClick={() => setCompareVersion(version)} disabled={publishing || saving}><GitCompareArrows className="h-3.5 w-3.5" />对比</Button> : null}
+                        {version.status === "draft" ? <Button type="button" size="sm" onClick={() => requestAction("publish", version)} disabled={publishing || saving}><Send className="h-3.5 w-3.5" />发布</Button> : null}
+                        {version.status !== "published" ? <Button type="button" size="sm" variant="outline" onClick={() => requestAction("rollback", version)} disabled={publishing || saving}><CheckCircle2 className="h-3.5 w-3.5" />回滚至此</Button> : null}
                       </div>
                     </li>
-                  ))}
-                </ul>
+                    ))}
+                  </ul>
+                </>
               )}
             </div>
           </section>
         )}
       </div>
+      <ConfirmDialog
+        open={pendingAction !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingAction(null);
+            setActionError(null);
+          }
+        }}
+        title={pendingAction?.kind === "rollback" ? `确认回滚至 v${pendingAction.version.version}` : `确认发布 v${pendingAction?.version.version ?? ""}`}
+        confirmLabel={pendingAction?.kind === "rollback" ? "确认回滚并发布" : "确认发布"}
+        busy={publishing}
+        onConfirm={confirmAction}
+        description={pendingAction && publishedBaseline && compareSummary ? (
+          <div className="space-y-3">
+            <p>{pendingAction.kind === "rollback" ? "系统会基于该历史版本创建一个新的发布版本；不会覆盖既有历史。" : "发布后，之后开始的请求会使用此版本；历史会话不受影响。"}</p>
+            <div className="rounded-md border border-surface-border/80 bg-surface-2/50 px-3 py-2 text-xs leading-5 text-ink">
+              <p className="font-medium">变更摘要：{publishedBaseline.label} → v{pendingAction.version.version}</p>
+              <p className="mt-1 text-muted">{compareSummary.beforeLines} → {compareSummary.afterLines} 行，新增 {compareSummary.added} 行，删除 {compareSummary.removed} 行。</p>
+            </div>
+            {actionError ? <p className="text-xs font-medium text-danger" role="alert">操作未完成：{actionError}</p> : null}
+          </div>
+        ) : null}
+      />
     </div>
   );
 }

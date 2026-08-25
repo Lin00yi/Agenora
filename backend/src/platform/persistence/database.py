@@ -439,6 +439,7 @@ def _migrate_additive_columns(sync_conn) -> None:
                 "ON user_memories (user_id, status, embedding_fingerprint)"
             )
         )
+
         sync_conn.execute(
             text(
                 "CREATE INDEX IF NOT EXISTS ix_user_memories_scope_lookup "
@@ -469,3 +470,15 @@ def _migrate_additive_columns(sync_conn) -> None:
                 "WHERE status = 'active' AND memory_key IS NOT NULL"
             )
         )
+
+    if "conversation_summaries" in tables:
+        summary_cols = {c["name"] for c in insp.get_columns("conversation_summaries")}
+        for col_name, col_type in (
+            ("summary_prompt_key", "VARCHAR(64)"),
+            ("summary_prompt_version", "INTEGER"),
+            ("summary_prompt_digest", "VARCHAR(64)"),
+        ):
+            if col_name not in summary_cols:
+                sync_conn.execute(
+                    text(f"ALTER TABLE conversation_summaries ADD COLUMN {col_name} {col_type}")
+                )

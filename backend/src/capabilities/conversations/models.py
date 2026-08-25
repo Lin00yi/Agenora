@@ -211,6 +211,9 @@ class ConversationSummary(Base):
     # the durable rolling summary.
     source_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
     source_context_window: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    summary_prompt_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    summary_prompt_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    summary_prompt_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # A background worker may precompute the first summary before the active
     # chat request reaches the compression threshold.  Prepared rows are not
     # injected until the threshold is crossed, so prewarming never shortens a
@@ -233,6 +236,9 @@ class ConversationSummary(Base):
             "token_count": self.token_count,
             "source_model": self.source_model,
             "source_context_window": self.source_context_window,
+            "summary_prompt_key": self.summary_prompt_key,
+            "summary_prompt_version": self.summary_prompt_version,
+            "summary_prompt_digest": self.summary_prompt_digest,
             "is_prepared": self.is_prepared,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,

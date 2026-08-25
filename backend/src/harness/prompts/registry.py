@@ -12,7 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.harness.prompts.models import PromptTemplate, PromptTemplateVersion
 from src.harness.prompts.system import (
+    PROMPT_KEY_GRAPH_EXTRACTION,
     PROMPT_KEY_GENERAL,
+    PROMPT_KEY_KNOWLEDGE_BASE_ROUTING,
+    PROMPT_KEY_RUNTIME_SCOPE,
+    PROMPT_KEY_MEMORY_EXTRACTION,
+    PROMPT_KEY_CONVERSATION_COMPRESSION,
     PROMPT_KEY_KNOWLEDGE_BASE,
     default_prompt_template,
 )
@@ -38,6 +43,36 @@ PROMPT_DEFINITIONS: tuple[PromptDefinition, ...] = (
         display_name="知识库问答",
         description="绑定或自动路由到知识库后的检索、回答与来源展示规则。",
         allowed_variables=("kb_name", "kb_description"),
+    ),
+    PromptDefinition(
+        key=PROMPT_KEY_GRAPH_EXTRACTION,
+        display_name="知识图谱抽取",
+        description="从知识库文档中抽取实体与有证据的有向关系；文档仍作为不可信输入处理。",
+        allowed_variables=(),
+    ),
+    PromptDefinition(
+        key=PROMPT_KEY_KNOWLEDGE_BASE_ROUTING,
+        display_name="知识库自动路由",
+        description="从当前用户可访问的候选库中选择本轮检索范围；授权、候选上限和固定库优先级由代码强制执行。",
+        allowed_variables=(),
+    ),
+    PromptDefinition(
+        key=PROMPT_KEY_RUNTIME_SCOPE,
+        display_name="运行范围识别",
+        description="识别本轮属于通用、知识库或订单意图；风险枚举、订单审批与能力准入仍由代码校验。",
+        allowed_variables=("scope_tier", "has_bound_kb", "has_routable_kbs"),
+    ),
+    PromptDefinition(
+        key=PROMPT_KEY_MEMORY_EXTRACTION,
+        display_name="用户记忆抽取",
+        description="从已结束会话中提取稳定偏好与项目约束；隐私过滤、证据要求与持久化阈值由代码强制执行。",
+        allowed_variables=(),
+    ),
+    PromptDefinition(
+        key=PROMPT_KEY_CONVERSATION_COMPRESSION,
+        display_name="会话上下文压缩",
+        description="维护长对话的结构化摘要；来源可信度、六段摘要结构与上下文预算由代码强制执行。",
+        allowed_variables=(),
     ),
 )
 _DEFINITIONS_BY_KEY = {item.key: item for item in PROMPT_DEFINITIONS}
@@ -219,6 +254,10 @@ async def publish_version(session: AsyncSession, *, key: str, version: int) -> d
     ).scalar_one_or_none()
     if target is None:
         raise LookupError("模板版本不存在")
+    # Drafts normally pass this check in ``save_draft``. Re-validating here
+    # keeps publishing safe for historical rows and for any data changed
+    # outside the admin write path.
+    validate_prompt_content(key, target.content)
     await session.execute(
         update(PromptTemplateVersion)
         .where(

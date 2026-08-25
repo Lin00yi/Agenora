@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from src.harness.prompts.registry import (
@@ -14,7 +15,16 @@ from src.harness.prompts.registry import (
     save_draft,
     validate_prompt_content,
 )
-from src.harness.prompts.system import PROMPT_KEY_GENERAL, PROMPT_KEY_KNOWLEDGE_BASE
+from src.harness.prompts.system import (
+    PROMPT_KEY_GENERAL,
+    PROMPT_KEY_GRAPH_EXTRACTION,
+    PROMPT_KEY_KNOWLEDGE_BASE,
+    PROMPT_KEY_KNOWLEDGE_BASE_ROUTING,
+    PROMPT_KEY_MEMORY_EXTRACTION,
+    PROMPT_KEY_CONVERSATION_COMPRESSION,
+    PROMPT_KEY_RUNTIME_SCOPE,
+)
+from src.harness.prompts.models import PromptTemplateVersion
 from src.platform.persistence.database import Base
 
 
@@ -33,7 +43,15 @@ async def test_registry_publish_and_rollback_drive_runtime_resolution() -> None:
 
     async with factory() as session:
         templates = await list_templates(session)
-        assert {item["key"] for item in templates} == {PROMPT_KEY_GENERAL, PROMPT_KEY_KNOWLEDGE_BASE}
+        assert {item["key"] for item in templates} == {
+            PROMPT_KEY_GENERAL,
+            PROMPT_KEY_KNOWLEDGE_BASE,
+            PROMPT_KEY_GRAPH_EXTRACTION,
+            PROMPT_KEY_KNOWLEDGE_BASE_ROUTING,
+            PROMPT_KEY_RUNTIME_SCOPE,
+            PROMPT_KEY_MEMORY_EXTRACTION,
+            PROMPT_KEY_CONVERSATION_COMPRESSION,
+        }
         assert all(item["source"] == "code" for item in templates)
 
         first = await save_draft(
@@ -73,4 +91,36 @@ async def test_registry_publish_and_rollback_drive_runtime_resolution() -> None:
         assert [item["status"] for item in detail["versions"]] == ["published", "archived", "archived"]
 
     assert fallback_resolution(PROMPT_KEY_GENERAL).source == "code"
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_publish_revalidates_existing_draft_content() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    async with factory() as session:
+        draft = await save_draft(
+            session,
+            key=PROMPT_KEY_GENERAL,
+            content="这是一个有效草稿。",
+            admin_id="admin-1",
+        )
+        stored = (
+            await session.execute(
+                select(PromptTemplateVersion).where(PromptTemplateVersion.id == draft["id"])
+            )
+        ).scalar_one()
+        stored.content = "{{unsupported_variable}}"
+        await session.commit()
+
+        with pytest.raises(ValueError, match="不支持的变量"):
+            await publish_version(session, key=PROMPT_KEY_GENERAL, version=draft["version"])
+
+        detail = await get_template_detail(session, PROMPT_KEY_GENERAL)
+        assert detail["published_version"] is None
+        assert detail["versions"][0]["status"] == "draft"
+
     await engine.dispose()
