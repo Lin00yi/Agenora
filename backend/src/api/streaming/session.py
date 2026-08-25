@@ -327,6 +327,7 @@ async def run_chat_session(
     triage_llm_cfg_override=None,
     fallback_llm_cfg_override=None,
     kb_candidates: list[KB] | None = None,
+    prompt_overrides=None,
     container=None,
 ) -> EventSourceResponse:
     # MCP configuration is deployment-owned. Every graph in this process uses
@@ -497,6 +498,7 @@ async def run_chat_session(
             embedding_cfg=embedding_cfg,
             reranker_cfg=reranker_cfg,
             kb_web_search_enabled=kb_web_search_enabled,
+            prompt_overrides=prompt_overrides,
             checkpointer=checkpointer,
         )
 
@@ -731,6 +733,7 @@ async def run_chat_session(
                                 final_state.get("rag_filtered_chunks") or []
                             ),
                             "prompt_trace": prompt_trace if isinstance(prompt_trace, dict) else None,
+                            "prompt_registry": final_state.get("prompt_registry"),
                             "kb_auto_route": final_kb_route,
                             "agent_runtime": execution_runtime,
                             "trace_schema_version": TRACE_SCHEMA_VERSION,

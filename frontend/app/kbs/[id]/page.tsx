@@ -285,7 +285,7 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
       setKb((cur) =>
         cur ? { ...cur, grouping_enabled: updated.grouping_enabled } : cur
       );
-      toast.success(next ? "已开启 grouping" : "已关闭 grouping");
+      toast.success(next ? "已开启检索结果分组" : "已关闭检索结果分组");
     } catch (err) {
       setKb((cur) => (cur ? { ...cur, grouping_enabled: !next } : cur));
       toast.error((err as Error).message);
@@ -899,9 +899,37 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
             id="retrieval"
             icon={SlidersHorizontal}
             title="检索设置"
-            description="统一管理 KB 默认分块参数、grouping search 和索引重建。"
+            description="统一管理检索结果分组、KB 默认分块参数和索引重建。"
             className="mt-0"
           >
+          <AdminPanel
+            title="检索结果分组"
+            subtitle="限制同一文档在单次检索中的结果数量，提升跨文档覆盖度。"
+            className="mb-4"
+          >
+            <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="admin-icon-tile admin-icon-tile-brand">
+                  <Layers className="h-4 w-4" aria-hidden />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-ink">
+                    {kb.grouping_enabled ? "已开启" : "未开启"}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-muted">
+                    每篇文档至多返回 1 个最相关分块，避免长文档独占 top-k。
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={kb.grouping_enabled}
+                disabled={groupingBusy}
+                onCheckedChange={(checked) => void onToggleGrouping(checked)}
+                aria-label="切换检索结果分组"
+              />
+            </div>
+          </AdminPanel>
+
           <section className="admin-panel overflow-hidden">
             <div className="flex items-start gap-3 border-b border-surface-border/70 bg-surface-2/35 px-4 py-4">
               <span className="admin-icon-tile admin-icon-tile-brand">
@@ -913,22 +941,6 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
                   配置默认分块参数和索引重建策略，改动会影响后续 ingest 和检索召回。
                 </p>
               </div>
-            </div>
-
-            <div className="m-4 flex items-start gap-3 rounded-lg border border-surface-border/80 bg-surface p-4 text-sm shadow-sm transition hover:border-brand/25 hover:bg-surface-2/60">
-              <Switch
-                checked={kb.grouping_enabled}
-                disabled={groupingBusy}
-                onCheckedChange={(checked) => void onToggleGrouping(checked)}
-                className="mt-1"
-                aria-label="切换 grouping search"
-              />
-              <span>
-                <span className="font-medium">Grouping search</span>
-                <span className="ml-1 text-xs text-muted">
-                  每篇文档至多返回 1 个最相关 chunk，避免长文档独占 top-k。
-                </span>
-              </span>
             </div>
 
             <form onSubmit={onSaveChunkSettings} className="border-t border-surface-border/70 px-4 py-4">

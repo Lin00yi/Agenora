@@ -109,6 +109,76 @@ export async function getStats(): Promise<AdminStats> {
   return unwrap(await authFetch("/api/admin/stats"));
 }
 
+// ---------------------------------------------------------------------------
+// Prompt Registry
+// ---------------------------------------------------------------------------
+export type AdminPromptVersion = {
+  id: string;
+  version: number;
+  status: "draft" | "published" | "archived";
+  content: string;
+  digest: string;
+  created_by_admin_id: string | null;
+  created_at: string | null;
+  published_at: string | null;
+};
+
+export type AdminPromptTemplateSummary = {
+  key: string;
+  display_name: string;
+  description: string;
+  allowed_variables: string[];
+  published_version: number | null;
+  latest_version: AdminPromptVersion | null;
+  source: "code" | "registry";
+};
+
+export type AdminPromptTemplateDetail = {
+  key: string;
+  display_name: string;
+  description: string;
+  allowed_variables: string[];
+  published_version: number | null;
+  fallback_content: string;
+  versions: AdminPromptVersion[];
+};
+
+export async function listPromptTemplates(): Promise<{ templates: AdminPromptTemplateSummary[] }> {
+  return unwrap(await authFetch("/api/admin/prompts"));
+}
+
+export async function getPromptTemplate(key: string): Promise<AdminPromptTemplateDetail> {
+  return unwrap(await authFetch(`/api/admin/prompts/${encodeURIComponent(key)}`));
+}
+
+export async function savePromptDraft(key: string, content: string): Promise<AdminPromptVersion> {
+  return unwrap(
+    await authFetch(`/api/admin/prompts/${encodeURIComponent(key)}/draft`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    })
+  );
+}
+
+export async function publishPromptVersion(key: string, version: number): Promise<AdminPromptVersion> {
+  return unwrap(
+    await authFetch(`/api/admin/prompts/${encodeURIComponent(key)}/publish/${version}`, {
+      method: "POST",
+    })
+  );
+}
+
+export async function rollbackPromptVersion(key: string, version: number): Promise<AdminPromptVersion> {
+  return unwrap(
+    await authFetch(`/api/admin/prompts/${encodeURIComponent(key)}/rollback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ version }),
+    })
+  );
+}
+
 export type RagMonitorAlert = {
   code: string;
   severity: "warning" | "critical";

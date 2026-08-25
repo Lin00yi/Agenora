@@ -14,7 +14,12 @@ from langgraph.graph import END, StateGraph
 
 from src.harness.context.rag.policy import resolve_web_search_policy
 from src.harness.contracts.state import AgentState
-from src.harness.prompts.system import SYSTEM_PROMPT_GENERAL, build_kb_system_prompt
+from src.harness.prompts.registry import PromptResolution, fallback_resolution
+from src.harness.prompts.system import (
+    PROMPT_KEY_GENERAL,
+    PROMPT_KEY_KNOWLEDGE_BASE,
+    build_kb_system_prompt,
+)
 from src.harness.runtime.agent_loop import call_tools_node, reason_node, should_continue
 from src.harness.runtime.scope import RuntimeScope, resolve_runtime_scope
 from src.harness.tools.base import ToolRegistry, build_default_registry
@@ -89,6 +94,7 @@ class _ScopedTools:
     triage_llm_cfg: "UserLLMConfig | None" = None
     complex_llm_cfg: "UserLLMConfig | None" = None
     scope_mode: str | None = None
+    prompt_overrides: dict[str, PromptResolution] = field(default_factory=dict)
 
     async def resolve(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
         self.scope = await resolve_runtime_scope(
@@ -145,7 +151,7 @@ class _ScopedTools:
 
     def system_prompt(self) -> str:
         if not self.selected_kbs:
-            return SYSTEM_PROMPT_GENERAL
+            return self.prompt_overrides.get(PROMPT_KEY_GENERAL, fallback_resolution(PROMPT_KEY_GENERAL)).content
         names = "、".join(str(kb.name) for kb in self.selected_kbs)
         descriptions = "\n".join(
             f"- {kb.name}: {kb.description or '(empty)'}" for kb in self.selected_kbs
@@ -154,7 +160,14 @@ class _ScopedTools:
             names,
             descriptions,
             with_web_search=self.kb_web_search_enabled,
+            template=self.prompt_overrides.get(PROMPT_KEY_KNOWLEDGE_BASE).content
+            if PROMPT_KEY_KNOWLEDGE_BASE in self.prompt_overrides
+            else None,
         )
+
+    def prompt_metadata(self) -> dict[str, str | int | None]:
+        key = PROMPT_KEY_KNOWLEDGE_BASE if self.selected_kbs else PROMPT_KEY_GENERAL
+        return self.prompt_overrides.get(key, fallback_resolution(key)).trace_metadata()
 
 
 def build_react_graph(
@@ -170,6 +183,7 @@ def build_react_graph(
     embedding_cfg: "UserEmbeddingConfig | None" = None,
     reranker_cfg: "UserRerankerConfig | None" = None,
     kb_web_search_enabled: bool = False,
+    prompt_overrides: dict[str, PromptResolution] | None = None,
     checkpointer=None,
 ):
     """Compile the product's default, constrained single-agent runtime."""
@@ -185,6 +199,7 @@ def build_react_graph(
         configure_routed_kb=configure_routed_kb,
         triage_llm_cfg=triage_llm_cfg,
         complex_llm_cfg=complex_llm_cfg,
+        prompt_overrides=dict(prompt_overrides or {}),
     )
 
     async def scope_node(state: AgentState) -> AgentState:
@@ -253,6 +268,7 @@ def build_react_graph(
         result["cost_usd"] = (
             None if route_cost is None or model_cost is None else float(route_cost) + float(model_cost)
         )
+        result["prompt_registry"] = scoped.prompt_metadata()
         return result
 
     async def call_tools(state: AgentState) -> AgentState:

@@ -195,6 +195,12 @@ async def chat_post(
                 detail="messages or conversation_id is required",
             )
 
+        # Published prompt bodies are resolved once per request. A missing
+        # registry row intentionally falls back to the code-owned default.
+        from src.harness.prompts.registry import resolve_published_prompts
+
+        prompt_overrides = await resolve_published_prompts(session)
+
         return await run_chat_session(
             messages,
             rate_key=f"user:{user.id}",
@@ -211,6 +217,7 @@ async def chat_post(
             triage_llm_cfg_override=None if selected_model else (routing_cfgs.triage if routing_cfgs else None),
             fallback_llm_cfg_override=None if selected_model else (routing_cfgs.fallback if routing_cfgs else None),
             kb_candidates=route_candidates,
+            prompt_overrides=prompt_overrides,
             container=container,
         )
     except Exception:

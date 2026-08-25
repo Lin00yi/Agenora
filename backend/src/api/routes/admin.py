@@ -35,6 +35,13 @@ from src.capabilities.memory.application import run_maintenance as run_memory_ma
 from src.capabilities.knowledge.domain.models import KB, Document
 from src.api.routes.kb import _email_map
 from src.capabilities.knowledge.application.lifecycle import purge_kb
+from src.harness.prompts.registry import (
+    get_template_detail,
+    list_templates,
+    publish_version,
+    rollback_to_version,
+    save_draft,
+)
 
 log = structlog.get_logger()
 
@@ -140,6 +147,91 @@ async def stats(admin: AdminUser, session: AsyncSession = Depends(get_session)) 
         "conversations": await _count(session, Conversation),
         "messages": await _count(session, Message),
     }
+
+
+# ---------------------------------------------------------------------------
+# Prompt Registry — platform-owned templates, versioned and admin-only.
+# ---------------------------------------------------------------------------
+class PromptDraftRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=60_000)
+
+
+class PromptRollbackRequest(BaseModel):
+    version: int = Field(ge=1)
+
+
+@router.get("/prompts")
+async def list_prompt_templates(
+    admin: AdminUser,  # noqa: ARG001
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    return {"templates": await list_templates(session)}
+
+
+@router.get("/prompts/{key}")
+async def get_prompt_template(
+    key: str,
+    admin: AdminUser,  # noqa: ARG001
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    try:
+        return await get_template_detail(session, key)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="prompt template not found") from exc
+
+
+@router.post("/prompts/{key}/draft")
+async def save_prompt_draft(
+    key: str,
+    req: PromptDraftRequest,
+    admin: AdminUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    try:
+        version = await save_draft(session, key=key, content=req.content, admin_id=admin.id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="prompt template not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    log.info("admin_action", actor=admin.email, action="save_prompt_draft", prompt_key=key, version=version["version"])
+    return version
+
+
+@router.post("/prompts/{key}/publish/{version}")
+async def publish_prompt_version(
+    key: str,
+    version: int,
+    admin: AdminUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    try:
+        published = await publish_version(session, key=key, version=version)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    log.info("admin_action", actor=admin.email, action="publish_prompt_version", prompt_key=key, version=version)
+    return published
+
+
+@router.post("/prompts/{key}/rollback")
+async def rollback_prompt_version(
+    key: str,
+    req: PromptRollbackRequest,
+    admin: AdminUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    try:
+        published = await rollback_to_version(session, key=key, version=req.version, admin_id=admin.id)
+    except (KeyError, LookupError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc) or "prompt template not found") from exc
+    log.info(
+        "admin_action",
+        actor=admin.email,
+        action="rollback_prompt_version",
+        prompt_key=key,
+        source_version=req.version,
+        published_version=published["version"],
+    )
+    return published
 
 
 @router.get("/rag/monitor")

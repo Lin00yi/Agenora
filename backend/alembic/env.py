@@ -32,6 +32,7 @@ from src.capabilities.knowledge.domain import models as _kb_models  # noqa: F401
 from src.capabilities.knowledge.graph import models as _graph_models  # noqa: F401
 from src.platform.observability import models as _obs_models  # noqa: F401
 from src.capabilities.settings.domain import models as _settings_user_models  # noqa: F401
+from src.harness.prompts import models as _prompt_models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

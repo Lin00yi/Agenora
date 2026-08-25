@@ -1,6 +1,13 @@
 """System prompts for the agent — general / KB modes."""
 from __future__ import annotations
 
+import re
+
+
+PROMPT_KEY_GENERAL = "general_chat"
+PROMPT_KEY_KNOWLEDGE_BASE = "knowledge_base_chat"
+_TEMPLATE_VARIABLE = re.compile(r"\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}")
+
 # Unbound chat uses this neutral assistant prompt — plain chat with no KB tools.
 SYSTEM_PROMPT_GENERAL = """你是 Agenora 的通用 AI 助手。当前对话**未绑定任何知识库**，所以你只能依靠模型预训练知识 + get_current_time 工具 + 网络搜索回答。
 
@@ -38,6 +45,7 @@ def build_kb_system_prompt(
     kb_description: str = "",
     *,
     with_web_search: bool = False,
+    template: str | None = None,
 ) -> str:
     """Generate a per-KB system prompt that scopes the agent to one KB.
 
@@ -53,6 +61,13 @@ def build_kb_system_prompt(
     is mounted on every user KB conversation. The prompt instructs the LLM
     to only call it on explicit user request, not for every Q&A turn.
     """
+    if template is not None:
+        base_with_skill = render_prompt_template(
+            template,
+            {"kb_name": kb_name, "kb_description": kb_description.strip()},
+        )
+        return base_with_skill + (_kb_web_search_section() if with_web_search else "")
+
     desc_block = (
         f"\n\n# 当前知识库描述\n{kb_description.strip()}\n"
         if kb_description and kb_description.strip()
@@ -111,7 +126,11 @@ def build_kb_system_prompt(
 
     # v2-M6: KB + web search hybrid mode. Educate LLM on score interpretation,
     # web fallback policy, and source-tagging convention.
-    return base_with_skill + """
+    return base_with_skill + _kb_web_search_section()
+
+
+def _kb_web_search_section() -> str:
+    return """
 # search_kb 召回质量判定（v2-M6）
 
 search_kb 返回的每条 chunk 头部都带 `相关度: 0.xxx`（cosine similarity，0-1，越大越相关）：
@@ -148,6 +167,29 @@ search_kb 返回的每条 chunk 头部都带 `相关度: 0.xxx`（cosine similar
 
 如果 KB 和 web_search 都没找到，明确告知用户「未找到相关信息」，不要硬编。
 """
+
+
+def render_prompt_template(template: str, variables: dict[str, str]) -> str:
+    """Render only explicit ``{{snake_case}}`` placeholders.
+
+    Registry validation rejects unknown names before publishing. Keeping the
+    renderer conservative prevents dynamic context from being treated as a
+    second template language.
+    """
+
+    def replace(match: re.Match[str]) -> str:
+        return variables.get(match.group(1), match.group(0))
+
+    return _TEMPLATE_VARIABLE.sub(replace, template)
+
+
+def default_prompt_template(key: str) -> str:
+    """Return the code-owned fallback body used to seed a registry draft."""
+    if key == PROMPT_KEY_GENERAL:
+        return SYSTEM_PROMPT_GENERAL
+    if key == PROMPT_KEY_KNOWLEDGE_BASE:
+        return build_kb_system_prompt("{{kb_name}}", "{{kb_description}}")
+    raise KeyError(key)
 
 
 def build_kb_reason_system_prompt(
