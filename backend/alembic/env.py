@@ -29,6 +29,7 @@ from src.settings import get_settings
 from src.capabilities.identity import models as _auth_models  # noqa: F401
 from src.capabilities.conversations import models as _conv_models  # noqa: F401
 from src.capabilities.knowledge.domain import models as _kb_models  # noqa: F401
+from src.capabilities.knowledge.graph import models as _graph_models  # noqa: F401
 from src.platform.observability import models as _obs_models  # noqa: F401
 from src.capabilities.settings.domain import models as _settings_user_models  # noqa: F401
 

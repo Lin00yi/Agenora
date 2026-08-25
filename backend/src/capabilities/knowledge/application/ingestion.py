@@ -54,6 +54,7 @@ def handoff_ingestion(background: Any, jobs: list[Any]) -> None:
 async def ingest_document(
     doc_id: str,
     embedding_cfg: "UserEmbeddingConfig | None" = None,
+    graph_scan_id: str | None = None,
 ) -> None:
     """Parse, chunk and persist one uploaded document outside the HTTP request.
 
@@ -163,6 +164,20 @@ async def ingest_document(
                 payload={"document_id": doc_id},
                 idempotency_key=f"kg-sync:{doc_id}:{new_chunks}",
                 max_attempts=5,
+            )
+            # Agenora's graph records are independent from LightRAG's private
+            # storage schema.  They use the parsed-text hash as their idempotent
+            # version key, so ordinary re-ingest and scheduled scans converge.
+            from src.capabilities.knowledge.graph.extraction import document_content_hash
+            from src.capabilities.knowledge.graph.service import ensure_graph_source
+
+            await ensure_graph_source(session, doc)
+            await enqueue_operation(
+                session,
+                kind="extract_graph_document",
+                payload={"document_id": doc_id, "scan_id": graph_scan_id},
+                idempotency_key=f"graph-extract:{doc_id}:{document_content_hash(doc.parsed_text)}",
+                max_attempts=3,
             )
             await session.commit()
 

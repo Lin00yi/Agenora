@@ -74,6 +74,11 @@ async def _enqueue_periodic_operations() -> None:
                     max_attempts=3,
                 )
         await session.commit()
+    # Graph scans are per-source schedules, not a global clock slot.  The
+    # service advances each source before creating its durable scan operation.
+    from src.capabilities.knowledge.graph.service import enqueue_due_graph_scans
+
+    await enqueue_due_graph_scans(limit=50)
 
 
 async def worker_main(*, poll_seconds: float = 2.0) -> None:

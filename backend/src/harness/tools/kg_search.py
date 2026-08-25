@@ -54,6 +54,36 @@ class KGSearchTool(Tool):
         if not query:
             return ToolResult(text="", latency_ms=0, error="query is empty")
 
+        default_limit = int(getattr(get_settings(), "lightrag_kg_top_k", 12) or 12)
+        try:
+            limit = int(kwargs.get("limit") or default_limit)
+        except (TypeError, ValueError):
+            limit = default_limit
+        limit = max(1, min(limit, 60))
+
+        # Agenora-owned graph records are the product contract and carry
+        # evidence back to a document.  Prefer them over LightRAG's opaque
+        # context whenever a migrated/backfilled KB has a relevant relation.
+        from src.capabilities.knowledge.graph.service import graph_context_for_query
+
+        try:
+            built_in_context = await graph_context_for_query(
+                kb_id=self.kb_id, query=query, limit=limit
+            )
+        except Exception as exc:  # noqa: BLE001 - retain LightRAG during migration failures
+            log.warning("agenora graph query failed kb_id=%s err=%r", self.kb_id, exc)
+            built_in_context = ""
+        if built_in_context:
+            latency_ms = int((time.perf_counter() - start) * 1000)
+            text = f"[KG / Agenora]\n{built_in_context}"
+            if estimate_tokens(text) > KG_CONTEXT_TOKEN_CAP:
+                text = truncate_text_to_token_budget(text, KG_CONTEXT_TOKEN_CAP)
+            return ToolResult(
+                text=text,
+                latency_ms=latency_ms,
+                raw={"kb_id": self.kb_id, "provider": "agenora", "chars": len(text)},
+            )
+
         settings = get_settings()
         client = get_lightrag_client()
         if not client.enabled or not settings.lightrag_enabled:
@@ -62,13 +92,6 @@ class KGSearchTool(Tool):
                 latency_ms=0,
                 error="LightRAG Server 未配置（LIGHTRAG_BASE_URL）",
             )
-
-        default_limit = int(getattr(settings, "lightrag_kg_top_k", 12) or 12)
-        try:
-            limit = int(kwargs.get("limit") or default_limit)
-        except (TypeError, ValueError):
-            limit = default_limit
-        limit = max(1, min(limit, 60))
 
         try:
             context = await client.query_context(

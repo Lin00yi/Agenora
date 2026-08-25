@@ -203,12 +203,11 @@ def build_default_registry(
 
     reg.register(KBSearchTool(kb=kb, embedding_cfg=embedding_cfg, reranker_cfg=reranker_cfg))
     if bool(getattr(kb, "kg_enabled", False)):
-        from src.settings import get_settings
         from src.harness.tools.kg_search import KGSearchTool
 
-        _lr = get_settings()
-        if _lr.lightrag_enabled and (_lr.lightrag_base_url or "").strip():
-            reg.register(KGSearchTool(kb_id=kb.id, kb_name=kb.name or ""))
+        # The built-in graph is always available after backfill. LightRAG is a
+        # compatibility fallback inside KGSearchTool, not a registration gate.
+        reg.register(KGSearchTool(kb_id=kb.id, kb_name=kb.name or ""))
     reg.register(make_kb_report_tool(llm_cfg=llm_cfg))
     if user_kb_web_search_enabled:
         from src.harness.tools.web_search import WebSearchTool

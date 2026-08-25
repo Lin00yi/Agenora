@@ -38,7 +38,7 @@ from fastapi import (
 )
 from fastapi.responses import Response
 from pydantic import BaseModel, EmailStr, Field, HttpUrl
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.capabilities.identity.middleware import CurrentUser
@@ -68,6 +68,14 @@ from src.capabilities.knowledge.domain.models import (
 from src.platform.files.parsers import SUPPORTED_EXTS
 from src.platform.tasks import enqueue_operation, run_operation_job
 from src.platform.tasks.models import OperationJob
+from src.capabilities.knowledge.graph.models import (
+    GraphEntity,
+    GraphEvidence,
+    GraphRelation,
+    GraphScan,
+    GraphSource,
+)
+from src.capabilities.knowledge.graph.service import graph_snapshot, request_graph_scan
 from src.capabilities.settings.application.gate import require_user_embedding
 from src.capabilities.settings.domain.models import resolve_user_embedding
 from src.capabilities.knowledge.application.configuration import resolve_kb_embedding
@@ -117,6 +125,15 @@ class PatchKBRequest(BaseModel):
     chunk_target: Optional[int] = Field(default=None, ge=200, le=8000)
     chunk_max_size: Optional[int] = Field(default=None, ge=200, le=10000)
     chunk_overlap: Optional[int] = Field(default=None, ge=0, le=2000)
+
+
+class PatchGraphSourceRequest(BaseModel):
+    enabled: Optional[bool] = None
+    scan_interval_minutes: Optional[int] = Field(default=None, ge=0, le=10_080)
+
+
+class CreateGraphScanRequest(BaseModel):
+    source_id: Optional[str] = Field(default=None, min_length=36, max_length=36)
 
 
 class PatchDocumentRequest(BaseModel):
@@ -574,11 +591,196 @@ async def patch_kb(
         )
         for did in sync_doc_ids
     ]
+    graph_scan_job = None
+    if enable_kg:
+        # Backfill Agenora-owned entities/relations in parallel with the
+        # existing LightRAG compatibility sync.  The graph scan is durable, so
+        # toggling the feature does not depend on this HTTP request surviving.
+        _, graph_scan_job = await request_graph_scan(
+            session, kb_id=kb.id, trigger="enable"
+        )
     await session.commit()
     for job in sync_jobs:
         background.add_task(run_operation_job, job.id)
+    if graph_scan_job is not None:
+        background.add_task(run_operation_job, graph_scan_job.id)
 
     return kb.to_public_dict(my_role="owner")
+
+
+# ---------------------------------------------------------------------------
+# Built-in knowledge graph — all read paths retain normal KB membership ACL.
+# Neo4j / LightRAG credentials and query languages never leave the backend.
+# ---------------------------------------------------------------------------
+@router.get("/{kb_id}/graph")
+async def get_knowledge_graph(
+    kb_id: str,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+    query: str = Query("", max_length=255),
+    limit: int = Query(120, ge=1, le=300),
+) -> dict:
+    await _load_readable_kb(session, kb_id, user.id)
+    graph = await graph_snapshot(session, kb_id=kb_id, query=query, limit=limit)
+    sources = list(
+        (
+            await session.execute(
+                select(GraphSource)
+                .where(GraphSource.kb_id == kb_id)
+                .order_by(GraphSource.updated_at.desc())
+            )
+        ).scalars()
+    )
+    return {
+        **graph,
+        "sources": [source.to_public_dict() for source in sources],
+        "stats": {
+            "entities": int(
+                await session.scalar(
+                    select(func.count(GraphEntity.id)).where(
+                        GraphEntity.kb_id == kb_id, GraphEntity.status == "active"
+                    )
+                )
+                or 0
+            ),
+            "relations": int(
+                await session.scalar(
+                    select(func.count(GraphRelation.id)).where(
+                        GraphRelation.kb_id == kb_id, GraphRelation.status == "active"
+                    )
+                )
+                or 0
+            ),
+        },
+    }
+
+
+@router.get("/{kb_id}/graph/scans")
+async def list_graph_scans(
+    kb_id: str,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+    limit: int = Query(20, ge=1, le=100),
+) -> dict:
+    await _load_readable_kb(session, kb_id, user.id)
+    rows = list(
+        (
+            await session.execute(
+                select(GraphScan)
+                .where(GraphScan.kb_id == kb_id)
+                .order_by(GraphScan.created_at.desc())
+                .limit(limit)
+            )
+        ).scalars()
+    )
+    return {"items": [row.to_public_dict() for row in rows]}
+
+
+@router.post("/{kb_id}/graph/scans")
+async def create_graph_scan(
+    kb_id: str,
+    body: CreateGraphScanRequest,
+    user: CurrentUser,
+    background: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    await _load_writable_kb(session, kb_id, user.id)
+    if body.source_id:
+        source = await session.get(GraphSource, body.source_id)
+        if source is None or source.kb_id != kb_id:
+            raise HTTPException(status_code=404, detail="graph source not found")
+    scan, job = await request_graph_scan(
+        session, kb_id=kb_id, trigger="manual", source_id=body.source_id
+    )
+    await session.commit()
+    background.add_task(run_operation_job, job.id)
+    return {"scan": scan.to_public_dict(), "operation": job.to_public_dict()}
+
+
+@router.patch("/{kb_id}/graph/sources/{source_id}")
+async def patch_graph_source(
+    kb_id: str,
+    source_id: str,
+    body: PatchGraphSourceRequest,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    await _load_owner_kb(session, kb_id, user.id)
+    source = await session.get(GraphSource, source_id)
+    if source is None or source.kb_id != kb_id:
+        raise HTTPException(status_code=404, detail="graph source not found")
+    if body.scan_interval_minutes is not None:
+        if body.scan_interval_minutes and source.source_type != "url":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="only URL documents support scheduled graph scanning",
+            )
+        source.scan_interval_minutes = body.scan_interval_minutes
+        source.next_scan_at = (
+            _utcnow().replace(microsecond=0)
+            if body.scan_interval_minutes and source.enabled
+            else None
+        )
+    if body.enabled is not None:
+        source.enabled = body.enabled
+        if not source.enabled:
+            source.next_scan_at = None
+        elif source.scan_interval_minutes:
+            source.next_scan_at = _utcnow().replace(microsecond=0)
+    await session.commit()
+    return source.to_public_dict()
+
+
+@router.get("/{kb_id}/graph/entities/{entity_id}")
+async def get_graph_entity(
+    kb_id: str,
+    entity_id: str,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    await _load_readable_kb(session, kb_id, user.id)
+    entity = await session.get(GraphEntity, entity_id)
+    if entity is None or entity.kb_id != kb_id or entity.status != "active":
+        raise HTTPException(status_code=404, detail="graph entity not found")
+    relations = list(
+        (
+            await session.execute(
+                select(GraphRelation)
+                .where(
+                    GraphRelation.kb_id == kb_id,
+                    GraphRelation.status == "active",
+                    or_(
+                        GraphRelation.source_entity_id == entity_id,
+                        GraphRelation.target_entity_id == entity_id,
+                    ),
+                )
+                .order_by(GraphRelation.evidence_count.desc())
+                .limit(60)
+            )
+        ).scalars()
+    )
+    relation_ids = [relation.id for relation in relations]
+    evidence_by_relation: dict[str, list[dict]] = {relation_id: [] for relation_id in relation_ids}
+    if relation_ids:
+        evidence_rows = list(
+            (
+                await session.execute(
+                    select(GraphEvidence)
+                    .where(GraphEvidence.relation_id.in_(relation_ids), GraphEvidence.active.is_(True))
+                    .order_by(GraphEvidence.created_at.desc())
+                    .limit(100)
+                )
+            ).scalars()
+        )
+        for evidence in evidence_rows:
+            evidence_by_relation.setdefault(evidence.relation_id, []).append(evidence.to_public_dict())
+    return {
+        "entity": entity.to_public_dict(),
+        "relations": [
+            {**relation.to_public_dict(), "evidence": evidence_by_relation.get(relation.id, [])}
+            for relation in relations
+        ],
+    }
 
 
 @router.post("/{kb_id}/rebuild")
@@ -914,6 +1116,13 @@ async def delete_document(
             kg_track_id=kg_track_id_snap,
             strict=True,
         )
+
+    # Remove the document's contribution from the Agenora-owned graph before
+    # FK cascades delete its evidence rows.  This archives a relation once its
+    # final supporting document disappears.
+    from src.capabilities.knowledge.graph.service import remove_document_graph
+
+    await remove_document_graph(session, document_id=doc_id_snap)
 
     # Drop chunks from Qdrant (idempotent), then DB row, then on-disk file.
     await documents.remove_document_chunks(kb.collection_name, doc_id_snap)

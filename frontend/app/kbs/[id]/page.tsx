@@ -9,6 +9,7 @@ import {
   FileText,
   Layers,
   Lock,
+  Network,
   Play,
   Plus,
   RefreshCw,
@@ -505,6 +506,12 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
       subtitle={`${kb.name}（${kb.id.slice(0, 8)}…）`}
       actions={
         <>
+          <Button asChild variant="outline">
+            <Link href={`/kbs/${id}/graph`}>
+              <Network className="h-4 w-4" />
+              查看图谱
+            </Link>
+          </Button>
           <Button asChild>
             <Link href={`/c?kb=${encodeURIComponent(id)}`}>
               <Play className="h-4 w-4" />
@@ -1003,8 +1010,7 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
               <span>
                 <span className="font-medium">知识图谱召回</span>
                 <span className="ml-1 text-xs text-muted">
-                  经 LightRAG Server + Neo4j 做实体关系召回，与向量/关键词混合检索并行。开启后会同步已入库文档（额外消耗 LLM）。图谱浏览器：
-                  localhost:7474
+                  经 LightRAG Server + Neo4j 做实体关系召回，与向量/关键词混合检索并行。开启后会同步已入库文档（额外消耗 LLM）；实体、关系与原文证据可在内置“查看图谱”中查看。
                 </span>
               </span>
             </div>

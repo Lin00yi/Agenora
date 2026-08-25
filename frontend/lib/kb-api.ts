@@ -118,6 +118,73 @@ export type DocumentDetail = Document & {
 
 export type KBDetail = KB & { documents: Document[] };
 
+export type GraphNode = {
+  id: string;
+  name: string;
+  type: string;
+  aliases: string[];
+  summary: string | null;
+  confidence: number;
+  evidence_count: number;
+  last_seen_at: string | null;
+};
+
+export type GraphEdge = {
+  id: string;
+  source: string;
+  target: string;
+  type: string;
+  confidence: number;
+  evidence_count: number;
+};
+
+export type GraphSource = {
+  id: string;
+  document_id: string | null;
+  source_type: "file" | "url" | "document" | string;
+  source_url: string;
+  enabled: boolean;
+  scan_interval_minutes: number;
+  next_scan_at: string | null;
+  last_scan_at: string | null;
+  last_error: string | null;
+};
+
+export type GraphScan = {
+  id: string;
+  source_id: string | null;
+  trigger: "manual" | "schedule" | "enable" | string;
+  status: string;
+  documents_seen: number;
+  documents_changed: number;
+  documents_extracted: number;
+  error: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string | null;
+};
+
+export type KnowledgeGraph = {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  truncated: boolean;
+  sources: GraphSource[];
+  stats: { entities: number; relations: number };
+};
+
+export type GraphEntityDetail = {
+  entity: GraphNode;
+  relations: (GraphEdge & {
+    evidence: {
+      id: string;
+      document_id: string;
+      chunk_id: string | null;
+      quote: string;
+      created_at: string | null;
+    }[];
+  })[];
+};
+
 /** v2-M9: response shape for GET /kbs/{id}/members */
 export type KbMemberListResponse = {
   owner: {
@@ -270,6 +337,51 @@ export async function rebuildKb(id: string): Promise<OperationJob> {
   return unwrap(
     await authFetch(`/api/kbs/${id}/rebuild`, { method: "POST" })
   );
+}
+
+// ---------------------------------------------------------------------------
+// Built-in knowledge graph
+// ---------------------------------------------------------------------------
+export async function getKnowledgeGraph(kbId: string, query = ""): Promise<KnowledgeGraph> {
+  const params = new URLSearchParams();
+  if (query.trim()) params.set("query", query.trim());
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return unwrap(await authFetch(`/api/kbs/${kbId}/graph${suffix}`));
+}
+
+export async function getGraphScans(kbId: string): Promise<{ items: GraphScan[] }> {
+  return unwrap(await authFetch(`/api/kbs/${kbId}/graph/scans`));
+}
+
+export async function runGraphScan(
+  kbId: string,
+  sourceId?: string
+): Promise<{ scan: GraphScan; operation: OperationJob }> {
+  return unwrap(
+    await authFetch(`/api/kbs/${kbId}/graph/scans`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(sourceId ? { source_id: sourceId } : {}),
+    })
+  );
+}
+
+export async function patchGraphSource(
+  kbId: string,
+  sourceId: string,
+  body: { enabled?: boolean; scan_interval_minutes?: number }
+): Promise<GraphSource> {
+  return unwrap(
+    await authFetch(`/api/kbs/${kbId}/graph/sources/${sourceId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+  );
+}
+
+export async function getGraphEntity(kbId: string, entityId: string): Promise<GraphEntityDetail> {
+  return unwrap(await authFetch(`/api/kbs/${kbId}/graph/entities/${entityId}`));
 }
 
 // ---------------------------------------------------------------------------

@@ -10,6 +10,7 @@ def _register_application_models() -> None:
     from src.capabilities.conversations import models as _conversations_models  # noqa: F401
     from src.capabilities.identity import models as _identity_models  # noqa: F401
     from src.capabilities.knowledge.domain import models as _knowledge_models  # noqa: F401
+    from src.capabilities.knowledge.graph import models as _graph_models  # noqa: F401
     from src.capabilities.settings.domain import models as _settings_models  # noqa: F401
     from src.platform.observability import models as _observability_models  # noqa: F401
     from src.platform.tasks import models as _operation_job_models  # noqa: F401

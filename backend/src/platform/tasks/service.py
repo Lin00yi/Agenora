@@ -140,6 +140,16 @@ async def _execute(job: OperationJob) -> dict[str, Any]:
 
         await sync_document_to_lightrag(str(payload["document_id"]))
         return {"document_id": str(payload["document_id"])}
+    if job.kind == "extract_graph_document":
+        from src.capabilities.knowledge.graph.service import extract_document_graph
+
+        return await extract_document_graph(
+            str(payload["document_id"]), scan_id=str(payload.get("scan_id") or "") or None
+        )
+    if job.kind == "scan_knowledge_graph":
+        from src.capabilities.knowledge.graph.service import run_graph_scan
+
+        return await run_graph_scan(str(payload["scan_id"]))
     if job.kind == "memory_maintenance":
         from src.capabilities.memory.application.worker import run_memory_maintenance
 

@@ -176,8 +176,9 @@ docker compose --profile kg up -d --build
 
 这会额外启动 Neo4j 与 LightRAG。同步设置 `LIGHTRAG_ENABLED=true`、
 `LIGHTRAG_BASE_URL=http://lightrag:9621`，并在需要图谱的知识库上开启 KG。
-本地 override 启用时，Neo4j Browser 位于 <http://localhost:7474>，LightRAG 位于
-<http://localhost:9621>。
+本地 override 会暴露 Neo4j Browser（<http://localhost:7474>）和 LightRAG
+（<http://localhost:9621>）仅供运维调试；日常实体、关系、证据与扫描管理请使用
+知识库中的内置“查看图谱”页面。
 
 ### 方式三：HTTPS 生产部署
 
