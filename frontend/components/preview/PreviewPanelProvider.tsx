@@ -1,6 +1,6 @@
 "use client";
 
-import { Braces, GitBranch, XIcon } from "lucide-react";
+import { ArrowLeft, Braces, GitBranch, XIcon } from "lucide-react";
 import {
   createContext,
   useCallback,
@@ -15,7 +15,9 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConversationExecutionOverview } from "@/components/chat/ConversationExecutionOverview";
+import type { TraceNodePreview } from "@/components/admin/SpanWaterfall";
 import { cn } from "@/lib/cn";
 
 const MIN_PREVIEW_WIDTH = 360;
@@ -52,24 +54,33 @@ export type PreviewPayload = TextPreview | TraceIoPreview | ExecutionOverviewPre
 type PreviewPanelContextValue = {
   preview: PreviewPayload | null;
   openPreview: (payload: PreviewPayload) => void;
+  pushPreview: (payload: PreviewPayload) => void;
   closePreview: () => void;
+  canGoBack: boolean;
 };
 
 const PreviewPanelContext = createContext<PreviewPanelContextValue | null>(null);
 
 export function PreviewPanelProvider({ children }: { children: ReactNode }) {
-  const [preview, setPreview] = useState<PreviewPayload | null>(null);
+  const [previewStack, setPreviewStack] = useState<PreviewPayload[]>([]);
   const [width, setWidth] = useState(DEFAULT_PREVIEW_WIDTH);
   const [isDesktop, setIsDesktop] = useState(false);
   const dragging = useRef(false);
 
   const openPreview = useCallback((payload: PreviewPayload) => {
-    setPreview(payload);
+    setPreviewStack([payload]);
+  }, []);
+
+  const pushPreview = useCallback((payload: PreviewPayload) => {
+    setPreviewStack((current) => [...current, payload]);
   }, []);
 
   const closePreview = useCallback(() => {
-    setPreview(null);
+    setPreviewStack((current) => (current.length > 1 ? current.slice(0, -1) : []));
   }, []);
+
+  const preview = previewStack.at(-1) ?? null;
+  const canGoBack = previewStack.length > 1;
 
   const clampWidth = useCallback((next: number) => {
     const max = Math.max(MIN_PREVIEW_WIDTH, Math.floor(window.innerWidth * MAX_PREVIEW_RATIO));
@@ -125,13 +136,13 @@ export function PreviewPanelProvider({ children }: { children: ReactNode }) {
   };
 
   const value = useMemo(
-    () => ({ preview, openPreview, closePreview }),
-    [preview, openPreview, closePreview]
+    () => ({ preview, openPreview, pushPreview, closePreview, canGoBack }),
+    [preview, openPreview, pushPreview, closePreview, canGoBack]
   );
 
   const open = preview != null;
   const useMobileExecutionDrawer =
-    !isDesktop && preview?.kind === "execution-overview";
+    !isDesktop && previewStack.some((item) => item.kind === "execution-overview");
 
   return (
     <PreviewPanelContext.Provider value={value}>
@@ -142,8 +153,9 @@ export function PreviewPanelProvider({ children }: { children: ReactNode }) {
         {!useMobileExecutionDrawer ? (
           <aside
             aria-hidden={!open}
+            data-state={open ? "open" : "closed"}
             className={cn(
-              "relative flex h-dvh shrink-0 flex-col overflow-hidden border-l border-surface-border/80 bg-surface",
+              "relative flex h-dvh shrink-0 flex-col overflow-hidden border-l border-surface-border/80 bg-surface duration-surface ease-ui-drawer data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-right-4 motion-reduce:animate-none",
               open ? "opacity-100" : "pointer-events-none border-l-transparent opacity-0"
             )}
             style={{ width: open ? width : 0 }}
@@ -157,14 +169,14 @@ export function PreviewPanelProvider({ children }: { children: ReactNode }) {
                   onPointerDown={onResizePointerDown}
                   className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize bg-transparent hover:bg-brand/30"
                 />
-                <PreviewPane preview={preview} onClose={closePreview} />
+                <PreviewPane preview={preview} onClose={closePreview} canGoBack={canGoBack} />
               </>
             ) : null}
           </aside>
         ) : null}
       </div>
       {useMobileExecutionDrawer ? (
-        <MobilePreviewDrawer preview={preview} onClose={closePreview} />
+        <MobilePreviewDrawer preview={preview} onClose={closePreview} canGoBack={canGoBack} />
       ) : null}
     </PreviewPanelContext.Provider>
   );
@@ -181,26 +193,43 @@ export function usePreviewPanel() {
 function PreviewPane({
   preview,
   onClose,
+  canGoBack,
 }: {
   preview: PreviewPayload;
   onClose: () => void;
+  canGoBack: boolean;
 }) {
   if (preview.kind === "execution-overview") {
-    return <ExecutionOverviewPreviewPanel preview={preview} onClose={onClose} />;
+    return <ExecutionOverviewPreviewPanel preview={preview} onClose={onClose} canGoBack={canGoBack} />;
   }
   if (preview.kind === "trace-io") {
-    return <TraceIoPreviewPanel preview={preview} onClose={onClose} />;
+    return <TraceIoPreviewPanel preview={preview} onClose={onClose} canGoBack={canGoBack} />;
   }
-  return <TextPreviewPanel preview={preview} onClose={onClose} />;
+  return <TextPreviewPanel preview={preview} onClose={onClose} canGoBack={canGoBack} />;
 }
 
 function ExecutionOverviewPreviewPanel({
   preview,
   onClose,
+  canGoBack,
 }: {
   preview: ExecutionOverviewPreview;
   onClose: () => void;
+  canGoBack: boolean;
 }) {
+  const [activeTab, setActiveTab] = useState<"trace" | "node">("trace");
+  const [nodePreview, setNodePreview] = useState<TraceNodePreview | null>(null);
+
+  useEffect(() => {
+    setActiveTab("trace");
+    setNodePreview(null);
+  }, [preview.conversationId]);
+
+  const handleNodePreview = useCallback((next: TraceNodePreview | null) => {
+    setNodePreview(next);
+    if (next) setActiveTab("node");
+  }, []);
+
   return (
     <>
       <PreviewHeader
@@ -208,10 +237,35 @@ function ExecutionOverviewPreviewPanel({
         title={preview.title}
         subtitle={preview.subtitle ?? "按回复轮次查看工具、耗时与失败原因"}
         onClose={onClose}
+        canGoBack={canGoBack}
       />
-      <div className="min-h-0 flex-1 overflow-auto p-4">
-        <ConversationExecutionOverview conversationId={preview.conversationId} />
-      </div>
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => setActiveTab(value as "trace" | "node")}
+        className="min-h-0 flex-1 gap-0"
+      >
+        <TabsList size="small" aria-label="执行详情分区" className="mx-4 mt-3 self-start">
+          <TabsTrigger value="trace">执行链路</TabsTrigger>
+          <TabsTrigger value="node" disabled={!nodePreview}>节点详情</TabsTrigger>
+        </TabsList>
+        <TabsContent value="trace" className="m-0 min-h-0 flex-1 overflow-auto p-4">
+          <ConversationExecutionOverview
+            conversationId={preview.conversationId}
+            onNodePreview={handleNodePreview}
+          />
+        </TabsContent>
+        <TabsContent value="node" className="m-0 min-h-0 flex-1 overflow-auto p-4">
+          {nodePreview ? (
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-medium text-ink">{nodePreview.title}</p>
+                <p className="mt-0.5 text-xs text-muted">{nodePreview.subtitle}</p>
+              </div>
+              <TraceIoPreviewContent preview={nodePreview} />
+            </div>
+          ) : null}
+        </TabsContent>
+      </Tabs>
     </>
   );
 }
@@ -219,21 +273,23 @@ function ExecutionOverviewPreviewPanel({
 function MobilePreviewDrawer({
   preview,
   onClose,
+  canGoBack,
 }: {
   preview: PreviewPayload | null;
   onClose: () => void;
+  canGoBack: boolean;
 }) {
   return (
     <Dialog open={preview != null} onOpenChange={(next) => !next && onClose()}>
       <DialogContent
         aria-describedby={undefined}
-        className="!bottom-0 !top-auto !max-h-[min(80dvh,720px)] !max-w-none !translate-x-1/2 !translate-y-0 rounded-b-none rounded-t-[1.25rem] border-x-0 border-b-0 p-0 md:hidden"
+        className="!bottom-0 !top-auto !max-h-[min(80dvh,720px)] !max-w-none !-translate-x-1/2 !translate-y-0 rounded-b-none rounded-t-[1.25rem] border-x-0 border-b-0 p-0 md:hidden"
         showCloseButton={false}
       >
         <DialogTitle className="sr-only">{preview?.title ?? "预览"}</DialogTitle>
         {preview ? (
           <div className="flex min-h-0 max-h-[min(80dvh,720px)] flex-col pb-[max(1rem,env(safe-area-inset-bottom))]">
-            <PreviewPane preview={preview} onClose={onClose} />
+            <PreviewPane preview={preview} onClose={onClose} canGoBack={canGoBack} />
           </div>
         ) : null}
       </DialogContent>
@@ -247,12 +303,14 @@ function PreviewHeader({
   subtitle,
   extra,
   onClose,
+  canGoBack = false,
 }: {
   icon: ReactNode;
   title: string;
   subtitle?: string;
   extra?: ReactNode;
   onClose: () => void;
+  canGoBack?: boolean;
 }) {
   return (
     <header className="flex items-center gap-3 border-b border-surface-border/70 px-4 py-3">
@@ -267,11 +325,12 @@ function PreviewHeader({
         variant="ghost"
         size="icon-sm"
         className="app-dialog-close shrink-0 rounded-full text-muted hover:bg-surface-2 hover:text-ink"
-        aria-label="关闭"
+        aria-label={canGoBack ? "返回执行链路" : "关闭"}
+        title={canGoBack ? "返回执行链路" : "关闭"}
         onClick={onClose}
       >
-        <XIcon />
-        <span className="sr-only">关闭</span>
+        {canGoBack ? <ArrowLeft /> : <XIcon />}
+        <span className="sr-only">{canGoBack ? "返回执行链路" : "关闭"}</span>
       </Button>
     </header>
   );
@@ -280,9 +339,11 @@ function PreviewHeader({
 function TextPreviewPanel({
   preview,
   onClose,
+  canGoBack,
 }: {
   preview: TextPreview;
   onClose: () => void;
+  canGoBack: boolean;
 }) {
   return (
     <>
@@ -291,6 +352,7 @@ function TextPreviewPanel({
         title={preview.title}
         subtitle={preview.subtitle ?? (preview.language === "jsonl" ? "JSONL" : preview.language === "json" ? "JSON" : "文本")}
         onClose={onClose}
+        canGoBack={canGoBack}
       />
       <div className="min-h-0 flex-1 overflow-auto p-4">
         <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-ink">
@@ -304,9 +366,11 @@ function TextPreviewPanel({
 function TraceIoPreviewPanel({
   preview,
   onClose,
+  canGoBack,
 }: {
   preview: TraceIoPreview;
   onClose: () => void;
+  canGoBack: boolean;
 }) {
   return (
     <>
@@ -315,8 +379,18 @@ function TraceIoPreviewPanel({
         title={preview.title}
         subtitle={preview.subtitle ?? "输入 / 输出"}
         onClose={onClose}
+        canGoBack={canGoBack}
       />
       <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
+        <TraceIoPreviewContent preview={preview} />
+      </div>
+    </>
+  );
+}
+
+function TraceIoPreviewContent({ preview }: { preview: TraceIoPreview | TraceNodePreview }) {
+  return (
+    <>
         {preview.input ? (
           <section className="rounded-lg border border-surface-border/80 bg-surface-2/30 p-3">
             <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">输入</h3>
@@ -352,7 +426,6 @@ function TraceIoPreviewPanel({
             没有可预览的输入或输出。若为新 Trace，请确认后端已开启 TRACE_STORE_IO。
           </p>
         ) : null}
-      </div>
     </>
   );
 }

@@ -24,8 +24,8 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-// Runs before paint so the dark class is applied before the first frame.
-const NO_FLASH = `(function(){try{var t=localStorage.getItem('agenora:theme')||localStorage.getItem('anykb:theme')||'system';var d=t==='dark'||(t==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);}catch(e){}})()`;
+// Runs before paint so persisted appearance and layout preferences apply to the first frame.
+const NO_FLASH = `(function(){try{var t=localStorage.getItem('agenora:theme')||localStorage.getItem('anykb:theme')||'system';var d=t==='dark'||(t==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);document.documentElement.toggleAttribute('data-chat-sidebar-collapsed',localStorage.getItem('agenora.chat.sidebar-collapsed')==='true');}catch(e){}})()`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

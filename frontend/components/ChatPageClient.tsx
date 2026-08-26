@@ -26,6 +26,7 @@ import {
   finalizeConversation,
   getConversation,
   getConversationContextStatus,
+  listConversationTraces,
   listConversations,
   patchConversation,
   type ConversationContextStatus,
@@ -62,6 +63,16 @@ import {
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "agenora.chat.sidebar-collapsed";
 
+function getInitialSidebarCollapsed() {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+  } catch {
+    // Keep the default expanded layout when browser storage is unavailable.
+    return false;
+  }
+}
+
 export function ChatPage({
   routeConversationId = null,
   startBlank = false,
@@ -86,6 +97,7 @@ export function ChatPage({
   const [conversationLoadingMore, setConversationLoadingMore] = useState(false);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [currentMessages, setCurrentMessages] = useState<Message[]>([]);
+  const [hasPersistedTrace, setHasPersistedTrace] = useState(false);
   const [missingConversationId, setMissingConversationId] = useState<string | null>(null);
   const [currentKbId, setCurrentKbId] = useState<string | null>(
     () => (startBlank ? initialKbId?.trim() || null : null)
@@ -96,19 +108,11 @@ export function ChatPage({
     useState<ConversationContextStatus | null>(null);
   const [contextStatusLoading, setContextStatusLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(getInitialSidebarCollapsed);
   const [searchOpen, setSearchOpen] = useState(false);
   const [llmConfigurationOpen, setLlmConfigurationOpen] = useState(false);
   const [settingsModule, setSettingsModule] = useState<"personal" | "dispatch">("personal");
   const [composerValue, setComposerValue] = useState("");
-
-  useEffect(() => {
-    try {
-      setSidebarCollapsed(window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true");
-    } catch {
-      // Keep the default expanded layout when browser storage is unavailable.
-    }
-  }, []);
 
   const handleToggleSidebarCollapsed = useCallback(() => {
     setSidebarCollapsed((previous) => {
@@ -138,10 +142,39 @@ export function ChatPage({
   }, [currentId]);
 
   const visibleMessages = useMemo(() => normalizeMessages(currentMessages), [currentMessages]);
-  const hasExecutionOverview = useMemo(
-    () => hasConversationExecutionData(visibleMessages),
-    [visibleMessages]
-  );
+  const hasExecutionOverview =
+    hasPersistedTrace || hasConversationExecutionData(visibleMessages);
+  const traceAvailabilityKey = useMemo(() => {
+    for (let index = visibleMessages.length - 1; index >= 0; index -= 1) {
+      const message = visibleMessages[index];
+      if (message.role !== "assistant") continue;
+      return [
+        message.id,
+        message.streaming ? "streaming" : "complete",
+        String(message.tools.length),
+        message.memory_trace?.runtime?.ttft_ms != null ? "ttft" : "no-ttft",
+      ].join(":");
+    }
+    return "none";
+  }, [visibleMessages]);
+
+  useEffect(() => {
+    if (!currentId) {
+      setHasPersistedTrace(false);
+      return;
+    }
+    let cancelled = false;
+    void listConversationTraces(currentId, { limit: 1 })
+      .then((result) => {
+        if (!cancelled) setHasPersistedTrace(result.total > 0);
+      })
+      .catch(() => {
+        if (!cancelled) setHasPersistedTrace(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentId, traceAvailabilityKey]);
 
   useEffect(() => {
     closePreview();
@@ -998,6 +1031,7 @@ export function ChatPage({
             animated={bootPhase === "loading" && !initialLoadDone}
             label={`正在打开 ${APP_NAME}`}
             description="正在恢复你的知识库和会话。"
+            collapsed={sidebarCollapsed}
           />
         </div>
       )}

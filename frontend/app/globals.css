@@ -92,6 +92,28 @@
     color: rgb(var(--ink));
   }
 
+  /* The loading shell is server-rendered before React can restore local state.
+     RootLayout marks the preference before body paint, preventing a wide sidebar flash. */
+  @media (min-width: 1024px) {
+    html[data-chat-sidebar-collapsed] .kf-chat-loading-layout {
+      grid-template-columns: 56px minmax(0, 1fr);
+    }
+
+    html[data-chat-sidebar-collapsed] .kf-chat-loading-sidebar {
+      width: 100%;
+      overflow: visible;
+      padding-inline: 0.5rem;
+    }
+
+    html[data-chat-sidebar-collapsed] .kf-chat-loading-expanded {
+      display: none;
+    }
+
+    html[data-chat-sidebar-collapsed] .kf-chat-loading-collapsed {
+      display: flex;
+    }
+  }
+
   .kf-chat .kf-sidebar {
     background-color: color-mix(in srgb, rgb(var(--surface)) 98%, transparent);
     border-color: rgb(var(--surface-border));

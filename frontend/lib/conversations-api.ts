@@ -95,6 +95,10 @@ export type ConversationDetail = ConversationSummary & {
 
 export type ConversationTraceList = {
   traces: TraceSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
 };
 
 export type ConversationListPage = {
@@ -213,8 +217,15 @@ export async function getConversationContextStatus(
   return unwrap(await authFetch(`/api/conversations/${id}/context-status`));
 }
 
-export async function listConversationTraces(id: string): Promise<ConversationTraceList> {
-  return unwrap(await authFetch(`/api/conversations/${id}/traces`));
+export async function listConversationTraces(
+  id: string,
+  params: { limit?: number; offset?: number } = {}
+): Promise<ConversationTraceList> {
+  const search = new URLSearchParams({
+    limit: String(params.limit ?? 50),
+    offset: String(params.offset ?? 0),
+  });
+  return unwrap(await authFetch(`/api/conversations/${id}/traces?${search}`));
 }
 
 export async function getConversationTrace(

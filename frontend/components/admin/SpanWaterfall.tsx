@@ -36,13 +36,32 @@ type Props = {
   nodes: TraceObservationNode[];
   totalMs: number;
   rootStart: number;
+  /** Nest node IO over the current execution panel instead of replacing it. */
+  previewMode?: "replace" | "push";
+  /** Lets a parent keep node details in its own persistent panel or tab. */
+  onNodePreview?: (preview: TraceNodePreview) => void;
 };
 
-export function SpanWaterfall({ nodes, totalMs, rootStart }: Props) {
+export type TraceNodePreview = {
+  title: string;
+  subtitle: string;
+  input?: string | null;
+  output?: string | null;
+  error?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
+export function SpanWaterfall({
+  nodes,
+  totalMs,
+  rootStart,
+  previewMode = "replace",
+  onNodePreview,
+}: Props) {
   const expandableIds = useMemo(() => collectExpandableIds(nodes), [nodes]);
   const [expanded, setExpanded] = useState<Set<string>>(() => defaultExpanded(nodes, 1));
   const [activeId, setActiveId] = useState<string | null>(null);
-  const { openPreview } = usePreviewPanel();
+  const { openPreview, pushPreview } = usePreviewPanel();
 
   useEffect(() => {
     setExpanded(defaultExpanded(nodes, 1));
@@ -62,15 +81,20 @@ export function SpanWaterfall({ nodes, totalMs, rootStart }: Props) {
 
   const inspect = (node: TraceObservationNode) => {
     setActiveId(node.id);
-    openPreview({
-      kind: "trace-io",
+    const preview: TraceNodePreview = {
       title: spanTitle(node.name),
       subtitle: `${typeLabel(node.type)} · ${formatDuration(node.duration_ms)}`,
       input: node.input_preview,
       output: node.output_preview,
       error: node.error,
       metadata: node.metadata,
-    });
+    };
+    if (onNodePreview) {
+      onNodePreview(preview);
+      return;
+    }
+    const open = previewMode === "push" ? pushPreview : openPreview;
+    open({ kind: "trace-io", ...preview });
   };
 
   return (
@@ -78,16 +102,16 @@ export function SpanWaterfall({ nodes, totalMs, rootStart }: Props) {
       <div className="flex items-center gap-3 border-b border-surface-border/70 bg-surface-2/40 px-3 py-2">
         <div className="min-w-0 flex-1">
           <p className="text-xs font-medium text-ink">执行链路</p>
-          <p className="text-[11px] text-muted">点选节点预览输入 / 输出，右侧时间轴相对整次请求对齐</p>
+          <p className="hidden text-[11px] text-muted sm:block">点选节点预览输入 / 输出，右侧时间轴相对整次请求对齐</p>
         </div>
         <button
           type="button"
-          className="shrink-0 text-[11px] text-muted transition hover:text-ink"
+          className="min-h-11 shrink-0 px-1 text-[11px] text-muted transition hover:text-ink sm:min-h-9"
           onClick={() => setExpanded(allExpanded ? new Set() : new Set(expandableIds))}
         >
           {allExpanded ? "全部折叠" : "全部展开"}
         </button>
-        <span className="w-40 shrink-0 text-right text-[11px] tabular-nums text-muted">
+        <span className="hidden w-40 shrink-0 text-right text-[11px] tabular-nums text-muted sm:block">
           {formatDuration(totalMs)}
         </span>
       </div>
@@ -149,7 +173,7 @@ function SpanRow({
     <div>
       <div
         className={cn(
-          "flex min-w-0 items-stretch border-b border-surface-border/40",
+          "flex min-w-0 flex-col border-b border-surface-border/40 sm:flex-row",
           node.status === "error" && "bg-danger/5",
           active && "bg-surface-2/80"
         )}
@@ -161,19 +185,20 @@ function SpanRow({
           {hasChildren ? (
             <button
               type="button"
-              className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted hover:bg-surface-2 hover:text-ink"
+              className="inline-flex size-11 shrink-0 items-center justify-center rounded text-muted hover:bg-surface-2 hover:text-ink sm:size-9"
               aria-label={open ? "折叠" : "展开"}
+              aria-expanded={open}
               onClick={() => onToggle(node.id)}
             >
               {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
             </button>
           ) : (
-            <span className="size-5 shrink-0" />
+            <span className="size-11 shrink-0 sm:size-9" />
           )}
 
           <button
             type="button"
-            className="flex min-w-0 flex-1 items-center gap-2 text-left hover:text-ink"
+            className="flex min-h-11 min-w-0 flex-1 items-center gap-2 text-left hover:text-ink sm:min-h-9"
             title={node.error ? `${node.name} · ${node.error}` : node.name}
             onClick={() => onInspect(node)}
           >
@@ -181,8 +206,19 @@ function SpanRow({
             {depth === 0 && index != null ? (
               <span className="w-4 shrink-0 text-[10px] tabular-nums text-muted">{index + 1}</span>
             ) : null}
-            <span className="min-w-0 flex-1 truncate text-[13px] text-ink" title={node.name}>
-              {spanTitle(node.name)}
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] text-ink" title={node.name}>
+                {spanTitle(node.name)}
+              </span>
+              {tokens || ttft != null || node.cost_usd != null ? (
+                <span className="mt-0.5 flex min-w-0 items-center gap-2 overflow-hidden text-[11px] tabular-nums text-muted sm:hidden">
+                  {tokens ? <span className="shrink-0">{tokens}</span> : null}
+                  {ttft != null ? <span className="shrink-0">TTFT {formatDuration(ttft)}</span> : null}
+                  {node.cost_usd != null && node.cost_usd > 0 ? (
+                    <span className="shrink-0">${node.cost_usd.toFixed(4)}</span>
+                  ) : null}
+                </span>
+              ) : null}
             </span>
             {node.status === "error" ? (
               <span className="chip chip-danger shrink-0 text-[10px]">失败</span>
@@ -216,7 +252,7 @@ function SpanRow({
           </button>
         </div>
 
-        <div className="relative w-40 shrink-0 border-l border-surface-border/50 bg-surface-2/30">
+        <div className="relative hidden w-40 shrink-0 border-l border-surface-border/50 bg-surface-2/30 sm:block">
           <div
             className={cn(
               "absolute top-1/2 h-2 -translate-y-1/2 rounded-sm",

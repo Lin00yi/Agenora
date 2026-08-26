@@ -9,10 +9,12 @@ export function ChatLoadingShell({
   label,
   description,
   animated = true,
+  collapsed = false,
 }: {
   label: string;
   description?: string;
   animated?: boolean;
+  collapsed?: boolean;
 }) {
   return (
     <div
@@ -20,24 +22,50 @@ export function ChatLoadingShell({
         "kf-chat kf-chat-root h-full w-full overflow-hidden",
         animated && "kf-page-transition"
       )}
-    >      <div className="grid h-full grid-cols-1 lg:grid-cols-[286px_minmax(0,1fr)]">
+    >
+      <div
+        className={cn(
+          "kf-chat-loading-layout grid h-full grid-cols-1",
+          collapsed ? "lg:grid-cols-[56px_minmax(0,1fr)]" : "lg:grid-cols-[286px_minmax(0,1fr)]"
+        )}
+      >
         <aside
           aria-hidden="true"
-          className="kf-sidebar kf-sidebar-shell hidden h-full min-h-0 w-[286px] flex-col overflow-hidden border-r px-3 py-4 lg:flex"
+          className={cn(
+            "kf-chat-loading-sidebar kf-sidebar kf-sidebar-shell hidden h-full min-h-0 w-[286px] flex-col overflow-hidden border-r px-3 py-4 lg:flex",
+            collapsed && "lg:w-full lg:overflow-visible lg:px-2"
+          )}
         >
-          <div className="kf-sidebar-top px-1 pb-3 pt-1">
-            <Brand className="kf-sidebar-brand" size="md" tone="soft" />
-            <div className="kf-sidebar-new kf-sidebar-primary-action mt-5 h-[var(--control-h)] rounded-lg border" />
-            <div className="kf-sidebar-search mt-4 h-[var(--control-h)] rounded-lg border" />
+          <div
+            className={cn(
+              "kf-chat-loading-expanded flex min-h-0 flex-1 flex-col",
+              collapsed && "lg:hidden"
+            )}
+          >
+            <div className="kf-sidebar-top px-1 pb-3 pt-1">
+              <Brand className="kf-sidebar-brand" size="md" tone="soft" />
+              <div className="kf-sidebar-new kf-sidebar-primary-action mt-5 h-[var(--control-h)] rounded-lg border" />
+              <div className="kf-sidebar-search mt-4 h-[var(--control-h)] rounded-lg border" />
+            </div>
+            <div className="kf-sidebar-separator my-4 h-px" />
+            <div className="space-y-2 px-1">
+              <div className="kf-sidebar-skeleton h-4 w-28 rounded" />
+              <div className="kf-sidebar-skeleton h-12 rounded-lg" />
+              <div className="kf-sidebar-skeleton h-12 rounded-lg" />
+              <div className="kf-sidebar-skeleton h-12 rounded-lg" />
+            </div>
+            <div className="kf-user-trigger mt-auto h-[58px] rounded-lg border" />
           </div>
-          <div className="kf-sidebar-separator my-4 h-px" />
-          <div className="space-y-2 px-1">
-            <div className="kf-sidebar-skeleton h-4 w-28 rounded" />
-            <div className="kf-sidebar-skeleton h-12 rounded-lg" />
-            <div className="kf-sidebar-skeleton h-12 rounded-lg" />
-            <div className="kf-sidebar-skeleton h-12 rounded-lg" />
+          <div
+            className={cn(
+              "kf-chat-loading-collapsed hidden min-h-0 flex-1 flex-col items-center pt-1",
+              collapsed && "lg:flex"
+            )}
+          >
+            <span className="kf-sidebar-rail-brand-mark">
+              <Brand showWordmark={false} size="sm" />
+            </span>
           </div>
-          <div className="kf-user-trigger mt-auto h-[58px] rounded-lg border" />
         </aside>
 
         <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
