@@ -741,7 +741,11 @@ async def clear_web_search(
 ) -> None:
     user_row = await session.get(User, user.id)
     if user_row is not None:
-        await kb_options.clear_web_search(session, user=user_row)
+        try:
+            await kb_options.verify_system_web_search()
+            await kb_options.clear_web_search(session, user=user_row)
+        except kb_options.KBOptionsUseCaseError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
 # ---------------------------------------------------------------------------

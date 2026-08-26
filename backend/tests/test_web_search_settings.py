@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import httpx
 import pytest
 
 from src.capabilities.settings.application import kb_options
@@ -25,6 +26,13 @@ async def test_save_web_search_keeps_paid_key_and_clears_it_for_duckduckgo(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(kb_options, "encrypt", lambda value: f"encrypted:{value}")
+    verified: list[tuple[str, str]] = []
+
+    async def verify_web_search(*, provider: str, api_key: str) -> int:
+        verified.append((provider, api_key))
+        return 1
+
+    monkeypatch.setattr(kb_options, "verify_web_search", verify_web_search)
     user = SimpleNamespace(web_search_provider=None, web_search_api_key_enc=None)
     session = _Session()
 
@@ -51,6 +59,79 @@ async def test_save_web_search_keeps_paid_key_and_clears_it_for_duckduckgo(
     )
     assert user.web_search_provider == "duckduckgo"
     assert user.web_search_api_key_enc is None
+    assert verified == [("brave", "brave-key"), ("duckduckgo", "")]
+
+
+@pytest.mark.asyncio
+async def test_failed_web_search_verification_preserves_active_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = SimpleNamespace(web_search_provider="brave", web_search_api_key_enc="old-key")
+
+    async def fail_verification(**_kwargs: object) -> int:
+        raise kb_options.KBOptionsUseCaseError("搜索引擎连接失败：401", 502)
+
+    monkeypatch.setattr(kb_options, "verify_web_search", fail_verification)
+    with pytest.raises(kb_options.KBOptionsUseCaseError, match="连接失败"):
+        await kb_options.save_web_search(
+            _Session(),
+            user=user,
+            body=SimpleNamespace(provider="tavily", api_key="new-key"),
+        )
+    assert user.web_search_provider == "brave"
+    assert user.web_search_api_key_enc == "old-key"
+
+
+@pytest.mark.asyncio
+async def test_failed_first_web_search_verification_never_persists_the_new_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(kb_options, "encrypt", lambda value: f"encrypted:{value}")
+    user = SimpleNamespace(web_search_provider=None, web_search_api_key_enc=None)
+
+    async def fail_verification(**_kwargs: object) -> int:
+        raise kb_options.KBOptionsUseCaseError("搜索引擎连接失败：401", 502)
+
+    monkeypatch.setattr(kb_options, "verify_web_search", fail_verification)
+    with pytest.raises(kb_options.KBOptionsUseCaseError, match="连接失败"):
+        await kb_options.save_web_search(
+            _Session(),
+            user=user,
+            body=SimpleNamespace(provider="tavily", api_key="invalid-new-key"),
+        )
+    assert user.web_search_provider is None
+    assert user.web_search_api_key_enc is None
+
+
+@pytest.mark.asyncio
+async def test_empty_probe_result_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Provider:
+        async def search(self, _query: str, *, max_results: int) -> list[SearchResult]:
+            assert max_results == 1
+            return []
+
+    monkeypatch.setattr(kb_options, "get_search_provider", lambda _config: _Provider())
+    with pytest.raises(kb_options.KBOptionsUseCaseError) as error:
+        await kb_options.verify_web_search(provider="brave", api_key="key")
+    assert error.value.status_code == 422
+    assert error.value.detail["code"] == "search_provider_empty_result"
+
+
+@pytest.mark.asyncio
+async def test_probe_maps_provider_auth_failure_to_safe_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Provider:
+        async def search(self, _query: str, *, max_results: int) -> list[SearchResult]:
+            request = httpx.Request("GET", "https://provider.example/search")
+            response = httpx.Response(401, request=request)
+            raise httpx.HTTPStatusError("401", request=request, response=response)
+
+    monkeypatch.setattr(kb_options, "get_search_provider", lambda _config: _Provider())
+    with pytest.raises(kb_options.KBOptionsUseCaseError) as error:
+        await kb_options.verify_web_search(provider="brave", api_key="key")
+    assert error.value.status_code == 502
+    assert error.value.detail["code"] == "search_provider_auth_failed"
 
 
 def test_resolve_user_web_search_returns_none_without_an_override() -> None:

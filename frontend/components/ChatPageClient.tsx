@@ -14,6 +14,7 @@ import SystemSettingsDialog from "@/components/SystemSettingsDialog";
 import { LLMConfigurationDialog } from "@/components/LLMConfigurationDialog";
 import { Button } from "@/components/ui/button";
 import { StateView } from "@/components/ui/state-view";
+import { usePreviewPanel } from "@/components/preview/PreviewPanelProvider";
 import { ArrowDown } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { APP_NAME } from "@/components/Brand";
@@ -37,6 +38,7 @@ import {
   ConversationSearchDialog,
   ChatTopBar,
   ChatMessage,
+  hasConversationExecutionData,
   Composer,
   HumanInputPanel,
   EmptyWorkbench,
@@ -74,6 +76,7 @@ export function ChatPage({
   initialSettingsModule?: "dispatch" | null;
 }) {
   const router = useRouter();
+  const { closePreview, openPreview } = usePreviewPanel();
   const [panePhase, setPanePhase] = useState<"in" | "out">("in");
 
   const [summaries, setSummaries] = useState<ConversationSummary[]>([]);
@@ -135,6 +138,23 @@ export function ChatPage({
   }, [currentId]);
 
   const visibleMessages = useMemo(() => normalizeMessages(currentMessages), [currentMessages]);
+  const hasExecutionOverview = useMemo(
+    () => hasConversationExecutionData(visibleMessages),
+    [visibleMessages]
+  );
+
+  useEffect(() => {
+    closePreview();
+  }, [currentId, closePreview]);
+
+  const handleOpenExecutionOverview = useCallback(() => {
+    openPreview({
+      kind: "execution-overview",
+      title: "执行概览",
+      subtitle: "与后台追踪一致的 Trace / Span 树",
+      conversationId: currentId,
+    });
+  }, [currentId, openPreview]);
 
   const sidebarConversations = useMemo(
     () => summaries.map((s) => summaryToConv(s, s.id === currentId ? visibleMessages : [])),
@@ -774,6 +794,9 @@ export function ChatPage({
           <ChatTopBar
             title={currentConversation?.title ?? DEFAULT_TITLE}
             onOpenSidebar={() => setSidebarOpen(true)}
+            onOpenExecutionOverview={
+              hasExecutionOverview ? handleOpenExecutionOverview : undefined
+            }
           />
 
           <div className="min-h-0 min-w-0 flex-1" data-kf-region="workspace-host">

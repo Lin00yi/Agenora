@@ -4,6 +4,7 @@ import { authFetch } from "./auth";
 import type { ToolEvent } from "@/components/ThinkingChain";
 import type { AssistantPart } from "@/lib/conversationStore";
 import type { MemoryTrace } from "@/lib/sseClient";
+import type { TraceDetail, TraceSummary } from "@/lib/trace-types";
 
 /**
  * Conversations API client (v2-M3).
@@ -90,6 +91,10 @@ export type MessagePayload = {
 
 export type ConversationDetail = ConversationSummary & {
   messages: MessagePayload[];
+};
+
+export type ConversationTraceList = {
+  traces: TraceSummary[];
 };
 
 export type ConversationListPage = {
@@ -206,6 +211,17 @@ export async function getConversationContextStatus(
   id: string
 ): Promise<ConversationContextStatus> {
   return unwrap(await authFetch(`/api/conversations/${id}/context-status`));
+}
+
+export async function listConversationTraces(id: string): Promise<ConversationTraceList> {
+  return unwrap(await authFetch(`/api/conversations/${id}/traces`));
+}
+
+export async function getConversationTrace(
+  conversationId: string,
+  traceId: string
+): Promise<TraceDetail> {
+  return unwrap(await authFetch(`/api/conversations/${conversationId}/traces/${traceId}`));
 }
 
 export async function createConversation(

@@ -1,6 +1,7 @@
 "use client";
 
 import { authFetch } from "./auth";
+import type { TraceDetail, TraceObservationNode, TraceSummary } from "./trace-types";
 
 /**
  * Admin dashboard API client (06-01).
@@ -289,42 +290,9 @@ export async function deleteKb(id: string): Promise<void> {
 // ---------------------------------------------------------------------------
 // Traces (internal observability)
 // ---------------------------------------------------------------------------
-export type AdminTraceSummary = {
-  id: string;
-  conversation_id: string | null;
-  user_id: string | null;
-  name: string;
-  started_at: string | null;
-  ended_at: string | null;
-  duration_ms: number | null;
-  status: string;
-  total_cost_usd: number | null;
-  metadata: Record<string, unknown>;
-  observation_count: number;
-};
+export type AdminTraceSummary = TraceSummary;
 
-export type AdminObservationNode = {
-  id: string;
-  trace_id: string;
-  parent_observation_id: string | null;
-  type: string;
-  name: string;
-  lifecycle: "active" | "legacy" | "retired" | "unknown";
-  started_at: string | null;
-  ended_at: string | null;
-  duration_ms: number | null;
-  status: string;
-  error: string | null;
-  model: string | null;
-  usage: Record<string, number> | null;
-  cost_usd: number | null;
-  input_preview: string | null;
-  output_preview: string | null;
-  metadata: Record<string, unknown>;
-  /** Provider time to first token for a generation observation. */
-  ttft_ms?: number | null;
-  children?: AdminObservationNode[];
-};
+export type AdminObservationNode = TraceObservationNode;
 
 export type AdminTraceListResponse = {
   total: number;
@@ -333,11 +301,9 @@ export type AdminTraceListResponse = {
   traces: AdminTraceSummary[];
 };
 
-export type AdminTraceDetail = AdminTraceSummary & {
+export type AdminTraceDetail = TraceDetail & {
   input_preview: string | null;
   output_preview: string | null;
-  observations: AdminObservationNode[];
-  observations_flat: AdminObservationNode[];
 };
 
 export async function listTraces(params?: {

@@ -31,6 +31,7 @@ from src.capabilities.identity.password import hash_password
 from src.api.routes.auth import purge_user
 from src.capabilities.conversations.models import Conversation, Message
 from src.platform.persistence import get_session
+from src.platform.observability.serialization import build_observation_tree
 from src.capabilities.memory.application import run_maintenance as run_memory_maintenance
 from src.capabilities.knowledge.domain.models import KB, Document
 from src.api.routes.kb import _email_map
@@ -496,20 +497,6 @@ async def delete_kb(
 # ---------------------------------------------------------------------------
 # Traces (internal observability)
 # ---------------------------------------------------------------------------
-def _build_observation_tree(observations: list) -> list[dict]:
-    """Nest observations by parent_observation_id."""
-    by_id = {o.id: {**o.to_dict(), "children": []} for o in observations}
-    roots: list[dict] = []
-    for o in observations:
-        node = by_id[o.id]
-        parent_id = o.parent_observation_id
-        if parent_id and parent_id in by_id:
-            by_id[parent_id]["children"].append(node)
-        else:
-            roots.append(node)
-    return roots
-
-
 @router.get("/traces")
 async def list_traces(
     admin: AdminUser,  # noqa: ARG001
@@ -597,6 +584,6 @@ async def get_trace(
         **trace.to_summary_dict(),
         "input_preview": trace.input_preview,
         "output_preview": trace.output_preview,
-        "observations": _build_observation_tree(list(obs_rows)),
+        "observations": build_observation_tree(obs_rows),
         "observations_flat": [o.to_dict() for o in obs_rows],
     }

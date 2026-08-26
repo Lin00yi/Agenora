@@ -10,6 +10,7 @@ import {
   clearWebSearchSettings,
   getMySettings,
   saveWebSearchSettings,
+  SettingsApiError,
   type MyWebSearchSettings,
   type WebSearchProvider,
 } from "@/lib/settings-api";
@@ -31,6 +32,18 @@ const LEGACY_WEB_SEARCH_SETTINGS: MyWebSearchSettings = {
 
 function providerLabel(value: WebSearchProvider) {
   return PROVIDERS.find((item) => item.value === value)?.label ?? value;
+}
+
+function settingsErrorMessage(error: unknown, fallback: string) {
+  if (
+    error instanceof SettingsApiError &&
+    typeof error.detail === "object" &&
+    error.detail !== null &&
+    typeof (error.detail as { message?: unknown }).message === "string"
+  ) {
+    return (error.detail as { message: string }).message;
+  }
+  return error instanceof Error ? error.message : fallback;
 }
 
 /** Independent settings surface for the engine behind the web_search tool. */
@@ -77,9 +90,9 @@ export function WebSearchSettingsModule({ embedded = false }: { embedded?: boole
     try {
       await saveWebSearchSettings({ provider, api_key: apiKey });
       await refresh();
-      toast.success(`已切换为 ${providerLabel(provider)}`);
+      toast.success(`连接成功，已切换为 ${providerLabel(provider)}`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "保存失败");
+      toast.error(settingsErrorMessage(error, "验证失败，未保存配置"));
     } finally {
       setSaving(false);
     }
@@ -92,7 +105,7 @@ export function WebSearchSettingsModule({ embedded = false }: { embedded?: boole
       const next = await refresh();
       toast.success(`已恢复系统默认：${providerLabel(next.effective_provider)}`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "恢复失败");
+      toast.error(settingsErrorMessage(error, "默认搜索引擎不可用，未恢复配置"));
     } finally {
       setResetting(false);
     }
@@ -111,7 +124,7 @@ export function WebSearchSettingsModule({ embedded = false }: { embedded?: boole
       <header>
         <p className="text-xs font-semibold tracking-[0.16em] text-brand">工具与外部数据</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">联网搜索</h1>
-        <p className="mt-2 text-sm leading-6 text-muted">配置对话中 <code>web_search</code> 工具使用的搜索引擎。此配置只决定已启用联网搜索时使用哪个引擎。</p>
+        <p className="mt-2 text-sm leading-6 text-muted">配置对话中 <code>web_search</code> 工具使用的搜索引擎。保存前会用当前 Key 发起真实搜索，验证失败不会替换现有配置。</p>
       </header>
 
       <section className="mt-6 rounded-xl border border-surface-border bg-surface p-4 shadow-sm sm:p-5">
@@ -163,7 +176,7 @@ export function WebSearchSettingsModule({ embedded = false }: { embedded?: boole
 
         <div className="mt-6 flex flex-col-reverse gap-2 border-t border-surface-border pt-4 sm:flex-row sm:justify-end">
           {initial?.configured && <Button type="button" variant="ghost" onClick={reset} disabled={resetting || saving}><RotateCcw className="h-4 w-4" />{resetting ? "恢复中…" : "恢复系统默认"}</Button>}
-          <Button type="button" onClick={save} disabled={!canSave || (!dirty && initial?.configured)}><Save className="h-4 w-4" />{saving ? <><Loader2 className="h-4 w-4 animate-spin" />保存中…</> : "保存搜索引擎"}</Button>
+          <Button type="button" onClick={save} disabled={!canSave || (!dirty && initial?.configured)}><Save className="h-4 w-4" />{saving ? <><Loader2 className="h-4 w-4 animate-spin" />验证中…</> : "验证并保存"}</Button>
         </div>
       </section>
     </main>

@@ -7,6 +7,10 @@ export { ConversationSearchDialog } from "./ConversationSearchDialog";
 export { ChatTopBar, DEFAULT_TITLE } from "./ChatTopBar";
 export { EmptyWorkbench } from "./ChatEmpty";
 export { ChatMessage } from "./ChatMessages";
+export {
+  ConversationExecutionOverview,
+  hasConversationExecutionData,
+} from "./ConversationExecutionOverview";
 export { SourceCards } from "./SourceCards";
 export { Composer, ContextUsageIndicator } from "./ChatComposer";
 export { HumanInputPanel, type HumanInputRequest, type RefundOrderOption } from "./HumanInputPanel";

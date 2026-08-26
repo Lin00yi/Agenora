@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
-import type { AdminObservationNode } from "@/lib/admin-api";
+import type { TraceObservationNode } from "@/lib/trace-types";
 import { cn } from "@/lib/cn";
 import { usePreviewPanel } from "@/components/preview/PreviewPanelProvider";
 
@@ -33,7 +33,7 @@ const SPAN_LABELS: Record<string, string> = {
 };
 
 type Props = {
-  nodes: AdminObservationNode[];
+  nodes: TraceObservationNode[];
   totalMs: number;
   rootStart: number;
 };
@@ -60,7 +60,7 @@ export function SpanWaterfall({ nodes, totalMs, rootStart }: Props) {
     });
   };
 
-  const inspect = (node: AdminObservationNode) => {
+  const inspect = (node: TraceObservationNode) => {
     setActiveId(node.id);
     openPreview({
       kind: "trace-io",
@@ -123,7 +123,7 @@ function SpanRow({
   onToggle,
   onInspect,
 }: {
-  node: AdminObservationNode;
+  node: TraceObservationNode;
   depth: number;
   index: number | null;
   totalMs: number;
@@ -131,7 +131,7 @@ function SpanRow({
   expanded: Set<string>;
   activeId: string | null;
   onToggle: (id: string) => void;
-  onInspect: (node: AdminObservationNode) => void;
+  onInspect: (node: TraceObservationNode) => void;
 }) {
   const children = node.children ?? [];
   const hasChildren = children.length > 0;
@@ -288,9 +288,9 @@ function formatDuration(ms: number | null | undefined): string {
   return `${(ms / 60_000).toFixed(2)} min`;
 }
 
-function collectExpandableIds(nodes: AdminObservationNode[]): string[] {
+function collectExpandableIds(nodes: TraceObservationNode[]): string[] {
   const ids: string[] = [];
-  const walk = (list: AdminObservationNode[]) => {
+  const walk = (list: TraceObservationNode[]) => {
     for (const node of list) {
       if (node.children?.length) {
         ids.push(node.id);
@@ -302,9 +302,9 @@ function collectExpandableIds(nodes: AdminObservationNode[]): string[] {
   return ids;
 }
 
-function defaultExpanded(nodes: AdminObservationNode[], maxDepth: number): Set<string> {
+function defaultExpanded(nodes: TraceObservationNode[], maxDepth: number): Set<string> {
   const ids = new Set<string>();
-  const walk = (list: AdminObservationNode[], depth: number) => {
+  const walk = (list: TraceObservationNode[], depth: number) => {
     for (const node of list) {
       if (node.children?.length && depth < maxDepth) {
         ids.add(node.id);
