@@ -83,7 +83,6 @@ import {
   removeMember,
   uploadFile,
   uploadUrl,
-  type ChunkStrategy,
   type DocStatus,
   type Document,
   type KBDetail,
@@ -91,15 +90,6 @@ import {
   type KbRole,
   type MemberRole,
 } from "@/lib/kb-api";
-
-const CHUNK_STRATEGY_OPTIONS: { value: ChunkStrategy; label: string }[] = [
-  { value: "recursive", label: "递归文本切分" },
-  { value: "markdown_heading", label: "Markdown 标题切分" },
-  { value: "semantic", label: "轻量语义切分" },
-  { value: "table_aware", label: "表格感知切分" },
-  { value: "code", label: "代码感知切分" },
-  { value: "parent_child", label: "轻量父子切分" },
-];
 
 const kbDetailInputClass =
   "admin-input";
@@ -127,7 +117,6 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
   // v3-M3: advanced settings + index rebuild
   const [groupingBusy, setGroupingBusy] = useState(false);
   const [chunkBusy, setChunkBusy] = useState(false);
-  const [chunkStrategy, setChunkStrategy] = useState<ChunkStrategy>("recursive");
   const [chunkTarget, setChunkTarget] = useState("1500");
   const [chunkMaxSize, setChunkMaxSize] = useState("1800");
   const [chunkOverlap, setChunkOverlap] = useState("150");
@@ -163,20 +152,19 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
 
   useEffect(() => {
     if (!kb) return;
-    setChunkStrategy(kb.chunk_strategy ?? "recursive");
     setChunkTarget(String(kb.chunk_target ?? 1500));
     setChunkMaxSize(String(kb.chunk_max_size ?? 1800));
     setChunkOverlap(String(kb.chunk_overlap ?? 150));
     // Sync form fields from KB chunk settings only — not every kb object identity change.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional field deps
-  }, [kb?.chunk_strategy, kb?.chunk_target, kb?.chunk_max_size, kb?.chunk_overlap, kb?.id]);
+  }, [kb?.chunk_target, kb?.chunk_max_size, kb?.chunk_overlap, kb?.id]);
 
   const onSaveChunkSettings = async (e: FormEvent) => {
     e.preventDefault();
     setChunkBusy(true);
     try {
       const updated = await patchKb(id, {
-        chunk_strategy: chunkStrategy,
+        chunk_strategy: "auto",
         chunk_target: parseInt(chunkTarget, 10),
         chunk_max_size: parseInt(chunkMaxSize, 10),
         chunk_overlap: parseInt(chunkOverlap, 10),
@@ -192,7 +180,8 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
             }
           : cur
       );
-      toast.success("分块参数已保存（对新 ingest / 重新 ingest 生效）");
+      toast.success("分块参数已保存，请确认重建以更新现有文档");
+      setPendingRebuild(true);
     } catch (err) {
       toast.error((err as Error).message);
     } finally {
@@ -938,7 +927,7 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
               <div>
                 <div className="text-sm font-semibold">高级设置</div>
                 <p className="mt-1 text-xs text-muted">
-                  配置默认分块参数和索引重建策略，改动会影响后续 ingest 和检索召回。
+                  自动模式会识别代码、Markdown 表格；其余文档使用通用文本边界切分。
                 </p>
               </div>
             </div>
@@ -946,20 +935,15 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
             <form onSubmit={onSaveChunkSettings} className="border-t border-surface-border/70 px-4 py-4">
               <div className="text-sm font-medium">分块参数（KB 默认）</div>
               <p className="mt-1 text-xs text-muted">
-                单位：字符。仅对新上传 / 重新 ingest 的文档生效；单篇文档可在详情页覆盖。
+                单位：字符。保存后必须重建索引，现有文档才会按新规则重新切分；单篇文档可在详情页覆盖。
               </p>
               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-4">
-                <label className="text-xs">
+                <div className="text-xs">
                   <span className="text-muted">切分策略</span>
-                  <Select
-                    value={chunkStrategy}
-                    onChange={(e) => setChunkStrategy(e.target.value as ChunkStrategy)}
-                    options={CHUNK_STRATEGY_OPTIONS}
-                    className="mt-1 h-[var(--control-h)] admin-select-trigger"
-                    contentAlign="start"
-                    contentPosition="popper"
-                  />
-                </label>
+                  <div className="mt-1 flex min-h-[var(--control-h)] items-center rounded-md border border-surface-border bg-surface-2/45 px-3 text-sm text-ink">
+                    自动（按来源类型识别标题、表格与代码结构）
+                  </div>
+                </div>
                 <label className="text-xs">
                   <span className="text-muted">目标长度</span>
                   <input
@@ -988,21 +972,24 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
                   />
                 </label>
               </div>
+              <p className="mt-3 text-xs leading-5 text-muted">
+                Markdown 和代码会由自动模式识别；如遇 URL 或扩展名不准确，可在文档详情的高级覆盖中指定。真正的父子检索依赖父块存储与召回扩展，当前尚未开放。
+              </p>
               <Button
                 type="submit"
                 disabled={chunkBusy}
                 variant="outline"
                 className="mt-3 min-h-[var(--control-h)] px-4 text-sm"
               >
-                保存分块参数
+                保存并重建索引
               </Button>
             </form>
 
             <div className="border-t border-surface-border/70 bg-surface-2/25 px-4 py-4">
               <div className="text-sm font-medium">混合检索索引</div>
               <p className="mt-1 text-xs text-muted">
-                启用后会用 BM25 + 向量两路融合检索，关键词查询命中明显改善。
-                重建会丢弃当前分块并重新入库所有文档（约 30-90 秒），期间该知识库临时无召回。
+                重建会用当前分块规则重新切分，并启用 BM25 + 向量两路融合检索。
+                期间该知识库临时无召回。
               </p>
               <Button
                 onClick={() => setPendingRebuild(true)}
@@ -1101,7 +1088,7 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
         open={pendingRebuild}
         onOpenChange={(o) => !o && setPendingRebuild(false)}
         title={`重建索引「${kb.name}」？`}
-        description="所有文档会被重新 ingest 以启用混合检索（BM25 + 向量）。约 30-90 秒，期间该 KB 聊天会临时无召回；文档原始文件保留。"
+        description="所有文档会按当前分块规则重新 ingest，并启用混合检索（BM25 + 向量）。约 30-90 秒，期间该 KB 聊天会临时无召回；文档原始文件保留。"
         confirmLabel="确认重建"
         onConfirm={confirmRebuildKb}
         busy={rebuildingKb}

@@ -118,7 +118,7 @@ def _migrate_additive_columns(sync_conn) -> None:
             sync_conn.execute(
                 text(
                     "ALTER TABLE kbs ADD COLUMN chunk_strategy "
-                    "VARCHAR(32) NOT NULL DEFAULT 'recursive'"
+                    "VARCHAR(32) NOT NULL DEFAULT 'auto'"
                 )
             )
         if "chunk_target" not in cols:

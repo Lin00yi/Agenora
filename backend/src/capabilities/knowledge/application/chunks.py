@@ -13,7 +13,11 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.vector.embedding import embed, embed_batch
-from src.capabilities.knowledge.domain.chunker import chunk_text_by_strategy, normalize_chunk_strategy
+from src.capabilities.knowledge.domain.chunker import (
+    chunk_text_by_strategy,
+    infer_auto_chunk_strategy,
+    normalize_chunk_strategy,
+)
 from src.capabilities.knowledge.domain.models import Chunk, Document, KB
 
 if TYPE_CHECKING:
@@ -24,7 +28,7 @@ log = structlog.get_logger()
 DEFAULT_CHUNK_TARGET = 1500
 DEFAULT_CHUNK_MAX_SIZE = 1800
 DEFAULT_CHUNK_OVERLAP = 150
-DEFAULT_CHUNK_STRATEGY = "recursive"
+DEFAULT_CHUNK_STRATEGY = "auto"
 
 
 def chunk_uuid(doc_id: str, idx: int) -> str:
@@ -65,6 +69,8 @@ def resolve_chunk_strategy(kb: KB, doc: Document | None = None) -> str:
 def chunk_document_text(kb: KB, doc: Document, text: str) -> list[str]:
     target, max_size, overlap = resolve_chunk_params(kb, doc)
     strategy = resolve_chunk_strategy(kb, doc)
+    if strategy == "auto":
+        strategy = infer_auto_chunk_strategy(filename=doc.filename, text=text)
     return chunk_text_by_strategy(
         text,
         strategy=strategy,

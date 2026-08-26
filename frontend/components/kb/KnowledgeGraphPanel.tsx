@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 
 import { AdminPanel, AdminSection } from "@/components/kb/AdminPageShell";
 import { KnowledgeGraphCanvas } from "@/components/kb/KnowledgeGraphCanvas";
+import Select from "@/components/Select";
 import { Button } from "@/components/ui/button";
 import { StateView } from "@/components/ui/state-view";
 import { Switch } from "@/components/ui/switch";
@@ -358,7 +359,7 @@ export function KnowledgeGraphPanel({ kbId: id }: { kbId: string }) {
               {graph.sources.map((source) => (
                 <div key={source.id} className="flex flex-col gap-2 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0"><p className="truncate text-sm font-medium">{source.source_type === "url" ? source.source_url : "已上传文件"}</p><p className="mt-1 text-xs text-muted">上次检查：{localTime(source.last_scan_at)}{source.last_error ? ` · ${source.last_error}` : ""}</p></div>
-                  {source.source_type === "url" && isOwner ? <label className="flex shrink-0 items-center gap-2 text-xs text-muted"><span>定时扫描</span><select aria-label="定时扫描频率" disabled={sourceBusy === source.id} value={source.scan_interval_minutes} onChange={(event) => void onSourceInterval(source.id, Number(event.target.value))} className="admin-select-trigger h-[var(--control-h-sm)] min-w-28 text-xs"><option value={0}>关闭</option><option value={60}>每小时</option><option value={1440}>每天</option><option value={10080}>每周</option></select></label> : <span className="chip chip-muted shrink-0">{source.source_type === "url" ? (source.scan_interval_minutes ? `${source.scan_interval_minutes} 分钟` : "未定时") : "文件需手动更新"}</span>}
+                  {source.source_type === "url" && isOwner ? <div className="flex shrink-0 items-center gap-2 text-xs text-muted"><span>定时扫描</span><Select aria-label="定时扫描频率" disabled={sourceBusy === source.id} value={String(source.scan_interval_minutes)} onChange={(event) => void onSourceInterval(source.id, Number(event.target.value))} options={[{ value: "0", label: "关闭" }, { value: "60", label: "每小时" }, { value: "1440", label: "每天" }, { value: "10080", label: "每周" }]} size="sm" className="min-w-28" contentAlign="end" /></div> : <span className="chip chip-muted shrink-0">{source.source_type === "url" ? (source.scan_interval_minutes ? `${source.scan_interval_minutes} 分钟` : "未定时") : "文件需手动更新"}</span>}
                 </div>
               ))}
             </div>

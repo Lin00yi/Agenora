@@ -113,7 +113,7 @@ class CreateKBRequest(BaseModel):
     reranker_api_key: str = Field(default="", max_length=512)
     reranker_model: Optional[str] = Field(default=None, max_length=128)
     reranker_enabled: bool = False
-    chunk_strategy: ChunkStrategy = "recursive"
+    chunk_strategy: ChunkStrategy = "auto"
 
 
 class PatchKBRequest(BaseModel):

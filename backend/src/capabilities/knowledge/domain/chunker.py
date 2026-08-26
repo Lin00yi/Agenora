@@ -17,7 +17,11 @@ import re
 from typing import Literal
 
 
-_SENT_RE = re.compile(r"(?<=[.!?。！？])(?=\s|$)")
+# Chinese sentences conventionally continue immediately after punctuation
+# (``。下一句``), unlike most English prose.  Keep that boundary while retaining
+# the whitespace/end guard for ASCII punctuation so values like ``1.6`` are
+# never treated as two sentences.
+_SENT_RE = re.compile(r"(?<=[。！？])|(?<=[.!?])(?=\s|$)")
 _MD_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 _FENCE_RE = re.compile(r"^\s*(```+|~~~+)")
 _CODE_SYMBOL_RE = re.compile(
@@ -28,21 +32,30 @@ _CODE_SYMBOL_RE = re.compile(
 _TABLE_SEPARATOR_RE = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$")
 
 ChunkStrategy = Literal[
-    "recursive",
+    "auto",
     "markdown_heading",
-    "semantic",
     "table_aware",
     "code",
-    "parent_child",
 ]
 SUPPORTED_CHUNK_STRATEGIES: set[str] = {
-    "recursive",
+    "auto",
     "markdown_heading",
-    "semantic",
     "table_aware",
     "code",
-    "parent_child",
 }
+
+# Values accepted by earlier releases.  Keep them readable so old rows remain
+# safe to re-ingest, but do not offer or accept them as current product modes.
+LEGACY_CHUNK_STRATEGY_MAP: dict[str, ChunkStrategy] = {
+    "recursive": "auto",
+    "semantic": "auto",
+    "parent_child": "markdown_heading",
+}
+_CODE_SUFFIXES = frozenset({
+    ".c", ".cc", ".cpp", ".cs", ".css", ".go", ".java", ".js", ".jsx",
+    ".kt", ".kts", ".m", ".mm", ".php", ".py", ".rb", ".rs", ".sh",
+    ".sql", ".swift", ".ts", ".tsx", ".vue", ".yaml", ".yml",
+})
 
 
 def chunk_text(
@@ -59,17 +72,15 @@ def chunk_text(
 def chunk_text_by_strategy(
     text: str,
     *,
-    strategy: str = "recursive",
+    strategy: str = "auto",
     target: int = 1500,
     max_size: int = 1800,
     overlap: int = 150,
 ) -> list[str]:
     """Split text with a named strategy.
 
-    ``semantic`` and ``parent_child`` are conservative first implementations:
-    this sync ingest boundary does not yet have a second embedding pass or
-    parent/child vector schema. They provide a stable routing surface so the
-    storage/retrieval model can evolve without another API change.
+    ``auto`` is the safe generic fallback.  Source-aware callers should use
+    :func:`infer_auto_chunk_strategy` before entering this text-only boundary.
     """
     strategy = normalize_chunk_strategy(strategy)
     if strategy == "markdown_heading":
@@ -78,18 +89,35 @@ def chunk_text_by_strategy(
         return _table_aware_chunk_text(text, target=target, max_size=max_size, overlap=overlap)
     if strategy == "code":
         return _code_chunk_text(text, target=target, max_size=max_size, overlap=overlap)
-    if strategy == "parent_child":
-        return _parent_child_chunk_text(text, target=target, max_size=max_size, overlap=overlap)
-    if strategy == "semantic":
-        return _semantic_chunk_text(text, target=target, max_size=max_size, overlap=overlap)
     return _recursive_chunk_text(text, target=target, max_size=max_size, overlap=overlap)
 
 
 def normalize_chunk_strategy(value: str | None) -> ChunkStrategy:
     raw = (value or "recursive").strip().lower().replace("-", "_")
+    if raw in LEGACY_CHUNK_STRATEGY_MAP:
+        return LEGACY_CHUNK_STRATEGY_MAP[raw]
     if raw not in SUPPORTED_CHUNK_STRATEGIES:
-        return "recursive"
+        return "auto"
     return raw  # type: ignore[return-value]
+
+
+def infer_auto_chunk_strategy(*, filename: str, text: str) -> str:
+    """Choose a real structural splitter for an ``auto`` document.
+
+    Tables take precedence for Markdown containing table rows; a heading-only
+    splitter would otherwise break the header-to-row relationship.  Ordinary
+    URL/PDF/DOCX text deliberately falls back to the corrected recursive
+    splitter instead of pretending to be semantic or parent/child retrieval.
+    """
+    lower_name = (filename or "").lower().rsplit("/", 1)[-1]
+    suffix = "." + lower_name.rsplit(".", 1)[-1] if "." in lower_name else ""
+    if suffix in _CODE_SUFFIXES:
+        return "code"
+    if any(kind == "table" for kind, _ in _split_table_blocks(text)):
+        return "table_aware"
+    if suffix in {".md", ".markdown", ".mdx"}:
+        return "markdown_heading"
+    return "recursive"
 
 
 def _recursive_chunk_text(
@@ -128,6 +156,13 @@ def _recursive_chunk_text(
                     break
                 tail.insert(0, a)
                 tail_len += append_cost
+            # Never let overlap push a chunk past its explicit maximum.  This
+            # used to yield live chunks larger than ``max_size`` whenever a
+            # retained tail preceded a near-max-size atom.
+            max_tail_len = max(0, max_size - atom_len - (sep_len if tail else 0))
+            while tail and tail_len > max_tail_len:
+                removed = tail.pop(0)
+                tail_len -= len(removed) + (sep_len if tail else 0)
             current = tail + [atom]
             current_len = sum(len(a) for a in current) + sep_len * (len(current) - 1)
         else:
@@ -186,33 +221,6 @@ def _markdown_heading_chunk_text(
             )
         )
     return chunks
-
-
-def _semantic_chunk_text(
-    text: str,
-    *,
-    target: int,
-    max_size: int,
-    overlap: int,
-) -> list[str]:
-    # Lightweight semantic proxy: keep paragraph/sentence atoms intact and
-    # avoid overlap so adjacent topics are less blurred. A true semantic pass
-    # should live in an async strategy that can embed atoms before document
-    # vectors are persisted.
-    return _recursive_chunk_text(text, target=target, max_size=max_size, overlap=0)
-
-
-def _parent_child_chunk_text(
-    text: str,
-    *,
-    target: int,
-    max_size: int,
-    overlap: int,
-) -> list[str]:
-    # Flat-storage approximation: use headings as parent context and store
-    # children with the parent path repeated. True parent recall needs parent_id
-    # metadata and retrieval changes.
-    return _markdown_heading_chunk_text(text, target=target, max_size=max_size, overlap=overlap)
 
 
 def _table_aware_chunk_text(

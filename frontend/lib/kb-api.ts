@@ -13,12 +13,10 @@ import { authFetch } from "./auth";
 export type DocStatus = "pending" | "ingesting" | "done" | "failed";
 export type SourceType = "file" | "url";
 export type ChunkStrategy =
-  | "recursive"
+  | "auto"
   | "markdown_heading"
-  | "semantic"
   | "table_aware"
-  | "code"
-  | "parent_child";
+  | "code";
 /** v2-M9: caller's effective role for a KB. system KB is "viewer" for everyone. */
 export type KbRole = "owner" | "editor" | "viewer";
 export type MemberRole = "editor" | "viewer";

@@ -75,14 +75,16 @@ import {
   type KbRole,
 } from "@/lib/kb-api";
 
-const CHUNK_STRATEGY_OPTIONS: { value: ChunkStrategy; label: string }[] = [
-  { value: "recursive", label: "递归文本切分" },
+const ADVANCED_CHUNK_STRATEGY_OPTIONS: { value: ChunkStrategy; label: string }[] = [
   { value: "markdown_heading", label: "Markdown 标题切分" },
-  { value: "semantic", label: "轻量语义切分" },
-  { value: "table_aware", label: "表格感知切分" },
   { value: "code", label: "代码感知切分" },
-  { value: "parent_child", label: "轻量父子切分" },
 ];
+
+function chunkStrategyLabel(strategy: ChunkStrategy | null | undefined): string {
+  if (strategy === "markdown_heading") return "Markdown 标题切分";
+  if (strategy === "code") return "代码感知切分";
+  return "自动（按文档结构）";
+}
 
 export default function DocumentDetailPage({
   params,
@@ -222,7 +224,11 @@ export default function DocumentDetailPage({
 
   useEffect(() => {
     if (!doc) return;
-    setDocChunkStrategy(doc.chunk_strategy ?? "");
+    setDocChunkStrategy(
+      doc.chunk_strategy === "markdown_heading" || doc.chunk_strategy === "code"
+        ? doc.chunk_strategy
+        : ""
+    );
     setDocChunkTarget(doc.chunk_target == null ? "" : String(doc.chunk_target));
     setDocChunkMaxSize(doc.chunk_max_size == null ? "" : String(doc.chunk_max_size));
     setDocChunkOverlap(doc.chunk_overlap == null ? "" : String(doc.chunk_overlap));
@@ -470,9 +476,7 @@ export default function DocumentDetailPage({
     selected.length > 0 ? `已选择 ${selected.length} 个 chunk` : "";
 
   const effectiveStrategy = doc.effective_chunk_strategy ?? kb.chunk_strategy;
-  const effectiveStrategyLabel =
-    CHUNK_STRATEGY_OPTIONS.find((option) => option.value === effectiveStrategy)?.label ??
-    effectiveStrategy;
+  const effectiveStrategyLabel = chunkStrategyLabel(effectiveStrategy);
   const hasDocChunkOverride =
     doc.chunk_strategy != null ||
     doc.chunk_target != null ||
@@ -546,12 +550,12 @@ export default function DocumentDetailPage({
             className="grid gap-4 border-b border-surface-border/70 p-4 md:grid-cols-[1.25fr_repeat(3,minmax(0,1fr))_auto]"
           >
             <label className="space-y-1.5 text-xs font-medium text-muted">
-              <span>切分策略</span>
+              <span>高级策略覆盖</span>
               <Select
                 value={docChunkStrategy}
                 onChange={(e) => setDocChunkStrategy(e.target.value as ChunkStrategy | "")}
-                placeholderOption={{ value: "", label: "继承 KB 默认" }}
-                options={CHUNK_STRATEGY_OPTIONS}
+                placeholderOption={{ value: "", label: "自动（继承 KB 默认）" }}
+                options={ADVANCED_CHUNK_STRATEGY_OPTIONS}
                 className="h-[var(--control-h)] w-full admin-select-trigger"
                 contentAlign="start"
                 contentPosition="popper"
@@ -617,7 +621,7 @@ export default function DocumentDetailPage({
             </div>
           </form>
           <p className="px-4 py-3 text-xs leading-5 text-muted">
-            留空表示继承知识库默认。保存后仅影响新的入库；已有分块需要重新入库或重建整个知识库后才会变化。
+            默认由自动模式按来源类型切分；仅在 URL 或扩展名无法识别时，为 Markdown 或代码文档指定高级覆盖。父子检索尚未开放，不能通过这里模拟。保存后仅影响新的入库；已有分块需要重新入库或重建整个知识库后才会变化。
           </p>
         </AdminPanel>
       )}

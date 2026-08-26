@@ -28,6 +28,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, sel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from src.capabilities.knowledge.domain.chunker import normalize_chunk_strategy
 from src.platform.persistence.database import Base
 
 
@@ -40,12 +41,10 @@ SourceType = Literal["file", "url"]
 Role = Literal["owner", "editor", "viewer"]
 MemberRole = Literal["editor", "viewer"]
 ChunkStrategy = Literal[
-    "recursive",
+    "auto",
     "markdown_heading",
-    "semantic",
     "table_aware",
     "code",
-    "parent_child",
 ]
 
 # Sentinel user_id reserved for built-in system KBs, if any are added later.
@@ -112,7 +111,7 @@ class KB(Base):
 
     # v4: per-KB chunking defaults (chars). Document-level overrides win when set.
     chunk_strategy: Mapped[str] = mapped_column(
-        String(32), default="recursive", nullable=False
+        String(32), default="auto", nullable=False
     )
     chunk_target: Mapped[int] = mapped_column(Integer, default=1500, nullable=False)
     chunk_max_size: Mapped[int] = mapped_column(Integer, default=1800, nullable=False)
@@ -195,7 +194,7 @@ class KB(Base):
             "is_system": bool(self.is_system),
             "grouping_enabled": bool(self.grouping_enabled),
             "kg_enabled": bool(getattr(self, "kg_enabled", False)),
-            "chunk_strategy": self.chunk_strategy or "recursive",
+            "chunk_strategy": normalize_chunk_strategy(self.chunk_strategy),
             "chunk_target": self.chunk_target,
             "chunk_max_size": self.chunk_max_size,
             "chunk_overlap": self.chunk_overlap,
@@ -267,7 +266,8 @@ class Document(Base):
         include_parsed_text: bool = False,
         kb: "KB | None" = None,
     ) -> dict:
-        effective_strategy = self.chunk_strategy or (kb.chunk_strategy if kb else None)
+        strategy = self.chunk_strategy or (kb.chunk_strategy if kb else None)
+        effective_strategy = normalize_chunk_strategy(strategy) if strategy else None
         effective_target = self.chunk_target or (kb.chunk_target if kb else None)
         effective_max_size = self.chunk_max_size or (kb.chunk_max_size if kb else None)
         effective_overlap = self.chunk_overlap if self.chunk_overlap is not None else (
@@ -284,7 +284,9 @@ class Document(Base):
             "status": self.status,
             "chunks_count": self.chunks_count,
             "error": self.error or None,
-            "chunk_strategy": self.chunk_strategy,
+            "chunk_strategy": (
+                normalize_chunk_strategy(self.chunk_strategy) if self.chunk_strategy else None
+            ),
             "chunk_target": self.chunk_target,
             "chunk_max_size": self.chunk_max_size,
             "chunk_overlap": self.chunk_overlap,
