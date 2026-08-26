@@ -116,7 +116,6 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
   const [deletingKb, setDeletingKb] = useState(false);
   // v3-M3: advanced settings + index rebuild
   const [groupingBusy, setGroupingBusy] = useState(false);
-  const [chunkBusy, setChunkBusy] = useState(false);
   const [chunkTarget, setChunkTarget] = useState("1500");
   const [chunkMaxSize, setChunkMaxSize] = useState("1800");
   const [chunkOverlap, setChunkOverlap] = useState("150");
@@ -159,34 +158,18 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional field deps
   }, [kb?.chunk_target, kb?.chunk_max_size, kb?.chunk_overlap, kb?.id]);
 
-  const onSaveChunkSettings = async (e: FormEvent) => {
+  const chunkSettingsChanged = useMemo(() => {
+    if (!kb) return false;
+    return (
+      chunkTarget !== String(kb.chunk_target ?? 1500) ||
+      chunkMaxSize !== String(kb.chunk_max_size ?? 1800) ||
+      chunkOverlap !== String(kb.chunk_overlap ?? 150)
+    );
+  }, [chunkMaxSize, chunkOverlap, chunkTarget, kb]);
+
+  const onRequestRebuild = (e: FormEvent) => {
     e.preventDefault();
-    setChunkBusy(true);
-    try {
-      const updated = await patchKb(id, {
-        chunk_strategy: "auto",
-        chunk_target: parseInt(chunkTarget, 10),
-        chunk_max_size: parseInt(chunkMaxSize, 10),
-        chunk_overlap: parseInt(chunkOverlap, 10),
-      });
-      setKb((cur) =>
-        cur
-          ? {
-              ...cur,
-              chunk_strategy: updated.chunk_strategy,
-              chunk_target: updated.chunk_target,
-              chunk_max_size: updated.chunk_max_size,
-              chunk_overlap: updated.chunk_overlap,
-            }
-          : cur
-      );
-      toast.success("分块参数已保存，请确认重建以更新现有文档");
-      setPendingRebuild(true);
-    } catch (err) {
-      toast.error((err as Error).message);
-    } finally {
-      setChunkBusy(false);
-    }
+    setPendingRebuild(true);
   };
 
   // Poll while any doc is pending/ingesting
@@ -286,7 +269,28 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
   // Rebuild is durable; the worker resets the collection and enqueues documents.
   const confirmRebuildKb = async () => {
     setRebuildingKb(true);
+    let settingsSaved = false;
     try {
+      if (chunkSettingsChanged) {
+        const updated = await patchKb(id, {
+          chunk_strategy: "auto",
+          chunk_target: parseInt(chunkTarget, 10),
+          chunk_max_size: parseInt(chunkMaxSize, 10),
+          chunk_overlap: parseInt(chunkOverlap, 10),
+        });
+        settingsSaved = true;
+        setKb((cur) =>
+          cur
+            ? {
+                ...cur,
+                chunk_strategy: updated.chunk_strategy,
+                chunk_target: updated.chunk_target,
+                chunk_max_size: updated.chunk_max_size,
+                chunk_overlap: updated.chunk_overlap,
+              }
+            : cur
+        );
+      }
       await rebuildKb(id);
       toast.success("已提交重建任务，文档状态将自动更新");
       setPendingRebuild(false);
@@ -294,7 +298,11 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
       // the pending -> ingesting transition without waiting for the timer.
       await refresh();
     } catch (err) {
-      toast.error((err as Error).message);
+      toast.error(
+        settingsSaved
+          ? `分块参数已保存，但重建任务未提交：${(err as Error).message}`
+          : (err as Error).message
+      );
     } finally {
       setRebuildingKb(false);
     }
@@ -926,24 +934,29 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
               </span>
               <div>
                 <div className="text-sm font-semibold">高级设置</div>
-                <p className="mt-1 text-xs text-muted">
-                  自动模式会识别代码、Markdown 表格；其余文档使用通用文本边界切分。
+                <p className="mt-1 text-pretty text-xs text-muted">
+                  自动模式会按来源类型识别 Markdown 标题和表格、代码结构；其余文档使用通用文本边界切分。
                 </p>
               </div>
             </div>
 
-            <form onSubmit={onSaveChunkSettings} className="border-t border-surface-border/70 px-4 py-4">
+            <form onSubmit={onRequestRebuild} className="border-t border-surface-border/70 px-4 py-4">
               <div className="text-sm font-medium">分块参数（KB 默认）</div>
-              <p className="mt-1 text-xs text-muted">
+              <p className="mt-1 text-pretty text-xs text-muted">
                 单位：字符。保存后必须重建索引，现有文档才会按新规则重新切分；单篇文档可在详情页覆盖。
               </p>
-              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-4">
-                <div className="text-xs">
-                  <span className="text-muted">切分策略</span>
-                  <div className="mt-1 flex min-h-[var(--control-h)] items-center rounded-md border border-surface-border bg-surface-2/45 px-3 text-sm text-ink">
-                    自动（按来源类型识别标题、表格与代码结构）
+              <div className="mt-3 rounded-md border border-surface-border bg-surface-2/25 px-3 py-3">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+                  <div>
+                    <p className="text-xs text-muted">KB 默认策略</p>
+                    <p className="mt-0.5 text-sm font-medium text-ink">自动</p>
                   </div>
+                  <p className="text-pretty text-xs leading-5 text-muted sm:max-w-xl sm:text-right">
+                    仅支持在单篇文档详情中覆盖为 Markdown 标题或代码切分；KB 级不提供手动策略切换。
+                  </p>
                 </div>
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <label className="text-xs">
                   <span className="text-muted">目标长度</span>
                   <input
@@ -972,36 +985,18 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
                   />
                 </label>
               </div>
-              <p className="mt-3 text-xs leading-5 text-muted">
-                Markdown 和代码会由自动模式识别；如遇 URL 或扩展名不准确，可在文档详情的高级覆盖中指定。真正的父子检索依赖父块存储与召回扩展，当前尚未开放。
+              <p className="mt-3 text-pretty text-xs leading-5 text-muted">
+                重建会按当前参数重新切分，并构建 BM25 + 向量的混合检索索引。若 URL 或扩展名不准确，可在文档详情的高级覆盖中指定。真正的父子检索当前尚未开放。
               </p>
               <Button
                 type="submit"
-                disabled={chunkBusy}
-                variant="outline"
-                className="mt-3 min-h-[var(--control-h)] px-4 text-sm"
-              >
-                保存并重建索引
-              </Button>
-            </form>
-
-            <div className="border-t border-surface-border/70 bg-surface-2/25 px-4 py-4">
-              <div className="text-sm font-medium">混合检索索引</div>
-              <p className="mt-1 text-xs text-muted">
-                重建会用当前分块规则重新切分，并启用 BM25 + 向量两路融合检索。
-                期间该知识库临时无召回。
-              </p>
-              <Button
-                onClick={() => setPendingRebuild(true)}
                 disabled={rebuildingKb}
                 variant="outline"
                 className="mt-3 min-h-[var(--control-h)] px-4 text-sm"
-                type="button"
               >
-                <RefreshCw className={cn("h-4 w-4", rebuildingKb && "animate-spin")} />
-                重建索引（启用混合检索）
+                {chunkSettingsChanged ? "保存并重建索引" : "重建索引"}
               </Button>
-            </div>
+            </form>
           </section>
           </AdminSection>
         ) : null}
@@ -1088,8 +1083,12 @@ export default function KbDetailPage({ params }: { params: Promise<{ id: string 
         open={pendingRebuild}
         onOpenChange={(o) => !o && setPendingRebuild(false)}
         title={`重建索引「${kb.name}」？`}
-        description="所有文档会按当前分块规则重新 ingest，并启用混合检索（BM25 + 向量）。约 30-90 秒，期间该 KB 聊天会临时无召回；文档原始文件保留。"
-        confirmLabel="确认重建"
+        description={
+          chunkSettingsChanged
+            ? "确认后会先保存新的分块参数，再重新 ingest 所有文档并构建 BM25 + 向量混合检索索引。约 30-90 秒，期间该 KB 聊天会临时无召回；文档原始文件保留。"
+            : "所有文档会按当前分块规则重新 ingest，并构建 BM25 + 向量混合检索索引。约 30-90 秒，期间该 KB 聊天会临时无召回；文档原始文件保留。"
+        }
+        confirmLabel={chunkSettingsChanged ? "保存并重建" : "确认重建"}
         onConfirm={confirmRebuildKb}
         busy={rebuildingKb}
       />
