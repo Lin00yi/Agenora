@@ -23,6 +23,7 @@ import Select from "@/components/Select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { SettingsModuleSkeleton } from "@/components/settings/SettingsModuleSkeleton";
 import { StateView } from "@/components/ui/state-view";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -139,16 +140,7 @@ export function ModelSettingsModule({ embedded = false }: { embedded?: boolean }
   }, [router]);
 
   if (loading) {
-    return (
-      <div className={cn("flex items-center justify-center px-4", embedded ? "min-h-64 py-8" : "min-h-dvh")}>
-        <StateView
-          variant="loading"
-          title="正在读取模型设置"
-          description="正在检查当前生效的模型与个人配置。"
-          className="w-full max-w-md"
-        />
-      </div>
-    );
+    return <SettingsModuleSkeleton className={cn(!embedded && "mx-auto max-w-6xl")} rows={4} />;
   }
 
   return (
@@ -164,14 +156,16 @@ export function ModelSettingsModule({ embedded = false }: { embedded?: boolean }
         </header>
       )}
 
-      <main className={cn("mx-auto max-w-6xl", embedded ? "px-4 py-5 sm:px-6" : "app-page-content px-4 py-6 sm:px-6 sm:py-8")}>
-        <header className="max-w-3xl">
-          <p className="text-xs font-semibold tracking-[0.16em] text-brand">模型与运行策略</p>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-ink">模型设置</h1>
-          <p className="mt-2 text-sm leading-6 text-muted">先连接服务，再添加模型，最后配置默认模型与自动路由。Embedding 与 Reranker 在知识库中按库设置。</p>
-        </header>
+      <main className={cn("mx-auto max-w-6xl", embedded ? "px-5 py-5 sm:px-6" : "app-page-content px-4 py-6 sm:px-6 sm:py-8")}>
+        {!embedded ? (
+          <header className="max-w-3xl">
+            <p className="text-xs font-semibold tracking-[0.16em] text-brand">模型与运行策略</p>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-ink">模型设置</h1>
+            <p className="mt-2 text-sm leading-6 text-muted">先连接服务，再添加模型，最后配置默认模型与自动路由。Embedding 与 Reranker 在知识库中按库设置。</p>
+          </header>
+        ) : null}
 
-        <div className="mt-6">
+        <div className={cn(!embedded && "mt-6")}>
           <LLMSettingsPanel initial={settings?.llm} onChanged={refresh} />
         </div>
       </main>

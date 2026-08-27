@@ -22,6 +22,7 @@ import Select from "@/components/Select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { SettingsModuleSkeleton } from "@/components/settings/SettingsModuleSkeleton";
 import { StateView } from "@/components/ui/state-view";
 import { getToken } from "@/lib/auth";
 import {
@@ -196,16 +197,7 @@ export function MemorySystemModule({ embedded = false }: { embedded?: boolean })
   };
 
   if (loading) {
-    return (
-      <div className={cn("flex items-center justify-center px-4", embedded ? "min-h-64 py-8" : "min-h-dvh")}>
-        <StateView
-          variant="loading"
-          title="正在读取长期记忆"
-          description="正在整理已保存的偏好、约束和显式记忆。"
-          className="w-full max-w-md"
-        />
-      </div>
-    );
+    return <SettingsModuleSkeleton className={cn(!embedded && "mx-auto max-w-5xl")} rows={4} />;
   }
 
   return (
@@ -219,22 +211,24 @@ export function MemorySystemModule({ embedded = false }: { embedded?: boolean })
         </div>
       </header>}
 
-      <main className={cn("mx-auto max-w-5xl", embedded ? "px-4 py-5 sm:px-6" : "app-page-content px-4 py-7 sm:px-6 sm:py-10")}>
+      <main className={cn("mx-auto max-w-5xl", embedded ? "px-5 py-5 sm:px-6" : "app-page-content px-4 py-7 sm:px-6 sm:py-10")}>
         <div className="admin-panel overflow-hidden">
           <div className="border-b border-surface-border/70 bg-surface-2/45 px-5 py-5 sm:px-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <div className="min-w-0">
-                <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-                  <span className="admin-icon-tile admin-icon-tile-brand rounded-md">
-                    <BrainCircuit className="h-5 w-5" />
-                  </span>
-                  我的记忆
-                </h1>
-                <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">
-                  管理对话中保存的长期记忆。只有有效记忆会注入后续上下文。
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
+              {!embedded ? (
+                <div className="min-w-0">
+                  <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
+                    <span className="admin-icon-tile admin-icon-tile-brand rounded-md">
+                      <BrainCircuit className="h-5 w-5" />
+                    </span>
+                    我的记忆
+                  </h1>
+                  <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">
+                    管理对话中保存的长期记忆。只有有效记忆会注入后续上下文。
+                  </p>
+                </div>
+              ) : null}
+              <div className={cn("flex flex-wrap items-center gap-3", embedded && "w-full")}>
                 <p className="shrink-0 text-sm tabular-nums text-muted">
                   有效 <span className="font-semibold text-ink">{stats.active}</span>
                   <span className="mx-2 text-surface-border">·</span>
@@ -244,31 +238,33 @@ export function MemorySystemModule({ embedded = false }: { embedded?: boolean })
                   <span className="mx-2 text-surface-border">·</span>
                   已向量化 <span className="font-semibold text-ink">{stats.embedded}</span>
                 </p>
-                {status !== "pending_review" ? (
+                <div className="ml-auto flex flex-wrap items-center gap-2">
+                  {status !== "pending_review" ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-[var(--control-h)] min-h-[var(--control-h)]"
+                      onClick={() => handleStatusChange("pending_review")}
+                      disabled={pendingCount === 0 || refreshing}
+                    >
+                      查看待确认
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
                     variant="outline"
                     className="h-[var(--control-h)] min-h-[var(--control-h)]"
-                    onClick={() => handleStatusChange("pending_review")}
-                    disabled={pendingCount === 0 || refreshing}
+                    onClick={() => void handleExport()}
+                    disabled={exporting || rows.length === 0}
                   >
-                    查看待确认
+                    {exporting ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4" />
+                    )}
+                    导出
                   </Button>
-                ) : null}
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-[var(--control-h)] min-h-[var(--control-h)]"
-                  onClick={() => void handleExport()}
-                  disabled={exporting || rows.length === 0}
-                >
-                  {exporting ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Download className="h-4 w-4" />
-                  )}
-                  导出
-                </Button>
+                </div>
               </div>
             </div>
           </div>

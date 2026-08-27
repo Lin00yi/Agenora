@@ -8,13 +8,8 @@
 import { toast } from "@/lib/toast";
 import {
   AlertTriangle,
-  BrainCircuit,
   Download,
-  Globe2,
-  Info,
-  SlidersHorizontal,
   Trash2,
-  User as UserIcon,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -23,6 +18,7 @@ import { useEffect, useState } from "react";
 import AppModal from "@/components/AppModal";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useTheme, type Theme } from "@/components/ThemeProvider";
+import { SettingsModuleSkeleton } from "@/components/settings/SettingsModuleSkeleton";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -39,25 +35,30 @@ import {
 
 const ModelSettingsModule = dynamic(
   () => import("@/components/settings/ModelSettingsModule").then((module) => module.ModelSettingsModule),
-  { ssr: false }
+  { ssr: false, loading: () => <SettingsModuleSkeleton rows={4} /> }
 );
 const MemorySystemModule = dynamic(
   () => import("@/components/settings/MemorySystemModule").then((module) => module.MemorySystemModule),
-  { ssr: false }
+  { ssr: false, loading: () => <SettingsModuleSkeleton rows={4} /> }
 );
 const WebSearchSettingsModule = dynamic(
   () => import("@/components/settings/WebSearchSettingsModule").then((module) => module.WebSearchSettingsModule),
-  { ssr: false }
+  { ssr: false, loading: () => <SettingsModuleSkeleton rows={3} /> }
 );
 export type SettingsModule = "personal" | "dispatch" | "web-search" | "memory" | "about";
 type PersonalTab = "general" | "appearance" | "account" | "data";
 
-const MODULES: { key: SettingsModule; label: string; Icon: typeof UserIcon }[] = [
-  { key: "personal", label: "个人", Icon: UserIcon },
-  { key: "dispatch", label: "模型", Icon: SlidersHorizontal },
-  { key: "web-search", label: "联网", Icon: Globe2 },
-  { key: "memory", label: "记忆", Icon: BrainCircuit },
-  { key: "about", label: "关于", Icon: Info },
+const MODULES: {
+  key: SettingsModule;
+  label: string;
+  title: string;
+  description: string;
+}[] = [
+  { key: "personal", label: "个人", title: "个人设置", description: "管理个人资料、外观、账号安全与数据迁移。" },
+  { key: "dispatch", label: "模型", title: "模型设置", description: "连接模型服务，配置默认模型与自动路由。" },
+  { key: "web-search", label: "联网", title: "联网搜索", description: "选择对话中联网搜索所使用的引擎与凭据。" },
+  { key: "memory", label: "记忆", title: "我的记忆", description: "查看和管理会在后续对话中使用的长期记忆。" },
+  { key: "about", label: "关于", title: "关于 Agenora", description: "查看版本、开源协议与数据处理说明。" },
 ];
 
 const PERSONAL_TABS: { key: PersonalTab; label: string }[] = [
@@ -90,6 +91,7 @@ export default function SystemSettingsDialog({
   const [deleting, setDeleting] = useState(false);
   const router = useRouter();
   const modules = MODULES;
+  const activeModule = modules.find((item) => item.key === module) ?? modules[0];
 
   useEffect(() => {
     if (open) setModule(initialModule);
@@ -138,22 +140,21 @@ export default function SystemSettingsDialog({
             <div className="hidden px-2 py-2 text-xs font-semibold text-muted sm:block">
               设置
             </div>
-            {modules.map(({ key, label, Icon }) => {
+            {modules.map(({ key, label }) => {
               const active = module === key;
               return (
                 <button
                   key={key}
                   onClick={() => setModule(key)}
                   className={cn(
-                    "flex h-[var(--control-h)] shrink-0 cursor-pointer items-center gap-2 rounded-md border border-transparent px-3 text-sm font-medium transition-[background-color,border-color,color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 sm:w-full sm:px-2",
+                    "flex h-[var(--control-h)] shrink-0 cursor-pointer items-center rounded-md px-3 text-sm font-medium transition-[background-color,color] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 sm:w-full sm:px-2",
                     active
-                      ? "border-brand/25 bg-surface text-ink shadow-sm"
-                      : "text-muted hover:border-surface-border/80 hover:bg-surface/75 hover:text-ink"
+                      ? "bg-ink text-white dark:bg-surface-2 dark:text-ink"
+                      : "text-muted hover:bg-surface hover:text-ink"
                   )}
                   aria-pressed={active}
                   type="button"
                 >
-                  <Icon className={cn("h-4 w-4", active ? "text-brand" : "text-muted")} />
                   {label}
                 </button>
               );
@@ -161,10 +162,15 @@ export default function SystemSettingsDialog({
           </nav>
 
           <div className="flex min-h-0 flex-1 flex-col">
-            <header className="flex h-14 shrink-0 items-center border-b border-surface-border/70 bg-surface px-5 pr-14">
-              <h2 className="text-[15px] font-semibold tracking-tight">
-                {modules.find((item) => item.key === module)?.label}
-              </h2>
+            <header className="flex min-h-[76px] shrink-0 items-center border-b border-surface-border/70 bg-surface px-5 py-4 pr-14 sm:px-6">
+              <div className="min-w-0">
+                <h2 className="text-balance text-base font-semibold text-ink">
+                  {activeModule.title}
+                </h2>
+                <p className="mt-1 text-pretty text-sm leading-5 text-muted">
+                  {activeModule.description}
+                </p>
+              </div>
             </header>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
@@ -307,7 +313,7 @@ function GeneralTab({
 
   return (
     <div className="space-y-6">
-      <Field label="显示名称" hint="出现在侧边栏底部、对话署名等位置">
+      <Field label="显示名称">
         <input
           type="text"
           value={name}
@@ -576,39 +582,36 @@ function DataTab({ onRequestClear }: {
 // ---------------------------------------------------------------------------
 function AboutTab() {
   return (
-    <div className="space-y-4 text-sm">
-      <div>
-        <h3 className="font-medium">Agenora</h3>
-        <p className="mt-1 text-muted">
-          Private RAG knowledge base with observable constrained ReAct execution — grounded answers you can trace.
-        </p>
-      </div>
+    <div className="space-y-5">
+      <section className="rounded-xl border border-surface-border/70 bg-surface p-4 sm:p-5">
+        <h3 className="text-balance text-sm font-semibold text-ink">产品信息</h3>
+        <dl className="mt-4 grid grid-cols-[84px_minmax(0,1fr)] gap-y-3 text-sm">
+          <dt className="text-muted">版本</dt>
+          <dd className="text-ink">v3-M5</dd>
+          <dt className="text-muted">协议</dt>
+          <dd className="text-ink">MIT</dd>
+          <dt className="text-muted">仓库</dt>
+          <dd className="min-w-0 break-all text-brand">
+            <a
+              href="https://github.com/Lin00yi/Agenora"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:underline"
+            >
+              github.com/Lin00yi/Agenora
+            </a>
+          </dd>
+        </dl>
+      </section>
 
-      <dl className="grid grid-cols-[100px_1fr] gap-y-2 text-xs">
-        <dt className="text-muted">版本</dt>
-        <dd>v3-M5</dd>
-        <dt className="text-muted">协议</dt>
-        <dd>MIT</dd>
-        <dt className="text-muted">仓库</dt>
-        <dd className="break-all text-brand">
-          <a
-            href="https://github.com/Lin00yi/Agenora"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:underline"
-          >
-            github.com/Lin00yi/Agenora
-          </a>
-        </dd>
-      </dl>
-
-      <div className="rounded-lg border border-surface-border/70 bg-surface p-4 text-xs leading-5 text-muted shadow-sm">
-        <p>
+      <section className="rounded-xl border border-surface-border/70 bg-surface p-4 sm:p-5">
+        <h3 className="text-balance text-sm font-semibold text-ink">数据与使用说明</h3>
+        <p className="mt-3 text-pretty text-sm leading-6 text-muted">
           Agenora 是个人维护的本地优先知识库与受约束 ReAct 项目。系统会先确定本轮知识库与工具范围，
           再由单一 Agent 按需检索和调用工具；范围判定、检索和工具调用过程可追溯，数据保存在你自己的数据库中。
           使用本服务即表示你了解：LLM 输出可能不准确；上传到知识库的文档会经过 embedding 提供商处理。详见仓库 README。
         </p>
-      </div>
+      </section>
     </div>
   );
 }

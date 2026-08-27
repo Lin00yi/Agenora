@@ -4,7 +4,7 @@ import { CheckCircle2, Globe2, KeyRound, Loader2, RotateCcw, Save } from "lucide
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { StateView } from "@/components/ui/state-view";
+import { SettingsModuleSkeleton } from "@/components/settings/SettingsModuleSkeleton";
 import { cn } from "@/lib/cn";
 import {
   clearWebSearchSettings,
@@ -112,22 +112,20 @@ export function WebSearchSettingsModule({ embedded = false }: { embedded?: boole
   };
 
   if (loading) {
-    return (
-      <div className={cn("flex items-center justify-center px-4", embedded ? "min-h-64 py-8" : "min-h-dvh")}>
-        <StateView variant="loading" title="正在读取联网搜索设置" description="正在检查当前搜索引擎。" className="w-full max-w-md" />
-      </div>
-    );
+    return <SettingsModuleSkeleton className={cn(!embedded && "mx-auto max-w-3xl")} rows={3} />;
   }
 
   return (
-    <main className={cn("mx-auto max-w-3xl text-ink", embedded ? "px-4 py-5 sm:px-6" : "app-page-content px-4 py-6 sm:px-6 sm:py-8")}>
-      <header>
+    <main className={cn("text-ink", embedded ? "w-full px-5 py-5 sm:px-6" : "app-page-content mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8")}>
+      {!embedded ? (
+        <header>
         <p className="text-xs font-semibold tracking-[0.16em] text-brand">工具与外部数据</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">联网搜索</h1>
         <p className="mt-2 text-sm leading-6 text-muted">配置对话中 <code>web_search</code> 工具使用的搜索引擎。保存前会用当前 Key 发起真实搜索，验证失败不会替换现有配置。</p>
-      </header>
+        </header>
+      ) : null}
 
-      <section className="mt-6 rounded-xl border border-surface-border bg-surface p-4 shadow-sm sm:p-5">
+      <section className={cn("rounded-xl border border-surface-border bg-surface p-4 shadow-sm sm:p-5", !embedded && "mt-6")}>
         <div className="flex items-start gap-3">
           <div className="rounded-lg bg-brand/10 p-2 text-brand"><Globe2 className="h-5 w-5" /></div>
           <div>
@@ -143,7 +141,7 @@ export function WebSearchSettingsModule({ embedded = false }: { embedded?: boole
               <label key={item.value} className={cn("cursor-pointer rounded-lg border p-3 transition-colors", selected ? "border-brand bg-brand/5" : "border-surface-border hover:bg-surface-2/60")}>
                 <input className="sr-only" type="radio" name="web-search-provider" value={item.value} checked={selected} onChange={() => { setProvider(item.value); setApiKey(""); setKeyEditing(false); }} />
                 <span className="flex items-center gap-2 text-sm font-medium">
-                  <span className={cn("flex h-4 w-4 items-center justify-center rounded-full border", selected ? "border-brand bg-brand text-white" : "border-muted")}>
+                  <span className={cn("flex h-4 w-4 items-center justify-center rounded-full border", selected ? "border-brand bg-brand text-on-brand" : "border-muted")}>
                     {selected && <CheckCircle2 className="h-3 w-3" />}
                   </span>
                   {item.label}
