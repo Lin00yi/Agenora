@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 
 import Brand, { APP_NAME } from "@/components/Brand";
+import ThemeToggle from "@/components/ThemeToggle";
 
 type AuthPageShellProps = {
   children: ReactNode;
@@ -12,11 +13,12 @@ type AuthPageShellProps = {
 export default function AuthPageShell({ children }: AuthPageShellProps) {
   return (
     <main className="app-gradient-bg flex min-h-dvh flex-col px-5 py-5 sm:px-8 sm:py-7">
-      <header className="flex h-11 items-center">
+      <header className="flex h-11 items-center justify-between">
         <Link href="/welcome" className="app-nav-link app-nav-link-surface" aria-label="返回首页">
           <ChevronLeft className="size-4" />
           返回首页
         </Link>
+        <ThemeToggle />
       </header>
 
       <div className="flex flex-1 items-center justify-center py-8 sm:py-10">

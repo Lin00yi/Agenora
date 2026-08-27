@@ -6,22 +6,24 @@
 
 ## 界面预览
 
+下列画面均来自当前界面，统一以深色主题呈现。
+
 <p align="center">
-  <img src="docs/images/welcome.png" alt="Agenora 欢迎页" width="900" />
+  <img src="docs/images/welcome.png" alt="Agenora 欢迎页与知识库对话预览" width="900" />
 </p>
 
-| 对话工作区 | 知识库回答与引用 |
+| 新建对话工作区 | 知识库回答与引用 |
 |---|---|
-| <img src="docs/images/chat-home.png" alt="新建对话" width="100%" /> | <img src="docs/images/chat-kb.png" alt="知识库引用回答" width="100%" /> |
+| <img src="docs/images/chat-home.png" alt="Agenora 新建对话工作区" width="100%" /> | <img src="docs/images/chat-kb.png" alt="Agenora 知识库回答与引用卡片" width="100%" /> |
 
-| 知识库管理 | 全链路 Trace |
+| 知识库管理与检索兜底 | Trace 执行链路 |
 |---|---|
-| <img src="docs/images/knowledge-bases.png" alt="知识库列表" width="100%" /> | <img src="docs/images/admin-traces.png" alt="后台 Trace 执行链路" width="100%" /> |
+| <img src="docs/images/knowledge-bases.png" alt="Agenora 知识库管理与网络检索兜底" width="100%" /> | <img src="docs/images/admin-traces.png" alt="Agenora Trace 执行链路" width="100%" /> |
 
-登录页：
+居中登录页：
 
 <p align="center">
-  <img src="docs/images/login.png" alt="登录页" width="900" />
+  <img src="docs/images/login.png" alt="Agenora 居中登录页" width="900" />
 </p>
 
 ## 能做什么

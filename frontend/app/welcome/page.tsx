@@ -4,14 +4,18 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   ArrowRight,
+  BookOpen,
   CheckCircle2,
   FileUp,
+  FileText,
+  Globe2,
   History,
   Search,
   ShieldCheck,
 } from "lucide-react";
 
 import Brand, { APP_NAME } from "@/components/Brand";
+import ThemeToggle from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { getToken } from "@/lib/auth";
 
@@ -30,6 +34,7 @@ export default function WelcomePage() {
         <div className="mx-auto flex h-14 max-w-6xl items-center px-4 sm:px-6 lg:px-8">
           <Brand size="sm" showWordmark />
           <div className="ml-auto flex items-center gap-2">
+            <ThemeToggle />
             {signedIn ? (
               <Button asChild>
                 <Link href="/">
@@ -55,7 +60,7 @@ export default function WelcomePage() {
           <div className="relative mx-auto flex min-h-[min(88vh,52rem)] max-w-6xl flex-col justify-center px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
             <div className="welcome-hero-enter max-w-2xl">
               <Brand size="xl" showWordmark className="welcome-hero-brand" />
-              <h1 className="mt-8 text-3xl font-semibold leading-[1.12] tracking-tight text-ink sm:text-4xl lg:text-[2.75rem]">
+              <h1 className="mt-8 text-balance text-3xl/[1.32] font-semibold tracking-tight text-ink sm:text-4xl/[1.32] lg:text-[2.75rem]/[1.32]">
                 在自己的资料上提问，答案带着来源回来
               </h1>
               <p className="mt-5 max-w-xl text-base leading-7 text-muted sm:text-lg sm:leading-8">
@@ -165,41 +170,53 @@ export default function WelcomePage() {
 
 function ProductPreview() {
   return (
-    <div className="flex min-h-[18rem] flex-col sm:min-h-[22rem]">
-      <div className="flex h-12 shrink-0 items-center gap-3 border-b border-surface-border/70 px-4 sm:h-14 sm:px-5">
+    <section aria-label="知识库对话预览" className="flex min-h-[17rem] flex-col sm:min-h-[19rem]">
+      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-surface-border/70 px-4 sm:px-5">
         <Brand size="sm" showWordmark={false} />
         <div className="min-w-0">
           <div className="truncate text-sm font-medium text-ink">产品与项目资料</div>
-          <div className="text-[11px] text-muted">已连接知识库 · 引用来源可见</div>
+          <div className="text-xs text-muted">仅在本轮对话中检索</div>
         </div>
-      </div>
-
-      <div className="flex min-h-0 flex-1 flex-col gap-4 p-4 sm:p-6">
-        <div className="welcome-preview-user ml-auto max-w-[90%] rounded-2xl bg-surface-2 px-4 py-3 text-sm leading-6 text-ink">
-          帮我总结这个知识库最近上传资料的核心结论。
+        <div className="ml-auto flex items-center gap-1.5 text-xs text-muted">
+          <BookOpen className="size-3.5" />
+          <span>已连接</span>
         </div>
+      </header>
 
-        <div className="welcome-preview-assistant mr-auto max-w-[95%] space-y-3">
-          <div className="rounded-2xl border border-surface-border/80 bg-canvas px-4 py-3 text-sm leading-7 text-ink">
+      <div className="grid min-h-0 flex-1 gap-4 p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_13rem]">
+        <div className="min-w-0 space-y-3">
+          <div className="welcome-preview-user ml-auto max-w-[90%] rounded-2xl bg-surface-2 px-3.5 py-2.5 text-sm leading-6 text-ink">
+            帮我总结这个知识库最近上传资料的核心结论。
+          </div>
+
+          <article className="welcome-preview-assistant rounded-xl border border-surface-border/80 bg-canvas px-3.5 py-3 text-sm leading-6 text-ink sm:px-4">
             <div className="mb-2 flex items-center gap-2 text-xs font-medium text-ink">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              来自知识库 · 命中 3 个来源
+              <CheckCircle2 className="size-3.5" />
+              <span>已基于知识库回答</span>
             </div>
-            最近资料集中在检索策略、模型配置和部署维护。系统会先根据本轮问题判断是否需要检索，
-            再从当前用户可访问的资料中返回带出处的回答。
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <SourceChip title="检索策略说明" meta="Markdown · 第 3 节" />
-            <SourceChip title="部署维护手册" meta="PDF · 第 2 节" />
-            <SourceChip title="模型配置记录" meta="网页 · 已引用" />
-          </div>
+            <p className="text-pretty">
+              最近资料聚焦检索策略、模型配置和部署维护。回答会先限定可访问资料，再返回可追溯的结论。
+            </p>
+          </article>
           <div className="flex items-center gap-2 text-xs text-muted">
-            <Search className="h-3.5 w-3.5" />
-            已确定本轮知识库范围 · 检索完成 · 生成回答
+            <Search className="size-3.5" />
+            <span>检索完成，已附上 3 个引用</span>
           </div>
         </div>
+
+        <aside className="border-t border-surface-border/70 pt-3 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0" aria-label="回答引用来源">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs font-medium text-ink">引用来源</span>
+            <span className="text-xs text-muted">3</span>
+          </div>
+          <ul className="divide-y divide-surface-border/70">
+            <SourceReference icon={<FileText className="size-3.5" />} title="检索策略说明" meta="Markdown · 第 3 节" />
+            <SourceReference icon={<FileText className="size-3.5" />} title="部署维护手册" meta="PDF · 第 2 节" />
+            <SourceReference icon={<Globe2 className="size-3.5" />} title="模型配置记录" meta="网页 · 已引用" />
+          </ul>
+        </aside>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -228,14 +245,14 @@ function Step({
   );
 }
 
-function SourceChip({ title, meta }: { title: string; meta: string }) {
+function SourceReference({ icon, title, meta }: { icon: React.ReactNode; title: string; meta: string }) {
   return (
-    <div className="border border-surface-border/80 bg-surface px-3 py-2 text-xs">
-      <div className="flex items-center gap-1.5 font-medium text-ink">
-        <CheckCircle2 className="h-3.5 w-3.5" />
-        {title}
+    <li className="py-2 first:pt-0 last:pb-0">
+      <div className="flex min-w-0 items-center gap-2 text-xs font-medium text-ink">
+        <span className="shrink-0 text-muted">{icon}</span>
+        <span className="truncate">{title}</span>
       </div>
-      <div className="mt-1 text-muted">{meta}</div>
-    </div>
+      <div className="mt-1 truncate pl-5 text-xs text-muted">{meta}</div>
+    </li>
   );
 }
