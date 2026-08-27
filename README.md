@@ -24,6 +24,15 @@
 
 ## 启动方式
 
+| 场景 | 推荐命令 | 存储与服务 |
+|---|---|---|
+| 日常开发 | `./scripts/dev.sh` | SQLite + Milvus Lite，不需要 Docker |
+| Docker 本地验证 | `./scripts/deploy.sh` | PostgreSQL + Qdrant，发布 3000/8000 供调试 |
+| HTTPS 生产 | `./scripts/deploy.sh --production` | PostgreSQL + Qdrant + Nginx，仅发布 80/443 |
+
+三种模式的环境文件彼此独立：本地开发使用 `backend/.env`、`frontend/.env`，Docker 使用根目录
+`.env`。完整的前置条件、图谱 profile、运维命令和生产证书要求见 [部署说明](docs/deployment.md)。
+
 ### 方式一：本地开发（推荐开发时使用）
 
 依赖：Python 3.11、Node.js 20+。本模式使用 SQLite 与 Milvus Lite；不需要 Docker、PostgreSQL、Neo4j 或 LightRAG。
@@ -150,14 +159,13 @@ cd backend
 
 ```bash
 cp env.docker.example .env
-# 填写 POSTGRES_PASSWORD、JWT_SECRET、NEO4J_PASSWORD、LIGHTRAG_API_KEY、PUBLIC_URL，
-# 以及需要的模型/Embedding Key（后两个 KG 密钥只在启用 kg profile 时使用）
+# 至少填写 POSTGRES_PASSWORD、JWT_SECRET；模型 Key 按 BYOK 策略配置。
 ./scripts/deploy.sh
 ```
 
-此模式自动合并 `docker-compose.override.yml`，启动 PostgreSQL、Qdrant、API、持久化
+脚本会显式合并 `docker-compose.yml` 与本地覆盖层，启动 PostgreSQL、Qdrant、API、持久化
 operation worker、RAG 监控与前端；首次启动时 `migrate` 一次性执行 Alembic。默认不启动
-Neo4j/LightRAG：普通向量 RAG 不依赖图谱服务。
+Nginx、Neo4j 或 LightRAG：普通向量 RAG 不依赖图谱服务。
 
 Compose 中的 Qdrant 是网络服务，可由 API、operation worker 及未来副本共享；不再把
 Milvus Lite 文件作为多进程共享索引。生产环境的 LangGraph interrupt checkpoint 和限流
@@ -167,15 +175,14 @@ Milvus Lite 仍可用于单进程本地开发，不应作为 Compose/多副本�
 - 前端：<http://localhost:3000>
 - 后端：<http://localhost:8000/health>
 
-若某个部署需要图谱检索，在填写 `NEO4J_PASSWORD` 和 `LIGHTRAG_API_KEY` 后显式启用
-`kg` profile：
+若某个部署需要图谱检索，在根目录 `.env` 中填写 `NEO4J_PASSWORD`、`LIGHTRAG_API_KEY`，并设置
+`LIGHTRAG_ENABLED=true`、`LIGHTRAG_BASE_URL=http://lightrag:9621` 后显式启用 `kg` profile：
 
 ```bash
-docker compose --profile kg up -d --build
+./scripts/deploy.sh --kg
 ```
 
-这会额外启动 Neo4j 与 LightRAG。同步设置 `LIGHTRAG_ENABLED=true`、
-`LIGHTRAG_BASE_URL=http://lightrag:9621`，并在需要图谱的知识库上开启 KG。
+这会先校验图谱密钥，再额外启动 Neo4j 与 LightRAG；随后在需要图谱的知识库上开启 KG。
 本地 override 会暴露 Neo4j Browser（<http://localhost:7474>）和 LightRAG
 （<http://localhost:9621>）仅供运维调试；日常实体、关系、证据与扫描管理请使用
 知识库中的内置“查看图谱”页面。
@@ -187,7 +194,7 @@ docker compose --profile kg up -d --build
 ```bash
 cp env.docker.example .env
 # 填写真实 DOMAIN、PUBLIC_URL=https://<你的域名>、所需密钥与模型配置
-docker compose -f docker-compose.yml --profile production up -d --build
+./scripts/deploy.sh --production
 ```
 
 Nginx 配置会读取 `/etc/letsencrypt/live/$DOMAIN/` 下已有的证书；首次生产部署前需自行完成证书签发。部署后检查：
@@ -202,7 +209,8 @@ curl -fsS https://<你的域名>/health
 | 命令 | 用途 |
 |---|---|
 | `./scripts/dev.sh` | 本地同时启动 FastAPI 与 Next.js，适合日常开发。 |
-| `./scripts/deploy.sh` | 构建并以 Docker Compose 启动本地调试编排；可传 `backend` 仅重建后端。 |
+| `./scripts/deploy.sh [--kg] [service ...]` | 构建并启动本地 Docker 调试编排；可传 `backend` 仅更新后端及其依赖。 |
+| `./scripts/deploy.sh --production [--kg]` | 仅使用基础 Compose 文件启动 HTTPS 生产编排。 |
 | `./scripts/logs.sh [backend\\|frontend\\|all]` | 跟踪 Docker Compose 服务日志，默认后端。 |
 | `AGENORA_BACKUP_ALLOW_NEO4J_DOWNTIME=1 ./scripts/backup.sh [目录]` | 创建 PostgreSQL 逻辑备份、后端/LightRAG 数据归档与 Neo4j 离线 dump。 |
 | `AGENORA_RESTORE_CONFIRM=RESTORE_AGENORA ./scripts/restore.sh <备份目录>` | 校验并恢复完整备份；会覆盖所有持久数据。 |
