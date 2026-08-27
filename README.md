@@ -4,6 +4,26 @@
 
 上传文档 / 抓取网页 → 用自然语言提问。系统先确定本轮允许的知识库与工具范围，再由单一 ReAct Agent 按需检索、调用工具与生成回答；答案带原文引用，范围判定、检索与工具调用过程可见。
 
+## 界面预览
+
+<p align="center">
+  <img src="docs/images/welcome.png" alt="Agenora 欢迎页" width="900" />
+</p>
+
+| 对话工作区 | 知识库回答与引用 |
+|---|---|
+| <img src="docs/images/chat-home.png" alt="新建对话" width="100%" /> | <img src="docs/images/chat-kb.png" alt="知识库引用回答" width="100%" /> |
+
+| 知识库管理 | 全链路 Trace |
+|---|---|
+| <img src="docs/images/knowledge-bases.png" alt="知识库列表" width="100%" /> | <img src="docs/images/admin-traces.png" alt="后台 Trace 执行链路" width="100%" /> |
+
+登录页：
+
+<p align="center">
+  <img src="docs/images/login.png" alt="登录页" width="900" />
+</p>
+
 ## 能做什么
 
 - **私有知识库** — PDF / Markdown / Word / 网页，按账号隔离

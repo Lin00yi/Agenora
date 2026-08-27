@@ -6,7 +6,7 @@ import {
   ArrowRight,
   CheckCircle2,
   FileUp,
-  MessageSquareText,
+  History,
   Search,
   ShieldCheck,
 } from "lucide-react";
@@ -54,18 +54,18 @@ export default function WelcomePage() {
           <div className="welcome-hero-wash pointer-events-none absolute inset-0" aria-hidden />
           <div className="relative mx-auto flex min-h-[min(88vh,52rem)] max-w-6xl flex-col justify-center px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
             <div className="welcome-hero-enter max-w-2xl">
-              <Brand size="lg" showWordmark className="welcome-hero-brand" />
+              <Brand size="xl" showWordmark className="welcome-hero-brand" />
               <h1 className="mt-8 text-3xl font-semibold leading-[1.12] tracking-tight text-ink sm:text-4xl lg:text-[2.75rem]">
-                把你的资料变成能追问、能溯源的答案
+                在自己的资料上提问，答案带着来源回来
               </h1>
               <p className="mt-5 max-w-xl text-base leading-7 text-muted sm:text-lg sm:leading-8">
-                {APP_NAME} 是我做的个人项目：私有知识库 + 透明 Agent。
-                上传文档或网页后直接提问，检索过程与引用来源全程可见。
+                上传文档或网页后直接对话。{APP_NAME} 会在每轮中确定可访问的知识库与工具范围，
+                按需检索、调用工具，并把引用与执行过程留给你核查。
               </p>
               <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
                 <Button asChild className="min-h-[44px] px-5">
                   <Link href={signedIn ? "/" : "/login"}>
-                    {signedIn ? "进入工作台" : "免费开始"}
+                    {signedIn ? "进入工作台" : "开始使用"}
                     <ArrowRight className="h-4 w-4" />
                   </Link>
                 </Button>
@@ -89,29 +89,29 @@ export default function WelcomePage() {
         <section className="border-t border-surface-border/70">
           <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:px-8">
             <h2 className="max-w-xl text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
-              三步用起来
+              从资料到可核查的回答
             </h2>
             <p className="mt-3 max-w-xl text-sm leading-7 text-muted">
-              配置模型、导入资料、在对话里追问——答案带原文出处。
+              知识库、对话与执行记录在同一个工作台里完成，复杂过程不抢占你阅读答案的空间。
             </p>
             <ol className="mt-10 grid gap-8 sm:grid-cols-3">
               <Step
                 n={1}
                 icon={<FileUp className="h-4 w-4" />}
-                title="导入资料"
-                desc="上传 PDF / Markdown / Word，或抓取网页，自动切分并建索引。"
+                title="建立知识库"
+                desc="上传 PDF、Markdown、Word，或抓取网页。资料按账号与知识库权限隔离。"
               />
               <Step
                 n={2}
                 icon={<Search className="h-4 w-4" />}
-                title="混合检索"
-                desc="关键词 + 向量 + 可选重排，减少漏召回；过程可在思考链里看到。"
+                title="在对话中提问"
+                desc="系统按需路由到可访问的知识库，使用关键词、向量检索与可选重排寻找证据。"
               />
               <Step
                 n={3}
-                icon={<MessageSquareText className="h-4 w-4" />}
-                title="透明回答"
-                desc="每条答案附带引用来源与工具调用记录，方便核查。"
+                icon={<History className="h-4 w-4" />}
+                title="核查回答过程"
+                desc="查看原文引用、检索命中和工具调用。需要时再展开 Trace，而不是把过程常驻在回答前。"
               />
             </ol>
           </div>
@@ -122,13 +122,13 @@ export default function WelcomePage() {
             <div className="max-w-lg">
               <div className="flex items-center gap-2 text-brand">
                 <ShieldCheck className="h-4 w-4" />
-                <span className="text-xs font-semibold tracking-wide">本地优先</span>
+                <span className="text-xs font-semibold tracking-wide">数据与选择权</span>
               </div>
               <h2 className="mt-3 text-xl font-semibold tracking-tight text-ink sm:text-2xl">
-                数据留在你自己的环境
+                资料、模型与执行边界由你掌控
               </h2>
               <p className="mt-3 text-sm leading-7 text-muted">
-                自托管部署，模型密钥 BYOK，账号与向量库都在你的机器或服务器上。适合个人笔记、研究资料与私有文档。
+                支持自带模型与 Embedding 凭据。知识库按账号隔离，模型配置、联网搜索和记忆能力都由你在设置中决定。
               </p>
             </div>
             <Button asChild className="min-h-[44px] shrink-0 px-5">
@@ -169,31 +169,33 @@ function ProductPreview() {
       <div className="flex h-12 shrink-0 items-center gap-3 border-b border-surface-border/70 px-4 sm:h-14 sm:px-5">
         <Brand size="sm" showWordmark={false} />
         <div className="min-w-0">
-          <div className="truncate text-sm font-medium text-ink">研究笔记库</div>
-          <div className="text-[11px] text-muted">混合检索 · 引用来源可见</div>
+          <div className="truncate text-sm font-medium text-ink">产品与项目资料</div>
+          <div className="text-[11px] text-muted">已连接知识库 · 引用来源可见</div>
         </div>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 p-4 sm:p-6">
         <div className="welcome-preview-user ml-auto max-w-[90%] rounded-2xl bg-surface-2 px-4 py-3 text-sm leading-6 text-ink">
-          这篇笔记里，上下文压缩是怎么工作的？
+          帮我总结这个知识库最近上传资料的核心结论。
         </div>
 
         <div className="welcome-preview-assistant mr-auto max-w-[95%] space-y-3">
           <div className="rounded-2xl border border-surface-border/80 bg-canvas px-4 py-3 text-sm leading-7 text-ink">
             <div className="mb-2 flex items-center gap-2 text-xs font-medium text-ink">
               <CheckCircle2 className="h-3.5 w-3.5" />
-              命中 2 个来源
+              来自知识库 · 命中 3 个来源
             </div>
-            长对话会先摘要再注入长期记忆；检索命中时优先引用原文段落，并在回答中标出来源。
+            最近资料集中在检索策略、模型配置和部署维护。系统会先根据本轮问题判断是否需要检索，
+            再从当前用户可访问的资料中返回带出处的回答。
           </div>
           <div className="flex flex-wrap gap-2">
-            <SourceChip title="memory-system.md" meta="§生命周期" />
-            <SourceChip title="设计笔记" meta="MD · 第 3 节" />
+            <SourceChip title="检索策略说明" meta="Markdown · 第 3 节" />
+            <SourceChip title="部署维护手册" meta="PDF · 第 2 节" />
+            <SourceChip title="模型配置记录" meta="网页 · 已引用" />
           </div>
           <div className="flex items-center gap-2 text-xs text-muted">
             <Search className="h-3.5 w-3.5" />
-            检索 420ms · 重排 310ms · 生成完成
+            已确定本轮知识库范围 · 检索完成 · 生成回答
           </div>
         </div>
       </div>

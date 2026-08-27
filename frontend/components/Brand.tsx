@@ -3,7 +3,7 @@ import { cn } from "@/lib/cn";
 
 export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || "Agenora";
 
-type BrandSize = "sm" | "md" | "lg";
+type BrandSize = "sm" | "md" | "lg" | "xl";
 type BrandTone = "solid" | "soft";
 
 type BrandProps = {
@@ -29,6 +29,11 @@ const SIZES: Record<BrandSize, { box: string; mark: string; text: string }> = {
     box: "h-14 w-14",
     mark: "h-14 w-14",
     text: "text-3xl font-semibold tracking-tight sm:text-4xl",
+  },
+  xl: {
+    box: "size-16 sm:size-[4.5rem]",
+    mark: "size-16 sm:size-[4.5rem]",
+    text: "text-4xl font-semibold tracking-tight sm:text-5xl",
   },
 };
 

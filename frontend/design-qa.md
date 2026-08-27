@@ -53,7 +53,7 @@ Browser QA on `localhost:3001` after restarting dev (prior `next build` had corr
 | Route | Light | Dark | Notes |
 |---|---|---|---|
 | Welcome | ✅ | ✅ | Teal CTA / Logo；Jakarta + Noto 字体生效；`overflowX=0` |
-| Login | ✅ | ✅ | BrandPanel + 表单卡；深色 BrandPanel 网格/渐变正常 |
+| Login | ✅ | ✅ | 居中 Brand、表单卡与返回首页入口正常 |
 | Chat `/c` | ✅ | ✅ | 侧栏新建/列表、空态、Composer、starter 卡；`data-kf-shell` 正常 |
 | KB `/kbs` | ✅ | ✅ | 列表卡 `bg-surface` 深浅均正确（LI=`rgb(12,24,24)` dark） |
 | Settings | ✅ | ✅ | LLM / KB 选项 / 记忆分区与主按钮正常 |
@@ -114,8 +114,8 @@ Browser QA on `localhost:3001` (dev). Theme toggle Light/Dark exercised. Authent
 | Route | Light | Dark | Notes |
 |---|---|---|---|
 | Welcome | ✅ | ✅ | Hero 五件套完整；Brand + CTA + 产品平面 |
-| Login | ✅ | ✅ | BrandPanel + 表单卡 |
-| Register | ✅ | ✅ | 与 Login 同壳 |
+| Login | ✅ | ✅ | 居中认证框，无左侧展示区 |
+| Register | ✅ | ✅ | 与 Login 共用居中认证壳 |
 | Chat | ✅ | ✅ | Sidebar / Composer / KB Select / 模型 / 发送 / 检索条 / 导出动作正常 |
 | KB (`/kbs`) | ✅ | ✅ | 列表卡、新建按钮、主题 compact、加载态正常 |
 | Settings | ✅ | ✅ | LLM 表单、保存按钮、分区卡片正常 |
