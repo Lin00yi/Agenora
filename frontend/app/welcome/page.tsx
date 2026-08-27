@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   FileUp,
   FileText,
+  Github,
   Globe2,
   History,
   Search,
@@ -34,6 +35,11 @@ export default function WelcomePage() {
         <div className="mx-auto flex h-14 max-w-6xl items-center px-4 sm:px-6 lg:px-8">
           <Brand size="sm" showWordmark />
           <div className="ml-auto flex items-center gap-2">
+            <Button asChild variant="outline" size="icon">
+              <a href={GITHUB_URL} target="_blank" rel="noreferrer" aria-label="在 GitHub 查看源码" title="在 GitHub 查看源码">
+                <Github className="size-4" />
+              </a>
+            </Button>
             <ThemeToggle />
             {signedIn ? (
               <Button asChild>
@@ -74,14 +80,6 @@ export default function WelcomePage() {
                     <ArrowRight className="h-4 w-4" />
                   </Link>
                 </Button>
-                <a
-                  href={GITHUB_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-sm text-muted underline-offset-4 transition-colors hover:text-ink hover:underline sm:ml-2"
-                >
-                  查看源码
-                </a>
               </div>
             </div>
 
@@ -123,7 +121,7 @@ export default function WelcomePage() {
         </section>
 
         <section className="border-t border-surface-border/70 bg-surface-2/30">
-          <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-14 sm:flex-row sm:items-end sm:justify-between sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-6xl px-4 py-14 sm:px-6 lg:px-8">
             <div className="max-w-lg">
               <div className="flex items-center gap-2 text-brand">
                 <ShieldCheck className="h-4 w-4" />
@@ -136,31 +134,17 @@ export default function WelcomePage() {
                 支持自带模型与 Embedding 凭据。知识库按账号隔离，模型配置、联网搜索和记忆能力都由你在设置中决定。
               </p>
             </div>
-            <Button asChild className="min-h-[44px] shrink-0 px-5">
-              <Link href={signedIn ? "/" : "/login"}>
-                {signedIn ? "打开工作台" : "开始使用"}
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
           </div>
         </section>
       </main>
 
       <footer className="border-t border-surface-border/70 bg-surface">
-        <div className="mx-auto flex max-w-6xl flex-col items-center gap-4 px-4 py-8 sm:flex-row sm:justify-between sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-6xl justify-center px-4 py-8 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <Brand size="sm" showWordmark={false} />
             <span className="text-sm text-muted">
               © {new Date().getFullYear()} {APP_NAME} · 个人项目 · MIT
             </span>
-          </div>
-          <div className="flex items-center gap-1 text-sm text-muted">
-            <a href={GITHUB_URL} target="_blank" rel="noreferrer" className="app-nav-link">
-              GitHub
-            </a>
-            <Link href={signedIn ? "/" : "/login"} className="app-nav-link">
-              {signedIn ? "工作台" : "登录"}
-            </Link>
           </div>
         </div>
       </footer>
