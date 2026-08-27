@@ -26,7 +26,6 @@ import {
   finalizeConversation,
   getConversation,
   getConversationContextStatus,
-  listConversationTraces,
   listConversations,
   patchConversation,
   type ConversationContextStatus,
@@ -39,7 +38,6 @@ import {
   ConversationSearchDialog,
   ChatTopBar,
   ChatMessage,
-  hasConversationExecutionData,
   Composer,
   HumanInputPanel,
   EmptyWorkbench,
@@ -87,7 +85,7 @@ export function ChatPage({
   initialSettingsModule?: "dispatch" | null;
 }) {
   const router = useRouter();
-  const { closePreview, openPreview } = usePreviewPanel();
+  const { closePreview } = usePreviewPanel();
   const [panePhase, setPanePhase] = useState<"in" | "out">("in");
 
   const [summaries, setSummaries] = useState<ConversationSummary[]>([]);
@@ -97,7 +95,6 @@ export function ChatPage({
   const [conversationLoadingMore, setConversationLoadingMore] = useState(false);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [currentMessages, setCurrentMessages] = useState<Message[]>([]);
-  const [hasPersistedTrace, setHasPersistedTrace] = useState(false);
   const [missingConversationId, setMissingConversationId] = useState<string | null>(null);
   const [currentKbId, setCurrentKbId] = useState<string | null>(
     () => (startBlank ? initialKbId?.trim() || null : null)
@@ -113,7 +110,6 @@ export function ChatPage({
   const [llmConfigurationOpen, setLlmConfigurationOpen] = useState(false);
   const [settingsModule, setSettingsModule] = useState<"personal" | "dispatch">("personal");
   const [composerValue, setComposerValue] = useState("");
-
   const handleToggleSidebarCollapsed = useCallback(() => {
     setSidebarCollapsed((previous) => {
       const next = !previous;
@@ -142,52 +138,10 @@ export function ChatPage({
   }, [currentId]);
 
   const visibleMessages = useMemo(() => normalizeMessages(currentMessages), [currentMessages]);
-  const hasExecutionOverview =
-    hasPersistedTrace || hasConversationExecutionData(visibleMessages);
-  const traceAvailabilityKey = useMemo(() => {
-    for (let index = visibleMessages.length - 1; index >= 0; index -= 1) {
-      const message = visibleMessages[index];
-      if (message.role !== "assistant") continue;
-      return [
-        message.id,
-        message.streaming ? "streaming" : "complete",
-        String(message.tools.length),
-        message.memory_trace?.runtime?.ttft_ms != null ? "ttft" : "no-ttft",
-      ].join(":");
-    }
-    return "none";
-  }, [visibleMessages]);
-
-  useEffect(() => {
-    if (!currentId) {
-      setHasPersistedTrace(false);
-      return;
-    }
-    let cancelled = false;
-    void listConversationTraces(currentId, { limit: 1 })
-      .then((result) => {
-        if (!cancelled) setHasPersistedTrace(result.total > 0);
-      })
-      .catch(() => {
-        if (!cancelled) setHasPersistedTrace(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [currentId, traceAvailabilityKey]);
 
   useEffect(() => {
     closePreview();
   }, [currentId, closePreview]);
-
-  const handleOpenExecutionOverview = useCallback(() => {
-    openPreview({
-      kind: "execution-overview",
-      title: "执行概览",
-      subtitle: "与后台追踪一致的 Trace / Span 树",
-      conversationId: currentId,
-    });
-  }, [currentId, openPreview]);
 
   const sidebarConversations = useMemo(
     () => summaries.map((s) => summaryToConv(s, s.id === currentId ? visibleMessages : [])),
@@ -827,9 +781,6 @@ export function ChatPage({
           <ChatTopBar
             title={currentConversation?.title ?? DEFAULT_TITLE}
             onOpenSidebar={() => setSidebarOpen(true)}
-            onOpenExecutionOverview={
-              hasExecutionOverview ? handleOpenExecutionOverview : undefined
-            }
           />
 
           <div className="min-h-0 min-w-0 flex-1" data-kf-region="workspace-host">

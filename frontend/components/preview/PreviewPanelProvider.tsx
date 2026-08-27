@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Braces, GitBranch, XIcon } from "lucide-react";
+import { ArrowLeft, Braces, XIcon } from "lucide-react";
 import {
   createContext,
   useCallback,
@@ -14,10 +14,6 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ConversationExecutionOverview } from "@/components/chat/ConversationExecutionOverview";
-import type { TraceNodePreview } from "@/components/admin/SpanWaterfall";
 import { cn } from "@/lib/cn";
 
 const MIN_PREVIEW_WIDTH = 360;
@@ -42,14 +38,7 @@ type TraceIoPreview = {
   metadata?: Record<string, unknown> | null;
 };
 
-type ExecutionOverviewPreview = {
-  kind: "execution-overview";
-  title: string;
-  subtitle?: string;
-  conversationId: string | null;
-};
-
-export type PreviewPayload = TextPreview | TraceIoPreview | ExecutionOverviewPreview;
+export type PreviewPayload = TextPreview | TraceIoPreview;
 
 type PreviewPanelContextValue = {
   preview: PreviewPayload | null;
@@ -64,7 +53,6 @@ const PreviewPanelContext = createContext<PreviewPanelContextValue | null>(null)
 export function PreviewPanelProvider({ children }: { children: ReactNode }) {
   const [previewStack, setPreviewStack] = useState<PreviewPayload[]>([]);
   const [width, setWidth] = useState(DEFAULT_PREVIEW_WIDTH);
-  const [isDesktop, setIsDesktop] = useState(false);
   const dragging = useRef(false);
 
   const openPreview = useCallback((payload: PreviewPayload) => {
@@ -92,14 +80,6 @@ export function PreviewPanelProvider({ children }: { children: ReactNode }) {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, [clampWidth]);
-
-  useEffect(() => {
-    const query = window.matchMedia("(min-width: 768px)");
-    const sync = () => setIsDesktop(query.matches);
-    sync();
-    query.addEventListener("change", sync);
-    return () => query.removeEventListener("change", sync);
-  }, []);
 
   useEffect(() => {
     if (!preview) return;
@@ -141,43 +121,35 @@ export function PreviewPanelProvider({ children }: { children: ReactNode }) {
   );
 
   const open = preview != null;
-  const useMobileExecutionDrawer =
-    !isDesktop && previewStack.some((item) => item.kind === "execution-overview");
-
   return (
     <PreviewPanelContext.Provider value={value}>
       <div className="flex h-dvh w-full overflow-hidden">
         <div className="preview-main min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
           {children}
         </div>
-        {!useMobileExecutionDrawer ? (
-          <aside
-            aria-hidden={!open}
-            data-state={open ? "open" : "closed"}
-            className={cn(
-              "relative flex h-dvh shrink-0 flex-col overflow-hidden border-l border-surface-border/80 bg-surface duration-surface ease-ui-drawer data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-right-4 motion-reduce:animate-none",
-              open ? "opacity-100" : "pointer-events-none border-l-transparent opacity-0"
-            )}
-            style={{ width: open ? width : 0 }}
-          >
-            {open ? (
-              <>
-                <div
-                  role="separator"
-                  aria-orientation="vertical"
-                  aria-label="调整预览宽度"
-                  onPointerDown={onResizePointerDown}
-                  className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize bg-transparent hover:bg-brand/30"
-                />
-                <PreviewPane preview={preview} onClose={closePreview} canGoBack={canGoBack} />
-              </>
-            ) : null}
-          </aside>
-        ) : null}
+        <aside
+          aria-hidden={!open}
+          data-state={open ? "open" : "closed"}
+          className={cn(
+            "relative flex h-dvh shrink-0 flex-col overflow-hidden border-l border-surface-border/80 bg-surface duration-surface ease-ui-drawer data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-right-4 motion-reduce:animate-none",
+            open ? "opacity-100" : "pointer-events-none border-l-transparent opacity-0"
+          )}
+          style={{ width: open ? width : 0 }}
+        >
+          {open ? (
+            <>
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="调整预览宽度"
+                onPointerDown={onResizePointerDown}
+                className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize bg-transparent hover:bg-brand/30"
+              />
+              <PreviewPane preview={preview} onClose={closePreview} canGoBack={canGoBack} />
+            </>
+          ) : null}
+        </aside>
       </div>
-      {useMobileExecutionDrawer ? (
-        <MobilePreviewDrawer preview={preview} onClose={closePreview} canGoBack={canGoBack} />
-      ) : null}
     </PreviewPanelContext.Provider>
   );
 }
@@ -199,102 +171,10 @@ function PreviewPane({
   onClose: () => void;
   canGoBack: boolean;
 }) {
-  if (preview.kind === "execution-overview") {
-    return <ExecutionOverviewPreviewPanel preview={preview} onClose={onClose} canGoBack={canGoBack} />;
-  }
   if (preview.kind === "trace-io") {
     return <TraceIoPreviewPanel preview={preview} onClose={onClose} canGoBack={canGoBack} />;
   }
   return <TextPreviewPanel preview={preview} onClose={onClose} canGoBack={canGoBack} />;
-}
-
-function ExecutionOverviewPreviewPanel({
-  preview,
-  onClose,
-  canGoBack,
-}: {
-  preview: ExecutionOverviewPreview;
-  onClose: () => void;
-  canGoBack: boolean;
-}) {
-  const [activeTab, setActiveTab] = useState<"trace" | "node">("trace");
-  const [nodePreview, setNodePreview] = useState<TraceNodePreview | null>(null);
-
-  useEffect(() => {
-    setActiveTab("trace");
-    setNodePreview(null);
-  }, [preview.conversationId]);
-
-  const handleNodePreview = useCallback((next: TraceNodePreview | null) => {
-    setNodePreview(next);
-    if (next) setActiveTab("node");
-  }, []);
-
-  return (
-    <>
-      <PreviewHeader
-        icon={<GitBranch className="h-4 w-4" />}
-        title={preview.title}
-        subtitle={preview.subtitle ?? "按回复轮次查看工具、耗时与失败原因"}
-        onClose={onClose}
-        canGoBack={canGoBack}
-      />
-      <Tabs
-        value={activeTab}
-        onValueChange={(value) => setActiveTab(value as "trace" | "node")}
-        className="min-h-0 flex-1 gap-0"
-      >
-        <TabsList size="small" aria-label="执行详情分区" className="mx-4 mt-3 self-start">
-          <TabsTrigger value="trace">执行链路</TabsTrigger>
-          <TabsTrigger value="node" disabled={!nodePreview}>节点详情</TabsTrigger>
-        </TabsList>
-        <TabsContent value="trace" className="m-0 min-h-0 flex-1 overflow-auto p-4">
-          <ConversationExecutionOverview
-            conversationId={preview.conversationId}
-            onNodePreview={handleNodePreview}
-          />
-        </TabsContent>
-        <TabsContent value="node" className="m-0 min-h-0 flex-1 overflow-auto p-4">
-          {nodePreview ? (
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm font-medium text-ink">{nodePreview.title}</p>
-                <p className="mt-0.5 text-xs text-muted">{nodePreview.subtitle}</p>
-              </div>
-              <TraceIoPreviewContent preview={nodePreview} />
-            </div>
-          ) : null}
-        </TabsContent>
-      </Tabs>
-    </>
-  );
-}
-
-function MobilePreviewDrawer({
-  preview,
-  onClose,
-  canGoBack,
-}: {
-  preview: PreviewPayload | null;
-  onClose: () => void;
-  canGoBack: boolean;
-}) {
-  return (
-    <Dialog open={preview != null} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent
-        aria-describedby={undefined}
-        className="!bottom-0 !top-auto !max-h-[min(80dvh,720px)] !max-w-none !-translate-x-1/2 !translate-y-0 rounded-b-none rounded-t-[1.25rem] border-x-0 border-b-0 p-0 md:hidden"
-        showCloseButton={false}
-      >
-        <DialogTitle className="sr-only">{preview?.title ?? "预览"}</DialogTitle>
-        {preview ? (
-          <div className="flex min-h-0 max-h-[min(80dvh,720px)] flex-col pb-[max(1rem,env(safe-area-inset-bottom))]">
-            <PreviewPane preview={preview} onClose={onClose} canGoBack={canGoBack} />
-          </div>
-        ) : null}
-      </DialogContent>
-    </Dialog>
-  );
 }
 
 function PreviewHeader({
@@ -388,7 +268,7 @@ function TraceIoPreviewPanel({
   );
 }
 
-function TraceIoPreviewContent({ preview }: { preview: TraceIoPreview | TraceNodePreview }) {
+function TraceIoPreviewContent({ preview }: { preview: TraceIoPreview }) {
   return (
     <>
         {preview.input ? (

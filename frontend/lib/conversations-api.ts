@@ -4,7 +4,6 @@ import { authFetch } from "./auth";
 import type { ToolEvent } from "@/components/ThinkingChain";
 import type { AssistantPart } from "@/lib/conversationStore";
 import type { MemoryTrace } from "@/lib/sseClient";
-import type { TraceDetail, TraceSummary } from "@/lib/trace-types";
 
 /**
  * Conversations API client (v2-M3).
@@ -91,14 +90,6 @@ export type MessagePayload = {
 
 export type ConversationDetail = ConversationSummary & {
   messages: MessagePayload[];
-};
-
-export type ConversationTraceList = {
-  traces: TraceSummary[];
-  total: number;
-  limit: number;
-  offset: number;
-  has_more: boolean;
 };
 
 export type ConversationListPage = {
@@ -215,24 +206,6 @@ export async function getConversationContextStatus(
   id: string
 ): Promise<ConversationContextStatus> {
   return unwrap(await authFetch(`/api/conversations/${id}/context-status`));
-}
-
-export async function listConversationTraces(
-  id: string,
-  params: { limit?: number; offset?: number } = {}
-): Promise<ConversationTraceList> {
-  const search = new URLSearchParams({
-    limit: String(params.limit ?? 50),
-    offset: String(params.offset ?? 0),
-  });
-  return unwrap(await authFetch(`/api/conversations/${id}/traces?${search}`));
-}
-
-export async function getConversationTrace(
-  conversationId: string,
-  traceId: string
-): Promise<TraceDetail> {
-  return unwrap(await authFetch(`/api/conversations/${conversationId}/traces/${traceId}`));
 }
 
 export async function createConversation(

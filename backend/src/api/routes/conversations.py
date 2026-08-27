@@ -31,11 +31,6 @@ from src.harness.context import (
 from src.harness.mcp.orders import get_refund
 from src.capabilities.conversations.models import Conversation, Message, UserMemory
 from src.platform.persistence import get_session
-from src.platform.observability.serialization import (
-    build_observation_tree,
-    user_observation,
-    user_trace_summary,
-)
 from src.platform.llm import normalize_model_name
 from src.platform.tasks import enqueue_operation, run_operation_job
 from src.capabilities.settings.domain.models import (
@@ -661,91 +656,6 @@ async def get_conversation_context_status(
             llm_cfg, conv.llm_model or (llm_cfg.default_model if llm_cfg else None)
         ),
     )
-
-
-@router.get("/{conv_id}/traces")
-async def list_conversation_traces(
-    conv_id: str,
-    user: CurrentUser,
-    session: AsyncSession = Depends(get_session),
-    limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-) -> dict:
-    """List only the caller's persisted Trace records for one conversation."""
-    await _load_owned_conversation(session, conv_id, user.id)
-    from src.platform.observability import Observation, Trace
-
-    observation_count = (
-        select(Observation.trace_id, func.count().label("count"))
-        .group_by(Observation.trace_id)
-        .subquery()
-    )
-    total = int(
-        (
-            await session.execute(
-                select(func.count()).select_from(Trace).where(
-                    Trace.conversation_id == conv_id,
-                    Trace.user_id == user.id,
-                )
-            )
-        ).scalar_one()
-    )
-    rows = (
-        await session.execute(
-            select(Trace, func.coalesce(observation_count.c.count, 0))
-            .outerjoin(observation_count, Trace.id == observation_count.c.trace_id)
-            .where(Trace.conversation_id == conv_id, Trace.user_id == user.id)
-            .order_by(Trace.started_at.desc())
-            .limit(limit)
-            .offset(offset)
-        )
-    ).all()
-    traces = []
-    for trace, count in rows:
-        item = user_trace_summary(trace)
-        item["observation_count"] = int(count or 0)
-        traces.append(item)
-    return {
-        "traces": traces,
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-        "has_more": offset + len(traces) < total,
-    }
-
-
-@router.get("/{conv_id}/traces/{trace_id}")
-async def get_conversation_trace(
-    conv_id: str,
-    trace_id: str,
-    user: CurrentUser,
-    session: AsyncSession = Depends(get_session),
-) -> dict:
-    """Return the same persisted span tree as the admin trace view, scoped to its owner."""
-    await _load_owned_conversation(session, conv_id, user.id)
-    from src.platform.observability import Observation, Trace
-
-    trace = await session.scalar(
-        select(Trace).where(
-            Trace.id == trace_id,
-            Trace.conversation_id == conv_id,
-            Trace.user_id == user.id,
-        )
-    )
-    if trace is None:
-        raise HTTPException(status_code=404, detail="trace not found")
-    observations = (
-        await session.execute(
-            select(Observation)
-            .where(Observation.trace_id == trace_id)
-            .order_by(Observation.started_at)
-        )
-    ).scalars().all()
-    return {
-        **user_trace_summary(trace),
-        "observations": build_observation_tree(observations, serializer=user_observation),
-        "observations_flat": [user_observation(observation) for observation in observations],
-    }
 
 
 @router.post("/{conv_id}/finalize")

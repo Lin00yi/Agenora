@@ -1,17 +1,15 @@
 "use client";
 
-import { GitBranch, PanelLeftOpen } from "lucide-react";
+import { PanelLeftOpen } from "lucide-react";
 
 export const DEFAULT_TITLE = "新对话";
 
 export function ChatTopBar({
   title,
   onOpenSidebar,
-  onOpenExecutionOverview,
 }: {
   title: string;
   onOpenSidebar: () => void;
-  onOpenExecutionOverview?: () => void;
 }) {
   return (
     <header
@@ -32,18 +30,6 @@ export function ChatTopBar({
       <div className="min-w-0 flex-1">
         <h1 className="truncate text-[15px] font-semibold tracking-[-0.01em]">{title}</h1>
       </div>
-
-      {onOpenExecutionOverview ? (
-        <button
-          className="kf-sidebar-toggle kf-press inline-flex size-[var(--control-h)] cursor-pointer items-center justify-center rounded-lg border"
-          onClick={onOpenExecutionOverview}
-          type="button"
-          aria-label="查看执行概览"
-          title="查看执行概览"
-        >
-          <GitBranch className="size-[18px]" aria-hidden />
-        </button>
-      ) : null}
     </header>
   );
 }

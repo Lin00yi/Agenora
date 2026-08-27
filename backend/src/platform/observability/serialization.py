@@ -36,7 +36,6 @@ def user_trace_summary(trace: Any) -> dict[str, Any]:
     payload["metadata"] = {}
     return payload
 
-
 def user_observation(trace_observation: Any) -> dict[str, Any]:
     """Expose the observable path without leaking hidden model/RAG payloads.
 
