@@ -39,6 +39,7 @@ import {
   probeLLMConnection,
   saveLLMModelPolicy,
   saveLLMSettings,
+  updateLLMConnection,
   updateLLMModelProfile,
   SettingsApiError,
   type LLMConnection,
@@ -82,12 +83,12 @@ function generatedConnectionName(provider: LLMProvider, baseUrl: string) {
   if (endpoint.includes("deepseek")) return "DeepSeek";
   if (endpoint.includes("openai")) return "OpenAI";
   if (endpoint.includes("anthropic")) return "Anthropic";
-  return provider === "anthropic" ? "Anthropic 服务" : "OpenAI 兼容服务";
+  return provider === "anthropic" ? "Anthropic 服务" : "自定义兼容地址";
 }
 
 function connectionLabel(connection?: LLMConnection) {
   if (!connection) return "已保存的服务连接";
-  const generatedNames = new Set(["OpenAI 兼容连接", "Anthropic 连接", "默认连接"]);
+  const generatedNames = new Set(["OpenAI 兼容连接", "OpenAI 兼容服务", "Anthropic 连接", "默认连接"]);
   return generatedNames.has(connection.display_name)
     ? generatedConnectionName(connection.provider, connection.base_url)
     : connection.display_name;
@@ -670,10 +671,14 @@ function ModelProfilesManager({
   const [cacheReadPrice, setCacheReadPrice] = useState("");
   const [cacheWritePrice, setCacheWritePrice] = useState("");
   const [connectionProvider, setConnectionProvider] = useState<LLMProvider>("openai-compat");
+  const [connectionName, setConnectionName] = useState("");
   const [connectionUrl, setConnectionUrl] = useState("");
   const [connectionKey, setConnectionKey] = useState("");
   const [connectionProbeState, setConnectionProbeState] = useState<ProbeState>({ kind: "idle" });
   const [savingConnection, setSavingConnection] = useState(false);
+  const [renamingConnection, setRenamingConnection] = useState<LLMConnection | null>(null);
+  const [renamingConnectionName, setRenamingConnectionName] = useState("");
+  const [savingConnectionName, setSavingConnectionName] = useState(false);
   const [deletingConnectionId, setDeletingConnectionId] = useState<string | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPolicy, setSavingPolicy] = useState(false);
@@ -753,6 +758,7 @@ function ModelProfilesManager({
       setConnectionProvider("openai-compat");
       setConnectionUrl("");
     }
+    setConnectionName("");
     setModelId("");
     resetProfileProbe();
   };
@@ -827,7 +833,7 @@ function ModelProfilesManager({
     setSavingConnection(true);
     try {
       const created = await createLLMConnection({
-        display_name: generatedConnectionName(connectionProvider, normalizedUrl),
+        display_name: connectionName.trim() || generatedConnectionName(connectionProvider, normalizedUrl),
         provider: connectionProvider,
         base_url: normalizedUrl,
         api_key: connectionKey.trim(),
@@ -843,6 +849,32 @@ function ModelProfilesManager({
       toast.error(error instanceof Error ? error.message : "保存服务连接失败");
     } finally {
       setSavingConnection(false);
+    }
+  };
+
+  const openConnectionRename = (connection: LLMConnection) => {
+    setRenamingConnection(connection);
+    setRenamingConnectionName(connection.display_name);
+  };
+
+  const saveConnectionName = async () => {
+    if (!renamingConnection || !renamingConnectionName.trim()) return;
+    setSavingConnectionName(true);
+    try {
+      await updateLLMConnection(renamingConnection.id, {
+        display_name: renamingConnectionName.trim(),
+        provider: renamingConnection.provider,
+        base_url: renamingConnection.base_url,
+        api_key: "",
+        enabled: renamingConnection.enabled,
+      });
+      await onChanged();
+      setRenamingConnection(null);
+      toast.success("服务名称已更新");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "更新服务名称失败");
+    } finally {
+      setSavingConnectionName(false);
     }
   };
 
@@ -1096,7 +1128,10 @@ function ModelProfilesManager({
                     </div>
                     <p className="mt-1 truncate font-mono text-xs text-muted">{connection.base_url}</p>
                   </div>
-                  <Button type="button" variant="destructive" size="sm" className="disabled:border-surface-border/80 disabled:bg-surface-2 disabled:text-muted disabled:opacity-70" onClick={() => setConnectionPendingRemoval(connection)} disabled={Boolean(usageCount) || deletingConnectionId === connection.id} title={usageCount ? "请先移除或迁移使用此连接的模型" : "移除服务连接"}>{deletingConnectionId === connection.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}移除</Button>
+                  <div className="flex items-center gap-2">
+                    <Button type="button" variant="ghost" size="sm" onClick={() => openConnectionRename(connection)}>重命名</Button>
+                    <Button type="button" variant="destructive" size="sm" className="disabled:border-surface-border/80 disabled:bg-surface-2 disabled:text-muted disabled:opacity-70" onClick={() => setConnectionPendingRemoval(connection)} disabled={Boolean(usageCount) || deletingConnectionId === connection.id} title={usageCount ? "请先移除或迁移使用此连接的模型" : "移除服务连接"}>{deletingConnectionId === connection.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}移除</Button>
+                  </div>
                 </div>
               );
             })}
@@ -1122,6 +1157,11 @@ function ModelProfilesManager({
               <Field label="Base URL" htmlFor="service-base-url" description="填写 API 根地址，不确定时使用服务商文档中的 API 地址。">
                 <input id="service-base-url" type="url" value={connectionUrl} onChange={(event) => { setConnectionUrl(event.target.value); resetServiceProbe(); }} placeholder={connectionProvider === "anthropic" ? "https://api.anthropic.com" : "https://api.example.com/v1"} className="admin-input" autoComplete="off" />
               </Field>
+              {profileProtocolValue === "custom-compatible" ? (
+                <Field label="服务名称" htmlFor="service-display-name" description="用于识别该兼容地址，例如“火山方舟”。留空时显示为“自定义兼容地址”。">
+                  <input id="service-display-name" value={connectionName} onChange={(event) => setConnectionName(event.target.value)} maxLength={96} placeholder="例如：火山方舟" className="admin-input" autoComplete="off" />
+                </Field>
+              ) : null}
               <Field label="API Key" htmlFor="service-api-key" description="Key 会加密保存，不会在此页回显。">
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <div className="relative min-w-0 flex-1">
@@ -1143,6 +1183,35 @@ function ModelProfilesManager({
             </DialogContent>
           </Dialog>
         )}
+
+        <Dialog open={Boolean(renamingConnection)} onOpenChange={(open) => {
+          if (!open && !savingConnectionName) setRenamingConnection(null);
+        }}>
+          <DialogContent closeDisabled={savingConnectionName} className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>重命名服务连接</DialogTitle>
+              <DialogDescription>该名称会用于模型选择和路由策略中区分不同的服务地址。</DialogDescription>
+            </DialogHeader>
+            <Field label="服务名称" htmlFor="rename-service-display-name" description="名称仅用于识别连接，不会改变服务地址或凭据。">
+              <input
+                id="rename-service-display-name"
+                value={renamingConnectionName}
+                onChange={(event) => setRenamingConnectionName(event.target.value)}
+                maxLength={96}
+                placeholder="例如：火山方舟"
+                className="admin-input"
+                autoFocus
+              />
+            </Field>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={() => setRenamingConnection(null)} disabled={savingConnectionName}>取消</Button>
+              <Button type="button" onClick={() => void saveConnectionName()} disabled={savingConnectionName || !renamingConnectionName.trim()}>
+                {savingConnectionName && <Loader2 className="h-4 w-4 animate-spin" />}
+                {savingConnectionName ? "正在保存" : "保存名称"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <ConfirmDialog
           open={Boolean(connectionPendingRemoval)}

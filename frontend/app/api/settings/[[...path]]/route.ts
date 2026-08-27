@@ -8,7 +8,8 @@ const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 /**
  * Catch-all proxy for /api/settings/*  →  backend /api/settings/*
  *
- * v2-M1: forwards GET/POST/PUT/DELETE for the user settings endpoints.
+ * Forwards all methods used by user settings endpoints, including PATCH for
+ * editing saved model-service connections.
  */
 async function proxy(req: NextRequest, path: string[]): Promise<Response> {
   const sub = path.join("/");
@@ -45,6 +46,10 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   return proxy(req, path);
 }
 export async function PUT(req: NextRequest, ctx: Ctx) {
+  const { path = [] } = await ctx.params;
+  return proxy(req, path);
+}
+export async function PATCH(req: NextRequest, ctx: Ctx) {
   const { path = [] } = await ctx.params;
   return proxy(req, path);
 }

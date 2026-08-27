@@ -297,6 +297,19 @@ export async function createLLMConnection(
   );
 }
 
+export async function updateLLMConnection(
+  id: string,
+  body: SaveLLMConnectionBody
+): Promise<LLMConnection> {
+  return unwrap(
+    await authFetch(`/api/settings/llm/connections/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+  );
+}
+
 export async function deleteLLMConnection(id: string): Promise<void> {
   await unwrap(await authFetch(`/api/settings/llm/connections/${id}`, { method: "DELETE" }));
 }
